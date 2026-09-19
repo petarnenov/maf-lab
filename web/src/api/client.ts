@@ -46,6 +46,19 @@ export async function apiRequest<T>(
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+/** Plain-text request: the topology diagram is XML, not JSON. Same auth and error handling. */
+export async function apiText(
+  token: string | null,
+  path: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const response = await fetch(path, { headers: authHeaders(token), signal });
+  if (!response.ok) {
+    throw new ApiError(response.status, await errorMessage(response));
+  }
+  return response.text();
+}
+
 async function errorMessage(response: Response): Promise<string> {
   if (response.status === 401) return 'Not signed in — pick a dev persona.';
   if (response.status === 403) return 'Access denied.';

@@ -39,6 +39,8 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
     public string DataDir { get; }
     public CapturingLoggerProvider Logs { get; } = new();
     public bool EmulateForcing { get; }
+    /// <summary>Extra service overrides for one test (applied after the standard ones).</summary>
+    public Action<IServiceCollection>? ConfigureTestServices { get; set; }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -58,6 +60,7 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
             s.AddSingleton<IToolSource>(Tools);
             s.RemoveAll<IChatClientFactory>();
             s.AddSingleton<IChatClientFactory>(new FixedChatClientFactory(Chat, IntentModelName, Intent));
+            ConfigureTestServices?.Invoke(s);
         });
     }
 

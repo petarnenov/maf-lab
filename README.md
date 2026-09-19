@@ -26,6 +26,12 @@ chat UI, an eval harness and tested prompt-injection defences.
 Everything user- and agent-facing goes through **one entry point on port 7171**. api and mcp-retrieval run two replicas
 each (`X-Instance` response header shows which one answered); only Qdrant and Ollama are published besides 7171.
 
+The same picture, drawn in [`docs/topology.drawio`](docs/topology.drawio) and **live**, is at
+[`/topology`](http://localhost:7171/topology): each box carries the state of that service — healthy, degraded or
+unreachable — its replicas by name, and the facts that explain the lab's behaviour (chunks in the index, models,
+tools offered). Edit the diagram in draw.io (save it *uncompressed*) and the page follows; a service that exists in
+the report but not in the drawing fails the test suite.
+
 ## Quick start
 
 ```bash

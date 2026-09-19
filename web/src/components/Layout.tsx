@@ -5,6 +5,7 @@ import styles from './Layout.module.css';
 const LINKS = [
   { to: '/chat', label: 'Chat' },
   { to: '/evals', label: 'Evals' },
+  { to: '/topology', label: 'Topology' },
   { to: '/admin/index', label: 'Index admin' },
   { to: '/admin/feedback', label: 'Feedback review' },
 ];

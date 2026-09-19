@@ -42,6 +42,11 @@ public partial class Program
         builder.Services.AddSingleton<DatasetWriter>();
         builder.Services.Configure<AdminJobOptions>(builder.Configuration.GetSection("AdminJobs"));
         builder.Services.AddSingleton<AdminJobRunner>();
+        builder.Services.Configure<Topology.TopologyOptions>(builder.Configuration.GetSection(Topology.TopologyOptions.Section));
+        builder.Services.AddMemoryCache();
+        builder.Services.AddHttpClient("topology");
+        builder.Services.AddSingleton<Topology.IServiceResolver, Topology.DnsServiceResolver>();
+        builder.Services.AddSingleton<Topology.TopologyProbe>();
         builder.Services.Configure<Agent.Tracing.TracingOptions>(builder.Configuration.GetSection(Agent.Tracing.TracingOptions.Section));
         builder.Services.AddSingleton<Agent.Tracing.TraceRetentionService>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<Agent.Tracing.TraceRetentionService>());
@@ -68,6 +73,7 @@ public partial class Program
         app.MapEvalReports();
         app.MapTraces();
         app.MapHistory();
+        app.MapTopology();
         return app;
     }
 }

@@ -88,12 +88,15 @@ services:
       Storage__ConnectionString: Data Source=/app-data/maf-lab.db
       Indexing__CorpusRoot: /data
       Evals__Root: /evals
+      # The drawn topology, served to the web app by the api (the web image is built from web/ only).
+      Topology__DiagramPath: /docs/topology.drawio
     deploy:
       replicas: 2
     volumes:
       - api-data:/app-data
       - ../data:/data
       - ../evals:/evals
+      - ../docs:/docs:ro
     depends_on:
       mcp-retrieval:
         condition: service_healthy

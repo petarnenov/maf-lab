@@ -1,0 +1,190 @@
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.canvasWrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.canvas {
+  width: 100%;
+  height: auto;
+  max-height: 70vh;
+  display: block;
+}
+
+.edge {
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+
+.arrowHead {
+  fill: var(--border);
+}
+
+.edgeLabel {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.node {
+  cursor: pointer;
+}
+
+.box {
+  fill: var(--surface-2);
+  stroke: var(--border);
+  stroke-width: 2;
+}
+
+.dashed {
+  stroke-dasharray: 6 4;
+}
+
+.node.selected .box {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.healthy .box {
+  stroke: var(--ok);
+}
+
+.degraded .box {
+  stroke: #b8860b;
+}
+
+.unreachable .box {
+  stroke: var(--danger);
+}
+
+.notProbed .box {
+  stroke: var(--muted);
+}
+
+.nodeTitle {
+  fill: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.nodeSubtitle {
+  fill: var(--muted);
+  font-size: 12px;
+}
+
+.state {
+  font-size: 11px;
+  fill: var(--muted);
+}
+
+.healthy .state {
+  fill: var(--ok);
+}
+
+.degraded .state {
+  fill: #b8860b;
+}
+
+.unreachable .state {
+  fill: var(--danger);
+}
+
+.replicas {
+  font-size: 11px;
+  fill: var(--muted);
+}
+
+.side {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.sideHeading {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 12px;
+  font-size: 13px;
+  margin: 8px 0;
+}
+
+.factKey {
+  color: var(--muted);
+}
+
+.factValue {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.instances {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.instance {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.instanceAddress {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.legend {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+.reason {
+  font-size: 13px;
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.reason.unreachable {
+  color: var(--danger);
+}
+
+.reason.degraded {
+  color: #b8860b;
+}

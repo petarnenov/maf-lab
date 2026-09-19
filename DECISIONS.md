@@ -378,3 +378,32 @@ referenced web projects' config files never collide.
 - **Evals after the change (gpt-oss:120b):** `selection` recall 1.0, precision 0.913, exactMatch 0.9,
   negativeAccuracy 1.0 — identical to the run before it, as expected for an English dataset the rules already
   covered; `injection` 8/8. The change is an addition to the path, not a change of it.
+
+## 19. Topology view (add-topology-view, 2026-09-20)
+
+- **The drawing is parsed, not exported.** `docs/topology.drawio` is authored as *uncompressed* mxGraph XML and the
+  web app reads its geometry, labels and edges to render its own SVG. So a person decides the layout in draw.io while
+  the state comes from the system, with no export step to forget. draw.io's compressed save (one base64 blob) is
+  rejected by the parser with that message, and by a test.
+  - **Alternative rejected — export an SVG:** no place to overlay per-node state, and the export rots silently.
+  - **Alternative rejected — generate the diagram:** always correct, never legible.
+  - **Alternative rejected — embed the draw.io viewer:** a heavy third-party script for a page that must work in a lab.
+- **The diagram and the report cannot drift.** A test compares the drawn vertex ids with `TopologyProbe.NodeIds` in
+  both directions and names what is missing (verified by deleting a node: "reported but not drawn: [web]").
+- **Replicas are discovered by DNS, then asked.** `Dns.GetHostAddressesAsync("api")` returns one address per replica —
+  the same fact nginx relies on — and each is asked the anonymous `/health` that both hosts already serve, which
+  answers with its own instance name. No new table, no heartbeat timer, no Docker socket. A *stopped* container leaves
+  DNS, so it cannot be listed: the node then shows `discovered: 1 address(es)` rather than a dead replica. A replica
+  that is up but silent *is* listed, as `unreachable`, and degrades its service.
+  - Outside the container network (`make dev`, tests) nothing resolves; the report says so and speaks for this
+    instance only, instead of failing.
+- **What is deliberately not probed:** the chat provider. It is a paid remote endpoint (Ollama Cloud), and pinging it
+  every 5 s to learn what configuration already says is waste — it is reported `NotProbed` with the model, the
+  endpoint and *whether* `OLLAMA_API_KEY` is set. The key itself never leaves the process (asserted by a test).
+- **Probing cannot become load.** Every probe runs concurrently with a 2 s budget, one failure never fails the report,
+  and the whole report is cached for 5 s across requests and replicas.
+- **MCP health is two questions.** Each replica's `/health`, plus one `tools/list` through the balancer. A failed
+  `tools/list` while a replica is up is `Degraded` (the path is broken), not `Unreachable` — found while testing with
+  one replica stopped, where the first answer was wrongly "unreachable" with a healthy replica listed.
+- **`NodeHealth` is serialized by name.** The default enum-as-number would have reached the web app as `0`, which its
+  types do not accept; a test now asserts `"health":"Healthy"` on the wire.
