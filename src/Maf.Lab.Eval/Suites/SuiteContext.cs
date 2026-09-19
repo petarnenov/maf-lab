@@ -2,7 +2,8 @@ using Maf.Lab.Domain.Evals;
 
 namespace Maf.Lab.Eval.Suites;
 
-public sealed record SuiteContext(string DatasetRoot, EvalOptions Options, int? Limit, Action<string> Progress)
+/// <param name="CorpusLanguage">Language the indexed documents are written in; a case that declares none counts as this.</param>
+public sealed record SuiteContext(string DatasetRoot, EvalOptions Options, int? Limit, Action<string> Progress, string CorpusLanguage = "en")
 {
     public IReadOnlyDictionary<string, double> ThresholdsFor(string suite) =>
         Options.Thresholds.TryGetValue(suite, out var t) ? t : new Dictionary<string, double>();

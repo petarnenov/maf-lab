@@ -61,8 +61,23 @@ def classify(messages: list[dict]) -> str:
     return "OTHER"
 
 
+TRANSLATOR_MARKER = "maf-lab/query-translator"
+
+
 def is_classification(messages: list[dict]) -> bool:
     return any(INTENT_MARKER in (m.get("content") or "") for m in messages)
+
+
+def is_translation(messages: list[dict]) -> bool:
+    return any(TRANSLATOR_MARKER in (m.get("content") or "") for m in messages)
+
+
+def translate(messages: list[dict]) -> str:
+    """No model here: echo the Latin-script words of the query, which is enough to exercise the path."""
+    query = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
+    query = query.replace("<query>", " ").replace("</query>", " ")
+    kept = [w for w in query.split() if all(ord(c) < 128 for c in w)]
+    return " ".join(kept) or "billing"
 
 
 def answer_for(messages: list[dict]) -> str:
@@ -124,7 +139,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"model": model, "embeddings": vectors, "total_duration": 1, "prompt_eval_count": len(inputs)})
         if self.path == "/api/chat":
             messages = body.get("messages", [])
-            text = classify(messages) if is_classification(messages) else answer_for(messages)
+            if is_classification(messages):
+                text = classify(messages)
+            elif is_translation(messages):
+                text = translate(messages)
+            else:
+                text = answer_for(messages)
             if not body.get("stream", True):
                 return self._json(200, {"model": model, "created_at": now(), "done": True, "done_reason": "stop",
                                         "message": {"role": "assistant", "content": text}, "eval_count": len(text.split())})

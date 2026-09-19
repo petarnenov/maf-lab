@@ -237,7 +237,17 @@ export function RetrievalTab({ events }: { events: TraceEvent[] }) {
               <span className={styles.chip}>rerank: {s.rerank ? 'on' : 'off'}</span>
             </div>
             <div className={styles.sub}>Query</div>
+            {d.query?.translated && (
+              // The query was brought into the corpus language; the terms below are the ones actually searched.
+              <div className={styles.muted}>
+                asked: {d.query.original} → translated in {Math.round(d.query.translationMs ?? 0)}{' '}
+                ms
+              </div>
+            )}
             <div>{d.query?.text}</div>
+            {d.query?.translationNote && (
+              <div className={styles.muted}>searched as written: {d.query.translationNote}</div>
+            )}
             <div>
               dense: {d.query?.denseModel ?? 'n/a'} ({d.query?.denseDims ?? '?'} dims)
             </div>

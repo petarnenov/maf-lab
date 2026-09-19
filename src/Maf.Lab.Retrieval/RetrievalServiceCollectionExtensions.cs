@@ -35,6 +35,10 @@ public static class RetrievalServiceCollectionExtensions
                 && !sp.GetRequiredService<IOptions<RetrievalOptions>>().Value.RerankEnabled
                 ? new NoOpReranker()
                 : ActivatorUtilities.CreateInstance<LlmReranker>(sp));
+        services.TryAddSingleton<IQueryTranslator>(sp =>
+            sp.GetRequiredService<IOptions<RetrievalOptions>>().Value.NormalizeQueryLanguage
+                ? ActivatorUtilities.CreateInstance<LlmQueryTranslator>(sp)
+                : new NoOpQueryTranslator());
         services.TryAddSingleton<DocumentSearchService>();
         services.TryAddSingleton<BillingSeedStore>();
         return services;

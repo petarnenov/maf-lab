@@ -407,3 +407,30 @@ referenced web projects' config files never collide.
   one replica stopped, where the first answer was wrongly "unreachable" with a healthy replica listed.
 - **`NodeHealth` is serialized by name.** The default enum-as-number would have reached the web app as `0`, which its
   types do not accept; a test now asserts `"health":"Healthy"` on the wire.
+
+## 20. Multilingual retrieval (add-multilingual-retrieval, 2026-09-20)
+
+- **Measured before deciding.** Against the running stack, a Bulgarian question and its English twin shared *zero*
+  of the top-5 documents in three of four probes; the fourth shared 3/5 only because `FS-REQUIRED` is Latin text
+  BM25 could match. Over the eval set, hybrid recall@5 was **0.208 for Bulgarian** against 0.693 for English.
+- **Translate the query, do not swap the embedding model.** A multilingual dense model (bge-m3, multilingual-e5)
+  would fix the dense half without a per-query model call, and `dense_v2` is provisioned for exactly that
+  experiment. It was rejected as the primary fix because BM25 would still tokenise Cyrillic terms that appear in no
+  chunk, so hybrid search would collapse to dense-only for precisely the questions that need help. Translation
+  fixes both halves. The experiment stays open: the eval now reports recall per language, so pointing `dense_v2` at
+  a multilingual model is a measurement rather than an argument.
+- **In the retrieval server, not in the agent.** `DocumentSearchService.RankAsync` is the one place every caller
+  passes through — the agent's forced call, a model-chosen call, the eval harness, a raw MCP client. A system-prompt
+  line ("search in English") would have been free but would only cover the agent, would leave the eval measuring
+  something else, and would be invisible in the trace.
+- **Only a query that needs it.** The check is the *script*, not the language: a query whose letters are all Latin
+  is searched as written, so every English path costs exactly what it did before. Its only failure mode is a missed
+  translation for a Latin-script non-English query, never a wrong one. Translations are cached per replica.
+- **Failure is the old behaviour.** Timeout (`Retrieval:TranslationTimeoutSeconds`, 5 s), provider error, or an
+  answer that is empty, multi-line, far too long or still not in the corpus language → the original query is
+  searched, and the reason appears in the diagnostics. `Retrieval:NormalizeQueryLanguage=false` disables it.
+- **`InvariantGlobalization=true`** is on for these hosts, so `CultureInfo.GetCultureInfo("en").EnglishName` returns
+  `en`, not `English`. The prompt takes the language name from a small explicit table instead — found by a test.
+- **Results (gpt-oss:120b, hybrid):** recall@5 for Bulgarian **0.208 → 0.681**, English **0.693 → 0.693**
+  (unchanged, which was the acceptance criterion), overall 0.456 → 0.687, recall@20 0.612 → 0.922, MRR 0.402 →
+  0.635. `selection` (recall 1.0, precision 0.913) and `generation` (faithfulness 0.969, relevance 1.0) unchanged.

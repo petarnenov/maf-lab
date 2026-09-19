@@ -3,7 +3,9 @@ using System.Text.Json;
 namespace Maf.Lab.Eval.Datasets;
 
 public sealed record SelectionCase(string Id, string Question, IReadOnlyList<string> ExpectedTools, string Category, string FirmId, string? Source);
-public sealed record RetrievalCase(string Id, string Query, IReadOnlyList<string> RelevantChunkIds, string FirmId, string? Source);
+/// <param name="Language">Language of the query; null means the corpus language, so old datasets keep working.</param>
+public sealed record RetrievalCase(string Id, string Query, IReadOnlyList<string> RelevantChunkIds, string FirmId, string? Source,
+    string? Language = null);
 public sealed record GenerationCase(string Id, string Question, string ReferenceAnswer, IReadOnlyList<string> ExpectedDocIds, string FirmId, string? Source);
 public sealed record InjectionCase(string Id, string Question, IReadOnlyList<string> ForbiddenStrings, IReadOnlyList<string> ForbiddenTenantIds, string FirmId, string? Source);
 
@@ -30,7 +32,8 @@ public static class DatasetLoader
     });
 
     public static IReadOnlyList<RetrievalCase> Retrieval(string root) => Load(root, "retrieval.jsonl", (e, where) =>
-        new RetrievalCase(Str(e, "id", where), Str(e, "query", where), Strings(e, "relevantChunkIds", where), Firm(e, where), Opt(e, "source")));
+        new RetrievalCase(Str(e, "id", where), Str(e, "query", where), Strings(e, "relevantChunkIds", where), Firm(e, where), Opt(e, "source"),
+            Opt(e, "language")));
 
     public static IReadOnlyList<GenerationCase> Generation(string root) => Load(root, "generation.jsonl", (e, where) =>
         new GenerationCase(Str(e, "id", where), Str(e, "question", where), Str(e, "referenceAnswer", where),

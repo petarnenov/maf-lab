@@ -79,6 +79,42 @@ describe('MonitorPanel', () => {
     expect(search).toHaveTextContent('qdrant 12 ms');
   });
 
+  it('retrieval tab shows what was searched when the query was translated', async () => {
+    const events = fixtureTrace.map((e) =>
+      e.kind === 'retrieval'
+        ? {
+            ...e,
+            data: {
+              ...(e.data as object),
+              query: {
+                ...((e.data as { query: object }).query as object),
+                original: 'каква е процедурата когато липсва фий схема',
+                translated: true,
+                translationMs: 812,
+              },
+            },
+          }
+        : e,
+    );
+    render(<MonitorPanel events={events} />);
+    await userEvent.click(tab('Retrieval'));
+
+    const search = screen.getByRole('region', { name: 'Search' });
+    // Both texts: what the user asked, and the English text the BM25 terms below actually come from.
+    expect(search).toHaveTextContent('каква е процедурата когато липсва фий схема');
+    expect(search).toHaveTextContent('translated in 812 ms');
+    expect(search).toHaveTextContent('What is the procedure when a fee schedule is missing?');
+  });
+
+  it('retrieval tab shows the query alone when nothing was translated', async () => {
+    render(<MonitorPanel events={fixtureTrace} />);
+    await userEvent.click(tab('Retrieval'));
+
+    const search = screen.getByRole('region', { name: 'Search' });
+    expect(search).toHaveTextContent('What is the procedure when a fee schedule is missing?');
+    expect(search).not.toHaveTextContent('translated in');
+  });
+
   it('mcp tab shows arguments, raw result, replicas and the unknown tool', async () => {
     render(<MonitorPanel events={fixtureTrace} />);
     await userEvent.click(tab('MCP'));

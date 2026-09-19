@@ -44,6 +44,25 @@ public class EvalHarnessTests
     }
 
     [Fact]
+    public void Retrieval_cases_carry_their_language_and_default_to_the_corpus_language()
+    {
+        var cases = DatasetLoader.Retrieval(EvalsRoot);
+
+        // Rows written before the field existed keep working: no language means the corpus language.
+        Assert.Contains(cases, c => c.Language is null);
+        var bulgarian = cases.Where(c => c.Language == "bg").ToList();
+        Assert.NotEmpty(bulgarian);
+        // Every non-English case is the twin of an English one, so the two languages are measured on equal ground.
+        foreach (var twin in bulgarian)
+        {
+            var english = cases.Single(c => c.Id == twin.Id[..^"-bg".Length]);
+            Assert.Equal(english.RelevantChunkIds, twin.RelevantChunkIds);
+            Assert.Equal(english.FirmId, twin.FirmId);
+            Assert.NotEqual(english.Query, twin.Query);
+        }
+    }
+
+    [Fact]
     public void Retrieval_dataset_references_chunks_the_chunkers_actually_produce()
     {
         var ids = CorpusLoader.Load(Path.Combine(CorpusLoaderTests.RepoRoot(), "data")).Documents

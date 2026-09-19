@@ -47,7 +47,8 @@ public static class Program
 
         var suite = flags.GetValueOrDefault("suite") ?? "all";
         var suites = suite == "all" ? new[] { "selection", "retrieval", "generation", "injection" } : suite.Split(',');
-        var ctx = new SuiteContext(root, options, flags.TryGetValue("limit", out var l) ? int.Parse(l) : null, m => Console.WriteLine($"  {m}"));
+        var ctx = new SuiteContext(root, options, flags.TryGetValue("limit", out var l) ? int.Parse(l) : null, m => Console.WriteLine($"  {m}"),
+            configuration["Retrieval:CorpusLanguage"] ?? "en");
         var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss");
         var allPassed = true;
 

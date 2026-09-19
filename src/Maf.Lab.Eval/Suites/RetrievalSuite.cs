@@ -19,6 +19,8 @@ public sealed class RetrievalSuite
         {
             double r5 = 0, r20 = 0, mrr = 0;
             var failures = new List<EvalCaseFailure>();
+            // Per language, so a suite passing overall cannot hide a language that retrieves nothing useful.
+            var byLanguage = new Dictionary<string, (double Recall5, int Count)>(StringComparer.OrdinalIgnoreCase);
             foreach (var c in cases)
             {
                 var ranked = (await variant.Search.RankAsync(EvalAgentHost.EvalPrincipal(c.FirmId), c.Query, null, 20, variant.Settings, ct))
@@ -28,6 +30,9 @@ public sealed class RetrievalSuite
                 r5 += caseR5;
                 r20 += Metrics.RecallAtK(ranked, relevant, 20);
                 mrr += Metrics.ReciprocalRank(ranked, relevant);
+                var language = string.IsNullOrWhiteSpace(c.Language) ? ctx.CorpusLanguage : c.Language;
+                var seen = byLanguage.GetValueOrDefault(language);
+                byLanguage[language] = (seen.Recall5 + caseR5, seen.Count + 1);
                 if (caseR5 < 1)
                 {
                     failures.Add(new EvalCaseFailure(c.Id, $"recall@5={caseR5:0.##}; top: {string.Join(", ", ranked.Take(3))}"));
@@ -35,10 +40,19 @@ public sealed class RetrievalSuite
             }
             var n = Math.Max(1, cases.Count);
             var metrics = new Dictionary<string, double> { ["recall@5"] = r5 / n, ["recall@20"] = r20 / n, ["mrr"] = mrr / n };
+            if (byLanguage.Count > 1)
+            {
+                foreach (var (language, totals) in byLanguage.OrderBy(x => x.Key, StringComparer.Ordinal))
+                {
+                    metrics[$"recall@5:{language}"] = totals.Recall5 / Math.Max(1, totals.Count);
+                }
+            }
             // Thresholds gate the configured production variant; the others are for comparison.
             var thresholds = variant.Primary ? ctx.ThresholdsFor("retrieval") : new Dictionary<string, double>();
             results.Add(SuiteContext.Variant(variant.Name, metrics, thresholds, cases.Count, failures));
-            ctx.Progress($"retrieval {variant.Name}: recall@5={metrics["recall@5"]:0.###} recall@20={metrics["recall@20"]:0.###} mrr={metrics["mrr"]:0.###}");
+            var perLanguage = string.Join(" ", metrics.Where(m => m.Key.StartsWith("recall@5:", StringComparison.Ordinal))
+                .Select(m => $"{m.Key}={m.Value:0.###}"));
+            ctx.Progress($"retrieval {variant.Name}: recall@5={metrics["recall@5"]:0.###} recall@20={metrics["recall@20"]:0.###} mrr={metrics["mrr"]:0.###} {perLanguage}".TrimEnd());
         }
         return results;
     }

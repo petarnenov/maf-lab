@@ -108,7 +108,13 @@ export interface RetrievalData {
     rerank?: boolean;
   };
   query?: {
+    /** The text actually embedded and encoded. */
     text?: string;
+    /** What the user asked, when it was translated into the corpus language before searching. */
+    original?: string;
+    translated?: boolean;
+    translationMs?: number | null;
+    translationNote?: string | null;
     terms?: { term: string; idf: number }[];
     denseModel?: string;
     denseDims?: number;

@@ -60,6 +60,15 @@ and the behind-the-scenes trace with time travel while it is kept), then continu
 the URL (`/chat/{id}`), so a reload reopens it. Rename or delete from the item's menu. Delete hides the conversation
 and stops it being continued; its turns stay for the review queue and evals.
 
+## Asking in another language
+
+The corpus is English. A question written in another language is translated into the corpus language *before* it is
+embedded and before BM25 encodes it, so both halves of hybrid retrieval work on the same vocabulary as the index;
+the answer still comes back in the language of the question. The monitor's Retrieval tab shows both texts, and the
+retrieval eval reports recall per language. Measured over the eval set, Bulgarian recall@5 went from **0.21 to
+0.68** while English stayed at 0.69. Switch it off with `Retrieval__NormalizeQueryLanguage=false`; the corpus
+language is `Retrieval__CorpusLanguage` (default `en`).
+
 ## Behind the scenes
 
 `/chat` shows the conversation on the left and a live **behind-the-scenes monitor** on the right: every step of the turn
@@ -155,6 +164,7 @@ Evals run **on demand**, not on every commit. They are **required** before mergi
 - the **model** (chat or embedding, `Models:*`) → `all`
 - the **tool set** (adding/removing a tool) → `selection`, `injection`
 - the **chunking or retrieval configuration** (chunkers, `Indexing:*`, `Retrieval:*`, BM25) → `retrieval`, `generation`
+- **query normalisation** (`Retrieval:NormalizeQueryLanguage`, `Retrieval:CorpusLanguage`, the translation model) → `retrieval`
 
 Datasets are JSONL under `evals/`; reports land in `evals/reports/` (JSON for the `/evals` page, Markdown for humans).
 Thresholds are configuration (`src/Maf.Lab.Eval/eval.json` → `Evals:Thresholds`); the command exits non-zero when a

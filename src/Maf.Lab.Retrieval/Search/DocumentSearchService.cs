@@ -22,6 +22,7 @@ public sealed partial class DocumentSearchService(
     IDenseEncoder dense,
     Bm25Store bm25,
     IReranker reranker,
+    IQueryTranslator translator,
     IOptions<RetrievalOptions> options,
     ILogger<DocumentSearchService> logger)
 {
@@ -74,11 +75,15 @@ public sealed partial class DocumentSearchService(
         SearchSettings settings, CancellationToken ct, SearchDiagnostics? diagnostics = null)
     {
         var clock = Stopwatch.StartNew();
-        var denseVector = settings.Mode == RetrievalModes.Sparse ? null : await dense.EmbedQueryAsync(settings.DenseVector, query, ct);
+        // Both halves of hybrid search read the same text, so the query is brought into the corpus language before
+        // either of them sees it. A query already in that language is returned untouched.
+        var translation = await translator.ToCorpusLanguageAsync(query, ct);
+        var searchedQuery = translation.Searched;
+        var denseVector = settings.Mode == RetrievalModes.Sparse ? null : await dense.EmbedQueryAsync(settings.DenseVector, searchedQuery, ct);
         var embedMs = clock.ElapsedMilliseconds;
         clock.Restart();
         var model = await bm25.LoadAsync(ct);
-        var sparseVector = settings.Mode == RetrievalModes.Dense ? null : Bm25Encoder.EncodeQuery(model, query);
+        var sparseVector = settings.Mode == RetrievalModes.Dense ? null : Bm25Encoder.EncodeQuery(model, searchedQuery);
         var sparseMs = clock.ElapsedMilliseconds;
 
         var request = new SearchRequest
@@ -101,7 +106,7 @@ public sealed partial class DocumentSearchService(
         if (settings.Rerank)
         {
             clock.Restart();
-            ranked = await reranker.RerankAsync(query, candidates, ct);
+            ranked = await reranker.RerankAsync(searchedQuery, candidates, ct);
             rerankMs = clock.ElapsedMilliseconds;
         }
 
@@ -118,8 +123,12 @@ public sealed partial class DocumentSearchService(
             diagnostics.Settings["prefetchLimit"] = request.PrefetchLimit;
             diagnostics.Settings["rerank"] = settings.Rerank;
             diagnostics.Settings["sourceTypes"] = sourceTypes is null ? null : new System.Text.Json.Nodes.JsonArray(sourceTypes.Select(t => (System.Text.Json.Nodes.JsonNode)System.Text.Json.Nodes.JsonValue.Create(t)!).ToArray());
-            diagnostics.Query["text"] = query;
-            diagnostics.Query["terms"] = new System.Text.Json.Nodes.JsonArray(Bm25Tokenizer.Tokenize(query).Distinct(StringComparer.Ordinal)
+            diagnostics.Query["text"] = searchedQuery;
+            diagnostics.Query["original"] = translation.Original;
+            diagnostics.Query["translated"] = translation.Changed;
+            diagnostics.Query["translationMs"] = translation.DurationMs;
+            diagnostics.Query["translationNote"] = translation.Reason;
+            diagnostics.Query["terms"] = new System.Text.Json.Nodes.JsonArray(Bm25Tokenizer.Tokenize(searchedQuery).Distinct(StringComparer.Ordinal)
                 .Select(t => (System.Text.Json.Nodes.JsonNode)new System.Text.Json.Nodes.JsonObject
                 {
                     ["term"] = t,

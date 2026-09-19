@@ -164,6 +164,11 @@
   flex-wrap: wrap;
 }
 
+.muted {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 .sub {
   margin: 8px 0 4px;
   font-size: 0.75rem;

@@ -31,6 +31,8 @@ public sealed class ModelOptions
     /// <summary>Environment variable holding the Ollama Cloud API key. The key itself is never stored in config files.</summary>
     public string ChatApiKeyEnvironmentVariable { get; set; } = "OLLAMA_API_KEY";
     public string ChatModel { get; set; } = "gpt-oss:120b";
+    /// <summary>Model that brings a query into the corpus language; empty uses the chat model.</summary>
+    public string? TranslationModel { get; set; }
     /// <summary>Disables reasoning tokens for models that support it (qwen3 etc.).</summary>
     public bool DisableThinking { get; set; } = true;
     public string? RerankModel { get; set; }
@@ -79,6 +81,12 @@ public sealed class RetrievalOptions
     public int SnippetMaxChars { get; set; } = 700;
     /// <summary>For traced searches, also run dense-only and sparse-only queries so the monitor can compare branches.</summary>
     public bool TraceBranches { get; set; } = true;
+    /// <summary>Translate a query written in another language into the corpus language before searching.</summary>
+    public bool NormalizeQueryLanguage { get; set; } = true;
+    /// <summary>Language the indexed documents are written in.</summary>
+    public string CorpusLanguage { get; set; } = "en";
+    public double TranslationTimeoutSeconds { get; set; } = 5;
+    public int TranslationCacheSize { get; set; } = 500;
 }
 
 public static class RetrievalModes
