@@ -17,9 +17,9 @@
 
 ## 4. Publish and prove
 
-- [ ] 4.1 Create the public repo `petarnenov/maf-lab`, push main, and set the `OLLAMA_API_KEY` secret via stdin; verify `gh repo view` and `gh secret list` (name only)
-- [ ] 4.2 Watch the first CI run to green; fix anything Linux-specific. Verify all four jobs succeed (`gh run view`)
-- [ ] 4.3 Dispatch the evals workflow with `suite=selection`; verify it succeeds, the log shows the key only as masked, and the reports artifact exists
+- [x] 4.1 Create the public repo `petarnenov/maf-lab`, push main, and set the `OLLAMA_API_KEY` secret via stdin; verify `gh repo view` and `gh secret list` (name only)
+- [x] 4.2 Watch the first CI run to green; fix anything Linux-specific. Verify all four jobs succeed (`gh run view`)
+- [x] 4.3 Dispatch the evals workflow with `suite=selection`; verify it succeeds, the log shows the key only as masked, and the reports artifact exists
 
 ## 5. Documentation
 
