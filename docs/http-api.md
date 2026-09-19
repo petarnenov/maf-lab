@@ -38,9 +38,16 @@ SSE frames are `event: <name>\ndata: <json>\n\n`:
 | `tool_call_finished` | `{ callId, toolName, resultSummary, sourceCount, isError }` |
 | `sources` | `{ sources: [{ docId, sectionPath, sourcePath, snippet }] }` — before `done` |
 | `text_delta` | `{ text }` |
+| `trace` | one turn-trace event `{ seq, atMs, kind, title, durationMs?, data, truncated }` — interleaves with everything, all before `done`; see [trace-events.md](trace-events.md) |
 | `done` | `{ conversationId, turnId, error? }` — always last |
 
 Errors during a streamed turn arrive as `done.error` (short user-facing text); there is no separate `error` event.
+
+## Turn traces
+
+| Method | Path | Response |
+|---|---|---|
+| GET | `/api/turns/{turnId}/trace` | `{ turnId, conversationId, createdAt, events: TraceEvent[] }` — the turn's owner, or a FIRM_ADMIN of the same firm for turns in the review queue; otherwise `404`. Kept for `Tracing:RetentionDays` (7). |
 
 ## Feedback
 

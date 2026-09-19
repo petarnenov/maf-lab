@@ -8,6 +8,8 @@ namespace Maf.Lab.TestSupport;
 public sealed class FakeToolSource : IToolSource
 {
     public List<string> Invocations { get; } = [];
+    /// <summary>Optional MCP result _meta for search_documents (e.g. retrieval diagnostics).</summary>
+    public string? SearchMetaJson { get; set; }
     public Func<Task>? BeforeSearchExecutes { get; set; }
     public string SearchPayloadJson { get; set; } = """
         {"results":[
@@ -25,7 +27,7 @@ public sealed class FakeToolSource : IToolSource
             {
                 await BeforeSearchExecutes();
             }
-            return Mcp(SearchPayloadJson);
+            return Mcp(SearchPayloadJson, SearchMetaJson);
         }, "search_documents", "Searches documentation. Use when how/why/procedure. Do not use for run status.");
 
         var status = AIFunctionFactory.Create((string runId) =>
@@ -43,14 +45,19 @@ public sealed class FakeToolSource : IToolSource
         return Task.FromResult(new ToolSet([search, status, runs], null));
     }
 
-    private static JsonElement Mcp(string structuredJson)
+    private static JsonElement Mcp(string structuredJson, string? metaJson = null)
     {
         var structured = JsonDocument.Parse(structuredJson).RootElement;
-        return JsonSerializer.SerializeToElement(new
+        var result = new System.Text.Json.Nodes.JsonObject
         {
-            content = new[] { new { type = "text", text = structured.GetRawText() } },
-            structuredContent = structured,
-            isError = false,
-        });
+            ["content"] = new System.Text.Json.Nodes.JsonArray(new System.Text.Json.Nodes.JsonObject { ["type"] = "text", ["text"] = structured.GetRawText() }),
+            ["structuredContent"] = System.Text.Json.Nodes.JsonNode.Parse(structuredJson),
+            ["isError"] = false,
+        };
+        if (metaJson is not null)
+        {
+            result["_meta"] = System.Text.Json.Nodes.JsonNode.Parse(metaJson);
+        }
+        return JsonSerializer.SerializeToElement(result);
     }
 }

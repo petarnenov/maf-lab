@@ -277,3 +277,34 @@ referenced web projects' config files never collide.
   secrets, and none of the push/PR jobs needs one.
 - **Public repository:** the corpus, seed data and datasets are synthetic, and databases and caches are gitignored.
   Commit authorship becomes public.
+
+## 15. Behind-the-scenes monitor (add-behind-the-scenes-monitor, 2026-09-19)
+
+- **Trace model:** one ordered list of `TraceEvent { seq, atMs, kind, title, durationMs?, data, truncated }` per turn,
+  collected in-process by `TurnTrace`. It is streamed as SSE `trace` and stored in `TurnTraces` before `done`, so the
+  stored copy is readable as soon as the stream ends. Kinds and data shapes are in `docs/trace-events.md`.
+- **Why not OpenTelemetry as the source:** the GenAI spans from M.E.AI and the Agent Framework carry flattened string
+  attributes, and they do not see MCP or retrieval internals. Ordering and live streaming would need our own collector
+  anyway. The kinds follow GenAI naming, so an exporter can be added later.
+- **Capture points:**
+  - the runner: turn, intent, prompt, sources, signals and end;
+  - `SqliteChatHistoryProvider`: the history window and memory writes;
+  - `TracingChatClient`: every real model call. It sits below `RequiredToolModeChatClient`, which reports calls it
+    issued on the model's behalf as `tool.forced`;
+  - the tool middleware: call, raw result, retrieval, envelope and audit (with `callId`).
+- **Retrieval internals via MCP `_meta`:**
+  - The agent sends `_meta {"maf-lab/trace": true}` through `McpClientTool.WithMeta`.
+  - `search_documents` then adds `_meta["maf-lab/trace"]` with tenant scope, settings, BM25 terms and IDF, the dense,
+    sparse and fused candidates, rerank order and timings, plus `_meta["maf-lab/instance"]`.
+  - The per-branch lists come from extra dense-only and sparse-only queries through `TenantScopedSearch`, so they are
+    tenant-filtered like everything else. `Retrieval:TraceBranches` turns them off.
+  - The envelope for the model is built from structured content only, and the diagnostics are removed from `tool.result`
+    (tested).
+- **Access:** the owner, or a FIRM_ADMIN of the same firm for turns in the review queue; otherwise 404. Trace content
+  never goes to logs (tested with markers).
+- **Retention and caps:** `TraceRetentionService` deletes traces older than `Tracing:RetentionDays` (7) every hour and is
+  replica-safe. Caps: 20,000 characters per field and 1 MB per trace, with `truncated` marked.
+- **SSE payload:** the `trace` event's data is the `TraceEvent` itself, not the internal `TraceChatEvent` wrapper. A
+  test that asserted `seq` caught the wrapped form.
+- **UI:** a two-pane grid that stacks under 1024 px. Retrieval candidates show the file and last section levels, with the
+  full chunk id in the tooltip; long ids had wrapped character by character in the narrow columns.

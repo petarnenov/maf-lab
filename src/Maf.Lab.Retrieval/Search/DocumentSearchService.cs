@@ -31,7 +31,8 @@ public sealed partial class DocumentSearchService(
     public SearchSettings DefaultSettings => new(_options.Mode, _options.Fusion, _options.DenseVector, _options.RerankEnabled);
 
     public async Task<SearchOutcome> SearchAsync(
-        Principal principal, string query, IReadOnlyList<string>? sourceTypes, int? maxResults, SearchSettings? settings, CancellationToken ct)
+        Principal principal, string query, IReadOnlyList<string>? sourceTypes, int? maxResults, SearchSettings? settings, CancellationToken ct,
+        SearchDiagnostics? diagnostics = null)
     {
         settings ??= DefaultSettings;
         var limit = Math.Clamp(maxResults ?? 5, 1, MaxResultsCap);
@@ -45,7 +46,8 @@ public sealed partial class DocumentSearchService(
 
         var sw = Stopwatch.StartNew();
         var candidateLimit = settings.Rerank ? Math.Max(_options.RerankCandidates, limit) : Math.Max(limit * 2, 20);
-        var candidates = await RankAsync(principal, query, sourceTypes, candidateLimit, settings, ct);
+        var candidates = await RankAsync(principal, query, sourceTypes, candidateLimit, settings, ct, diagnostics);
+        diagnostics?.Settings.Add("limit", limit);
 
         var top = candidates.Take(limit).ToList();
         var truncated = candidates.Count > limit;
@@ -69,12 +71,20 @@ public sealed partial class DocumentSearchService(
     /// Used by search_documents and by the retrieval eval (recall@20).
     /// </summary>
     public async Task<IReadOnlyList<ScoredChunk>> RankAsync(Principal principal, string query, IReadOnlyList<string>? sourceTypes, int k,
-        SearchSettings settings, CancellationToken ct)
+        SearchSettings settings, CancellationToken ct, SearchDiagnostics? diagnostics = null)
     {
+        var clock = Stopwatch.StartNew();
+        var denseVector = settings.Mode == RetrievalModes.Sparse ? null : await dense.EmbedQueryAsync(settings.DenseVector, query, ct);
+        var embedMs = clock.ElapsedMilliseconds;
+        clock.Restart();
+        var model = await bm25.LoadAsync(ct);
+        var sparseVector = settings.Mode == RetrievalModes.Dense ? null : Bm25Encoder.EncodeQuery(model, query);
+        var sparseMs = clock.ElapsedMilliseconds;
+
         var request = new SearchRequest
         {
-            Dense = settings.Mode == RetrievalModes.Sparse ? null : await dense.EmbedQueryAsync(settings.DenseVector, query, ct),
-            Sparse = settings.Mode == RetrievalModes.Dense ? null : Bm25Encoder.EncodeQuery(await bm25.LoadAsync(ct), query),
+            Dense = denseVector,
+            Sparse = sparseVector,
             DenseVector = settings.DenseVector,
             Mode = settings.Mode,
             Fusion = settings.Fusion,
@@ -82,8 +92,75 @@ public sealed partial class DocumentSearchService(
             Limit = k,
             PrefetchLimit = Math.Max(_options.MinPrefetch, k * _options.PrefetchMultiplier),
         };
+        clock.Restart();
         var candidates = await search.QueryAsync(principal, request, ct);
-        return settings.Rerank ? await reranker.RerankAsync(query, candidates, ct) : candidates;
+        var qdrantMs = clock.ElapsedMilliseconds;
+
+        IReadOnlyList<ScoredChunk> ranked = candidates;
+        long rerankMs = 0;
+        if (settings.Rerank)
+        {
+            clock.Restart();
+            ranked = await reranker.RerankAsync(query, candidates, ct);
+            rerankMs = clock.ElapsedMilliseconds;
+        }
+
+        if (diagnostics is not null)
+        {
+            foreach (var tenant in principal.ReadableTenants)
+            {
+                diagnostics.TenantScope.Add(tenant.Value);
+            }
+            diagnostics.Settings["mode"] = settings.Mode;
+            diagnostics.Settings["fusion"] = settings.Fusion;
+            diagnostics.Settings["denseVector"] = settings.DenseVector;
+            diagnostics.Settings["candidateLimit"] = k;
+            diagnostics.Settings["prefetchLimit"] = request.PrefetchLimit;
+            diagnostics.Settings["rerank"] = settings.Rerank;
+            diagnostics.Settings["sourceTypes"] = sourceTypes is null ? null : new System.Text.Json.Nodes.JsonArray(sourceTypes.Select(t => (System.Text.Json.Nodes.JsonNode)System.Text.Json.Nodes.JsonValue.Create(t)!).ToArray());
+            diagnostics.Query["text"] = query;
+            diagnostics.Query["terms"] = new System.Text.Json.Nodes.JsonArray(Bm25Tokenizer.Tokenize(query).Distinct(StringComparer.Ordinal)
+                .Select(t => (System.Text.Json.Nodes.JsonNode)new System.Text.Json.Nodes.JsonObject
+                {
+                    ["term"] = t,
+                    ["idf"] = model.TryGetTermId(t, out var id) ? Math.Round(model.Idf(id), 4) : null,
+                    ["inVocabulary"] = model.TryGetTermId(t, out _),
+                }).ToArray());
+            diagnostics.Query["denseModel"] = settings.Mode == RetrievalModes.Sparse ? null : dense.ModelVersion(settings.DenseVector);
+            diagnostics.Query["denseDims"] = denseVector?.Length;
+            diagnostics.Fused = SearchDiagnostics.Candidates(candidates);
+            diagnostics.Rerank = settings.Rerank ? new System.Text.Json.Nodes.JsonArray(ranked.Select(c => (System.Text.Json.Nodes.JsonNode)System.Text.Json.Nodes.JsonValue.Create(c.Chunk.ChunkId)!).ToArray()) : null;
+
+            long branchMs = 0;
+            if (_options.TraceBranches && settings.Mode == RetrievalModes.Hybrid)
+            {
+                // Per-branch lists go through the same tenant-scoped query path.
+                clock.Restart();
+                if (denseVector is not null)
+                {
+                    diagnostics.Dense = SearchDiagnostics.Candidates(await search.QueryAsync(principal, request with { Mode = RetrievalModes.Dense }, ct));
+                }
+                if (sparseVector is { IsEmpty: false })
+                {
+                    diagnostics.Sparse = SearchDiagnostics.Candidates(await search.QueryAsync(principal, request with { Mode = RetrievalModes.Sparse }, ct));
+                }
+                branchMs = clock.ElapsedMilliseconds;
+            }
+            else if (settings.Mode == RetrievalModes.Dense)
+            {
+                diagnostics.Dense = SearchDiagnostics.Candidates(candidates);
+            }
+            else if (settings.Mode == RetrievalModes.Sparse)
+            {
+                diagnostics.Sparse = SearchDiagnostics.Candidates(candidates);
+            }
+            diagnostics.Timings["embedMs"] = embedMs;
+            diagnostics.Timings["sparseEncodeMs"] = sparseMs;
+            diagnostics.Timings["qdrantMs"] = qdrantMs;
+            diagnostics.Timings["rerankMs"] = rerankMs;
+            diagnostics.Timings["branchQueriesMs"] = branchMs;
+        }
+        return ranked;
     }
 
     private string Snippet(string text)

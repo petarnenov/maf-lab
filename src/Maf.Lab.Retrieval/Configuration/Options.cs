@@ -77,6 +77,8 @@ public sealed class RetrievalOptions
     public bool RerankEnabled { get; set; }
     public int RerankCandidates { get; set; } = 20;
     public int SnippetMaxChars { get; set; } = 700;
+    /// <summary>For traced searches, also run dense-only and sparse-only queries so the monitor can compare branches.</summary>
+    public bool TraceBranches { get; set; } = true;
 }
 
 public static class RetrievalModes

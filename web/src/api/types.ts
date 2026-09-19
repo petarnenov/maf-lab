@@ -63,7 +63,47 @@ export type ChatStreamEvent =
   | { type: 'tool_call_started'; data: ToolCallStartedData }
   | { type: 'tool_call_finished'; data: ToolCallFinishedData }
   | { type: 'sources'; data: { sources: SourceRef[] } }
+  | { type: 'trace'; data: TraceEvent }
   | { type: 'done'; data: DoneData };
+
+// ---- Turn trace (behind the scenes). See docs/trace-events.md. ----
+
+export type TraceKind =
+  | 'turn.start'
+  | 'intent'
+  | 'history'
+  | 'prompt'
+  | 'model.request'
+  | 'model.response'
+  | 'tool.forced'
+  | 'tool.call'
+  | 'tool.result'
+  | 'retrieval'
+  | 'envelope'
+  | 'tool.unknown'
+  | 'audit'
+  | 'sources'
+  | 'signals'
+  | 'memory'
+  | 'turn.end';
+
+export interface TraceEvent {
+  seq: number;
+  atMs: number;
+  /** One of TraceKind; unknown kinds are still shown in the timeline. */
+  kind: string;
+  title: string;
+  durationMs?: number | null;
+  data: unknown;
+  truncated: boolean;
+}
+
+export interface TurnTraceDocument {
+  turnId: string;
+  conversationId: string;
+  createdAt: string;
+  events: TraceEvent[];
+}
 
 export interface ChatRequest {
   conversationId?: string;

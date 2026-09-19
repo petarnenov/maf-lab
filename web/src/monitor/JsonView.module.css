@@ -1,0 +1,44 @@
+.root {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  margin: 0;
+  overflow-x: auto;
+}
+
+.toggle {
+  border: none;
+  background: none;
+  padding: 0 4px 0 0;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.children {
+  margin: 0;
+  padding-left: 16px;
+  list-style: none;
+}
+
+.key {
+  color: var(--link);
+}
+
+.string {
+  color: var(--ok);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.number {
+  color: var(--accent);
+}
+
+.literal {
+  color: var(--muted);
+}
+
+.summary {
+  color: var(--muted);
+}

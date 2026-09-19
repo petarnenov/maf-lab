@@ -1,4 +1,7 @@
+using System.Text.Json.Nodes;
+using Maf.Lab.Api.Agent.Tracing;
 using Maf.Lab.Api.Storage;
+using Maf.Lab.Domain.Tracing;
 using Microsoft.Agents.AI;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
@@ -11,7 +14,7 @@ namespace Maf.Lab.Api.Agent;
 /// the newest messages that fit the token budget.
 /// </summary>
 public sealed class SqliteChatHistoryProvider(
-    IDbContextFactory<MafDbContext> db, TokenCounter tokens, string conversationId, int tokenBudget, TimeProvider time) : ChatHistoryProvider
+    IDbContextFactory<MafDbContext> db, TokenCounter tokens, string conversationId, int tokenBudget, TimeProvider time, TurnTrace? trace = null) : ChatHistoryProvider
 {
     protected override async ValueTask<IEnumerable<ChatMessage>> ProvideChatHistoryAsync(InvokingContext context, CancellationToken cancellationToken = default)
     {
@@ -34,6 +37,13 @@ public sealed class SqliteChatHistoryProvider(
             window.Add(message);
         }
         window.Reverse();
+        trace?.Add(TraceKinds.History, $"History window: {window.Count} message(s), {used}/{tokenBudget} tokens", new JsonObject
+        {
+            ["budgetTokens"] = tokenBudget,
+            ["usedTokens"] = used,
+            ["included"] = new JsonArray(window.Select(m => (JsonNode)new JsonObject { ["role"] = m.Role, ["text"] = m.Text, ["tokens"] = m.Tokens }).ToArray()),
+            ["excludedCount"] = recent.Count - window.Count,
+        });
         return window.Select(m => new ChatMessage(m.Role == "user" ? ChatRole.User : ChatRole.Assistant, m.Text)).ToList();
     }
 
@@ -52,6 +62,10 @@ public sealed class SqliteChatHistoryProvider(
         {
             return;
         }
+        trace?.Add(TraceKinds.Memory, $"Stored {rows.Count} message(s) in conversation memory", new JsonObject
+        {
+            ["stored"] = new JsonArray(rows.Select(r => (JsonNode)new JsonObject { ["role"] = r.Role, ["tokens"] = r.Tokens }).ToArray()),
+        });
         await using var ctx = await db.CreateDbContextAsync(cancellationToken);
         ctx.Messages.AddRange(rows);
         await ctx.SaveChangesAsync(cancellationToken);

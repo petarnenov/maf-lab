@@ -34,6 +34,18 @@ public sealed class McpToolSource(IOptions<AgentOptions> options, ILoggerFactory
         }, http.CreateClient("mcp"), loggers, ownsHttpClient: true);
         var client = await McpClient.CreateAsync(transport, loggerFactory: loggers, cancellationToken: ct);
         var tools = await client.ListToolsAsync(cancellationToken: ct);
-        return new ToolSet(tools.Cast<AITool>().ToList(), client);
+        // Ask the server for retrieval diagnostics in the result _meta (shown in the monitor, never to the model).
+        var traced = options.Value.TraceRetrieval
+            ? tools.Select(t => t.WithMeta(new System.Text.Json.Nodes.JsonObject { [TraceMeta.Flag] = true })).Cast<AITool>().ToList()
+            : tools.Cast<AITool>().ToList();
+        return new ToolSet(traced, client);
     }
+}
+
+/// <summary>_meta keys shared with the MCP server.</summary>
+public static class TraceMeta
+{
+    public const string Flag = "maf-lab/trace";
+    public const string Diagnostics = "maf-lab/trace";
+    public const string Instance = "maf-lab/instance";
 }

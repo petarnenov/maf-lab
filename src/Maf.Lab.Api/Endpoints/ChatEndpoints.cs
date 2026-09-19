@@ -62,7 +62,8 @@ public static class ChatEndpoints
 
         await foreach (var ev in channel.Reader.ReadAllAsync(ct))
         {
-            yield return new SseItem<object>(ev, ev.EventName);
+            // The trace event's payload is the TraceEvent itself (docs/trace-events.md), not the wrapper.
+            yield return new SseItem<object>(ev is Maf.Lab.Domain.Tracing.TraceChatEvent trace ? trace.Event : ev, ev.EventName);
         }
         await run;
     }

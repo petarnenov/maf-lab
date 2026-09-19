@@ -15,6 +15,7 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
     public DbSet<LabelRow> Labels => Set<LabelRow>();
     public DbSet<AuditRow> Audit => Set<AuditRow>();
     public DbSet<AdminJobRow> AdminJobs => Set<AdminJobRow>();
+    public DbSet<TurnTraceRow> TurnTraces => Set<TurnTraceRow>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -28,6 +29,8 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
         b.Entity<LabelRow>().HasKey(x => x.Id);
         b.Entity<AuditRow>().HasIndex(x => new { x.FirmId, x.At });
         b.Entity<AdminJobRow>().HasKey(x => x.Id);
+        b.Entity<TurnTraceRow>().HasKey(x => x.TurnId);
+        b.Entity<TurnTraceRow>().HasIndex(x => x.CreatedAt);
         // At most one running job per firm and kind, enforced by the database across replicas.
         b.Entity<AdminJobRow>().HasIndex(x => new { x.FirmId, x.Kind }).IsUnique().HasFilter("\"State\" = 'running'");
     }
@@ -119,4 +122,15 @@ public sealed class AdminJobRow
     public string? Summary { get; set; }
     public required string OwnerInstance { get; set; }
     public DateTime HeartbeatAt { get; set; }
+}
+
+/// <summary>Full behind-the-scenes trace of a turn (message content; retention: Tracing:RetentionDays).</summary>
+public sealed class TurnTraceRow
+{
+    public required string TurnId { get; set; }
+    public required string ConversationId { get; set; }
+    public required string UserId { get; set; }
+    public required string FirmId { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public required string Json { get; set; }
 }

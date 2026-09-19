@@ -10,16 +10,19 @@ namespace Maf.Lab.Api.Agent;
 /// executes it through MCP and clears the required mode for the next iteration, so the model then answers — or calls
 /// further tools — with the retrieved snippets in context.
 /// </summary>
-public sealed class RequiredToolModeChatClient(IChatClient inner) : DelegatingChatClient(inner)
+public sealed class RequiredToolModeChatClient(IChatClient inner, Action<FunctionCallContent>? onForced = null) : DelegatingChatClient(inner)
 {
     public const string EmulatedTool = "search_documents";
 
     public override async Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
     {
         var list = messages as IList<ChatMessage> ?? messages.ToList();
-        return ForcedCall(list, options) is { } call
-            ? new ChatResponse(new ChatMessage(ChatRole.Assistant, [call])) { FinishReason = ChatFinishReason.ToolCalls }
-            : await base.GetResponseAsync(list, options, cancellationToken);
+        if (ForcedCall(list, options) is { } call)
+        {
+            onForced?.Invoke(call);
+            return new ChatResponse(new ChatMessage(ChatRole.Assistant, [call])) { FinishReason = ChatFinishReason.ToolCalls };
+        }
+        return await base.GetResponseAsync(list, options, cancellationToken);
     }
 
     public override async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null,
@@ -28,6 +31,7 @@ public sealed class RequiredToolModeChatClient(IChatClient inner) : DelegatingCh
         var list = messages as IList<ChatMessage> ?? messages.ToList();
         if (ForcedCall(list, options) is { } call)
         {
+            onForced?.Invoke(call);
             yield return new ChatResponseUpdate(ChatRole.Assistant, [call]) { FinishReason = ChatFinishReason.ToolCalls };
             yield break;
         }

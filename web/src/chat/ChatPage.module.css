@@ -1,9 +1,38 @@
+/* Two panes: conversation left, behind-the-scenes monitor right; stacked below 1024px. */
 .page {
+  display: grid;
+  grid-template-columns: minmax(420px, 1fr) minmax(480px, 1.2fr);
+  gap: 16px;
+  height: calc(100vh - 120px);
+  max-width: 1800px;
+  margin: 0 auto;
+}
+
+.chatPane {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 120px);
-  max-width: 880px;
-  margin: 0 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+.monitorPane {
+  min-height: 0;
+  min-width: 0;
+}
+
+@media (max-width: 1023px) {
+  .page {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .chatPane {
+    height: calc(100vh - 140px);
+  }
+
+  .monitorPane {
+    height: 80vh;
+  }
 }
 
 .toolbar {
@@ -44,6 +73,19 @@
   background: var(--surface);
   border: 1px solid var(--border);
   width: 90%;
+  cursor: pointer;
+}
+
+.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.traceButton {
+  float: right;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  margin: 0 0 4px 8px;
 }
 
 .text {

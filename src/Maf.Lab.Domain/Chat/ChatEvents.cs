@@ -10,6 +10,7 @@ public static class ChatEventNames
     public const string ToolCallFinished = "tool_call_finished";
     public const string Sources = "sources";
     public const string Done = "done";
+    public const string Trace = "trace";
 }
 
 public abstract record ChatEvent

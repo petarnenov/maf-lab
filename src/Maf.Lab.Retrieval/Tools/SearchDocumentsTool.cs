@@ -42,6 +42,7 @@ public sealed class SearchDocumentsTool(DocumentSearchService search, IPrincipal
         DocSourceType[]? sourceTypes = null,
         [Description("Maximum snippets to return (1-10, default 5). Values above 10 are capped.")]
         int? maxResults = null,
+        RequestContext<CallToolRequestParams>? context = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(query))
@@ -51,8 +52,18 @@ public sealed class SearchDocumentsTool(DocumentSearchService search, IPrincipal
         try
         {
             var types = sourceTypes?.Select(t => t.ToString()).Distinct().ToList();
-            var outcome = await search.SearchAsync(principals.Current, query.Trim(), types, maxResults, settings: null, cancellationToken);
-            return Structured(outcome.Result);
+            var diagnostics = TraceRequested(context) ? new SearchDiagnostics() : null;
+            var outcome = await search.SearchAsync(principals.Current, query.Trim(), types, maxResults, settings: null, cancellationToken, diagnostics);
+            var result = Structured(outcome.Result);
+            if (diagnostics is not null)
+            {
+                result.Meta = new System.Text.Json.Nodes.JsonObject
+                {
+                    [TraceFlag] = diagnostics.ToJson(Hosting.InstanceIdentity.Name),
+                    [InstanceKey] = Hosting.InstanceIdentity.Name,
+                };
+            }
+            return result;
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
@@ -60,6 +71,14 @@ public sealed class SearchDocumentsTool(DocumentSearchService search, IPrincipal
             return ToolErrors.Error(ToolErrors.ForException(ex, "Document search"));
         }
     }
+
+    public const string TraceFlag = "maf-lab/trace";
+    public const string InstanceKey = "maf-lab/instance";
+
+    /// <summary>True when the caller asked for diagnostics via request _meta {"maf-lab/trace": true}.</summary>
+    internal static bool TraceRequested(RequestContext<CallToolRequestParams>? context) =>
+        context?.Params?.Meta is { } meta && meta.TryGetPropertyValue(TraceFlag, out var flag) && flag is not null
+        && flag.GetValueKind() == System.Text.Json.JsonValueKind.True;
 
     internal static CallToolResult Structured<T>(T value)
     {

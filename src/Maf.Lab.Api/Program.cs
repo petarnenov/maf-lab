@@ -41,6 +41,9 @@ public partial class Program
         builder.Services.AddSingleton<DatasetWriter>();
         builder.Services.Configure<AdminJobOptions>(builder.Configuration.GetSection("AdminJobs"));
         builder.Services.AddSingleton<AdminJobRunner>();
+        builder.Services.Configure<Agent.Tracing.TracingOptions>(builder.Configuration.GetSection(Agent.Tracing.TracingOptions.Section));
+        builder.Services.AddSingleton<Agent.Tracing.TraceRetentionService>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<Agent.Tracing.TraceRetentionService>());
 
         var app = builder.Build();
         using (var scope = app.Services.CreateScope())
@@ -62,6 +65,7 @@ public partial class Program
         app.MapFeedback();
         app.MapAdminIndex();
         app.MapEvalReports();
+        app.MapTraces();
         return app;
     }
 }

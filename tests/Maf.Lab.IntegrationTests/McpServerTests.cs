@@ -199,3 +199,56 @@ public sealed class McpServerTests(CorpusIndexFixture corpus) : IAsyncDisposable
         }
     }
 }
+
+[Collection(CorpusCollection.Name)]
+public sealed class McpDiagnosticsTests(CorpusIndexFixture corpus)
+{
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    [Fact]
+    public async Task Diagnostics_only_on_request_tenant_scoped_and_structured_content_unchanged()
+    {
+        var values = corpus.Qdrant.Config(corpus.Collection, corpus.CorpusRoot);
+        await using var factory = new WebApplicationFactory<Maf.Lab.Retrieval.Program>().WithWebHostBuilder(b =>
+        {
+            b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(values));
+            b.ConfigureTestServices(s =>
+            {
+                s.RemoveAll<IDenseEncoder>();
+                s.AddSingleton<IDenseEncoder>(FakeDenseEncoder.Default());
+            });
+        });
+        var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.ADVISOR, []);
+        var http = factory.CreateDefaultClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        await using var client = await McpClient.CreateAsync(new HttpClientTransport(new HttpClientTransportOptions
+        {
+            Endpoint = new Uri(http.BaseAddress!, "/mcp"), TransportMode = HttpTransportMode.StreamableHttp,
+        }, http, NullLoggerFactory.Instance, ownsHttpClient: true), cancellationToken: Ct);
+
+        var tools = await client.ListToolsAsync(cancellationToken: Ct);
+        Assert.All(tools, t => Assert.DoesNotContain("\"context\"", t.ProtocolTool.InputSchema.GetRawText()));
+
+        var args = new Dictionary<string, object?> { ["query"] = "household rebalancing fee schedule" };
+        var plain = await client.CallToolAsync("search_documents", args, cancellationToken: Ct);
+        Assert.True(plain.Meta is null || !plain.Meta.ContainsKey("maf-lab/trace"));
+
+        var search = tools.Single(t => t.Name == "search_documents").WithMeta(new System.Text.Json.Nodes.JsonObject { ["maf-lab/trace"] = true });
+        var traced = (JsonElement)(await search.InvokeAsync(new Microsoft.Extensions.AI.AIFunctionArguments(args), Ct))!;
+        Assert.Equal(plain.StructuredContent!.Value.GetRawText(), traced.GetProperty("structuredContent").GetRawText());
+
+        var diag = traced.GetProperty("_meta").GetProperty("maf-lab/trace");
+        Assert.Equal(["firm-c", "shared"], diag.GetProperty("tenantScope").EnumerateArray().Select(e => e.GetString()));
+        foreach (var list in new[] { "dense", "sparse", "fused" })
+        {
+            Assert.NotEqual(0, diag.GetProperty(list).GetArrayLength());
+            Assert.All(diag.GetProperty(list).EnumerateArray(), c => Assert.Contains(c.GetProperty("tenantId").GetString(), new[] { "firm-c", "shared" }));
+        }
+        Assert.Contains(diag.GetProperty("query").GetProperty("terms").EnumerateArray(), t => t.GetProperty("term").GetString() == "household");
+        var fusedDocs = diag.GetProperty("fused").EnumerateArray().Select(c => c.GetProperty("docId").GetString()).Take(5).ToList();
+        var resultDocs = traced.GetProperty("structuredContent").GetProperty("results").EnumerateArray().Select(r => r.GetProperty("docId").GetString()).ToList();
+        Assert.Equal(resultDocs, fusedDocs.Take(resultDocs.Count));
+        Assert.True(diag.GetProperty("timings").GetProperty("qdrantMs").GetInt64() >= 0);
+        Assert.False(string.IsNullOrEmpty(traced.GetProperty("_meta").GetProperty("maf-lab/instance").GetString()));
+    }
+}

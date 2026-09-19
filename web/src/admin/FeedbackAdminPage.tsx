@@ -4,6 +4,7 @@ import type { LabelRequest, ReviewQueueItem } from '../api/types';
 import { useApi, useAuth } from '../auth/useAuth';
 import styles from '../components/Page.module.css';
 import { formatDate } from '../evals/format';
+import { StoredTracePanel } from '../monitor/StoredTracePanel';
 import { LabelForm } from './LabelForm';
 
 const SIGNAL_LABELS: Record<string, string> = {
@@ -20,6 +21,7 @@ export function FeedbackAdminPage() {
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
+  const [traceOpen, setTraceOpen] = useState(false);
 
   const queue = useQuery({
     queryKey: ['admin', 'feedback', 'queue', session?.token],
@@ -78,6 +80,7 @@ export function FeedbackAdminPage() {
                 onClick={() => {
                   setSelectedId(item.turnId);
                   setSavedId(null);
+                  setTraceOpen(false);
                   label.reset();
                 }}
               >
@@ -114,6 +117,21 @@ export function FeedbackAdminPage() {
             <summary>Answer given</summary>
             <p style={{ whiteSpace: 'pre-wrap' }}>{selected.answer}</p>
           </details>
+          <button
+            type="button"
+            aria-expanded={traceOpen}
+            onClick={() => setTraceOpen((open) => !open)}
+          >
+            {traceOpen ? 'Hide trace' : 'Open trace'}
+          </button>
+          {traceOpen && (
+            <div style={{ height: '70vh', margin: '10px 0' }}>
+              <StoredTracePanel
+                turnId={selected.turnId}
+                title={`Behind the scenes — turn ${selected.turnId}`}
+              />
+            </div>
+          )}
           <LabelForm
             key={selected.turnId}
             item={selected}

@@ -25,6 +25,8 @@ public class ChatApiTests
         var events = await ApiFactory.ChatAsync(client, "what is the procedure when a fee schedule is missing",
             onEvent: e => { if (e.Name == "tool_call_started") started.TrySetResult(); });
 
+        // Trace events interleave with everything; the chat events keep their order among themselves.
+        events = events.Where(e => e.Name != "trace").ToList();
         var names = events.Select(e => e.Name).ToList();
         Assert.Equal("tool_call_started", names[0]);
         Assert.True(names.IndexOf("tool_call_finished") > names.IndexOf("tool_call_started"));

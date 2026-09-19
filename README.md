@@ -46,6 +46,20 @@ make help                  # every target
 | `make doctor` | Check Docker, .NET SDK, Node, make, `OLLAMA_API_KEY` (value never printed) |
 | `make clean` | Remove the stack **with volumes** and build outputs (asks; `FORCE=1` to skip) |
 
+## Behind the scenes
+
+`/chat` shows the conversation on the left and a live **behind-the-scenes monitor** on the right: every step of the turn
+as it happens. Tabs:
+- **Timeline:** a waterfall of every step.
+- **Model:** each request (messages, tools, tool mode) and response (text, tool calls, tokens, latency).
+- **Retrieval:** tenant scope, settings, BM25 terms with IDF, and the dense, sparse and fused candidates side by side.
+- **MCP:** raw arguments and results, plus the api and mcp replica that served them.
+- **Prompt & memory:** system prompt, tool schemas and the history window.
+
+Click an earlier answer to reopen its stored trace (kept 7 days). Reviewers can open a trace from `/admin/feedback`. The
+event format is in [`docs/trace-events.md`](docs/trace-events.md). Retrieval internals come from the MCP server in the
+tool result `_meta`, which the model never sees.
+
 ## Local development (without the balancer)
 
 `make dev` bypasses the balancer: web on :5174 (Vite proxies `/api` and `/dev` to :5080), api on :5080, MCP on :5090,

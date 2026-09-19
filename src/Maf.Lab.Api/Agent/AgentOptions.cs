@@ -9,4 +9,6 @@ public sealed class AgentOptions
     public int LongAnswerChars { get; set; } = 800;
     /// <summary>Issue the forced search_documents call on the model's behalf (Ollama ignores tool_choice).</summary>
     public bool EmulateRequiredToolMode { get; set; } = true;
+    /// <summary>Request retrieval diagnostics from the MCP server for the behind-the-scenes monitor.</summary>
+    public bool TraceRetrieval { get; set; } = true;
 }

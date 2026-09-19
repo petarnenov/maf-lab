@@ -21,7 +21,13 @@ public sealed class BillingTools(BillingSeedStore store, IPrincipalAccessor prin
         "Use when: the user names a specific run (e.g. 'status of run 4417', 'why did run 4417 fail') and wants its current state.\n" +
         "Do not use for: how billing works, procedures or definitions — use search_documents. To find runs without an id, use search_billing_runs.")]
     public CallToolResult GetStatus(
-        [Description("The billing run id, e.g. '4417'.")] string runId)
+        [Description("The billing run id, e.g. '4417'.")] string runId,
+        RequestContext<CallToolRequestParams>? context = null)
+    {
+        return WithInstance(GetStatusCore(runId), context);
+    }
+
+    private CallToolResult GetStatusCore(string runId)
     {
         try
         {
@@ -47,7 +53,13 @@ public sealed class BillingTools(BillingSeedStore store, IPrincipalAccessor prin
         [Description("Optional status filter: pending, running, completed, failed.")] string? status = null,
         [Description("Optional earliest billing period date, ISO yyyy-MM-dd.")] DateOnly? periodFrom = null,
         [Description("Optional latest billing period date, ISO yyyy-MM-dd.")] DateOnly? periodTo = null,
-        [Description("Maximum runs to return (1-20, default 10).")] int? maxResults = null)
+        [Description("Maximum runs to return (1-20, default 10).")] int? maxResults = null,
+        RequestContext<CallToolRequestParams>? context = null)
+    {
+        return WithInstance(SearchCore(status, periodFrom, periodTo, maxResults), context);
+    }
+
+    private CallToolResult SearchCore(string? status, DateOnly? periodFrom, DateOnly? periodTo, int? maxResults)
     {
         try
         {
@@ -59,5 +71,14 @@ public sealed class BillingTools(BillingSeedStore store, IPrincipalAccessor prin
             logger.LogError("search_billing_runs failed: {ErrorType}", ex.GetType().Name);
             return ToolErrors.Error(ToolErrors.ForException(ex, "Billing run search"));
         }
+    }
+
+    private static CallToolResult WithInstance(CallToolResult result, RequestContext<CallToolRequestParams>? context)
+    {
+        if (SearchDocumentsTool.TraceRequested(context))
+        {
+            result.Meta = new System.Text.Json.Nodes.JsonObject { [SearchDocumentsTool.InstanceKey] = Hosting.InstanceIdentity.Name };
+        }
+        return result;
     }
 }

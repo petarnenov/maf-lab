@@ -6,6 +6,7 @@ const KNOWN = new Set<ChatStreamEvent['type']>([
   'tool_call_started',
   'tool_call_finished',
   'sources',
+  'trace',
   'done',
 ]);
 
