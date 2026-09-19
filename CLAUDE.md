@@ -13,6 +13,9 @@ Non-negotiables while editing:
 - No message content in logs.
 - If a package version must move, update DECISIONS.md in the same commit.
 
+Chat model: `gpt-oss:120b` on Ollama Cloud — needs `OLLAMA_API_KEY` in the environment.
+Embeddings: local Ollama (`nomic-embed-text`, `all-minilm`).
+
 Commands:
 - `docker compose -f compose/docker-compose.yml up -d`
 - `dotnet run --project src/Maf.Lab.Indexing`

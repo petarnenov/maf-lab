@@ -1,0 +1,54 @@
+.panel {
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 0 0 4px;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 4px 0;
+  cursor: pointer;
+  color: var(--link);
+}
+
+.section:hover .sectionPath {
+  text-decoration: underline;
+}
+
+.sectionPath {
+  font-weight: 600;
+}
+
+.path {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.snippet {
+  margin: 4px 0 8px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--surface-2);
+  white-space: pre-wrap;
+  font-size: 0.85rem;
+}

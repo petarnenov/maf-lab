@@ -1,0 +1,16 @@
+Reviewing household rebalancing fee caps (West region, v8)
+
+Owner: Northwind Capital billing operations. Internal reference: NW-CANARY-7731-PR036.
+
+Section 1: Preparation
+1. Export the list of households whose household rebalancing fee reached the annual cap this year. Use the fee schedule code, not the display name.
+2. Group the households by fee schedule code. Only OPS or FIRM_ADMIN users can perform this step.
+
+Section 2: Review
+1. For each fee schedule, confirm the cap in the fee schedule note matches the cap configured in the billing engine. Keep the household rebalancing fee separate from the asset-based fee.
+2. Flag any household where the household rebalancing fee exceeded the cap. Keep the household rebalancing fee separate from the asset-based fee.
+   These households need a billing credit in the next run.
+
+Section 3: Follow-up
+1. Raise a credit request for every flagged household and link it to the review ticket.
+2. Send the review summary to the Northwind Capital billing desk.

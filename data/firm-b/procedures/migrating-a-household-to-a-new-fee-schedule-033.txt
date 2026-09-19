@@ -1,0 +1,16 @@
+Migrating a household to a new fee schedule (Private client group, v7)
+
+Owner: Northwind Capital billing operations. Internal reference: NW-CANARY-7731-PR033.
+
+Section 1: Preparation
+1. Confirm the client signed the fee schedule amendment and that FIRM_ADMIN approval is recorded. Keep the household rebalancing fee separate from the asset-based fee.
+2. Note the old and new fee schedule codes. Keep the household rebalancing fee separate from the asset-based fee.
+
+Section 2: Migration
+1. End-date the old fee schedule on the last day of the current billing period. Use the fee schedule code, not the display name.
+2. Assign the new fee schedule from the first day of the next billing period. Only OPS or FIRM_ADMIN users can perform this step.
+   The household rebalancing fee terms move with the schedule.
+
+Section 3: Verification
+1. Run a billing preview and confirm no period is billed under both schedules. Keep the household rebalancing fee separate from the asset-based fee.
+2. File the amendment with the client billing profile. Only OPS or FIRM_ADMIN users can perform this step.

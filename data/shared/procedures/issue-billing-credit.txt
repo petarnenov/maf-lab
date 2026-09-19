@@ -1,0 +1,26 @@
+Issuing a billing credit
+
+Use this procedure to reduce what a client owes, for example after an overcharge, a service issue, or an advance-billing refund for a closed account.
+
+Section 1: Preparation
+1. Confirm the reason for the credit and gather supporting details such as the invoice number and period.
+2. Check the firm's credit limit for your role.
+   Credits above the limit stay in draft until a FIRM_ADMIN approves them.
+3. If you are an ADVISOR, submit a credit request instead; an OPS user will create the credit.
+
+Section 2: Create the credit
+1. Open the account or household and select "New credit".
+2. Enter the amount, the period it relates to, and a reason code.
+   Use the reason code that best matches the cause, for example OVERCHARGE, SERVICE, or ADVANCE-REFUND.
+3. Choose whether the credit is applied to the next invoice or refunded through the custodian.
+4. Enter an internal note explaining the calculation of the amount.
+   The note appears in the audit log but not on the client invoice.
+
+Section 3: Approval
+1. Submit the credit; if it is within your limit it is approved automatically.
+2. If approval is required, notify a FIRM_ADMIN other than yourself.
+   The platform prevents a user from approving a credit they created.
+
+Section 4: Confirm
+1. After approval, verify the credit appears as pending on the account's next invoice or in the custodian refund file.
+2. Inform the advisor and, where appropriate, the client that the credit has been issued.

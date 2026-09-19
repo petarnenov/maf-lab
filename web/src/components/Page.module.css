@@ -1,0 +1,159 @@
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.heading {
+  font-size: 1.25rem;
+  margin: 0 0 12px;
+}
+
+.subheading {
+  font-size: 1rem;
+  margin: 20px 0 8px;
+}
+
+.notice {
+  color: var(--muted);
+}
+
+.denied {
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.denied h1 {
+  font-size: 1.1rem;
+  margin: 0 0 4px;
+  color: var(--danger);
+}
+
+.error {
+  color: var(--danger);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.table th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.clickable:hover {
+  background: var(--surface-2);
+}
+
+.selected {
+  background: var(--surface-2);
+}
+
+.pass {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.fail {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.tag {
+  display: inline-block;
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  margin: 1px 4px 1px 0;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.cards {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  background: var(--surface);
+  min-width: 200px;
+}
+
+.big {
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 640px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 12px;
+}
+
+.form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form textarea,
+.form input[type='text'] {
+  font: inherit;
+  padding: 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.checks {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.checks label {
+  flex-direction: row;
+  align-items: center;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+}

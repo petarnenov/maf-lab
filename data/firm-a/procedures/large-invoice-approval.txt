@@ -1,0 +1,19 @@
+Approving invoices over $25,000
+
+Acme Wealth Partners requires FIRM_ADMIN approval for any invoice over $25,000. This procedure is performed by FIRM_ADMIN users after each billing run.
+
+Section 1: Review
+1. Open the Awaiting Approval queue for the completed billing run.
+2. For each invoice, open the household detail and check the AUM valuation date and amount.
+   Compare the AUM with the prior quarter and investigate changes greater than 20 percent.
+3. Confirm that the fee schedule applied is ACME-TIER-2026 or matches the fee exceptions register.
+4. Review any credits and minimum-fee adjustments on the invoice.
+
+Section 2: Decision
+1. If you are the advisor of record for the household, reassign the approval to another FIRM_ADMIN.
+2. If everything is correct, approve the invoice and add a short approval comment.
+3. If something is wrong, reject the invoice with a comment describing the correction OPS must make.
+
+Section 3: Follow-up
+1. Confirm approved invoices appear in the next supplemental custodian file.
+2. Track rejected invoices until OPS re-runs or adjusts them, then review them again.

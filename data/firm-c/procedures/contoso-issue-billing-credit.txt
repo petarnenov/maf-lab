@@ -1,0 +1,16 @@
+Issuing a Billing Credit at Contoso Advisors
+
+Section 1: Justify the Credit
+1. Identify the invoice and household that the credit corrects.
+2. Document the reason, such as over-billing, a missed waiver, or a termination refund.
+3. Calculate the credit amount and attach the calculation to the request.
+
+Section 2: Approve
+1. Enter the credit adjustment on the household as an OPS user.
+2. Route the credit to the operations lead for FIRM_ADMIN approval if it exceeds the firm threshold.
+3. Do not tell the client about the credit until it is approved.
+
+Section 3: Apply
+1. Confirm the credit appears in pending adjustments for the next open billing period.
+2. If the correction is urgent, ask the operations lead to process it in an off-cycle run.
+3. After the run, confirm the credit line on the invoice and notify the advisor.

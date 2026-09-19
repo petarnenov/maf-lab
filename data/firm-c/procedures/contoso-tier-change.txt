@@ -1,0 +1,14 @@
+Changing a Household Fee Tier
+
+Section 1: Request
+1. Receive the advisor's written tier change proposal with the reason.
+2. Confirm the new tier exists in CONTOSO-FLAT-100 and note the new annual fee.
+
+Section 2: Notify the Client
+1. For an increase, send the client a letter at least 30 days before the start of the quarter in which the change takes effect.
+2. For a decrease, note that the change applies from the next run.
+
+Section 3: Update the Platform
+1. Update the tier on the household record with the effective quarter.
+2. Confirm that the next run's preview shows the new installment amount.
+3. File the client letter and the advisor proposal in the household documents.

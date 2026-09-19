@@ -1,0 +1,17 @@
+Correcting a Stale Valuation at Contoso Advisors
+
+Section 1: Identify
+1. Open the run or pre-run report that shows AUM-STALE and list the affected accounts.
+2. Check the custodian file date for each account to confirm the price is out of date.
+3. Note whether the affected households are flat-fee or legacy asset-based.
+   For flat-fee households the stale value only affects allocation; for legacy households it changes the fee.
+
+Section 2: Correct
+1. Wait up to one business day for the custodian to deliver a corrected file.
+2. If no corrected file arrives, request a manual valuation from the custodian service desk.
+3. Enter the manual valuation on the platform with the source and date in the note field.
+
+Section 3: Confirm
+1. Refresh the valuation report and confirm the AUM-STALE warning has cleared.
+2. Start or re-run the billing run.
+3. Record the stale valuation incident in the exception log.

@@ -1,0 +1,17 @@
+Issuing a billing credit at Acme Wealth Partners
+
+Section 1: Validate the Request
+1. Confirm the reason for the credit: overcharge, service concession, or missed fee waiver.
+2. Recalculate the correct fee using the schedule on file and the valuation used in the run.
+3. Determine the credit amount as the difference between the invoiced and correct fees, or the agreed concession amount.
+
+Section 2: Approvals
+1. Credits up to $1,000 may be entered by the advisor of record.
+2. For credits above $1,000, notify the billing desk at Acme before entering the credit.
+3. For credits above $5,000, obtain FIRM_ADMIN approval and record the approver's name.
+
+Section 3: Enter the Credit
+1. Create the credit on the household with the reason code, the original run id, and a client-facing explanation.
+   The explanation must be plain language without internal codes.
+2. Choose whether the credit applies to the next invoice or is refunded through the custodian.
+3. Confirm the credit appears in the billing preview for the next period.

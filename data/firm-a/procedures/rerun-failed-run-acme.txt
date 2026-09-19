@@ -1,0 +1,17 @@
+Re-running a failed billing run at Acme Wealth Partners
+
+Section 1: Triage
+1. Open the failed run and read the failure reason and failure code.
+2. Notify the billing desk at Acme with the run id and failure code.
+3. Resolve the underlying cause using the matching procedure: missing fee schedule, stale AUM valuation, custodian mismatch, or proration gap.
+
+Section 2: Re-run
+1. Run a billing preview for the affected households to confirm the cause is fixed.
+2. Start the re-run from the run detail page; do not create a new run for the same period.
+   Creating a duplicate run can double-bill households.
+3. Monitor the run until it reaches completed or failed status.
+
+Section 3: After Completion
+1. If the run fails again with a different code, repeat the triage section for the new code.
+2. If the run completes, check the approval queue for invoices over $25,000.
+3. Update the billing desk ticket with the final run status.

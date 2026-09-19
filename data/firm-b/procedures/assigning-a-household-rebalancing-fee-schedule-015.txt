@@ -1,0 +1,17 @@
+Assigning a household rebalancing fee schedule (East region, v4)
+
+Owner: Northwind Capital billing operations. Internal reference: NW-CANARY-7731-PR015.
+
+Section 1: Preparation
+1. Open the household record in the Northwind Capital billing console and confirm the household has at least two linked accounts. Keep the household rebalancing fee separate from the asset-based fee.
+2. Check which fee schedule is currently assigned and note its code in the change ticket. Use the fee schedule code, not the display name.
+
+Section 2: Assignment
+1. Select the household rebalancing fee schedule agreed with the client in the advisory agreement. Use the fee schedule code, not the display name.
+2. Set the effective date to the first day of the next billing period.
+   Do not backdate a fee schedule without FIRM_ADMIN approval.
+3. Save the assignment and confirm the household rebalancing fee line appears in the fee preview. Use the fee schedule code, not the display name.
+
+Section 3: Validation
+1. Run a billing preview for the household and compare the household rebalancing fee to the expected amount. Only OPS or FIRM_ADMIN users can perform this step.
+2. Record the internal reference code in the ticket and close it. Only OPS or FIRM_ADMIN users can perform this step.

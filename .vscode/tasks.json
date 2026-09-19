@@ -1,0 +1,58 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["build", "${workspaceFolder}/maf-lab.sln"],
+      "problemMatcher": "$msCompile",
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "compose up",
+      "type": "shell",
+      "command": "docker compose -f compose/docker-compose.yml up -d --build",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "compose up (infra only)",
+      "detail": "Qdrant + Ollama for running api / mcp-retrieval / web from the IDE",
+      "type": "shell",
+      "command": "docker compose -f compose/docker-compose.yml up -d qdrant",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "index",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["run", "--project", "${workspaceFolder}/src/Maf.Lab.Indexing"],
+      "problemMatcher": []
+    },
+    {
+      "label": "eval",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["run", "--project", "${workspaceFolder}/src/Maf.Lab.Eval", "--", "--suite", "all"],
+      "problemMatcher": []
+    },
+    {
+      "label": "test (.NET)",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["test", "--solution", "${workspaceFolder}/maf-lab.sln"],
+      "problemMatcher": "$msCompile",
+      "group": "test"
+    },
+    {
+      "label": "test (web)",
+      "type": "shell",
+      "command": "npm test -- --run",
+      "options": { "cwd": "${workspaceFolder}/web" },
+      "problemMatcher": [],
+      "group": "test"
+    }
+  ]
+}

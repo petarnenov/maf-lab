@@ -1,0 +1,16 @@
+Splitting a Household
+
+Section 1: Preparation
+1. Obtain written instructions from both clients or a copy of the separation agreement.
+2. Determine which accounts go to each new household.
+3. Confirm that the split takes effect at the start of the next quarter.
+
+Section 2: Platform Changes
+1. Create the second household on the platform with its own agreement date.
+2. Move the relevant accounts to the new household with the effective date.
+3. Assign CONTOSO-FLAT-100 and the correct tier to each household.
+
+Section 3: Verify
+1. Confirm that no accounts are left without a schedule.
+2. Flag both households for first-invoice review in the next run.
+3. Note that the prior quarter's prepaid fee is not refunded after a split.

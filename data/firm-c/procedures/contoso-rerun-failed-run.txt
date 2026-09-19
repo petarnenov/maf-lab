@@ -1,0 +1,15 @@
+Re-running a Failed Billing Run (Contoso Advisors)
+
+Section 1: Diagnose
+1. Open the failed run and read the failure code and reason text.
+2. Record the run identifier, the code, and the number of affected accounts in the billing log.
+3. Follow the procedure for the specific code, such as the missing fee schedule procedure for FS-REQUIRED.
+
+Section 2: Re-run
+1. After the cause is fixed, select re-run on the failed run page.
+2. Monitor the new run until it completes or fails.
+   If it fails again with the same code, stop and escalate to the operations lead.
+
+Section 3: Close Out
+1. Link the new run identifier to the failed one in the billing log.
+2. Continue with invoice review as for a normal quarterly run.

@@ -1,0 +1,29 @@
+# Fee schedule note: NW-INST-2026-089
+
+Internal reference: NW-CANARY-7731-FS089. Owner: A. Suzuki, Northwind Capital billing operations.
+
+## Overview
+
+This note documents fee schedule NW-INST-2026-089, a institutional breakpoint schedule used by Northwind Capital for household billing. Advisors assign it to multi-account households where the household rebalancing fee is billed alongside the asset-based fee. The schedule is billed monthly in arrears and is evaluated on aggregated household AUM, so every account linked to the household contributes to the breakpoint calculation. A minimum annual fee of $2,500 applies at the household level. Changes to this fee schedule require FIRM_ADMIN approval and a new effective date; historical billing periods keep the version that was in force.
+
+## Rate table
+
+The asset-based fee for NW-INST-2026-089 is calculated on household AUM using the bands below. Each band is charged at its own rate (tiered).
+
+| Household AUM band | Annual rate (bps) |
+|---|---|
+| $0 – $2,500,000 | 90 |
+| $2,500,000 – $4,750,000 | 80 |
+| $4,750,000 – $6,500,000 | 65 |
+| $6,500,000 – $7,500,000 | 45 |
+| Above $7,500,000 | 25 |
+
+Rates are annual and are divided by the number of billing periods per year before proration is applied.
+
+## Household rebalancing fee
+
+Schedule NW-INST-2026-089 charges a household rebalancing fee of 5 bps of the rebalanced notional, with an annual cap of $2,500. A rebalance event is recorded when the system detects a quarterly calendar rebalance requested by the advisor. The household rebalancing fee is invoiced on the same billing run as the asset-based fee and appears as a separate invoice line. Rebalancing fees are never prorated; they are charged in the period in which the rebalance settled.
+
+## Operational notes
+
+When a billing run fails with FS-REQUIRED for a household that should carry NW-INST-2026-089, OPS reassigns the fee schedule at the household level and re-runs the billing period. Questions about this note should quote internal reference NW-CANARY-7731-FS089 when contacting the Northwind Capital billing desk.

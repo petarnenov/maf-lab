@@ -1,0 +1,18 @@
+Resolving a custodian mismatch failure
+
+Use this procedure when a billing run fails with CUSTODIAN-MISMATCH, meaning platform account data does not match the custodian record.
+
+Section 1: Identify the mismatch
+1. Open the run diagnostics and filter by the code CUSTODIAN-MISMATCH.
+   Each line states the account and the mismatched attribute, such as status, account number, or available cash.
+2. Compare each account with the latest custodian account master file.
+
+Section 2: Fix the data
+1. If the custodian changed the account number, update the account number on the platform with the effective date from the custodian.
+2. If the account was closed at the custodian, set the closing date on the platform so the fee is prorated correctly.
+3. If cash is insufficient for direct debit, switch the account to direct client billing for this period or ask the advisor to raise cash.
+4. If the platform record is correct and the custodian is wrong, open a ticket with the custodian and document the case.
+
+Section 3: Re-run
+1. Confirm that the daily reconciliation report no longer lists the affected accounts.
+2. Re-run the failed billing run following "Re-running a failed billing run".

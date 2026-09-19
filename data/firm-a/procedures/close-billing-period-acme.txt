@@ -1,0 +1,16 @@
+Closing a billing period at Acme Wealth Partners
+
+Section 1: Readiness
+1. Confirm every billing run for the period is in completed status.
+2. Confirm the approval queue is empty for the period.
+3. Confirm custodian reconciliation is finished and every CUSTODIAN-MISMATCH exception has a documented resolution.
+
+Section 2: Close
+1. A FIRM_ADMIN opens the billing period page and selects Close Period.
+2. Enter the close comment, including the number of runs and the total invoiced amount.
+3. Confirm the period status changes to closed.
+
+Section 3: Archive
+1. Export the run reports, approval log and reconciliation workpapers.
+2. File the exports in the operations archive under the period name.
+3. Notify the billing desk and advisors that the period is closed and that further corrections require credits.

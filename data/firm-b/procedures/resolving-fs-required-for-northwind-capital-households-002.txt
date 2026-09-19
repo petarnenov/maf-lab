@@ -1,0 +1,15 @@
+Resolving FS-REQUIRED for Northwind Capital households (Central region, v1)
+
+Owner: Northwind Capital billing operations. Internal reference: NW-CANARY-7731-PR002.
+
+Section 1: Preparation
+1. Open the failed billing run and read the failure reason to find the accounts without a fee schedule.
+2. Identify the household each account belongs to. Keep the household rebalancing fee separate from the asset-based fee.
+
+Section 2: Remediation
+1. Assign the household fee schedule to each account, or link the account to its household so it inherits the schedule.
+2. If the household carries a household rebalancing fee schedule, confirm the rebalance events for the period are present. Keep the household rebalancing fee separate from the asset-based fee.
+
+Section 3: Re-run
+1. Re-run the billing period for the affected households only. Only OPS or FIRM_ADMIN users can perform this step.
+2. Confirm the run status moves to completed and attach the run id to the incident ticket. Use the fee schedule code, not the display name.

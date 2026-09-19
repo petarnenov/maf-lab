@@ -1,0 +1,15 @@
+Editing a fee schedule definition at Acme Wealth Partners
+
+Section 1: Approval
+1. Confirm the change proposal has been reviewed by compliance.
+2. Confirm two FIRM_ADMIN users have approved the proposal.
+
+Section 2: Implement
+1. As a FIRM_ADMIN, open the fee schedule and create a new version rather than editing the current one.
+2. Enter the new bands and rates, and set the effective date to the first day of a future billing period.
+3. Save the version and confirm the prior version remains active until the effective date.
+
+Section 3: Verify
+1. Run billing previews for a sample of at least five affected households.
+2. Compare the previews with the proposal and stop the rollout if any fee differs unexpectedly.
+3. File the approvals and preview evidence in the operations archive.

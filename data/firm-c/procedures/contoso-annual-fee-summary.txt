@@ -1,0 +1,14 @@
+Producing the Annual Fee Summary
+
+Section 1: Preparation
+1. Confirm that the Q4 billing period of the prior year is closed.
+2. Confirm that all credits and adjustments for the year have been applied.
+
+Section 2: Generate
+1. Run the annual fee summary report for all Contoso Advisors households on the platform.
+2. Spot-check five households against their invoices for the year.
+   Include at least one household with a household rebalancing fee and one with a termination credit.
+
+Section 3: Deliver
+1. Publish the summaries to the client portal by January 31.
+2. Notify advisors that summaries are available so they can answer questions.

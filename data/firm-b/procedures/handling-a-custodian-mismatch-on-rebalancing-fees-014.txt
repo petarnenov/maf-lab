@@ -1,0 +1,15 @@
+Handling a custodian mismatch on rebalancing fees (Private client group, v3)
+
+Owner: Northwind Capital billing operations. Internal reference: NW-CANARY-7731-PR014.
+
+Section 1: Preparation
+1. Pull the custodian fee deduction report for the billing period.
+2. Match each household rebalancing fee line to a custodian debit. Use the fee schedule code, not the display name.
+
+Section 2: Investigation
+1. For unmatched lines, check whether the custodian deducted the asset-based fee and rebalancing fee as one amount.
+2. Contact the custodian service desk if a deduction is missing entirely. Only OPS or FIRM_ADMIN users can perform this step.
+
+Section 3: Resolution
+1. Record the reconciliation outcome against the billing run. Only OPS or FIRM_ADMIN users can perform this step.
+2. Re-run the billing period only if the invoice amounts themselves were wrong.

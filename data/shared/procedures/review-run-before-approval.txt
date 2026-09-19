@@ -1,0 +1,19 @@
+Reviewing a completed billing run before invoice approval
+
+Use this procedure after a billing run completes and before invoices are approved or delivered.
+
+Section 1: Summary checks
+1. Compare the total fee for the run with the previous period.
+   A change of more than 10% should be explained by market movement or account changes.
+2. Compare the account count with the number of billable accounts at the valuation date.
+3. Review all warnings, especially fees below minimum and accounts with zero AUM.
+
+Section 2: Sample checks
+1. Select at least five households across different fee schedules.
+2. Recalculate each selected fee manually from the AUM, schedule, and billable days.
+3. Confirm that proration was applied to accounts opened or closed during the period.
+
+Section 3: Sign-off
+1. Record the review result on the run with any exceptions found.
+2. If issues are found, correct them through adjustments or by voiding and re-running before delivery.
+3. Notify the FIRM_ADMIN that the run is ready for invoice approval.

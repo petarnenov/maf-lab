@@ -1,0 +1,16 @@
+Starting the quarterly billing run at Acme Wealth Partners
+
+Section 1: Pre-run Checks
+1. Confirm custodian feeds are loaded through the last business day of the quarter.
+2. Confirm the stale-valuation report is empty.
+3. Confirm the billing preview shows no accounts without a fee schedule.
+
+Section 2: Start the Run
+1. Open the billing runs page and select the quarter as the billing period.
+2. Start the run and record the run id in the billing log.
+3. Monitor the run status until it changes from pending to running.
+
+Section 3: Monitor
+1. If the run remains running for more than two hours, escalate to platform support.
+2. If the run fails, notify the billing desk and follow the procedure for the failure code.
+3. If the run completes, notify FIRM_ADMIN users that the approval queue is ready.

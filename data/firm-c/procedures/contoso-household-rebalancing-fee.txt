@@ -1,0 +1,18 @@
+Recording a Household Rebalancing Fee
+
+Section 1: Confirm Eligibility
+1. Open the household notes and find the advisor's record of the client's rebalancing request.
+2. Confirm that the request was client-initiated and outside the semi-annual review.
+3. Confirm that the rebalance affected two or more accounts in the household.
+   Single-account trades do not qualify for the household rebalancing fee.
+
+Section 2: Check for Waivers
+1. Check the billing queue for a waiver request from the advisor.
+2. If a waiver was approved by the operations lead, record the fee as a zero adjustment with the reason "waived" and the waiver reason.
+3. If a waiver is pending, hold the adjustment until the operations lead decides.
+
+Section 3: Enter the Adjustment
+1. Create a debit adjustment on the household for the current open billing period.
+2. Select the reason code for household rebalancing fee and reference the date of the client request in the note.
+3. Set the debit account to the largest account in the household unless the client instructed otherwise.
+4. Confirm that the adjustment appears in the pending adjustments list for the next quarterly run.

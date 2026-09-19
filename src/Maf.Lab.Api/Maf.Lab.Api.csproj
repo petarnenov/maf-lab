@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Agents.AI" />
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="Microsoft.Extensions.AI" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
+    <PackageReference Include="OllamaSharp" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="Microsoft.ML.Tokenizers" />
+    <PackageReference Include="Microsoft.ML.Tokenizers.Data.O200kBase" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />
+    <!-- Admin endpoints reuse the indexing pipeline; chat never queries the store directly (only via MCP tools). -->
+    <ProjectReference Include="..\Maf.Lab.Retrieval\Maf.Lab.Retrieval.csproj" />
+    <ProjectReference Include="..\Maf.Lab.Indexing\Maf.Lab.Indexing.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Maf.Lab.Tests" />
+    <InternalsVisibleTo Include="Maf.Lab.IntegrationTests" />
+    <InternalsVisibleTo Include="Maf.Lab.Eval" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="Prompts\*.md" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

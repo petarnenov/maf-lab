@@ -1,0 +1,17 @@
+Correcting a stale AUM valuation at Acme Wealth Partners
+
+Section 1: Identify
+1. Open the stale-valuation report for the billing period.
+2. Note each account, its custodian, and the date of the last loaded position.
+3. For legacy custodian trust accounts, allow up to seven business days of staleness before treating the account as stale.
+
+Section 2: Correct
+1. For primary custodians, request a position reload for the missing dates through the custodian feed console.
+2. For the legacy custodian, upload the quarter-end statement manually and attach the PDF to the account record.
+3. For alternative assets without a current statement, carry forward the prior value and flag it.
+   If the carried-forward value exceeds $1,000,000, request FIRM_ADMIN review before proceeding.
+
+Section 3: Confirm
+1. Refresh the AUM valuation for the affected accounts.
+2. Re-run the stale-valuation report and confirm it is empty.
+3. Re-run the failed billing run if it had failed with AUM-STALE.

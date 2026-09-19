@@ -1,0 +1,17 @@
+Setting Up a New Household for Billing
+
+Section 1: Collect Documents
+1. Obtain the signed client agreement and confirm the fee schedule and tier named in it.
+2. Obtain the custodian account numbers for every account the household is opening.
+3. Record the agreement signature date, which is the proration start date for the first invoice.
+
+Section 2: Platform Setup
+1. Create the household on the TAMP platform using the primary client's legal name.
+2. Link each custodian account to the household as soon as the account number is issued.
+3. Assign CONTOSO-FLAT-100 or the schedule named in the agreement to every linked account.
+4. Record the flat fee tier on the household record.
+
+Section 3: Verify
+1. Compare the number of linked accounts on the platform with the new account paperwork.
+2. Run the unassigned-accounts report and confirm none of the new accounts appear.
+3. Flag the household for first-invoice review by the operations lead in the next quarterly run.

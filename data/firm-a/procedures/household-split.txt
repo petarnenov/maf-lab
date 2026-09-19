@@ -1,0 +1,17 @@
+Splitting a household at Acme Wealth Partners
+
+Section 1: Preparation
+1. Obtain written confirmation from the advisor of which accounts belong to each new household.
+2. Confirm which fee schedule each new household will use.
+3. Choose an effective date equal to the next billing period start.
+
+Section 2: Perform the Split
+1. Create the new household record and move the confirmed accounts into it.
+2. Assign the agreed fee schedule to every account in the new household.
+   A new household without a schedule will cause an FS-REQUIRED failure.
+3. Update the grouping notes on both households.
+
+Section 3: Validate
+1. Run billing previews for both households.
+2. Confirm that tiered fees are now calculated separately for each household.
+3. Notify the billing desk at Acme of the split so the approval threshold impact can be monitored.

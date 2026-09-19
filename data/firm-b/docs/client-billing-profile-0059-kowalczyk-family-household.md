@@ -1,0 +1,27 @@
+# Client billing profile: Kowalczyk Family Household
+
+Internal reference: NW-CANARY-7731-HH0059. Relationship advisor: M. Okafor. Firm: Northwind Capital.
+
+## Household summary
+
+The Kowalczyk Family Household has been a Northwind Capital client since 2024 and is billed under fee schedule NW-REBAL-2024-063. Household aggregation links 7 accounts; combined AUM of about $1,790,000 determines the breakpoint band. Invoices are generated quarterly in arrears and fees are deducted directly from the primary custodial account at Schwab. Any invoice adjustment for this household must be approved by a FIRM_ADMIN and recorded against internal reference NW-CANARY-7731-HH0059.
+
+## Linked accounts
+
+- Traditional IRA at Schwab, account suffix …3813
+- Roth IRA at Schwab, account suffix …1055
+- Roth IRA at Schwab, account suffix …9958
+- Roth IRA at Schwab, account suffix …9438
+- Custodial UTMA at Schwab, account suffix …3028
+- Roth IRA at Schwab, account suffix …7032
+- Individual brokerage at Schwab, account suffix …3858
+
+New accounts opened mid-period are prorated from their funding date and join the household aggregate from the next billing period.
+
+## Fee schedule and household rebalancing fee
+
+This client pays the household rebalancing fee defined in fee schedule NW-REBAL-2024-063. Rebalances follow a drift of more than 5% from the household target allocation, and the 5 events recorded last year totalled roughly $1,250 in household rebalancing fees. The asset-based fee and the household rebalancing fee are shown as separate lines on the household invoice.
+
+## Billing notes
+
+The last annual billing review moved one account to the household aggregate so the breakpoint applies. The advisor, M. Okafor, confirms the fee schedule and household rebalancing fee terms with the client at each review. If a billing run fails with FS-REQUIRED or CUSTODIAN-MISMATCH for this household, OPS should check the fee schedule assignment and the Schwab fee deduction before re-running.

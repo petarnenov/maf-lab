@@ -1,0 +1,28 @@
+Procedure: Missing fee schedule (Acme Wealth Partners)
+
+This is the Acme Wealth Partners variant of the platform procedure for billing runs that fail with FS-REQUIRED. It adds a mandatory notification to the Acme billing desk.
+
+Section 1: Preparation
+1. Open the failed billing run and confirm the failure reason starts with FS-REQUIRED.
+   Record the run id and the number of accounts reported as missing a fee schedule.
+2. Export the list of affected accounts from the run detail page.
+3. Notify the billing desk at Acme through the billing desk queue, including the run id and the affected account numbers.
+   Do this even if you expect to fix the issue immediately, because the desk tracks every FS-REQUIRED failure.
+
+Section 2: Identify the Correct Schedule
+1. For each affected account, check whether the household appears in the fee exceptions register.
+2. If an approved exception exists, use the schedule code listed in the register.
+3. If no exception exists, use ACME-TIER-2026, the firm's standard tiered schedule.
+4. If the account belongs to a household that was split during the period, confirm the new household grouping with the advisor before assigning a schedule.
+
+Section 3: Assign and Validate
+1. Assign the chosen schedule to each affected account with an effective date on or before the billing period start.
+2. Run a billing preview for the affected households.
+   Confirm that every account now shows a schedule and a calculated fee.
+3. Compare each previewed fee with the expected amount from the fee disclosure; stop and escalate to a FIRM_ADMIN if any difference cannot be explained.
+
+Section 4: Re-run and Close Out
+1. Re-run the failed billing run from the run detail page.
+2. Wait for the run to reach completed status and confirm there are no new failures.
+3. If any invoice exceeds $25,000, confirm it has entered the FIRM_ADMIN approval queue.
+4. Update the billing desk ticket with the schedules assigned and the new run status, then close the ticket.

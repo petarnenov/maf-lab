@@ -1,0 +1,21 @@
+Closing a billing period
+
+Closing a period locks it against new runs and marks billing for the period as final. Only a FIRM_ADMIN can close a period.
+
+Section 1: Readiness checks
+1. Confirm that the period has exactly one completed billing run and no pending, running, or failed runs.
+   Failed runs must be resolved and re-run, or explicitly cancelled with a note.
+2. Confirm that all invoices for the period are approved or voided.
+3. Confirm that custodian fee deductions have been reconciled and every reconciliation exception is resolved.
+4. Review the adjustments report for the period and resolve any credits still in draft.
+
+Section 2: Close
+1. Open the billing period page and select "Close period".
+2. Review the summary of runs, invoices, total fees, and credits shown on the confirmation screen.
+3. Enter a closing note and confirm.
+   The period state changes from open to closed and the action is written to the audit log.
+
+Section 3: After closing
+1. Export the period billing summary for the firm's finance team.
+2. Any later correction for the closed period must be posted as an adjustment in the next open period, referencing the closed period.
+3. If a period was closed in error, contact platform support; reopening requires a documented reason.

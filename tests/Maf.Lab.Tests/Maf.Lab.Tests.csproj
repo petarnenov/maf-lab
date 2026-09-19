@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Mono.Cecil" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Maf.Lab.Retrieval\Maf.Lab.Retrieval.csproj" />
+    <ProjectReference Include="..\..\src\Maf.Lab.Api\Maf.Lab.Api.csproj" />
+    <ProjectReference Include="..\..\src\Maf.Lab.Indexing\Maf.Lab.Indexing.csproj" />
+    <ProjectReference Include="..\..\src\Maf.Lab.Eval\Maf.Lab.Eval.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Shared\**\*.cs" Link="Shared\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

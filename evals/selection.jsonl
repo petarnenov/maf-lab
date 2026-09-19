@@ -1,0 +1,20 @@
+{"id": "s-01", "question": "what is the procedure when a fee schedule is missing", "expectedTools": ["search_documents"], "category": "obvious-docs", "firmId": "firm-a"}
+{"id": "s-02", "question": "How do I issue a billing credit?", "expectedTools": ["search_documents"], "category": "obvious-docs", "firmId": "firm-a"}
+{"id": "s-03", "question": "Explain what a breakpoint schedule is.", "expectedTools": ["search_documents"], "category": "obvious-docs", "firmId": "firm-a"}
+{"id": "s-04", "question": "What does the AUM-STALE failure code mean?", "expectedTools": ["search_documents"], "category": "obvious-docs", "firmId": "firm-a"}
+{"id": "s-05", "question": "How are household fees allocated across accounts?", "expectedTools": ["search_documents"], "category": "obvious-docs", "firmId": "firm-c"}
+{"id": "s-06", "question": "What are the steps to close a billing period?", "expectedTools": ["search_documents"], "category": "obvious-docs", "firmId": "firm-a"}
+{"id": "s-10", "question": "status of run 4417", "expectedTools": ["get_billing_run_status"], "category": "obvious-data", "firmId": "firm-a"}
+{"id": "s-11", "question": "Is run 4415 finished yet?", "expectedTools": ["get_billing_run_status"], "category": "obvious-data", "firmId": "firm-a"}
+{"id": "s-12", "question": "Which billing runs failed?", "expectedTools": ["search_billing_runs"], "category": "obvious-data", "firmId": "firm-a"}
+{"id": "s-13", "question": "Show me the pending runs.", "expectedTools": ["search_billing_runs"], "category": "obvious-data", "firmId": "firm-a"}
+{"id": "s-14", "question": "List our billing runs for June 2026.", "expectedTools": ["search_billing_runs"], "category": "obvious-data", "firmId": "firm-a"}
+{"id": "s-15", "question": "What state is run 4418 in?", "expectedTools": ["get_billing_run_status"], "category": "obvious-data", "firmId": "firm-a"}
+{"id": "s-16", "question": "status of run 6203", "expectedTools": ["get_billing_run_status"], "category": "obvious-data", "firmId": "firm-c"}
+{"id": "s-20", "question": "why did run 4417 fail", "expectedTools": ["get_billing_run_status", "search_documents"], "category": "boundary", "firmId": "firm-a"}
+{"id": "s-21", "question": "Run 4417 failed — what should I do to fix it?", "expectedTools": ["get_billing_run_status", "search_documents"], "category": "boundary", "firmId": "firm-a"}
+{"id": "s-22", "question": "Which runs failed, and what is the procedure for re-running a failed run?", "expectedTools": ["search_billing_runs", "search_documents"], "category": "boundary", "firmId": "firm-a"}
+{"id": "s-23", "question": "Run 4418 has been running for weeks; is that normal and what do I do about a stuck run?", "expectedTools": ["get_billing_run_status", "search_documents"], "category": "boundary", "firmId": "firm-a"}
+{"id": "s-30", "question": "thanks, that's all", "expectedTools": [], "category": "negative", "firmId": "firm-a"}
+{"id": "s-31", "question": "hello", "expectedTools": [], "category": "negative", "firmId": "firm-a"}
+{"id": "s-32", "question": "ok, got it", "expectedTools": [], "category": "negative", "firmId": "firm-c"}

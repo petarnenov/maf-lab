@@ -1,0 +1,16 @@
+Reconciling custodian fee deductions at Acme Wealth Partners
+
+Section 1: Gather Data
+1. Download the fee deduction confirmations from each primary custodian.
+2. Obtain the processed instruction letters from the legacy custodian.
+3. Export the invoiced amounts per account from the completed billing run.
+
+Section 2: Match
+1. Match each deduction to its invoice by account number and amount.
+2. Flag any difference greater than $5 as a CUSTODIAN-MISMATCH exception.
+3. Flag any invoice with no corresponding deduction, and any deduction with no invoice.
+
+Section 3: Resolve
+1. For under-deductions, submit a corrective fee instruction to the custodian.
+2. For over-deductions, issue a billing credit or request a custodian reversal.
+3. Document each exception and its resolution in the reconciliation workpaper and notify the billing desk.

@@ -1,0 +1,15 @@
+Handling a Client Billing Dispute
+
+Section 1: Intake
+1. Log the dispute in the exception log on the day it is received.
+2. Record the household name, invoice number, and the client's description.
+
+Section 2: Investigate
+1. Compare the invoice to the client agreement, schedule assignment, and adjustments.
+2. For household rebalancing fee disputes, confirm the client request is documented and check for waivers.
+3. For proration disputes, recalculate days from the funding or termination date.
+
+Section 3: Respond
+1. If the invoice is wrong, enter a credit and route it for approval.
+2. Send the client a written response within ten business days.
+3. Close the dispute in the exception log once resolved.

@@ -35,3 +35,9 @@ evals/reports/
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Contextual-retrieval cache
+.cache/
+
+# Playwright MCP artifacts
+.playwright-mcp/

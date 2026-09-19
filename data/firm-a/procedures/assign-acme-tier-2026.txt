@@ -1,0 +1,17 @@
+Assigning ACME-TIER-2026 to a household
+
+Section 1: Confirm Eligibility
+1. Check the fee exceptions register to confirm the household has no approved exception.
+2. Confirm the client has signed the ACME-TIER-2026 fee disclosure.
+3. Confirm the effective billing period start date with the advisor.
+
+Section 2: Assign
+1. Open the household and select every account in the household.
+2. Set the fee schedule to ACME-TIER-2026 with the agreed effective date.
+   The effective date must be the first day of a billing period.
+3. Save and confirm each account shows the new schedule code.
+
+Section 3: Verify
+1. Run a billing preview for the next billing period.
+2. Check that the household fee matches the tier table and the $2,500 minimum.
+3. Record the assignment date in the household notes.

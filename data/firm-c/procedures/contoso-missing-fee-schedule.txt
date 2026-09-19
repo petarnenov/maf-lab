@@ -1,0 +1,21 @@
+Procedure: Missing fee schedule (Contoso Advisors)
+
+Applies to Contoso Advisors quarterly runs that fail with FS-REQUIRED, meaning one or more accounts have no fee schedule assigned.
+
+Section 1: Preparation
+1. Open the failed run on the platform and record the run identifier and the failure reason in the billing log.
+2. Export the list of affected accounts from the run detail page.
+   Save the export to the billing folder on the shared drive, not to a local download folder.
+3. For each affected account, find the household it belongs to and pull the signed client agreement.
+
+Section 2: Assign the Schedule
+1. Assign CONTOSO-FLAT-100 to each affected account unless the client agreement names a different schedule.
+2. If the household is a legacy asset-based household, assign CONTOSO-AUM-LEGACY and notify the operations lead.
+3. If an account should not be billed, such as a held-away plan, flag it as non-billable instead of assigning a schedule.
+
+Section 3: Validate and Re-run
+1. Run the unassigned-accounts report and confirm that it is empty.
+2. Re-run the billing run from the failed run page.
+   The re-run creates a new run; note the new run identifier next to the old one in the billing log.
+3. When the run completes, review the invoices for the affected households before approval.
+4. Record the root cause, usually a late account link, in the exception log so onboarding can be improved.

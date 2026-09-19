@@ -1,0 +1,15 @@
+Reconciling Custodian Fee Deductions
+
+Section 1: Gather Reports
+1. Download the custodian fee processing report two business days after submitting the fee file.
+2. Export the invoice allocation report for the same billing run from the platform.
+
+Section 2: Match
+1. Match each custodian debit to the platform allocation by account number and amount.
+2. List any debit on the custodian report with no matching allocation, and any allocation with no debit.
+3. For each CUSTODIAN-MISMATCH warning on the run, check whether the account was closed, transferred, or re-registered.
+
+Section 3: Resolve
+1. For rejected debits, ask the operations lead whether to re-bill another household account or invoice the client.
+2. For differences above one dollar, document the cause and the correcting adjustment.
+3. Save the completed reconciliation to the quarterly billing binder.

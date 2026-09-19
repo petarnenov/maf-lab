@@ -1,0 +1,41 @@
+.row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.button {
+  font-size: 0.75rem;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.button:disabled {
+  cursor: default;
+}
+
+.sending {
+  opacity: 0.6;
+}
+
+.sent {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.error {
+  border-color: var(--danger);
+}
+
+.errorText {
+  color: var(--danger);
+}

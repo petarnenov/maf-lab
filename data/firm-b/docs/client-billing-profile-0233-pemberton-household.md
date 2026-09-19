@@ -1,0 +1,25 @@
+# Client billing profile: Pemberton Household
+
+Internal reference: NW-CANARY-7731-HH0233. Relationship advisor: L. Brennan. Firm: Northwind Capital.
+
+## Household summary
+
+This profile covers the Pemberton Household, a Northwind Capital household on the household rebalancing fee fee schedule NW-REBAL-2024-111. All 5 accounts are aggregated into one household for breakpoint purposes, giving household AUM of roughly $25,850,000. Invoices are generated monthly in arrears and fees are deducted directly from the primary custodial account at Fidelity. Any invoice adjustment for this household must be approved by a FIRM_ADMIN and recorded against internal reference NW-CANARY-7731-HH0233.
+
+## Linked accounts
+
+- Traditional IRA at Fidelity, account suffix …9340
+- SEP IRA at Fidelity, account suffix …6538
+- SEP IRA at Fidelity, account suffix …3699
+- Custodial UTMA at Fidelity, account suffix …9943
+- SEP IRA at Fidelity, account suffix …8506
+
+New accounts opened mid-period are prorated from their funding date and join the household aggregate from the next billing period.
+
+## Fee schedule and household rebalancing fee
+
+The household rebalancing fee applies because this household is rebalanced on a model change that forces a household-wide rebalance. Over the last year there were 1 rebalance events, which under NW-REBAL-2024-111 produces an estimated household rebalancing fee of $150 after the annual cap. The asset-based fee and the household rebalancing fee are shown as separate lines on the household invoice.
+
+## Billing notes
+
+The last annual billing review flagged a custodian fee deduction mismatch for OPS follow-up. The advisor, L. Brennan, confirms the fee schedule and household rebalancing fee terms with the client at each review. If a billing run fails with FS-REQUIRED or CUSTODIAN-MISMATCH for this household, OPS should check the fee schedule assignment and the Fidelity fee deduction before re-running.

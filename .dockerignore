@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/*.db
+.git/
+.vs/
+.vscode/
+.cache/
+data/
+evals/
+web/
+tests/
+openspec/

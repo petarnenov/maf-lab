@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />
+    <ProjectReference Include="..\Maf.Lab.Retrieval\Maf.Lab.Retrieval.csproj" />
+    <ProjectReference Include="..\Maf.Lab.Api\Maf.Lab.Api.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Maf.Lab.Tests" />
+    <InternalsVisibleTo Include="Maf.Lab.IntegrationTests" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="eval.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

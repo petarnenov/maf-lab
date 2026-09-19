@@ -1,0 +1,19 @@
+Voiding and reissuing an invoice
+
+Use this procedure when an approved invoice contains an error that cannot be fixed by a credit on the next invoice.
+
+Section 1: Assess
+1. Confirm the nature of the error and whether a credit or adjustment on the next invoice would be sufficient.
+   Voiding is reserved for errors that make the invoice itself misleading, such as the wrong client address.
+2. Check whether the invoice has already been included in a released custodian fee file.
+   If so, reconcile the deduction first so the collected amount is known.
+
+Section 2: Void
+1. A FIRM_ADMIN opens the invoice and selects "Void".
+2. Enter a void reason; the reason is stored permanently with the invoice number.
+3. Confirm that the invoice shows as voided and the number is not reused.
+
+Section 3: Reissue
+1. Correct the underlying data, such as the address, schedule assignment, or valuation.
+2. Generate a corrective invoice for the same period, which receives a new invoice number.
+3. Approve and deliver the corrective invoice, and add a note referencing the voided invoice number.

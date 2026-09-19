@@ -1,0 +1,72 @@
+.card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 6px 0;
+  background: var(--surface-2);
+  font-size: 0.875rem;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex: none;
+}
+
+.running .indicator {
+  background: var(--accent);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.finished .indicator {
+  background: var(--ok);
+}
+
+.error {
+  border-color: var(--danger);
+}
+
+.error .indicator {
+  background: var(--danger);
+}
+
+.label {
+  font-weight: 600;
+}
+
+.tool {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.args {
+  color: var(--muted);
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.result {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.count {
+  color: var(--muted);
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
+}

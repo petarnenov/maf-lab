@@ -1,0 +1,15 @@
+Closing a Quarterly Billing Period
+
+Section 1: Checks
+1. Confirm that the run for the period is completed and no re-runs are pending.
+2. Confirm that all invoices have been reviewed and published to the client portal.
+3. Confirm that the custodian reconciliation is complete and every exception has a resolution.
+
+Section 2: Close
+1. Complete the period close checklist and sign it as the preparer.
+2. Ask the operations lead to review the checklist and close the period on the platform.
+3. Confirm that the period status shows closed.
+
+Section 3: Afterward
+1. File the signed checklist in the quarterly billing binder.
+2. Route any correction found after close to the next open period as an adjustment.

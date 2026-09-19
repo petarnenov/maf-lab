@@ -1,0 +1,27 @@
+Correcting a stale AUM valuation
+
+Use this procedure when a billing run fails with AUM-STALE, meaning an account's latest valuation is older than the allowed staleness window.
+
+Section 1: Identify stale accounts
+1. Open the failed run diagnostics and filter by the code AUM-STALE.
+   Each line shows the account and the date of its last good valuation.
+2. Group the accounts by custodian.
+   Many stale accounts at one custodian usually point to a missing daily file rather than an account problem.
+
+Section 2: Diagnose the cause
+1. Check the ingestion dashboard for missing or partial custodian files on the dates in question.
+2. If a file is missing, request a resend from the custodian and wait for the ingestion service to load it.
+3. If files are present, check whether the affected positions failed to price.
+   Unpriced securities keep the whole account valuation from being produced.
+4. If the account was closed or transferred at the custodian, treat it as a custodian mismatch instead.
+
+Section 3: Correct the valuation
+1. After a resent file is loaded, trigger a revaluation for the affected accounts and dates.
+2. If the custodian cannot resend in time, enter a manual valuation override with supporting evidence such as a custodian statement.
+   Overrides require approval by a FIRM_ADMIN.
+3. Confirm the valuation for the run's valuation date now exists for every affected account.
+
+Section 4: Re-run and follow up
+1. Re-run the failed billing run following "Re-running a failed billing run".
+2. Record the manual overrides used so they can be checked against the custodian's corrected file later.
+3. If the custodian later sends a corrected valuation that differs materially, post an adjustment rather than editing the completed run.

@@ -1,0 +1,59 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "mcp-retrieval",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Maf.Lab.Retrieval/bin/Debug/net10.0/Maf.Lab.Retrieval.dll",
+      "cwd": "${workspaceFolder}/src/Maf.Lab.Retrieval",
+      "env": { "ASPNETCORE_ENVIRONMENT": "Development" },
+      "console": "internalConsole"
+    },
+    {
+      "name": "api",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Maf.Lab.Api/bin/Debug/net10.0/Maf.Lab.Api.dll",
+      "cwd": "${workspaceFolder}/src/Maf.Lab.Api",
+      "env": { "ASPNETCORE_ENVIRONMENT": "Development" },
+      "console": "internalConsole"
+    },
+    {
+      "name": "web (vite)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev",
+      "cwd": "${workspaceFolder}/web"
+    },
+    {
+      "name": "indexing",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Maf.Lab.Indexing/bin/Debug/net10.0/Maf.Lab.Indexing.dll",
+      "args": ["index"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "eval",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Maf.Lab.Eval/bin/Debug/net10.0/Maf.Lab.Eval.dll",
+      "args": ["--suite", "selection", "--limit", "5"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "api + web (with mcp-retrieval)",
+      "configurations": ["mcp-retrieval", "api", "web (vite)"],
+      "stopAll": true
+    }
+  ]
+}

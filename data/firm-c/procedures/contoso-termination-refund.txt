@@ -1,0 +1,17 @@
+Processing a Termination Refund
+
+Section 1: Record the Termination
+1. File the client's written termination notice in the household documents.
+2. Determine the termination effective date, which is the date the notice was received unless a later date is stated.
+3. Mark every household account as closed on the platform with the effective date.
+
+Section 2: Calculate the Refund
+1. Confirm the quarterly installment paid for the current quarter under CONTOSO-FLAT-100.
+2. Let the platform calculate the daily prorated refund for the remaining days in the quarter.
+   Check the platform result by hand for any refund above the review threshold.
+3. Exclude any household rebalancing fee already charged for a completed rebalance.
+
+Section 3: Pay the Refund
+1. If any account remains open at the custodian, enter the refund as a credit adjustment for the next run.
+2. If all accounts have transferred away, ask the operations lead to request a check refund.
+3. Record the refund amount and calculation in the termination log.

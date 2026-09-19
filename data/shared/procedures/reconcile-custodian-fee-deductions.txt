@@ -1,0 +1,26 @@
+Reconciling custodian fee deductions
+
+Use this procedure after a custodian returns a confirmation file for a released fee file, to make sure every billed fee was actually collected.
+
+Section 1: Load the confirmation
+1. Confirm that the custodian confirmation file for the period has been ingested.
+   The reconciliation page shows the file date and number of records.
+2. Start the automatic matching for the custodian and period.
+   Each deducted amount is matched to its invoice line by account number and amount.
+
+Section 2: Review exceptions
+1. Filter the results to show only exceptions.
+2. For "insufficient cash" exceptions, check whether the account has cash now and decide whether to re-submit the fee in a supplemental file.
+3. For "account not found" or "account closed" exceptions, confirm the account status with the custodian.
+   These usually indicate a transfer that the platform did not yet know about.
+4. For small differences caused by custodian rounding, accept the deducted amount within the firm's tolerance.
+
+Section 3: Resolve
+1. Re-submit collectible fees in a supplemental fee file and release it.
+2. For fees that cannot be collected from the custodian, mark the invoice for direct client billing.
+3. For amounts the firm decides not to collect, issue a billing credit with the reason code WRITE-OFF.
+4. Record a note on each resolved exception.
+
+Section 4: Complete
+1. Confirm that the exception count for the custodian and period is zero.
+2. Notify the FIRM_ADMIN that reconciliation is complete so the period can be closed.

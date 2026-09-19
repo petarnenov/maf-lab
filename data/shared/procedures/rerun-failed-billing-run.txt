@@ -1,0 +1,29 @@
+Re-running a failed billing run
+
+Use this procedure after the root cause of a billing run failure has been fixed. A re-run creates a new attempt under the same run id and period.
+
+Section 1: Before you re-run
+1. Open the failed run and read the failure reason and code.
+   Each code has its own procedure; make sure the matching fix has been completed.
+2. Check that no other run for the same firm and period is pending or running.
+   Only one active run is allowed per firm and period.
+3. Confirm the billing period is still open.
+   A closed period cannot be re-run and needs a FIRM_ADMIN to post adjustments to the next period instead.
+
+Section 2: Start the re-run
+1. On the run page, select "Re-run" and enter a short note describing the fix that was made.
+2. Confirm the run status changes from failed to pending.
+3. Wait for the worker to pick up the run; the status changes to running within a few minutes.
+   If it stays pending for more than 15 minutes, check the platform status page for a paused queue.
+
+Section 3: Verify the result
+1. When the status becomes completed, compare the account count with the previous attempt.
+   The count should match unless accounts were intentionally excluded.
+2. Review the warnings list for new warnings that were not present before.
+3. Spot-check fees for the accounts that were affected by the original failure.
+4. Notify the advisors whose clients were affected that invoices are ready for review.
+
+Section 4: If the re-run fails
+1. Read the new failure reason; a different code means a second, independent problem.
+2. Do not re-run repeatedly without a fix, because each attempt is logged and reviewed during audits.
+3. Escalate to platform support with the run id if the same failure repeats after a verified fix.

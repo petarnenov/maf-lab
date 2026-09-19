@@ -1,0 +1,20 @@
+Setting up billing for a new account
+
+Use this procedure when a new advisory account is opened so that it is billed correctly from its first period.
+
+Section 1: Collect information
+1. Obtain the signed advisory agreement and note the agreed fee schedule and billing start date.
+2. Confirm the account number and custodian match the custodian account master.
+3. Determine whether the account belongs to an existing household.
+
+Section 2: Configure
+1. Add the account to its household with an effective date equal to the funding date, if applicable.
+2. Assign the agreed fee schedule to the account unless it should inherit the household schedule.
+3. Set any billing exclusions, such as excluded cash, with the same effective date.
+4. If the account pays fees from another account, set the paying account on the household.
+
+Section 3: Verify
+1. Run the schedule validation check for the next billing period.
+   The account must not appear in the list of accounts without a schedule.
+2. Review the estimated fee preview for the account.
+3. Note in the account record that billing setup is complete, including your name and the date.

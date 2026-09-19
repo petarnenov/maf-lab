@@ -1,0 +1,86 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 120px);
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.heading {
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+.transcript {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bubble {
+  border-radius: 10px;
+  padding: 10px 14px;
+  max-width: 90%;
+}
+
+.user {
+  align-self: flex-end;
+  background: var(--accent);
+  color: var(--on-accent);
+  white-space: pre-wrap;
+}
+
+.assistant {
+  align-self: flex-start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  width: 90%;
+}
+
+.text {
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.thinking {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.error {
+  color: var(--danger);
+  margin-top: 6px;
+}
+
+.empty {
+  color: var(--muted);
+  text-align: center;
+  margin-top: 40px;
+}
+
+.composer {
+  display: flex;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.composer textarea {
+  flex: 1;
+  resize: vertical;
+  font: inherit;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}

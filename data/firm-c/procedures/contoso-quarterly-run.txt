@@ -1,0 +1,19 @@
+Starting the Quarterly Billing Run
+
+Section 1: Preparation
+1. Confirm that today is the scheduled run date on the Contoso Advisors billing calendar.
+2. Confirm that the custodian valuation file for the last business day of the prior quarter has loaded.
+   If the platform shows AUM-STALE warnings, resolve them before starting.
+3. Run the unassigned-accounts report and clear any accounts without a schedule.
+4. Confirm that all household rebalancing fee adjustments and waivers for the quarter have been entered.
+
+Section 2: Run
+1. Start a new billing run for the upcoming quarter with the billing mode set to quarterly in advance.
+2. Monitor the run status until it changes from running to completed or failed.
+3. If the run fails, follow the procedure for the failure code shown on the run page.
+
+Section 3: Review and Approve
+1. Review every invoice above the review threshold and a random sample of ten others.
+2. Check installment amounts against CONTOSO-FLAT-100 tiers and check each adjustment line.
+3. Ask the operations lead to approve the run and publish invoices to the client portal.
+4. Submit the custodian fee file and note the submission time in the billing log.

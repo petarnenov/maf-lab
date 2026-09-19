@@ -31,9 +31,12 @@ the .NET LTS SDK and pins versions in `DECISIONS.md`.
 DTOs, SSE event records). `Maf.Lab.Retrieval` owns Qdrant access, BM25, the
 MCP server and the stub billing tools. `Maf.Lab.Indexing` references
 `Maf.Lab.Retrieval` for the store writer and BM25 encoder so the vocabulary and
-payload schema have one owner. `Maf.Lab.Api` never references Qdrant.
-*Alternative*: agent host queries Qdrant directly — rejected; it would create a
-second query path and blur the tool boundary the spec requires.
+payload schema have one owner. `Maf.Lab.Api` references Retrieval + Indexing
+only for the admin endpoints (index, drift, migrate) and dev auth; the chat path
+retrieves exclusively through `search_documents` over MCP, and the API assembly
+makes no Qdrant calls (enforced by the IL scan in D2).
+*Alternative*: agent host queries Qdrant directly for chat — rejected; it would
+create a second query path and blur the tool boundary the spec requires.
 
 ### D2. Single tenant choke point
 `TenantScopedSearch.QueryAsync(Principal, SearchRequest)` in
@@ -42,19 +45,22 @@ It builds a `should(tenant_id == principal.FirmId, tenant_id == "shared")`
 filter and attaches it to *each* prefetch branch and to the outer query.
 `SearchRequest` has no tenant field. The enumeration test uses reflection +
 Roslyn-free IL scan (Mono.Cecil) over all `Maf.Lab.*` assemblies to find every
-call site of `QdrantClient.Query*/Search*/Scroll*` and asserts the only caller
-is `TenantScopedSearch`; for admin/indexing operations (scroll, delete by
-doc_id) a separate `TenantScopedMaintenance` applies the same rule.
+call site of Qdrant data-plane methods and asserts the only callers are
+`TenantScopedSearch` (query), `TenantScopedMaintenance` (writes and admin reads,
+each scoped to one tenant from the corpus layout or a FIRM_ADMIN principal) and
+`Bm25Store` (meta collection only).
 *Alternative*: Qdrant JWT RBAC per tenant — deferred; documented in
 DECISIONS.md as a defense-in-depth follow-up.
 
 ### D3. Qdrant collection layout
 One collection `maf_chunks`; named vectors `dense_v1` (dim of the current
 embedding model, cosine), later `dense_v2`, and sparse `bm25` with
-`modifier: idf` disabled (IDF computed in-repo). `tenant_id` keyword index
+no Qdrant IDF modifier (IDF computed in-repo). `dense_v2` is provisioned at
+creation because Qdrant cannot add a named vector to an existing collection.
+`tenant_id` keyword index
 with `is_tenant=true`; HNSW `m=0`, `payload_m=16` so graphs are built per
 tenant. Keyword indexes on `source_type`, `doc_id`, `model_version`; datetime
-index on `updated_at`. Point id = deterministic UUIDv5(doc_id + chunk ordinal)
+index on `updated_at`. Point id = deterministic GUID from SHA-256(chunk_id)
 so re-upserts overwrite. Tiered multitenancy trigger (documented in
 DECISIONS.md): any tenant above ~20% of points or a p95 latency SLO breach →
 promote to a dedicated shard.
@@ -81,15 +87,16 @@ tenant = first path segment (`firm-a`, `firm-b`, `firm-c`, `shared`); any
 other location → rejected. Chunkers: Markdig AST for headings; regex on
 numbered steps / `Section` headers for procedures; a lightweight
 brace/indent-aware splitter for C#/TS/Python (tree-sitter avoided to keep
-dependencies small). doc_id = SHA-256 of `tenant/relative-path` (stable across
-content changes). Re-index = delete by `doc_id` filter, then upsert, per
-document. Contextual enrichment calls the chat model with the whole document
+dependencies small). doc_id = `tenant/relative-path` and chunk_id =
+`doc_id#section-slug[-n]` (stable and readable in eval datasets). Re-index =
+upsert new points, then delete the doc's other points (no window where the
+document is missing; same one-version outcome). Contextual enrichment calls the chat model with the whole document
 (truncated) + chunk, cached by chunk hash. Drift compares filesystem mtime
 with the max `updated_at` per doc_id.
 
 ### D7. Embedding migration
-`migrate --to <model>`: add `dense_v2` to the collection (update collection
-vectors config), then scroll in batches with filter `model_version != v2` and
+`migrate --to <vector>`: `dense_v2` already exists (provisioned at creation);
+scroll in batches with filter `model_version != v2` and
 use Qdrant `UpdateVectors` with a conditional filter so already-migrated points
 are skipped; `model_version` payload set in the same batch. Restart simply
 re-runs the filtered scroll. `Retrieval:DenseVector` config selects which
@@ -127,10 +134,15 @@ unit-tested with Vitest. TanStack Query for reports, drift, feedback queue.
 Dev token picker (firm/role) calls the dev issuer.
 
 ### D11. Eval harness
-Console app with `--suite selection|retrieval|generation|injection|all`,
-`--mode hybrid|dense|sparse|all`. Selection runs the agent with tools stubbed
-to record calls. Retrieval calls `TenantScopedSearch` directly with an eval
-principal. Judge uses a fixed rubric prompt with the configured chat model.
+Console app with `--suite selection|retrieval|generation|injection|all`
+(`--rerank`, `--contextual`, `--limit N`, `--import-feedback`). Selection,
+generation and injection run the production turn path (`ChatTurnRunner` →
+MCP client → retrieval MCP server hosted in-process on loopback unless
+`Evals:McpEndpoint` is set) and read the tool calls from the turn record, so
+the deployed tool descriptions and intent forcing are what gets measured.
+Retrieval ranks through `DocumentSearchService.RankAsync` (same tenant-scoped
+query path, k=20) with an eval principal and always reports hybrid, hybrid-dbsf,
+dense and sparse variants; thresholds gate the configured hybrid variant. Judge uses a fixed rubric prompt with the configured chat model.
 Reports to `evals/reports/<timestamp>-<suite>.json|.md`; the API serves the
 directory read-only for `/evals`. Feedback import reads labeled rows from the
 SQLite DB and appends to JSONL with a `source: feedback` marker.
