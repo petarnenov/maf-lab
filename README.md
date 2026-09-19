@@ -6,16 +6,23 @@ chat UI, an eval harness and tested prompt-injection defences.
 
 - Stack, layout and hard conventions: [`openspec/project.md`](openspec/project.md)
 - Why things are the way they are, and every pinned version: [`DECISIONS.md`](DECISIONS.md)
-- The change that built this: [`openspec/changes/add-day3-retrieval`](openspec/changes/add-day3-retrieval)
+- Current behaviour (specs): [`openspec/specs`](openspec/specs); changes that built it:
+  [`add-day3-retrieval`](openspec/changes/archive/2026-09-19-add-day3-retrieval), `add-load-balancer`
 - HTTP contract between API and web: [`docs/http-api.md`](docs/http-api.md)
 
 ```
-web (React, :5174) ──SSE──▶ api (Agent Framework, :5080) ──MCP / Streamable HTTP, bearer──▶ mcp-retrieval (:5090)
-                                   │                                                        │
-                              SQLite: conversations, turns,                     Qdrant (:6333/6334) hybrid search,
-                              feedback, audit                                   one collection, tenant_id is_tenant
-                                   └──────────── Ollama (chat + embeddings) ◀───────────────┘
+                        ┌──────────── lb (nginx, http://localhost:7171) ─────────────┐
+                        │  /            /api/*, /dev/* (SSE)          /mcp           │
+                        ▼                    ▼                         ▼             │
+                  web (static SPA)    api ×2 (Agent Framework) ──▶ lb/mcp ──▶ mcp-retrieval ×2
+                                           │  SQLite (WAL, shared volume):          │
+                                           │  conversations, turns, feedback,       ▼
+                                           │  audit, admin jobs              Qdrant (:6333/6334)
+                                           └──── chat: Ollama Cloud · embeddings: Ollama (:11435)
 ```
+
+Everything user- and agent-facing goes through **one entry point on port 7171**. api and mcp-retrieval run two replicas
+each (`X-Instance` response header shows which one answered); only Qdrant and Ollama are published besides 7171.
 
 ## Quick start (everything in Docker)
 
@@ -27,10 +34,18 @@ docker compose -f compose/docker-compose.yml up -d --build
 # Index the sample corpus into the compose Qdrant (uses Ollama on 11435 for embeddings):
 Models__OllamaEndpoint=http://localhost:11435 dotnet run --project src/Maf.Lab.Indexing
 
-open http://localhost:5174      # pick a persona, ask "What is the procedure when a fee schedule is missing?"
+open http://localhost:7171      # pick a persona, ask "What is the procedure when a fee schedule is missing?"
+scripts/verify_lb.sh            # checks routing, closed ports, balancing, SSE, MCP, replica failure, admin jobs
+
+# More replicas:
+docker compose -f compose/docker-compose.yml up -d --scale api=3 --scale mcp-retrieval=3
 ```
 
-## Local development
+## Local development (without the balancer)
+
+Running the services with `dotnet run` / `npm run dev` bypasses the balancer: web on :5174 (Vite proxies `/api` and
+`/dev` to :5080), api on :5080, MCP on :5090. Stop the compose app services first (`docker compose ... stop api
+mcp-retrieval web lb`) — the infrastructure (Qdrant, Ollama) can stay up.
 
 Prerequisites: .NET SDK 10.0.401 (`global.json`), Node 24, Docker, Ollama (host or compose).
 
@@ -67,6 +82,7 @@ separate and do call the model.
 dotnet run --project src/Maf.Lab.Eval -- --suite all                 # selection, retrieval, generation, injection
 dotnet run --project src/Maf.Lab.Eval -- --suite retrieval --rerank   # add the rerank variant
 dotnet run --project src/Maf.Lab.Eval -- --import-feedback --suite retrieval
+Evals__McpEndpoint=http://localhost:7171/mcp dotnet run --project src/Maf.Lab.Eval -- --suite selection   # through the stack
 ```
 
 Evals run **on demand**, not on every commit. They are **required** before merging any change to:

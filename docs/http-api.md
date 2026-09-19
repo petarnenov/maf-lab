@@ -1,6 +1,8 @@
 # maf-lab HTTP API (Maf.Lab.Api)
 
-Base URL: `http://localhost:5080`. JSON is camelCase. DTOs live in `src/Maf.Lab.Domain`.
+Base URL: `http://localhost:7171` (the load balancer; the MCP endpoint is `/mcp` on the same origin).
+Without the balancer (local `dotnet run`): `http://localhost:5080`. Every response carries `X-Instance`, the replica
+that served it. JSON is camelCase. DTOs live in `src/Maf.Lab.Domain`.
 Every `/api/*` route requires `Authorization: Bearer <jwt>` from the dev issuer.
 Tenant is taken from the token only — no route or body has a tenant field.
 

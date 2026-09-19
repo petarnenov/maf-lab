@@ -33,51 +33,51 @@ public static class AdminIndexEndpoints
                 }
             }
             return Results.Ok(new IndexStatus(counts.Select(c => new ModelVersionCount(c.Key, c.Value)).OrderBy(c => c.ModelVersion).ToList(),
-                retrieval.Value.DenseVector, jobs.Current(principal.FirmId.Value)));
+                retrieval.Value.DenseVector, await jobs.CurrentAsync(principal.FirmId.Value, ct)));
         });
 
         admin.MapGet("/index/drift", async (IPrincipalAccessor principals, DriftService drift, CancellationToken ct) =>
             Results.Ok(await drift.ComputeAsync(Scope(principals.Current), ct)));
 
-        admin.MapPost("/index/run", (IPrincipalAccessor principals, IndexingPipeline pipeline, AdminJobRunner jobs) =>
+        admin.MapPost("/index/run", async (IPrincipalAccessor principals, IndexingPipeline pipeline, AdminJobRunner jobs, CancellationToken requestCt) =>
         {
             var principal = principals.Current;
-            var job = jobs.Start(principal.FirmId.Value, "index", async ct =>
+            var job = await jobs.StartAsync(principal.FirmId.Value, "index", async ct =>
             {
                 var summary = await pipeline.RunAsync(new IndexRequest { Tenants = Scope(principal) }, ct);
                 return $"indexed {summary.DocumentsIndexed}, unchanged {summary.DocumentsUnchanged}, chunks written {summary.ChunksWritten}, " +
                        $"deleted {summary.ChunksDeleted}, rejected {summary.Rejected.Count}";
-            });
+            }, requestCt);
             return Results.Accepted($"/api/admin/jobs/{job.JobId}", job);
         });
 
-        admin.MapPost("/index/migrate", (HttpContext http, IPrincipalAccessor principals, MigrationService migration, ModelProviders models,
-            IOptions<RetrievalOptions> retrieval, AdminJobRunner jobs) =>
+        admin.MapPost("/index/migrate", async (HttpContext http, IPrincipalAccessor principals, MigrationService migration, ModelProviders models,
+            IOptions<RetrievalOptions> retrieval, AdminJobRunner jobs, CancellationToken requestCt) =>
         {
             var principal = principals.Current;
-            var requested = ReadTarget(http);
+            var requested = await ReadTargetAsync(http);
             var target = ResolveTarget(requested, models, retrieval.Value.DenseVector);
             if (target is null)
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["targetModel"] = ["Unknown target; use a configured dense vector name or model."] });
             }
-            var job = jobs.Start(principal.FirmId.Value, "migrate", async ct =>
+            var job = await jobs.StartAsync(principal.FirmId.Value, "migrate", async ct =>
             {
                 var summary = await migration.RunAsync(Scope(principal), target, 64, ct);
                 return $"migrated {summary.Migrated} chunk(s) to {summary.TargetModelVersion}; {summary.AlreadyCurrent} already current";
-            });
+            }, requestCt);
             return Results.Accepted($"/api/admin/jobs/{job.JobId}", job);
         });
 
-        admin.MapGet("/jobs/{jobId}", (string jobId, AdminJobRunner jobs) =>
-            jobs.Get(jobId) is { } job ? Results.Ok(job) : Results.NotFound());
+        admin.MapGet("/jobs/{jobId}", async (string jobId, IPrincipalAccessor principals, AdminJobRunner jobs, CancellationToken ct) =>
+            await jobs.GetAsync(principals.Current.FirmId.Value, jobId, ct) is { } job ? Results.Ok(job) : Results.NotFound());
 
         return app;
     }
 
     private static HashSet<TenantId> Scope(Principal principal) => principal.ReadableTenants.ToHashSet();
 
-    private static string? ReadTarget(HttpContext http)
+    private static async Task<string?> ReadTargetAsync(HttpContext http)
     {
         if (http.Request.ContentLength is null or 0)
         {
@@ -85,7 +85,7 @@ public static class AdminIndexEndpoints
         }
         try
         {
-            var body = System.Text.Json.JsonSerializer.Deserialize<MigrateRequest>(http.Request.Body, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+            var body = await System.Text.Json.JsonSerializer.DeserializeAsync<MigrateRequest>(http.Request.Body, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
             return body?.TargetModel;
         }
         catch (System.Text.Json.JsonException)

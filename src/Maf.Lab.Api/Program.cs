@@ -7,6 +7,8 @@ using Maf.Lab.Indexing;
 using Maf.Lab.Retrieval.Auth;
 using Microsoft.EntityFrameworkCore;
 
+using Maf.Lab.Retrieval.Hosting;
+
 namespace Maf.Lab.Api;
 
 /// <summary>Agent host: chat over SSE, feedback, admin and eval reports.</summary>
@@ -25,8 +27,9 @@ public partial class Program
         builder.Services.Configure<Microsoft.AspNetCore.Authorization.AuthorizationOptions>(AuthPolicies.Add);
         builder.Services.Configure<AgentOptions>(builder.Configuration.GetSection(AgentOptions.Section));
 
-        builder.Services.AddDbContextFactory<MafDbContext>(o =>
-            o.UseSqlite(builder.Configuration["Storage:ConnectionString"] ?? "Data Source=maf-lab.db"));
+        builder.Services.AddDbContextFactory<MafDbContext>(o => o
+            .UseSqlite(builder.Configuration["Storage:ConnectionString"] ?? "Data Source=maf-lab.db")
+            .AddInterceptors(new SqlitePragmaInterceptor()));
 
         builder.Services.AddSingleton<SystemPrompt>();
         builder.Services.AddSingleton<TokenCounter>();
@@ -36,6 +39,7 @@ public partial class Program
         builder.Services.AddSingleton<ConversationService>();
         builder.Services.AddScoped<ChatTurnRunner>();
         builder.Services.AddSingleton<DatasetWriter>();
+        builder.Services.Configure<AdminJobOptions>(builder.Configuration.GetSection("AdminJobs"));
         builder.Services.AddSingleton<AdminJobRunner>();
 
         var app = builder.Build();
@@ -43,12 +47,13 @@ public partial class Program
         {
             var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<MafDbContext>>();
             using var db = dbFactory.CreateDbContext();
-            db.Database.EnsureCreated();
+            DatabaseInitializer.InitializeAsync(db).GetAwaiter().GetResult();
         }
 
+        app.UseInstanceHeader();
         app.UseAuthentication();
         app.UseAuthorization();
-        app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+        app.MapInstanceHealth();
         if (app.Configuration.GetValue("Auth:EnableDevIssuer", true))
         {
             app.MapDevIssuer();

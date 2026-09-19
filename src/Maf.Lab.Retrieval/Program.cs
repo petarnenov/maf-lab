@@ -2,6 +2,8 @@ using Maf.Lab.Retrieval.Auth;
 using Maf.Lab.Retrieval.Store;
 using Maf.Lab.Retrieval.Tools;
 
+using Maf.Lab.Retrieval.Hosting;
+
 namespace Maf.Lab.Retrieval;
 
 /// <summary>MCP server (protocol 2026-07-28, Streamable HTTP, stateless) exposing search_documents and the billing stub tools.</summary>
@@ -25,9 +27,10 @@ public partial class Program
             .WithTools<BillingTools>();
 
         var app = builder.Build();
+        app.UseInstanceHeader();
         app.UseAuthentication();
         app.UseAuthorization();
-        app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+        app.MapInstanceHealth();
         app.MapMcp("/mcp").RequireAuthorization();
         return app;
     }

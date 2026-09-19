@@ -16,8 +16,10 @@ Non-negotiables while editing:
 Chat model: `gpt-oss:120b` on Ollama Cloud — needs `OLLAMA_API_KEY` in the environment.
 Embeddings: local Ollama (`nomic-embed-text`, `all-minilm`).
 
+Entry point: everything runs behind the nginx load balancer on http://localhost:7171 (api and mcp-retrieval x2).
+
 Commands:
-- `docker compose -f compose/docker-compose.yml up -d`
+- `docker compose -f compose/docker-compose.yml up -d` then `scripts/verify_lb.sh`
 - `dotnet run --project src/Maf.Lab.Indexing`
 - `dotnet run --project src/Maf.Lab.Eval -- --suite all`
 - `cd web && npm run dev` / `npm test`

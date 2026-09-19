@@ -72,7 +72,7 @@ public sealed class EvalAgentHost : IAsyncDisposable
         var provider = services.BuildServiceProvider();
         await using (var db = await provider.GetRequiredService<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(ct))
         {
-            await db.Database.EnsureCreatedAsync(ct);
+            await DatabaseInitializer.InitializeAsync(db, ct);
         }
         return new EvalAgentHost(provider, retrieval, workDir);
     }

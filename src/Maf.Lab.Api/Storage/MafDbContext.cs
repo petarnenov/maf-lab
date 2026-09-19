@@ -14,6 +14,7 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
     public DbSet<FeedbackRow> Feedback => Set<FeedbackRow>();
     public DbSet<LabelRow> Labels => Set<LabelRow>();
     public DbSet<AuditRow> Audit => Set<AuditRow>();
+    public DbSet<AdminJobRow> AdminJobs => Set<AdminJobRow>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -26,6 +27,9 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
         b.Entity<FeedbackRow>().HasIndex(x => x.TurnId);
         b.Entity<LabelRow>().HasKey(x => x.Id);
         b.Entity<AuditRow>().HasIndex(x => new { x.FirmId, x.At });
+        b.Entity<AdminJobRow>().HasKey(x => x.Id);
+        // At most one running job per firm and kind, enforced by the database across replicas.
+        b.Entity<AdminJobRow>().HasIndex(x => new { x.FirmId, x.Kind }).IsUnique().HasFilter("\"State\" = 'running'");
     }
 }
 
@@ -101,4 +105,18 @@ public sealed class AuditRow
     public required string Arguments { get; set; }
     public required string Outcome { get; set; }
     public long DurationMs { get; set; }
+}
+
+/// <summary>An admin job (index, migrate). Shared by all api replicas; the owner keeps HeartbeatAt fresh while it runs.</summary>
+public sealed class AdminJobRow
+{
+    public required string Id { get; set; }
+    public required string FirmId { get; set; }
+    public required string Kind { get; set; }
+    public required string State { get; set; }
+    public DateTime StartedAt { get; set; }
+    public DateTime? FinishedAt { get; set; }
+    public string? Summary { get; set; }
+    public required string OwnerInstance { get; set; }
+    public DateTime HeartbeatAt { get; set; }
 }
