@@ -19,6 +19,8 @@ For every chat turn the system SHALL record an ordered trace of timestamped even
 - any tool call issued on the model's behalf to force retrieval;
 - every tool call: full arguments, raw MCP result, error flag, latency and serving MCP replica;
 - the exact data envelope the model received;
+- the streamed answer text as ordered chunks (`answer.delta`, each with its character offset). Chunks are coalesced
+  from the model's text deltas, and concatenating them yields exactly the answer sent to the client;
 - audit rows written, sources, production signals, memory rows stored, and turn end with total duration and any error.
 
 #### Scenario: Procedural turn trace
@@ -28,6 +30,10 @@ For every chat turn the system SHALL record an ordered trace of timestamped even
 #### Scenario: Unknown tool attempt
 - **WHEN** the model calls a tool that does not exist
 - **THEN** the trace records the attempt, the refusal returned to the model, and the audit row
+
+#### Scenario: Answer reconstructable from the trace
+- **WHEN** a turn streams an answer
+- **THEN** the `answer.delta` events have contiguous offsets starting at 0, and their texts concatenated equal the full answer
 
 ### Requirement: Live streaming of the trace
 Trace events SHALL be streamed to the requesting client while the turn runs, interleaved with the existing chat events,
