@@ -45,6 +45,7 @@ public sealed class ChatTurnRunner(
         var turnId = $"t_{Guid.NewGuid():N}";
         var trace = new TurnTrace(events);
         var state = new TurnState(principal, conversationId, turnId, events, trace);
+        var chunker = state.Answer;
         var intent = IntentClassifier.Classify(message);
         trace.Add(TraceKinds.TurnStart, $"Turn started on {InstanceIdentity.Name}", new JsonObject
         {
@@ -87,7 +88,7 @@ public sealed class ChatTurnRunner(
                 }).ToArray()),
             });
 
-            IChatClient chatClient = new TracingChatClient(models.CreateChatClient(), trace);
+            IChatClient chatClient = new TracingChatClient(models.CreateChatClient(), trace, chunker.Flush);
             if (options.Value.EmulateRequiredToolMode)
             {
                 chatClient = new RequiredToolModeChatClient(chatClient, call => trace.Add(TraceKinds.ToolForced,
@@ -122,6 +123,7 @@ public sealed class ChatTurnRunner(
                     {
                         case TextContent { Text.Length: > 0 } delta:
                             answer.Append(delta.Text);
+                            chunker.Append(delta.Text);
                             await events.WriteAsync(new TextDeltaEvent(delta.Text), ct);
                             break;
                         case FunctionCallContent call when !tools.Names.Contains(call.Name):
@@ -139,6 +141,10 @@ public sealed class ChatTurnRunner(
         {
             _logger.LogError("chat turn failed: {ErrorType} turn={TurnId}", ex.GetType().Name, turnId);
             error = "The assistant could not complete this answer. Please try again.";
+        }
+        finally
+        {
+            chunker.Flush();
         }
 
         var sources = state.Sources.DistinctBy(s => (s.DocId, s.SectionPath)).ToList();
@@ -179,6 +185,7 @@ public sealed class ChatTurnRunner(
         var name = context.Function.Name;
         var callId = context.CallContent?.CallId ?? Guid.NewGuid().ToString("N");
         var args = ArgumentSummary.From(context.Arguments);
+        state.Answer.Flush();
         await state.Events.WriteAsync(new ToolCallStartedEvent(callId, name, args), ct);
         state.Trace.Add(TraceKinds.ToolCall, $"Calling {name} over MCP", new JsonObject
         {
@@ -288,6 +295,7 @@ public sealed class ChatTurnRunner(
     private async Task RecordUnknownToolAsync(TurnState state, FunctionCallContent call, CancellationToken ct)
     {
         var name = new string(call.Name.Where(c => char.IsLetterOrDigit(c) || c is '_' or '-').Take(64).ToArray());
+        state.Answer.Flush();
         await state.Events.WriteAsync(new ToolCallStartedEvent(call.CallId, name, ""), ct);
         state.Trace.Add(TraceKinds.ToolUnknown, $"Model asked for unknown tool '{name}' — refused", new JsonObject { ["callId"] = call.CallId, ["tool"] = name });
         await audit.RecordAsync(new AuditEntry(state.Principal, state.ConversationId, state.TurnId, name, "", "unknown_tool", 0), ct);
@@ -350,6 +358,7 @@ public sealed class ChatTurnRunner(
     private sealed class TurnState(Principal principal, string conversationId, string turnId, ChannelWriter<ChatEvent> events, TurnTrace trace)
     {
         public TurnTrace Trace { get; } = trace;
+        public AnswerChunker Answer { get; } = new(trace);
         public Principal Principal { get; } = principal;
         public string ConversationId { get; } = conversationId;
         public string TurnId { get; } = turnId;

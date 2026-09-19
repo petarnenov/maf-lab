@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useAuth } from '../auth/useAuth';
 import { MonitorPanel } from '../monitor/MonitorPanel';
+import { reconstructTurn, type ReconstructedTurn } from '../monitor/reconstructTurn';
+import { useTimeTravel } from '../monitor/useTimeTravel';
 import { traceFor } from '../monitor/traceReducer';
 import { useTurnTrace } from '../monitor/useTurnTrace';
 import type { AssistantTurn } from './chatReducer';
@@ -31,6 +33,15 @@ export function ChatPage() {
   const stored = useTurnTrace(selected?.turnId, { enabled: !isStreaming, placeholder: liveEvents });
   const events =
     isStreaming || !selected?.turnId ? liveEvents : (stored.data?.events ?? liveEvents);
+  // Shared with the monitor: rewinding the trace also rewinds the selected answer in the chat.
+  const timeTravel = useTimeTravel(events, selected?.id);
+  const rewound: ReconstructedTurn | null =
+    selected && events.length > 0 && timeTravel.cursor < events.length
+      ? reconstructTurn(events, timeTravel.cursor, {
+          text: selected.text,
+          sources: selected.sources,
+        })
+      : null;
 
   if (!session) {
     return <p className={styles.empty}>Pick a dev persona in the header to start chatting.</p>;
@@ -79,6 +90,8 @@ export function ChatPage() {
                 turn={turn}
                 conversationId={state.conversationId}
                 selected={turn.id === selected?.id}
+                rewound={turn.id === selected?.id ? rewound : null}
+                onReturnToNow={() => timeTravel.dispatch({ type: 'goLive' })}
                 onSelect={() => setSelectedKey(turn.id === latest?.id ? null : turn.id)}
               />
             ),
@@ -107,6 +120,7 @@ export function ChatPage() {
         <MonitorPanel
           events={events}
           live={isStreaming}
+          timeTravel={timeTravel}
           loading={stored.isFetching && events.length === 0}
           error={
             stored.isError && events.length === 0 ? 'Could not load the trace for this turn.' : null
@@ -121,13 +135,21 @@ function AssistantBubble({
   turn,
   conversationId,
   selected,
+  rewound,
+  onReturnToNow,
   onSelect,
 }: {
   turn: AssistantTurn;
   conversationId?: string;
   selected: boolean;
+  /** Set when time travel shows this turn at an earlier step. */
+  rewound: ReconstructedTurn | null;
+  onReturnToNow: () => void;
   onSelect: () => void;
 }) {
+  const toolCalls = rewound ? rewound.toolCalls : turn.toolCalls;
+  const text = rewound ? rewound.text : turn.text;
+  const sources = rewound ? rewound.sources : turn.sources;
   return (
     <div
       className={`${styles.bubble} ${styles.assistant} ${selected ? styles.selected : ''}`}
@@ -146,20 +168,37 @@ function AssistantBubble({
       >
         {selected ? 'Showing behind the scenes' : 'Behind the scenes'}
       </button>
-      {turn.toolCalls.map((call) => (
+      {rewound && (
+        <div className={styles.rewindBanner} role="status" data-testid="rewind-banner">
+          <span>⏪ Viewing {rewound.stepLabel}</span>
+          {!rewound.textRecorded && (
+            <span className={styles.rewindNote}>answer text not recorded for this turn</span>
+          )}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onReturnToNow();
+            }}
+          >
+            Return to now
+          </button>
+        </div>
+      )}
+      {toolCalls.map((call) => (
         <ToolCallCard key={call.callId} call={call} />
       ))}
-      {turn.text ? (
-        <div className={styles.text}>{turn.text}</div>
+      {text ? (
+        <div className={styles.text}>{text}</div>
       ) : (
-        turn.status === 'streaming' && <div className={styles.thinking}>Thinking…</div>
+        (turn.status === 'streaming' || rewound) && <div className={styles.thinking}>Thinking…</div>
       )}
       {turn.error && (
         <div className={styles.error} role="alert">
           {turn.error}
         </div>
       )}
-      <SourcesPanel sources={turn.sources} />
+      <SourcesPanel sources={sources} />
       {turn.status !== 'streaming' && turn.turnId && conversationId && (
         <TurnFeedback conversationId={conversationId} turnId={turn.turnId} />
       )}

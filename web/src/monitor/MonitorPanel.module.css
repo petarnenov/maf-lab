@@ -288,3 +288,70 @@
   color: var(--muted, #667085);
   font-size: 0.75rem;
 }
+
+/* ---- time travel ---- */
+.timeTravel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border, #e4e7ec);
+}
+
+.ttButtons {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.ttButtons button {
+  min-width: 2rem;
+}
+
+.scrubber {
+  flex: 1 1 12rem;
+  min-width: 8rem;
+}
+
+.ttStep {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+}
+
+.ttOption {
+  font-size: 0.8rem;
+}
+
+.ttLive {
+  font-weight: 600;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.thisStep {
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid var(--border, #e4e7ec);
+  font-size: 0.85rem;
+}
+
+.future {
+  opacity: 0.35;
+}
+
+.current {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.waiting {
+  font-style: italic;
+  color: var(--muted, #667085);
+}

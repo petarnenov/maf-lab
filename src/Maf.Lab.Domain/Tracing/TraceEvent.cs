@@ -23,6 +23,7 @@ public static class TraceKinds
     public const string ToolResult = "tool.result";
     public const string Retrieval = "retrieval";
     public const string Envelope = "envelope";
+    public const string AnswerDelta = "answer.delta";
     public const string ToolUnknown = "tool.unknown";
     public const string Audit = "audit";
     public const string Sources = "sources";

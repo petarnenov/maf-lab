@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import type { TraceEvent } from '../api/types';
 import { JsonView } from './JsonView';
 import styles from './MonitorPanel.module.css';
@@ -27,22 +27,43 @@ const text = (value: unknown) =>
 
 // ---- Timeline -----------------------------------------------------------------------------------------------------
 
-export function TimelineTab({ events }: { events: TraceEvent[] }) {
+export function TimelineTab({
+  events,
+  cursor = events.length,
+  onSeek,
+}: {
+  events: TraceEvent[];
+  /** Steps shown so far; rows after it are dimmed, the row at it is highlighted. */
+  cursor?: number;
+  onSeek?: (step: number) => void;
+}) {
   const [open, setOpen] = useState<number | null>(null);
+  const currentRef = useRef<HTMLDivElement>(null);
   const total = Math.max(totalDuration(events), 1);
+  useEffect(() => {
+    currentRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [cursor]);
   return (
     <div role="list" aria-label="Timeline">
-      {events.map((e) => {
+      {events.map((e, index) => {
+        const future = index >= cursor;
+        const isCurrent = index === cursor - 1;
         const left = Math.min((e.atMs / total) * 100, 100);
         const width = e.durationMs ? Math.max((e.durationMs / total) * 100, 0.5) : 0.5;
         const isOpen = open === e.seq;
         return (
           <div
             key={e.seq}
+            ref={isCurrent ? currentRef : undefined}
             role="listitem"
-            className={styles.row}
+            className={`${styles.row} ${future ? styles.future : ''} ${isCurrent ? styles.current : ''}`}
             data-kind={e.kind}
-            onClick={() => setOpen(isOpen ? null : e.seq)}
+            data-future={future}
+            aria-current={isCurrent ? 'step' : undefined}
+            onClick={() => {
+              setOpen(isOpen ? null : e.seq);
+              onSeek?.(index + 1);
+            }}
           >
             <span className={styles.seq}>#{e.seq}</span>
             <span className={styles.at}>+{formatMs(e.atMs)}</span>
@@ -139,7 +160,9 @@ export function ModelTab({ events }: { events: TraceEvent[] }) {
                 <MessageView key={i} message={m} />
               ))}
               <div className={styles.sub}>Response</div>
-              {res.text ? (
+              {responses.every((e) => dataOf<ModelResponseData>(e).iteration !== iteration) ? (
+                <div className={styles.waiting}>waiting for response…</div>
+              ) : res.text ? (
                 <div className={styles.message}>{res.text}</div>
               ) : (
                 <div className={styles.summary}>—</div>

@@ -56,6 +56,11 @@ as it happens. Tabs:
 - **MCP:** raw arguments and results, plus the api and mcp replica that served them.
 - **Prompt & memory:** system prompt, tool schemas and the history window.
 
+**Time travel:** scrub, step (←/→), jump (Home/End) or replay (Space; 1×–10×, long waits compressed) through any
+turn. Every tab shows the state as of the chosen step, and the chat rewinds with it: the answer text, tool cards and
+sources appear as they were at that moment. While a turn streams, the monitor follows it; drag back to pause and use
+"Back to live" to catch up.
+
 Click an earlier answer to reopen its stored trace (kept 7 days). Reviewers can open a trace from `/admin/feedback`. The
 event format is in [`docs/trace-events.md`](docs/trace-events.md). Retrieval internals come from the MCP server in the
 tool result `_meta`, which the model never sees.

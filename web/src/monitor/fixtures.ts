@@ -191,6 +191,11 @@ export const fixtureTrace: TraceEvent[] = [
       },
     ],
   }),
+  ev(600, 'answer.delta', 'Answer +32 chars', {
+    offset: 0,
+    text: 'Assign the missing fee schedule ',
+  }),
+  ev(900, 'answer.delta', 'Answer +27 chars', { offset: 32, text: 'and re-run the billing run.' }),
   ev(
     940,
     'model.response',

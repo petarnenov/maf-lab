@@ -18,6 +18,7 @@ trace at 1 MB; `truncated: true` marks a capped event. JSON is camelCase.
 | `tool.call` | `{ callId, tool, arguments }` — full arguments |
 | `tool.result` | `{ callId, tool, isError, latencyMs, mcpInstance, result }` — raw MCP CallToolResult (structuredContent, content, isError) without diagnostics |
 | `retrieval` | `{ callId, instance, tenantScope: [tenantId], settings: { mode, fusion, denseVector, limit, prefetchLimit, rerank }, query: { text, terms: [{ term, idf }], denseModel, denseDims }, dense: [Candidate], sparse: [Candidate], fused: [Candidate], rerank: [chunkId] \| null, timings: { embedMs, sparseEncodeMs, qdrantMs, rerankMs } }` |
+| `answer.delta` | `{ offset, text }` — the streamed answer, coalesced (≤160 chars or 150 ms per chunk, flushed before tool calls and at the end); offsets are contiguous from 0 and the texts concatenate to the full answer |
 | `envelope` | `{ callId, tool, text }` — the exact `<tool_data>` string the model received |
 | `tool.unknown` | `{ callId, tool }` — the model asked for a tool that does not exist |
 | `audit` | `{ callId, tool, arguments, outcome, durationMs }` — the audit row written (identifiers only) |
@@ -30,5 +31,6 @@ trace at 1 MB; `truncated: true` marks a capped event. JSON is camelCase.
 `Candidate` = `{ rank, chunkId, docId, tenantId, sectionPath, score }`.
 
 Typical order for a procedural question: `turn.start → intent → prompt → history → tool.forced → tool.call →
-tool.result → retrieval → audit → envelope → model.request → model.response → memory → sources → signals → turn.end`.
+tool.result → retrieval → audit → envelope → model.request → answer.delta… → model.response → memory → sources → signals →
+turn.end`.
 The trace is stored before `done` is sent, so the stored copy is readable as soon as the stream ends.

@@ -12,7 +12,7 @@ namespace Maf.Lab.Api.Agent.Tracing;
 /// (text, tool calls, finish reason, token usage, latency). Sits directly above the provider client, so calls issued
 /// on the model's behalf by <see cref="RequiredToolModeChatClient"/> are not counted as model calls.
 /// </summary>
-public sealed class TracingChatClient(IChatClient inner, TurnTrace trace) : DelegatingChatClient(inner)
+public sealed class TracingChatClient(IChatClient inner, TurnTrace trace, Action? beforeResponse = null) : DelegatingChatClient(inner)
 {
     private int _iteration;
 
@@ -75,6 +75,9 @@ public sealed class TracingChatClient(IChatClient inner, TurnTrace trace) : Dele
     private void Response(int iteration, ChatOptions? options, string text, IEnumerable<FunctionCallContent> calls, ChatFinishReason? finish,
         UsageDetails? usage, long latencyMs, string? model)
     {
+        // Streams are pulled: every update yielded above has already reached the turn runner, so the answer chunks
+        // recorded now are exactly the text delivered before this response ended.
+        beforeResponse?.Invoke();
         var toolCalls = calls.ToList();
         var title = toolCalls.Count > 0
             ? $"Model #{iteration} asked for {string.Join(", ", toolCalls.Select(c => c.Name))}"

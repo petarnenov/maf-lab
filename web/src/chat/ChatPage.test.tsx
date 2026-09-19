@@ -84,7 +84,8 @@ describe('ChatPage', () => {
     expect(
       await within(monitor).findByText('Intent: Procedural (forced retrieval)'),
     ).toBeInTheDocument();
-    expect(within(monitor).getAllByRole('listitem')).toHaveLength(3);
+    const timeline = within(monitor).getByRole('list', { name: 'Timeline' });
+    expect(within(timeline).getAllByRole('listitem')).toHaveLength(3);
   });
 
   it('selecting an earlier turn loads its stored trace', async () => {
@@ -134,6 +135,80 @@ describe('ChatPage', () => {
     expect(await within(monitor).findByText(`${storedFirst.length} events`)).toBeInTheDocument();
     expect(fetchMock.mock.calls.map((c) => c[0])).toContain('/api/turns/t1/trace');
     expect(firstTurn).toHaveAttribute('data-selected', 'true');
+  });
+
+  it('time travel rewinds the selected answer only, and chat typing never scrubs', async () => {
+    let chatCalls = 0;
+    const answer = 'Assign the missing fee schedule and re-run the billing run.';
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === '/api/chat') {
+        chatCalls += 1;
+        return chatCalls === 1
+          ? streamResponse([
+              sse('text_delta', { text: 'First answer.' }),
+              sse('done', { conversationId: 'conv-1', turnId: 't1' }),
+            ])
+          : streamResponse([
+              ...fixtureTrace.map((e) => sse('trace', e)),
+              sse('text_delta', { text: answer }),
+              sse('done', { conversationId: 'conv-1', turnId: 't2' }),
+            ]);
+      }
+      if (url === '/api/turns/t2/trace') {
+        return jsonResponse({
+          turnId: 't2',
+          conversationId: 'conv-1',
+          createdAt: '',
+          events: fixtureTrace,
+        });
+      }
+      return jsonResponse({}, 404);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<ChatPage />);
+    for (const q of ['first', 'second']) {
+      await userEvent.type(screen.getByLabelText('Message'), q);
+      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    }
+    await screen.findByText(answer);
+    const [firstTurn, secondTurn] = screen.getAllByTestId('assistant-turn');
+    expect(within(secondTurn).queryByTestId('rewind-banner')).not.toBeInTheDocument();
+
+    // Typing arrows in the chat box must not move the cursor.
+    await userEvent.type(screen.getByLabelText('Message'), '{ArrowLeft}{Home}');
+    expect(screen.getByTestId('tt-step')).toHaveTextContent(
+      `step ${fixtureTrace.length} / ${fixtureTrace.length}`,
+    );
+
+    // Move onto the first answer chunk.
+    const firstChunk = fixtureTrace.findIndex((e) => e.kind === 'answer.delta') + 1;
+    screen.getByRole('region', { name: 'Behind the scenes' }).focus();
+    await userEvent.keyboard('{Home}');
+    for (let i = 0; i < firstChunk; i++) await userEvent.keyboard('{ArrowRight}');
+
+    const banner = within(secondTurn).getByTestId('rewind-banner');
+    expect(banner).toHaveTextContent(`Viewing step ${firstChunk} of ${fixtureTrace.length}`);
+    expect(within(secondTurn).getByText('Assign the missing fee schedule')).toBeInTheDocument();
+    expect(within(secondTurn).queryByText(answer)).not.toBeInTheDocument();
+    expect(within(secondTurn).queryByText(/Sources \(/)).not.toBeInTheDocument();
+    expect(within(firstTurn).getByText('First answer.')).toBeInTheDocument();
+    expect(within(firstTurn).queryByTestId('rewind-banner')).not.toBeInTheDocument();
+
+    // Between the tool call and its result the card is running.
+    await userEvent.keyboard('{Home}');
+    const callStep = fixtureTrace.findIndex((e) => e.kind === 'tool.call') + 1;
+    for (let i = 0; i < callStep; i++) await userEvent.keyboard('{ArrowRight}');
+    expect(within(secondTurn).getByTestId('tool-call-card')).toHaveAttribute(
+      'data-state',
+      'running',
+    );
+
+    await userEvent.click(
+      within(banner.ownerDocument.body).getByRole('button', { name: 'Return to now' }),
+    );
+    expect(within(secondTurn).queryByTestId('rewind-banner')).not.toBeInTheDocument();
+    expect(within(secondTurn).getByText(answer)).toBeInTheDocument();
   });
 
   it('asks for a persona when signed out', () => {

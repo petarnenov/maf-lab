@@ -31,8 +31,9 @@ describe('MonitorPanel', () => {
     expect(rows).toHaveLength(fixtureTrace.length);
     expect(rows[0]).toHaveAttribute('data-kind', 'turn.start');
 
-    await userEvent.click(screen.getByText('Intent: Procedural (forced retrieval)'));
-    expect(screen.getByText('"search_documents"')).toBeInTheDocument();
+    const timeline = screen.getByRole('list', { name: 'Timeline' });
+    await userEvent.click(within(timeline).getByText('Intent: Procedural (forced retrieval)'));
+    expect(within(timeline).getByText('"search_documents"')).toBeInTheDocument();
   });
 
   it('model tab shows forced call, request messages, response and tokens', async () => {

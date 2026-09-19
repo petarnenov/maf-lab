@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import type { TraceEvent } from '../api/types';
+import { JsonView } from './JsonView';
 import styles from './MonitorPanel.module.css';
+import { TimeTravelBar } from './TimeTravelBar';
+import { timeTravelKeyHandler } from './timeTravelKeys';
+import { useTimeTravel, type TimeTravel } from './useTimeTravel';
 import { McpTab, ModelTab, PromptTab, RetrievalTab, TimelineTab } from './MonitorTabs';
 import {
   byKind,
@@ -29,6 +33,10 @@ export interface MonitorPanelProps {
   loading?: boolean;
   error?: string | null;
   title?: string;
+  /** Shared time-travel state (the chat page also rewinds the answer); otherwise the panel keeps its own. */
+  timeTravel?: TimeTravel;
+  /** Identifies the turn for the panel's own time-travel state. */
+  resetKey?: string;
 }
 
 /** "Behind the scenes" view of one chat turn, built from its trace events. */
@@ -38,26 +46,44 @@ export function MonitorPanel({
   loading,
   error,
   title = 'Behind the scenes',
+  timeTravel,
+  resetKey,
 }: MonitorPanelProps) {
   const [tab, setTab] = useState<TabId>('timeline');
-  const start = dataOf<TurnStartData>(firstOf(events, 'turn.start'));
-  const mcp = mcpInstances(events);
+  const own = useTimeTravel(events, resetKey);
+  const tt = timeTravel ?? own;
+  const cursor = Math.min(tt.cursor, events.length);
+  // Every view shows the turn as it was after `cursor` steps.
+  const visible = events.slice(0, cursor);
+  const current = cursor > 0 ? events[cursor - 1] : undefined;
+  const start = dataOf<TurnStartData>(firstOf(visible, 'turn.start'));
+  const mcp = mcpInstances(visible);
 
   return (
-    <section className={styles.panel} aria-label={title}>
+    <section
+      className={styles.panel}
+      aria-label={title}
+      tabIndex={0}
+      aria-keyshortcuts="ArrowLeft ArrowRight Space Home End"
+      onKeyDown={timeTravelKeyHandler(tt.dispatch, tt.state.playing)}
+    >
       <header className={styles.header}>
         <h2 className={styles.title}>
           {title} {live && <span className={styles.live}>● live</span>}
         </h2>
         {events.length > 0 && (
           <div className={styles.stats} data-testid="monitor-stats">
-            <span className={styles.chip}>{events.length} events</span>
-            <span className={styles.chip}>total {formatMs(totalDuration(events))}</span>
             <span className={styles.chip}>
-              {byKind(events, 'model.response').length} model calls
+              {visible.length === events.length
+                ? `${events.length} events`
+                : `${visible.length} of ${events.length} events`}
             </span>
-            <span className={styles.chip}>{byKind(events, 'tool.call').length} tool calls</span>
-            <span className={styles.chip}>{byKind(events, 'retrieval').length} searches</span>
+            <span className={styles.chip}>total {formatMs(totalDuration(visible))}</span>
+            <span className={styles.chip}>
+              {byKind(visible, 'model.response').length} model calls
+            </span>
+            <span className={styles.chip}>{byKind(visible, 'tool.call').length} tool calls</span>
+            <span className={styles.chip}>{byKind(visible, 'retrieval').length} searches</span>
             {start.apiInstance && <span className={styles.chip}>api: {start.apiInstance}</span>}
             {mcp.map((m) => (
               <span key={m} className={styles.chip}>
@@ -67,6 +93,18 @@ export function MonitorPanel({
           </div>
         )}
       </header>
+      {events.length > 0 && (
+        <>
+          <TimeTravelBar
+            events={events}
+            state={tt.state}
+            dispatch={tt.dispatch}
+            cursor={cursor}
+            live={live}
+          />
+          <ThisStep event={current} />
+        </>
+      )}
       <nav className={styles.tabs} role="tablist" aria-label="Monitor views">
         {TABS.map((t) => (
           <button
@@ -91,17 +129,43 @@ export function MonitorPanel({
             {loading ? 'Loading trace…' : 'Ask a question to see what happens behind the scenes.'}
           </p>
         ) : tab === 'timeline' ? (
-          <TimelineTab events={events} />
+          <TimelineTab
+            events={events}
+            cursor={cursor}
+            onSeek={(step) => tt.dispatch({ type: 'seek', cursor: step })}
+          />
         ) : tab === 'model' ? (
-          <ModelTab events={events} />
+          <ModelTab events={visible} />
         ) : tab === 'retrieval' ? (
-          <RetrievalTab events={events} />
+          <RetrievalTab events={visible} />
         ) : tab === 'mcp' ? (
-          <McpTab events={events} apiInstance={start.apiInstance} />
+          <McpTab events={visible} apiInstance={start.apiInstance} />
         ) : (
-          <PromptTab events={events} />
+          <PromptTab events={visible} />
         )}
       </div>
     </section>
+  );
+}
+
+/** What the step under the cursor added. */
+function ThisStep({ event }: { event?: TraceEvent }) {
+  return (
+    <details className={styles.thisStep} open aria-label="This step">
+      <summary>
+        <strong>This step</strong>{' '}
+        {event ? (
+          <>
+            <span className={styles.mono}>#{event.seq}</span>{' '}
+            <span className={styles.chip}>{event.kind}</span> {event.title} · +
+            {formatMs(event.atMs)}
+            {event.durationMs ? ` · ${formatMs(event.durationMs)}` : ''}
+          </>
+        ) : (
+          'before the turn started'
+        )}
+      </summary>
+      {event && <JsonView value={event.data} expandDepth={1} />}
+    </details>
   );
 }

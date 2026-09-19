@@ -132,6 +132,35 @@ public class TurnTraceTests
     }
 
     [Fact]
+    public async Task Answer_is_recorded_as_coalesced_contiguous_chunks_that_rebuild_the_answer()
+    {
+        var longAnswer = string.Join(" ", Enumerable.Range(1, 220).Select(i => $"word{i}"));
+        using var api = new ApiFactory(ApiFactory.ProceduralModel(longAnswer));
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "what is the procedure when a fee schedule is missing");
+
+        var streamed = string.Concat(events.Where(e => e.Name == "text_delta").Select(e => e.Data.GetProperty("text").GetString()));
+        var deltas = events.Count(e => e.Name == "text_delta");
+        var chunks = events.Where(e => e.Name == "trace").Select(e => e.Data.Deserialize<TraceEvent>(Json)!)
+            .Where(t => t.Kind == TraceKinds.AnswerDelta).ToList();
+
+        Assert.NotEmpty(chunks);
+        var offset = 0;
+        foreach (var chunk in chunks)
+        {
+            Assert.Equal(offset, chunk.Data.GetProperty("offset").GetInt32());
+            offset += chunk.Data.GetProperty("text").GetString()!.Length;
+        }
+        Assert.Equal(streamed, string.Concat(chunks.Select(c => c.Data.GetProperty("text").GetString())));
+        Assert.True(chunks.Count * 5 < deltas, $"{chunks.Count} chunks for {deltas} deltas");
+        Assert.All(chunks.SkipLast(1), c => Assert.True(c.Data.GetProperty("text").GetString()!.Length >= 1));
+
+        // Chunks sit between the model request and its response; the trace still ends with turn.end.
+        var kinds = events.Where(e => e.Name == "trace").Select(e => e.Data.GetProperty("kind").GetString()).ToList();
+        Assert.True(kinds.IndexOf(TraceKinds.ModelRequest) < kinds.IndexOf(TraceKinds.AnswerDelta));
+        Assert.True(kinds.LastIndexOf(TraceKinds.AnswerDelta) < kinds.IndexOf(TraceKinds.ModelResponse), "all answer text is recorded before the model response that produced it");
+    }
+
+    [Fact]
     public async Task Stored_trace_is_readable_by_owner_and_same_firm_admin_for_review_turns_only()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());

@@ -16,6 +16,7 @@ export function StoredTracePanel({ turnId, title }: { turnId: string; title?: st
       loading={trace.isLoading}
       error={error}
       title={title}
+      resetKey={turnId}
     />
   );
 }

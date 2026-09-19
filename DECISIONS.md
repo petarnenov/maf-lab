@@ -308,3 +308,22 @@ referenced web projects' config files never collide.
   test that asserted `seq` caught the wrapped form.
 - **UI:** a two-pane grid that stacks under 1024 px. Retrieval candidates show the file and last section levels, with the
   full chunk id in the tooltip; long ids had wrapped character by character in the narrow columns.
+
+## 16. Trace time travel (add-trace-time-travel, 2026-09-19)
+
+- **Answer in the trace:** the streamed answer is recorded as `answer.delta { offset, text }` events. A chunk is
+  flushed at 160 characters, after 150 ms, before any tool call and at the end of the turn (also on errors). The
+  offsets are contiguous and the chunks concatenate to exactly what the client received (tested). A 220-word answer
+  gives a handful of events instead of ~220 deltas. The SSE `text_delta` stream is unchanged, so the trace carries
+  the text only to make the chat reconstructable.
+- **Time-travel model:** it is client-side and pure. Every view is a function of `(events, cursor)`. The cursor is
+  either a step number or "live" (following the head); any manual move stops following until "Back to live".
+  Playback schedules the next step after the recorded `atMs` gap divided by the speed, with gaps capped at 1 s when
+  "compress waits" is on (the default), because a single model call can take several seconds.
+- **Chat reconstruction:** `reconstructTurn(events, cursor)` rebuilds the answer text from `answer.delta`, the tool
+  cards from `tool.call`/`tool.result`, and the sources from the `sources` event. Traces stored before this change
+  have no `answer.delta`: they fall back to the final text and say so.
+- **Chunk ordering:** `TracingChatClient` flushes the answer buffer just before recording `model.response`. Streams
+  are pull-based, so every delta has already reached the runner at that point. The first live run showed the last
+  chunk being recorded after `model.response` and `memory`, because it was flushed only at turn end.
+- **Out of scope:** time travel across turns or conversations, and server-side re-execution of a turn.
