@@ -18,8 +18,8 @@ Embeddings: local Ollama (`nomic-embed-text`, `all-minilm`).
 
 Entry point: everything runs behind the nginx load balancer on http://localhost:7171 (api and mcp-retrieval x2).
 
-Commands:
-- `docker compose -f compose/docker-compose.yml up -d` then `scripts/verify_lb.sh`
-- `dotnet run --project src/Maf.Lab.Indexing`
-- `dotnet run --project src/Maf.Lab.Eval -- --suite all`
-- `cd web && npm run dev` / `npm test`
+Commands (see `make help`):
+- `make` — start everything on http://localhost:7171 (build, wait healthy, index if empty)
+- `make down` · `make ps` · `make logs SERVICE=api`
+- `make test` · `make lint` · `make verify` · `make eval SUITE=selection`
+- `make index` · `make drift` · `make dev` (local, no Docker for app services) · `make doctor`

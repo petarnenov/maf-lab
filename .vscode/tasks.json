@@ -5,54 +5,89 @@
       "label": "build",
       "type": "process",
       "command": "dotnet",
-      "args": ["build", "${workspaceFolder}/maf-lab.sln"],
+      "args": [
+        "build",
+        "${workspaceFolder}/maf-lab.sln"
+      ],
       "problemMatcher": "$msCompile",
-      "group": { "kind": "build", "isDefault": true }
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
     },
     {
-      "label": "compose up",
+      "label": "make (start everything)",
       "type": "shell",
-      "command": "docker compose -f compose/docker-compose.yml up -d --build",
-      "options": { "cwd": "${workspaceFolder}" },
-      "problemMatcher": []
+      "command": "make all",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "detail": "build, start, wait healthy, index if empty"
     },
     {
-      "label": "compose up (infra only)",
-      "detail": "Qdrant + Ollama for running api / mcp-retrieval / web from the IDE",
+      "label": "make down",
       "type": "shell",
-      "command": "docker compose -f compose/docker-compose.yml up -d qdrant",
-      "options": { "cwd": "${workspaceFolder}" },
+      "command": "make down",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "problemMatcher": []
     },
     {
-      "label": "index",
-      "type": "process",
-      "command": "dotnet",
-      "args": ["run", "--project", "${workspaceFolder}/src/Maf.Lab.Indexing"],
-      "problemMatcher": []
-    },
-    {
-      "label": "eval",
-      "type": "process",
-      "command": "dotnet",
-      "args": ["run", "--project", "${workspaceFolder}/src/Maf.Lab.Eval", "--", "--suite", "all"],
-      "problemMatcher": []
-    },
-    {
-      "label": "test (.NET)",
-      "type": "process",
-      "command": "dotnet",
-      "args": ["test", "--solution", "${workspaceFolder}/maf-lab.sln"],
-      "problemMatcher": "$msCompile",
-      "group": "test"
-    },
-    {
-      "label": "test (web)",
+      "label": "make verify",
       "type": "shell",
-      "command": "npm test -- --run",
-      "options": { "cwd": "${workspaceFolder}/web" },
+      "command": "make verify",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "make index",
+      "type": "shell",
+      "command": "make index",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "make eval",
+      "type": "shell",
+      "command": "make eval",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "make dev",
+      "type": "shell",
+      "command": "make dev",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "make test",
+      "type": "shell",
+      "command": "make test",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "problemMatcher": [],
       "group": "test"
+    },
+    {
+      "label": "make lint",
+      "type": "shell",
+      "command": "make lint",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
     }
   ]
 }

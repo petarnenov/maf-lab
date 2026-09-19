@@ -119,11 +119,17 @@ alice = token("alice", "firm-a", "FIRM_ADMIN")
 status, _, body = req("/api/admin/index/run", "POST", token=alice)
 job = json.loads(body)
 status2, _, body2 = req("/api/admin/index/run", "POST", token=alice)
-check("second start while running returns the same job", status == 202 and json.loads(body2)["jobId"] == job["jobId"],
-      f"{job['jobId']} vs {json.loads(body2)['jobId']}")
-seen, state = collections.Counter(), job["state"]
+second = json.loads(body2)
+# A different id is only correct if the first job had already finished (dedup applies to *running* jobs).
+_, _, first_now = req(f"/api/admin/jobs/{job['jobId']}", token=alice)
+first_done = json.loads(first_now)["state"] in ("succeeded", "failed")
+check("second start while running returns the same job", status == 202 and (second["jobId"] == job["jobId"] or first_done),
+      f"{job['jobId']} vs {second['jobId']} (first finished: {first_done})")
+seen, state, polls = collections.Counter(), job["state"], 0
 deadline = time.time() + 900
-while state not in ("succeeded", "failed") and time.time() < deadline:
+# Keep polling for at least 8 reads so the "any replica can answer" check does not depend on how fast the job is.
+while (state not in ("succeeded", "failed") or polls < 8) and time.time() < deadline:
+    polls += 1
     s, h, b = req(f"/api/admin/jobs/{job['jobId']}", token=alice)
     if s != 200:
         check("job status readable on every poll", False, f"HTTP {s} from {h.get('X-Instance')}")

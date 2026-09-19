@@ -214,10 +214,15 @@ referenced web projects' config files never collide.
   5174 are no longer published; Qdrant (6333/6334) and Ollama (11435) stay published for the host-side CLIs.
 - **Why nginx:** one proxy technology in the stack (the web image already pins `nginx:1.30.5-alpine`). Traefik
   (label discovery) and HAProxy (active health checks) were the alternatives.
-- **Replica discovery:** `server <service>:8080 resolve` in zone-backed upstreams with `resolver 127.0.0.11 valid=10s`
-  (open-source nginx ≥ 1.27.3), so Docker DNS returns every replica and scaling or restarts need no reload.
+- **Replica discovery (revised in add-makefile):** upstreams are resolved when nginx (re)loads — Docker DNS returns
+  every replica — and `make up` reloads the balancer after scaling or recreation. The original dynamic
+  `server … resolve` + `resolver valid=10s` was dropped: `make verify` showed roughly half the runs losing one request
+  (504, no retry) when a DNS refresh swapped the peer list while a request was waiting on the stopped replica. With
+  static peers the failover check passed on every run. Trade-off: scaling without `make up` needs
+  `docker compose exec lb nginx -s reload`.
 - **Balancing:** `least_conn` for api (long-lived SSE turns would skew round robin), round robin for MCP. Passive
-  health `max_fails=2 fail_timeout=10s`, and `proxy_connect_timeout 2s`. A stopped container's IP silently drops
+  health `max_fails=1 fail_timeout=10s` (a dead replica leaves rotation after its first failure), and
+  `proxy_connect_timeout 2s`. A stopped container's IP silently drops
   packets, so the default 60 s connect timeout made failover hang; 2 s turns it into a quick retry on another replica.
 - **Retries:** `proxy_next_upstream error timeout http_502 http_503`, and nginx does not replay non-idempotent requests,
   so a chat POST is never run twice.
@@ -236,3 +241,18 @@ referenced web projects' config files never collide.
 - `compose/pull-models.sh` skips models already present and retries pulls: a transient Docker DNS failure for
   `registry.ollama.ai` had blocked the whole stack.
 - Verification: `scripts/verify_lb.sh` (17 checks against the running stack).
+
+## 13. Make (add-makefile, 2026-09-19)
+
+- `make` is the entry point for everything (`make help`). Plain `make` = start: build, run, wait until healthy, reload
+  the balancer, index if empty, print the URL. Re-running it is a no-op apart from cache checks (~4 s).
+- **GNU Make 3.81 compatible** (macOS ships it): no `.ONESHELL`, `.SHELLFLAGS`, `$(file)` or grouped targets. Multi-line
+  logic lives in `scripts/wait_healthy.sh`, `index_if_empty.sh`, `dev.sh` and `doctor.sh`, which are also bash 3.2 safe
+  (empty arrays are guarded under `set -u`).
+- Tools are discovered with fallbacks: `dotnet` from PATH or `~/.dotnet`, which sets `DOTNET_ROOT`. Host CLIs use the
+  compose infrastructure (Qdrant 6333/6334, Ollama 11435).
+- `OLLAMA_API_KEY` is only read from the environment: `make up` warns when it is missing, and `make doctor` prints only
+  whether it is set or missing, never the value.
+- `make dev` stops whole process trees on exit: `dotnet run` and `npm` spawn children, so killing the direct child left
+  servers listening. Process substitution keeps `$!` pointing at the server, not at the log prefixer.
+- `make clean` is the only destructive target and asks for confirmation (`FORCE=1` skips it). `make down` keeps volumes.

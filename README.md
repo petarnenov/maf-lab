@@ -24,28 +24,30 @@ chat UI, an eval harness and tested prompt-injection defences.
 Everything user- and agent-facing goes through **one entry point on port 7171**. api and mcp-retrieval run two replicas
 each (`X-Instance` response header shows which one answered); only Qdrant and Ollama are published besides 7171.
 
-## Quick start (everything in Docker)
+## Quick start
 
 ```bash
-# Reuse models a host Ollama already pulled (optional; otherwise ollama-init downloads ~3 GB):
-export OLLAMA_MODELS_DIR=$HOME/.ollama
-docker compose -f compose/docker-compose.yml up -d --build
-
-# Index the sample corpus into the compose Qdrant (uses Ollama on 11435 for embeddings):
-Models__OllamaEndpoint=http://localhost:11435 dotnet run --project src/Maf.Lab.Indexing
-
-open http://localhost:7171      # pick a persona, ask "What is the procedure when a fee schedule is missing?"
-scripts/verify_lb.sh            # checks routing, closed ports, balancing, SSE, MCP, replica failure, admin jobs
-
-# More replicas:
-docker compose -f compose/docker-compose.yml up -d --scale api=3 --scale mcp-retrieval=3
+export OLLAMA_API_KEY=…    # chat runs on Ollama Cloud (gpt-oss:120b); the key is only read from the environment
+make                       # doctor-lite → build → start → wait until healthy → index if empty → http://localhost:7171
+make help                  # every target
 ```
+
+| Target | What it does |
+|---|---|
+| `make` / `make up` | Start the stack (`API_REPLICAS=3 MCP_REPLICAS=3` to scale), wait until healthy, reload the balancer |
+| `make down` / `restart` / `ps` / `logs` | Stop (volumes kept), restart, status, follow logs (`SERVICE=api`) |
+| `make index` / `reindex` / `drift` / `migrate` | Indexing CLI against the compose Qdrant + Ollama (`TO=dense_v2`) |
+| `make test` / `test-dotnet` / `test-web` / `lint` | Test suites and linters |
+| `make verify` | 17 checks through the load balancer (routing, ports, balancing, SSE, MCP, failover, jobs) |
+| `make eval` / `eval-selection` / … | Evals against the stack's MCP (`SUITE=all`) |
+| `make dev` | Run mcp/api/web locally without Docker (infra stays in compose); Ctrl-C stops |
+| `make doctor` | Check Docker, .NET SDK, Node, make, `OLLAMA_API_KEY` (value never printed) |
+| `make clean` | Remove the stack **with volumes** and build outputs (asks; `FORCE=1` to skip) |
 
 ## Local development (without the balancer)
 
-Running the services with `dotnet run` / `npm run dev` bypasses the balancer: web on :5174 (Vite proxies `/api` and
-`/dev` to :5080), api on :5080, MCP on :5090. Stop the compose app services first (`docker compose ... stop api
-mcp-retrieval web lb`) — the infrastructure (Qdrant, Ollama) can stay up.
+`make dev` bypasses the balancer: web on :5174 (Vite proxies `/api` and `/dev` to :5080), api on :5080, MCP on :5090,
+with Qdrant and Ollama from compose (the compose app services are stopped first). The manual equivalent:
 
 Prerequisites: .NET SDK 10.0.401 (`global.json`), Node 24, Docker, Ollama (host or compose).
 
@@ -69,8 +71,8 @@ under `Models:Embeddings` (one entry per Qdrant named vector).
 ## Tests
 
 ```bash
-dotnet test --solution maf-lab.sln      # unit + integration (Testcontainers starts qdrant/qdrant:v1.19.1; Docker required)
-cd web && npm test -- --run && npm run lint && npm run build
+make test        # dotnet test --solution maf-lab.sln (Testcontainers starts qdrant/qdrant:v1.19.1) + web Vitest
+make lint        # .NET build with warnings as errors + ESLint/Prettier
 ```
 
 Tests never call a model: they use a deterministic feature-hashing embedder and a scripted chat client. Evals are
@@ -79,10 +81,10 @@ separate and do call the model.
 ## Evals — when you must run them
 
 ```bash
-dotnet run --project src/Maf.Lab.Eval -- --suite all                 # selection, retrieval, generation, injection
-dotnet run --project src/Maf.Lab.Eval -- --suite retrieval --rerank   # add the rerank variant
+make eval                     # all suites against the running stack's MCP
+make eval-selection           # or eval-retrieval / eval-generation / eval-injection
+dotnet run --project src/Maf.Lab.Eval -- --suite retrieval --rerank   # extra flags: use the CLI directly
 dotnet run --project src/Maf.Lab.Eval -- --import-feedback --suite retrieval
-Evals__McpEndpoint=http://localhost:7171/mcp dotnet run --project src/Maf.Lab.Eval -- --suite selection   # through the stack
 ```
 
 Evals run **on demand**, not on every commit. They are **required** before merging any change to:
