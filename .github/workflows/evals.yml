@@ -1,0 +1,63 @@
+# On-demand evals with real models (project rule: evals run on demand and after prompt/model/tool/chunking changes).
+# Embeddings: local Ollama in compose (models pulled on the runner). Chat: Ollama Cloud with the OLLAMA_API_KEY secret.
+name: Evals
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Eval suite
+        type: choice
+        options: [all, selection, retrieval, generation, injection]
+        default: all
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evals
+  cancel-in-progress: false
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+  NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+
+jobs:
+  evals:
+    name: Evals (${{ inputs.suite }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+      SUITE: ${{ inputs.suite }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Require the OLLAMA_API_KEY secret
+        run: |
+          if [ -z "$OLLAMA_API_KEY" ]; then
+            echo "::error::Repository secret OLLAMA_API_KEY is not set (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+          echo "OLLAMA_API_KEY is set"
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - uses: actions/cache@v6
+        with:
+          path: .nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - name: Start the stack (pulls embedding models into the compose Ollama)
+        run: make up WAIT_TIMEOUT=1200 OLLAMA_MODELS_DIR=
+      - name: Index the corpus with real embeddings
+        run: make index
+      - name: Run evals
+        run: make eval SUITE="$SUITE"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: eval-reports-${{ inputs.suite }}
+          path: evals/reports/
+          if-no-files-found: warn
+          retention-days: 30

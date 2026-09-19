@@ -7,7 +7,13 @@ SHELL := /bin/bash
 
 ROOT          := $(CURDIR)
 COMPOSE_FILE  := $(ROOT)/compose/docker-compose.yml
+# CI_MODE=1 swaps the model backend for a deterministic stub (no downloads, no secrets) — see compose/docker-compose.ci.yml.
+CI_MODE       ?= 0
+ifeq ($(CI_MODE),1)
+COMPOSE       := docker compose -f $(COMPOSE_FILE) -f $(ROOT)/compose/docker-compose.ci.yml
+else
 COMPOSE       := docker compose -f $(COMPOSE_FILE)
+endif
 
 # ── configuration (override on the command line or in the environment) ─────────────────────────────────────────────
 BASE_URL      ?= http://localhost:7171
@@ -18,6 +24,7 @@ SUITE         ?= all
 WAIT_TIMEOUT  ?= 300
 TO            ?= dense_v2
 FORCE         ?= 0
+OPENSPEC_VERSION ?= 1.13.1
 # Reuse models a host Ollama already pulled, when there is one; set OLLAMA_MODELS_DIR= to use the compose volume.
 OLLAMA_MODELS_DIR ?= $(shell test -d $(HOME)/.ollama && echo $(HOME)/.ollama)
 export CHAT_MODEL OLLAMA_MODELS_DIR
@@ -37,17 +44,18 @@ HOST_ENV := Models__OllamaEndpoint=http://localhost:11435
 
 .PHONY: all help up down restart ps logs clean index reindex drift migrate test test-dotnet test-web lint verify \
         eval eval-selection eval-retrieval eval-generation eval-injection dev doctor banner index-if-empty \
+        specs lint-dotnet lint-web build-web ci ci-e2e \
         require-docker require-dotnet require-npm
 
 all: require-docker up index-if-empty banner ## Start everything: build, run, wait for health, index if empty (default)
 
 help: ## List the targets
 	@echo "maf-lab — make targets (variables: API_REPLICAS MCP_REPLICAS CHAT_MODEL SUITE BASE_URL WAIT_TIMEOUT TO FORCE)"
-	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 # ── lifecycle ────────────────────────────────────────────────────────────────────────────────────────────────────
 up: require-docker ## Build and start the stack (api/mcp replicas via API_REPLICAS/MCP_REPLICAS), wait until healthy
-	@if [ -z "$$OLLAMA_API_KEY" ]; then echo "⚠ OLLAMA_API_KEY is not set: the stack starts, but chat (Ollama Cloud) will fail. See 'make doctor'."; fi
+	@if [ "$(CI_MODE)" != "1" ] && [ -z "$$OLLAMA_API_KEY" ]; then echo "⚠ OLLAMA_API_KEY is not set: the stack starts, but chat (Ollama Cloud) will fail. See 'make doctor'."; fi
 	@# compose itself waits for the balancer's dependencies to be healthy; if that fails, show which service and why.
 	$(COMPOSE) up -d --build --remove-orphans --scale api=$(API_REPLICAS) --scale mcp-retrieval=$(MCP_REPLICAS) \
 	  || { scripts/wait_healthy.sh 0; exit 1; }
@@ -104,9 +112,24 @@ test-dotnet: require-dotnet require-docker ## .NET tests (integration tests star
 test-web: require-npm ## Web tests (Vitest)
 	cd web && { [ -d node_modules ] || $(NPM) ci --silent; } && $(NPM) test -- --run
 
-lint: require-dotnet require-npm ## Build .NET with warnings as errors; ESLint + Prettier for web
+lint: lint-dotnet lint-web ## Build .NET with warnings as errors; ESLint + Prettier for web
+
+lint-dotnet: require-dotnet ## .NET build with warnings as errors
 	$(DOTNET) build maf-lab.sln -warnaserror -nologo -v q
+
+lint-web: require-npm ## ESLint + Prettier
 	cd web && { [ -d node_modules ] || $(NPM) ci --silent; } && $(NPM) run lint
+
+build-web: require-npm ## Type-check and build the web app
+	cd web && { [ -d node_modules ] || $(NPM) ci --silent; } && $(NPM) run build
+
+specs: require-npm ## Validate all OpenSpec specs and changes (strict)
+	npx --yes @fission-ai/openspec@$(OPENSPEC_VERSION) validate --all --strict --no-interactive
+
+ci: specs lint-dotnet test-dotnet lint-web test-web build-web ci-e2e ## Run locally what GitHub Actions runs on every push
+
+ci-e2e: require-docker require-dotnet ## Model-free end-to-end: stack with the Ollama stub, index, verify (CI mode)
+	$(MAKE) up index-if-empty verify CI_MODE=1
 
 verify: ## Verify the running stack through the load balancer (17 checks)
 	scripts/verify_lb.sh $(BASE_URL)

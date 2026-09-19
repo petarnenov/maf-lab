@@ -41,3 +41,7 @@ evals/reports/
 
 # Playwright MCP artifacts
 .playwright-mcp/
+
+# CI workspace artefacts
+.nuget/
+e2e-logs/

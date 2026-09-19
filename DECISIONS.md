@@ -256,3 +256,24 @@ referenced web projects' config files never collide.
 - `make dev` stops whole process trees on exit: `dotnet run` and `npm` spawn children, so killing the direct child left
   servers listening. Process substitution keeps `$!` pointing at the server, not at the log prefixer.
 - `make clean` is the only destructive target and asks for confirmation (`FORCE=1` skips it). `make down` keeps volumes.
+
+## 14. Continuous integration (add-github-ci, 2026-09-19)
+
+- **Pins:** runner `ubuntu-24.04`, not `-latest`. `actions/checkout@v7` (7.0.1), `actions/setup-dotnet@v6` (6.0.0,
+  SDK from `global.json`), `actions/setup-node@v7` (7.0.0, Node 24), `actions/cache@v6` (6.1.0),
+  `actions/upload-artifact@v7` (7.0.1). OpenSpec CLI `@fission-ai/openspec@1.13.1` via `make specs`. Workflows are
+  linted with actionlint 1.7.12.
+- **NuGet cache:** through `actions/cache` on `NUGET_PACKAGES=$GITHUB_WORKSPACE/.nuget/packages`, keyed on
+  `Directory.Packages.props` and `*.csproj`, because `setup-dotnet`'s built-in cache requires `packages.lock.json`
+  files, which this repository does not use.
+- **Model-free e2e:** `compose/ollama-stub` (Python stdlib on `python:3.13.7-alpine`) implements only what OllamaSharp
+  calls: `/api/version`, `/api/tags`, `/api/show`, `/api/embed` (feature hashing at 768/384 dimensions, so the Qdrant
+  schema is unchanged) and `/api/chat` (NDJSON streamed in chunks of 4 words, 50 ms apart, quoting the first
+  `<tool_data>` source). `compose/docker-compose.ci.yml` replaces `ollama` with it, turns `ollama-init` into a no-op and
+  points chat at it. Indexing the full corpus takes about 15 s instead of about 11 min. Quality with real models is the
+  job of the evals workflow.
+- **Secrets:** `OLLAMA_API_KEY` exists only as a repository secret, set through stdin. Only `evals.yml`
+  (workflow_dispatch) reads it. Workflows have `permissions: contents: read`. Pull-request runs from forks get no
+  secrets, and none of the push/PR jobs needs one.
+- **Public repository:** the corpus, seed data and datasets are synthetic, and databases and caches are gitignored.
+  Commit authorship becomes public.

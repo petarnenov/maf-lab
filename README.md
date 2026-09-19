@@ -1,5 +1,7 @@
 # maf-lab
 
+[![CI](https://github.com/petarnenov/maf-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/petarnenov/maf-lab/actions/workflows/ci.yml)
+
 A learning lab: a RAG-backed assistant for a TAMP billing domain. Retrieval is a **tool** (`search_documents`) on an
 **MCP server** over a **multi-tenant Qdrant** collection, consumed by a **Microsoft Agent Framework** agent, with a React
 chat UI, an eval harness and tested prompt-injection defences.
@@ -77,6 +79,25 @@ make lint        # .NET build with warnings as errors + ESLint/Prettier
 
 Tests never call a model: they use a deterministic feature-hashing embedder and a scripted chat client. Evals are
 separate and do call the model.
+
+## Continuous integration
+
+GitHub Actions ([`.github/workflows`](.github/workflows)) — `make ci` runs the same checks locally.
+
+| Workflow | Trigger | What runs |
+|---|---|---|
+| **CI** (`ci.yml`) | every push and pull request | `specs` (OpenSpec strict validation) · `dotnet` (build with warnings as errors, unit + Testcontainers integration tests) · `web` (lint, Vitest, build) · `e2e` (full stack behind the balancer on :7171, corpus indexed, `make verify`) |
+| **Evals** (`evals.yml`) | manual (*Actions → Evals → Run workflow*, choose a suite) | real embeddings in compose Ollama + chat on Ollama Cloud (`OLLAMA_API_KEY` repository secret); reports uploaded as an artifact |
+
+The e2e job needs **no model and no secret**, so it also runs for pull requests from forks. `CI_MODE=1` replaces the
+`ollama` service with a deterministic Ollama-compatible stub (`compose/ollama-stub`): hash-based embeddings and a
+scripted, streamed chat answer. Forced retrieval still calls `search_documents` over MCP, so tool calls, SSE, sources,
+tenancy, failover and admin jobs are exercised for real. Try it locally: `make ci-e2e` (indexing takes about 15 s with the stub).
+
+```bash
+gh workflow run evals.yml -f suite=selection   # dispatch evals from the CLI
+gh run watch                                   # follow it
+```
 
 ## Evals — when you must run them
 
