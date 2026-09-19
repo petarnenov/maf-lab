@@ -1,7 +1,9 @@
 """Ollama-compatible stub for CI: deterministic embeddings and a scripted, streamed chat answer.
 
 Implements only what maf-lab calls through OllamaSharp: /api/version, /api/tags, /api/show, /api/embed, /api/chat.
-No model, no network, no secrets. Real model behaviour is covered by the on-demand evals workflow.
+It also answers the intent classifier (recognised by its marker) with a single label, so the second classification
+stage is exercised without a model. No model, no network, no secrets. Real model behaviour is covered by the
+on-demand evals workflow.
 """
 import hashlib
 import json
@@ -32,6 +34,35 @@ def embed(text: str, dims: int) -> list[float]:
 
 def dims_for(model: str) -> int:
     return DIMENSIONS.get(model.split(":")[0], 768)
+
+
+INTENT_MARKER = "maf-lab/intent-classifier"
+# The same words the rules use, plus the Bulgarian ones the checks rely on. A real model classifies by meaning.
+INTENT_WORDS = {
+    "PROCEDURAL": ("how", "why", "procedure", "what is", "explain", "policy",
+                   "как", "защо", "процедура", "процедурата", "обясни", "политика"),
+    "CHITCHAT": ("hi", "hello", "thanks", "bye", "здравей", "здрасти", "благодаря", "мерси", "чао"),
+    "DATA": ("status", "which runs", "failed runs", "latest run", "статус", "списък", "рънове"),
+}
+RUN_REFERENCE = re.compile(r"\b(run|рън)\s*#?\s*\d{3,}")
+
+
+def classify(messages: list[dict]) -> str:
+    """One label for the classifier's request; unknown questions are OTHER, as the caller expects."""
+    question = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "").lower()
+    procedural = any(w in question for w in INTENT_WORDS["PROCEDURAL"])
+    run = bool(RUN_REFERENCE.search(question))
+    if procedural:
+        return "MIXED" if run else "PROCEDURAL"
+    if run or any(w in question for w in INTENT_WORDS["DATA"]):
+        return "DATA"
+    if any(w in question for w in INTENT_WORDS["CHITCHAT"]):
+        return "CHITCHAT"
+    return "OTHER"
+
+
+def is_classification(messages: list[dict]) -> bool:
+    return any(INTENT_MARKER in (m.get("content") or "") for m in messages)
 
 
 def answer_for(messages: list[dict]) -> str:
@@ -92,7 +123,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"embedding": vectors[0]})
             return self._json(200, {"model": model, "embeddings": vectors, "total_duration": 1, "prompt_eval_count": len(inputs)})
         if self.path == "/api/chat":
-            text = answer_for(body.get("messages", []))
+            messages = body.get("messages", [])
+            text = classify(messages) if is_classification(messages) else answer_for(messages)
             if not body.get("stream", True):
                 return self._json(200, {"model": model, "created_at": now(), "done": True, "done_reason": "stop",
                                         "message": {"role": "assistant", "content": text}, "eval_count": len(text.split())})

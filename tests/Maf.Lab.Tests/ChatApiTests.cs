@@ -48,6 +48,46 @@ public class ChatApiTests
     }
 
     [Fact]
+    public async Task A_procedural_question_in_another_language_forces_search_like_its_english_twin()
+    {
+        var tools = new FakeToolSource();
+        using var api = new ApiFactory(ApiFactory.ProceduralModel(), tools);
+        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+
+        var events = await ApiFactory.ChatAsync(client, "Каква е процедурата, когато липсва фий схедюл?");
+
+        Assert.Equal(["search_documents"], tools.Invocations);
+        var sources = events.Single(e => e.Name == "sources").Data.GetProperty("sources");
+        Assert.Equal("shared/procedures/missing-fee-schedule.txt", sources[0].GetProperty("docId").GetString());
+        var intent = Intent(events);
+        Assert.Equal("Procedural", intent.GetProperty("intent").GetString());
+        Assert.Equal("model", intent.GetProperty("stage").GetString());
+        Assert.True(intent.GetProperty("forcedRetrieval").GetBoolean());
+    }
+
+    [Fact]
+    public async Task A_greeting_in_another_language_is_not_forced_to_search()
+    {
+        var tools = new FakeToolSource();
+        using var api = new ApiFactory(ApiFactory.ProceduralModel(), tools);
+        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+
+        var events = await ApiFactory.ChatAsync(client, "Здравей");
+
+        Assert.Empty(tools.Invocations);
+        var intent = Intent(events);
+        Assert.Equal("ChitChat", intent.GetProperty("intent").GetString());
+        Assert.Equal("model", intent.GetProperty("stage").GetString());
+        Assert.False(intent.GetProperty("forcedRetrieval").GetBoolean());
+    }
+
+    /// <summary>The intent event's payload, which the SSE stream carries as a trace event.</summary>
+    private static JsonElement Intent(IEnumerable<SseEvent> events) =>
+        events.Where(e => e.Name == "trace")
+            .Select(e => e.Data.GetProperty("data"))
+            .Single(d => d.TryGetProperty("forcedRetrieval", out _));
+
+    [Fact]
     public async Task Procedural_question_forces_search_for_that_turn_only_and_tool_output_is_wrapped_as_data()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());

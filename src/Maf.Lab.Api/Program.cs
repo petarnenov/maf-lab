@@ -37,6 +37,7 @@ public partial class Program
         builder.Services.AddHttpClient("mcp");
         builder.Services.AddSingleton<IToolSource, McpToolSource>();
         builder.Services.AddSingleton<ConversationService>();
+        builder.Services.AddSingleton<IIntentClassifier, ModelIntentClassifier>();
         builder.Services.AddScoped<ChatTurnRunner>();
         builder.Services.AddSingleton<DatasetWriter>();
         builder.Services.Configure<AdminJobOptions>(builder.Configuration.GetSection("AdminJobs"));

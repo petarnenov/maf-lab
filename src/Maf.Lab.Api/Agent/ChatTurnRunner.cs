@@ -27,6 +27,7 @@ public sealed record TurnResult(string ConversationId, string TurnId, Intent Int
 /// </summary>
 public sealed class ChatTurnRunner(
     IChatClientFactory models,
+    IIntentClassifier intents,
     IToolSource toolSource,
     SystemPrompt prompt,
     ToolAudit audit,
@@ -46,7 +47,7 @@ public sealed class ChatTurnRunner(
         var trace = new TurnTrace(events);
         var state = new TurnState(principal, conversationId, turnId, events, trace);
         var chunker = state.Answer;
-        var intent = IntentClassifier.Classify(message);
+        var decision = IntentDecision.FromRules(Intent.Other);
         trace.Add(TraceKinds.TurnStart, $"Turn started on {InstanceIdentity.Name}", new JsonObject
         {
             ["conversationId"] = conversationId,
@@ -69,13 +70,22 @@ public sealed class ChatTurnRunner(
             var chatOptions = models.BaseChatOptions();
             chatOptions.Instructions = prompt.Text;
             chatOptions.Tools = [.. tools.Tools];
-            forced = IntentClassifier.ForcesRetrieval(intent) && tools.Names.Contains("search_documents");
+            decision = await intents.ClassifyAsync(message, ct);
+            forced = IntentClassifier.ForcesRetrieval(decision.Intent) && tools.Names.Contains("search_documents");
             chatOptions.ToolMode = forced ? ChatToolMode.RequireSpecific("search_documents") : ChatToolMode.Auto;
-            trace.Add(TraceKinds.Intent, $"Intent {intent}{(forced ? " → forcing search_documents" : "")}", new JsonObject
+            var stage = decision.Stage == IntentStage.Model
+                ? $" (model, {decision.DurationMs:F0} ms)"
+                : " (rules)";
+            trace.Add(TraceKinds.Intent, $"Intent {decision.Intent}{stage}{(forced ? " → forcing search_documents" : "")}", new JsonObject
             {
-                ["intent"] = intent.ToString(),
+                ["intent"] = decision.Intent.ToString(),
                 ["forcedRetrieval"] = forced,
                 ["forcedTool"] = forced ? "search_documents" : null,
+                ["stage"] = decision.Stage.ToString().ToLowerInvariant(),
+                ["model"] = decision.Model,
+                ["rawAnswer"] = decision.RawAnswer,
+                ["durationMs"] = decision.DurationMs,
+                ["reason"] = decision.Reason,
             });
             trace.Add(TraceKinds.Prompt, $"System prompt {prompt.Version} + {tools.Tools.Count} tool(s)", new JsonObject
             {
@@ -154,7 +164,7 @@ public sealed class ChatTurnRunner(
         }
 
         var text = answer.ToString().Trim();
-        var signals = TurnSignals.Compute(intent, state.ToolCalls.Count, state.ZeroResults, text.Length, sources.Count, options.Value.LongAnswerChars);
+        var signals = TurnSignals.Compute(decision.Intent, state.ToolCalls.Count, state.ZeroResults, text.Length, sources.Count, options.Value.LongAnswerChars);
         trace.Add(TraceKinds.Sources, $"{sources.Count} source(s)", new JsonObject
         {
             ["sources"] = new JsonArray(sources.Select(x => (JsonNode)new JsonObject { ["docId"] = x.DocId, ["sectionPath"] = x.SectionPath }).ToArray()),
@@ -169,13 +179,13 @@ public sealed class ChatTurnRunner(
             ["toolCalls"] = state.ToolCalls.Count,
             ["sourceCount"] = sources.Count,
         }, sw.ElapsedMilliseconds);
-        await PersistAsync(principal, conversationId, turnId, message, text, intent, forced, state.ToolCalls, sources, signals, trace, ct);
+        await PersistAsync(principal, conversationId, turnId, message, text, decision.Intent, forced, state.ToolCalls, sources, signals, trace, ct);
 
         _logger.LogInformation("chat turn done turn={TurnId} intent={Intent} forced={Forced} tools={ToolCount} sources={SourceCount} signals={Signals} ms={Elapsed}",
-            turnId, intent, forced, state.ToolCalls.Count, sources.Count, string.Join(",", signals), sw.ElapsedMilliseconds);
+            turnId, decision.Intent, forced, state.ToolCalls.Count, sources.Count, string.Join(",", signals), sw.ElapsedMilliseconds);
 
         await events.WriteAsync(new DoneEvent(conversationId, turnId, error), ct);
-        return new TurnResult(conversationId, turnId, intent, forced, text, state.ToolCalls, sources, signals, error);
+        return new TurnResult(conversationId, turnId, decision.Intent, forced, text, state.ToolCalls, sources, signals, error);
     }
 
     /// <summary>Agent function middleware: events before/after execution, audit, data-block wrapping, source capture.</summary>

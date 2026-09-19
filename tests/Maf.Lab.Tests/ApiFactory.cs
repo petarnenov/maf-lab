@@ -20,15 +20,21 @@ namespace Maf.Lab.Tests;
 /// <summary>The API host with a scripted model and fake MCP tools; SQLite and eval datasets in a temp folder.</summary>
 public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
 {
-    public ApiFactory(ScriptedChatClient chat, FakeToolSource? tools = null, string? dataDir = null, bool emulateForcing = true)
+    /// <summary>The model the intent classifier is pointed at, so its calls never land in <see cref="Chat"/>.</summary>
+    public const string IntentModelName = "intent-stub";
+
+    public ApiFactory(ScriptedChatClient chat, FakeToolSource? tools = null, string? dataDir = null, bool emulateForcing = true,
+        IChatClient? intent = null)
     {
         EmulateForcing = emulateForcing;
         Chat = chat;
+        Intent = intent ?? IntentModel();
         Tools = tools ?? new FakeToolSource();
         DataDir = dataDir ?? Directory.CreateTempSubdirectory("maf-api-").FullName;
     }
 
     public ScriptedChatClient Chat { get; }
+    public IChatClient Intent { get; }
     public FakeToolSource Tools { get; }
     public string DataDir { get; }
     public CapturingLoggerProvider Logs { get; } = new();
@@ -43,6 +49,7 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
             ["Evals:Root"] = Path.Combine(DataDir, "evals"),
             ["Qdrant:GrpcPort"] = "1",
             ["Agent:EmulateRequiredToolMode"] = EmulateForcing.ToString(),
+            ["Agent:IntentModel"] = IntentModelName,
         }));
         builder.ConfigureLogging(l => l.AddProvider(Logs).SetMinimumLevel(LogLevel.Debug));
         builder.ConfigureTestServices(s =>
@@ -50,7 +57,7 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
             s.RemoveAll<IToolSource>();
             s.AddSingleton<IToolSource>(Tools);
             s.RemoveAll<IChatClientFactory>();
-            s.AddSingleton<IChatClientFactory>(new FixedChatClientFactory(Chat));
+            s.AddSingleton<IChatClientFactory>(new FixedChatClientFactory(Chat, IntentModelName, Intent));
         });
     }
 
@@ -85,6 +92,29 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
                 return ScriptedChatClient.Call("search_documents", new() { ["query"] = last, ["sourceTypes"] = new[] { "procedures" } });
             }
             return ScriptedChatClient.Text(last.StartsWith("thanks", StringComparison.OrdinalIgnoreCase) ? "You're welcome." : answer);
+        });
+
+    /// <summary>
+    /// Stands in for the classification model: answers a classification request with one label, understanding the
+    /// Bulgarian and English words the tests use. Anything else is OTHER, as a real model would answer for an
+    /// unclassifiable question.
+    /// </summary>
+    public static ScriptedChatClient IntentModel() =>
+        new((messages, _, _) =>
+        {
+            var q = (messages.LastOrDefault(m => m.Role == ChatRole.User)?.Text ?? "").ToLowerInvariant();
+            var procedural = new[] { "how", "why", "procedure", "what is", "explain", "как", "защо", "процедура", "процедурата", "обясни" }.Any(q.Contains);
+            var run = System.Text.RegularExpressions.Regex.IsMatch(q, @"\brun\s*#?\s*\d{3,}|\bрън\s*#?\s*\d{3,}");
+            var label = (procedural, run) switch
+            {
+                (true, true) => "MIXED",
+                (true, false) => "PROCEDURAL",
+                (false, true) => "DATA",
+                _ when new[] { "hi", "hello", "thanks", "здравей", "здрасти", "благодаря", "мерси", "чао" }.Any(q.Contains) => "CHITCHAT",
+                _ when new[] { "status", "статус", "списък" }.Any(q.Contains) => "DATA",
+                _ => "OTHER",
+            };
+            return ScriptedChatClient.Text(label);
         });
 
     protected override void Dispose(bool disposing)

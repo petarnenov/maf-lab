@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Tracing;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.Domain.Tenancy;
@@ -16,6 +17,9 @@ public class TurnTraceTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    private static List<TraceEvent> Trace(IEnumerable<SseEvent> events) =>
+        events.Where(e => e.Name == "trace").Select(e => e.Data.Deserialize<TraceEvent>(Json)!).ToList();
 
     private const string Diagnostics = """
         {"maf-lab/trace":{"instance":"mcp-1","tenantScope":["firm-a","shared"],"settings":{"mode":"hybrid","fusion":"rrf"},
@@ -105,6 +109,35 @@ public class TurnTraceTests
         Assert.DoesNotContain("maf-lab/trace", envelope);
         var modelSaw = string.Join("\n", api.Chat.Requests.SelectMany(r => r.Messages).SelectMany(m => m.Contents).OfType<FunctionResultContent>().Select(r => r.Result?.ToString()));
         Assert.DoesNotContain("tenantScope", modelSaw);
+    }
+
+    [Fact]
+    public async Task Intent_event_names_the_stage_that_decided_it()
+    {
+        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+
+        var english = await ApiFactory.ChatAsync(client, "what is the procedure when a fee schedule is missing");
+        var byRules = Trace(english).Single(t => t.Kind == TraceKinds.Intent).Data;
+        Assert.Equal("Procedural", byRules.GetProperty("intent").GetString());
+        Assert.Equal("rules", byRules.GetProperty("stage").GetString());
+        Assert.True(byRules.GetProperty("forcedRetrieval").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, byRules.GetProperty("durationMs").ValueKind);
+        Assert.Equal(JsonValueKind.Null, byRules.GetProperty("model").ValueKind);
+
+        var bulgarian = await ApiFactory.ChatAsync(client, "Каква е процедурата, когато липсва фий схедюл?");
+        var byModel = Trace(bulgarian).Single(t => t.Kind == TraceKinds.Intent).Data;
+        Assert.Equal("Procedural", byModel.GetProperty("intent").GetString());
+        Assert.Equal("model", byModel.GetProperty("stage").GetString());
+        Assert.True(byModel.GetProperty("forcedRetrieval").GetBoolean());
+        Assert.Equal(ApiFactory.IntentModelName, byModel.GetProperty("model").GetString());
+        Assert.Equal("PROCEDURAL", byModel.GetProperty("rawAnswer").GetString());
+        Assert.True(byModel.GetProperty("durationMs").GetDouble() >= 0);
+
+        // The classification is reported in the intent event, never as one of the turn's own model calls.
+        Assert.DoesNotContain(Trace(bulgarian).Where(t => t.Kind == TraceKinds.ModelRequest),
+            t => t.Data.GetRawText().Contains(ModelIntentClassifier.PromptMarker));
+        Assert.DoesNotContain(api.Chat.Requests, r => r.Messages.Any(m => (m.Text ?? "").Contains(ModelIntentClassifier.PromptMarker)));
     }
 
     [Fact]

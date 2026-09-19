@@ -15,9 +15,38 @@ public enum Intent
     Other,
 }
 
+/// <summary>Which stage of the classifier decided the intent.</summary>
+public enum IntentStage
+{
+    Rules,
+    Model,
+}
+
+/// <summary>
+/// What the classifier concluded, and how. <paramref name="Reason"/> explains a model stage that produced nothing
+/// usable (timeout, failure, unrecognised answer); it is null when the stage succeeded.
+/// </summary>
+public readonly record struct IntentDecision(
+    Intent Intent,
+    IntentStage Stage,
+    string? Model = null,
+    string? RawAnswer = null,
+    double? DurationMs = null,
+    string? Reason = null)
+{
+    public static IntentDecision FromRules(Intent intent) => new(intent, IntentStage.Rules);
+}
+
+/// <summary>Classifies the question of a turn before the first model call, in any language.</summary>
+public interface IIntentClassifier
+{
+    Task<IntentDecision> ClassifyAsync(string question, CancellationToken ct);
+}
+
 /// <summary>
 /// Rules-based intent detection that runs before the first model call. Only Procedural and Mixed force
-/// search_documents, and only for the current turn.
+/// search_documents, and only for the current turn. The rules are English; questions they do not recognise are
+/// classified by <see cref="ModelIntentClassifier"/>.
 /// </summary>
 public static partial class IntentClassifier
 {

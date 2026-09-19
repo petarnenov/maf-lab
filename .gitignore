@@ -45,3 +45,7 @@ evals/reports/
 # CI workspace artefacts
 .nuget/
 e2e-logs/
+
+# Python bytecode (the CI stub is run by Docker, never imported)
+__pycache__/
+*.pyc

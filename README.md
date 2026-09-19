@@ -64,6 +64,13 @@ as it happens. Tabs:
 - **MCP:** raw arguments and results, plus the api and mcp replica that served them.
 - **Prompt & memory:** system prompt, tool schemas and the history window.
 
+**Intent:** before the first model call the question is classified, which decides whether the turn is *forced* to call
+`search_documents`. English rules decide first, for free; a question they do not recognise — anything in another
+language, for instance — is classified by a model (`Agent:IntentModel`, default the chat model, budget
+`Agent:IntentTimeoutSeconds`, 0 disables it). The intent event names the stage, so "Intent Procedural (model, 959 ms)"
+is a turn that Bulgarian rules never matched. A timeout, a failure or an answer that is not one of the five intents
+leaves the turn unforced, exactly as before the classifier existed.
+
 **Time travel:** scrub, step (←/→), jump (Home/End) or replay (Space; 1×–10×, long waits compressed) through any
 turn. Every tab shows the state as of the chosen step, and the chat rewinds with it: the answer text, tool cards and
 sources appear as they were at that moment. While a turn streams, the monitor follows it; drag back to pause and use

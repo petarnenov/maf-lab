@@ -11,4 +11,8 @@ public sealed class AgentOptions
     public bool EmulateRequiredToolMode { get; set; } = true;
     /// <summary>Request retrieval diagnostics from the MCP server for the behind-the-scenes monitor.</summary>
     public bool TraceRetrieval { get; set; } = true;
+    /// <summary>Model that classifies questions the English rules do not recognise; empty uses the chat model.</summary>
+    public string IntentModel { get; set; } = "";
+    /// <summary>Budget for that classification; 0 disables it and leaves unrecognised questions as Other.</summary>
+    public double IntentTimeoutSeconds { get; set; } = 5;
 }

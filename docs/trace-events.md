@@ -9,7 +9,7 @@ trace at 1 MB; `truncated: true` marks a capped event. JSON is camelCase.
 | kind | data |
 |---|---|
 | `turn.start` | `{ conversationId, turnId, principal: { userId, firmId, role }, apiInstance, question }` |
-| `intent` | `{ intent, forcedRetrieval, forcedTool }` — intent ∈ Procedural, Mixed, Data, ChitChat, Other |
+| `intent` | `{ intent, forcedRetrieval, forcedTool, stage, model, rawAnswer, durationMs, reason }` — intent ∈ Procedural, Mixed, Data, ChitChat, Other; `stage` ∈ rules, model (the rules are English, a model classifies what they do not recognise); `model`, `rawAnswer` and `durationMs` are null for the rules stage; `reason` explains a model stage that produced nothing usable (timeout, failure, unknown label) |
 | `history` | `{ budgetTokens, usedTokens, included: [{ role, text, tokens }], excludedCount }` |
 | `prompt` | `{ version, systemPrompt, toolMode, tools: [{ name, description, inputSchema }] }` |
 | `model.request` | `{ iteration, model, endpoint, toolMode, temperature, think, tools: [name], messages: [Message] }` |

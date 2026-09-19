@@ -67,6 +67,7 @@ public sealed class EvalAgentHost : IAsyncDisposable
         services.AddHttpClient("mcp");
         services.AddSingleton<IToolSource, McpToolSource>();
         services.AddSingleton<ConversationService>();
+        services.AddSingleton<IIntentClassifier, ModelIntentClassifier>();
         services.AddTransient<ChatTurnRunner>();
 
         var provider = services.BuildServiceProvider();
