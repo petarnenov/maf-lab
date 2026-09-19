@@ -89,7 +89,11 @@ public static partial class DatabaseInitializer
                     var definition = property.IsNullable ? $"{type} NULL" : $"{type} NOT NULL DEFAULT {DefaultFor(type)}";
                     try
                     {
-                        await db.Database.ExecuteSqlRawAsync($"ALTER TABLE \"{table}\" ADD COLUMN \"{column}\" {definition}", ct);
+                        // Table, column and type come from the EF model, never from a request; DDL cannot take
+                        // parameters anyway, so the command goes through the same connection as the PRAGMA above.
+                        await using var alter = connection.CreateCommand();
+                        alter.CommandText = $"ALTER TABLE \"{table}\" ADD COLUMN \"{column}\" {definition}";
+                        await alter.ExecuteNonQueryAsync(ct);
                     }
                     catch (Microsoft.Data.Sqlite.SqliteException ex) when (ex.Message.Contains("duplicate column", StringComparison.OrdinalIgnoreCase))
                     {
