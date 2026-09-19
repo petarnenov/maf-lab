@@ -66,6 +66,7 @@ public partial class Program
         app.MapAdminIndex();
         app.MapEvalReports();
         app.MapTraces();
+        app.MapHistory();
         return app;
     }
 }

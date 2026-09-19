@@ -5,35 +5,39 @@ import { fixtureTrace } from '../monitor/fixtures';
 import { jsonResponse, renderWithProviders, sse, streamResponse } from '../test/render';
 import { ChatPage } from './ChatPage';
 
+const emptyHistory = { conversations: [], nextCursor: null };
+
 describe('ChatPage', () => {
   it('streams a turn with a tool card, sources and feedback buttons', async () => {
-    const fetchMock = vi.fn(async () =>
-      streamResponse([
-        sse('tool_call_started', {
-          callId: 'c1',
-          toolName: 'search_documents',
-          argumentSummary: 'query="fee"',
-        }),
-        sse('tool_call_finished', {
-          callId: 'c1',
-          toolName: 'search_documents',
-          resultSummary: '2 snippets',
-          sourceCount: 2,
-          isError: false,
-        }),
-        sse('sources', {
-          sources: [
-            {
-              docId: 'd1',
-              sectionPath: 'Fees > Missing',
-              sourcePath: 'shared/docs/fees.md',
-              snippet: 's',
-            },
-          ],
-        }),
-        sse('text_delta', { text: 'Open a ticket.' }),
-        sse('done', { conversationId: 'conv-1', turnId: 't1' }),
-      ]),
+    const fetchMock = vi.fn(async (url: string) =>
+      url.startsWith('/api/conversations')
+        ? jsonResponse(emptyHistory)
+        : streamResponse([
+            sse('tool_call_started', {
+              callId: 'c1',
+              toolName: 'search_documents',
+              argumentSummary: 'query="fee"',
+            }),
+            sse('tool_call_finished', {
+              callId: 'c1',
+              toolName: 'search_documents',
+              resultSummary: '2 snippets',
+              sourceCount: 2,
+              isError: false,
+            }),
+            sse('sources', {
+              sources: [
+                {
+                  docId: 'd1',
+                  sectionPath: 'Fees > Missing',
+                  sourcePath: 'shared/docs/fees.md',
+                  snippet: 's',
+                },
+              ],
+            }),
+            sse('text_delta', { text: 'Open a ticket.' }),
+            sse('done', { conversationId: 'conv-1', turnId: 't1' }),
+          ]),
     );
     vi.stubGlobal('fetch', fetchMock);
 
@@ -47,8 +51,10 @@ describe('ChatPage', () => {
     expect(within(turn).getByText('Sources (1)')).toBeInTheDocument();
     expect(within(turn).getByRole('button', { name: 'Wrong document' })).toBeInTheDocument();
 
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe('/api/chat');
+    const [, init] = fetchMock.mock.calls.find(([url]) => url === '/api/chat') as unknown as [
+      string,
+      RequestInit,
+    ];
     expect(JSON.parse(init.body as string)).toEqual({
       message: 'What if a fee schedule is missing?',
     });
@@ -66,6 +72,7 @@ describe('ChatPage', () => {
             sse('done', { conversationId: 'conv-1', turnId: 't1' }),
           ]);
         }
+        if (url.startsWith('/api/conversations')) return jsonResponse(emptyHistory);
         return jsonResponse({
           turnId: 't1',
           conversationId: 'conv-1',

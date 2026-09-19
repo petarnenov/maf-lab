@@ -206,7 +206,7 @@ public sealed class ChatTurnRunner(
             {
                 ["callId"] = callId, ["tool"] = name, ["isError"] = true, ["latencyMs"] = sw.ElapsedMilliseconds, ["result"] = null,
             }, sw.ElapsedMilliseconds);
-            state.ToolCalls.Add(new ToolCallRecord(name, args, "error", 0, [], []));
+            state.ToolCalls.Add(new ToolCallRecord(name, args, "error", 0, [], [], callId, "failed"));
             await state.Events.WriteAsync(new ToolCallFinishedEvent(callId, name, "failed", 0, true), ct);
             return ToolDataEnvelope.Wrap(name, "The tool is temporarily unavailable.");
         }
@@ -227,7 +227,7 @@ public sealed class ChatTurnRunner(
         {
             ["callId"] = callId, ["tool"] = name, ["arguments"] = args, ["outcome"] = outcome, ["durationMs"] = latency,
         });
-        state.ToolCalls.Add(new ToolCallRecord(name, args, outcome, sources.Count, sources.Select(s => s.DocId).Distinct().ToList(), []));
+        state.ToolCalls.Add(new ToolCallRecord(name, args, outcome, sources.Count, sources.Select(s => s.DocId).Distinct().ToList(), [], callId, summary));
         await state.Events.WriteAsync(new ToolCallFinishedEvent(callId, name, summary, sources.Count, isError), ct);
         var envelope = ToolDataEnvelope.Wrap(name, payload);
         state.Trace.Add(TraceKinds.Envelope, $"Data envelope handed to the model ({envelope.Length} chars)", new JsonObject
@@ -303,7 +303,7 @@ public sealed class ChatTurnRunner(
         {
             ["callId"] = call.CallId, ["tool"] = name, ["arguments"] = "", ["outcome"] = "unknown_tool", ["durationMs"] = 0,
         });
-        state.ToolCalls.Add(new ToolCallRecord(name, "", "unknown_tool", 0, [], []));
+        state.ToolCalls.Add(new ToolCallRecord(name, "", "unknown_tool", 0, [], [], call.CallId, "tool does not exist"));
         await state.Events.WriteAsync(new ToolCallFinishedEvent(call.CallId, name, "tool does not exist", 0, true), ct);
     }
 
@@ -348,10 +348,22 @@ public sealed class ChatTurnRunner(
             Intent = intent.ToString(),
             ForcedRetrieval = forced,
             ToolCallsJson = JsonSerializer.Serialize(toolCalls, Json),
-            SourcesJson = JsonSerializer.Serialize(sources.Select(s => new { s.DocId, s.SectionPath }), Json),
+            // Full source references so the conversation can be restored; the review queue reads docId/sectionPath.
+            SourcesJson = JsonSerializer.Serialize(sources, Json),
             SignalsJson = JsonSerializer.Serialize(signals, Json),
             CreatedAt = time.GetUtcNow().UtcDateTime,
         });
+        var conversation = await ctx.Conversations.FirstOrDefaultAsync(c => c.Id == conversationId, ct);
+        if (conversation is not null)
+        {
+            conversation.LastActivityAt = time.GetUtcNow().UtcDateTime;
+            // The default title is the conversation's FIRST question, so continuing an older, untitled conversation
+            // never renames it to a later question.
+            if (conversation.Title is null && !await ctx.Turns.AnyAsync(t => t.ConversationId == conversationId && t.Id != turnId, ct))
+            {
+                conversation.Title = History.ConversationTitles.FromQuestion(question);
+            }
+        }
         await ctx.SaveChangesAsync(ct);
     }
 

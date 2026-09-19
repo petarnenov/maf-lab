@@ -16,6 +16,7 @@ public sealed class ConversationService(IDbContextFactory<MafDbContext> db, Time
             UserId = principal.UserId,
             FirmId = principal.FirmId.Value,
             CreatedAt = time.GetUtcNow().UtcDateTime,
+            LastActivityAt = time.GetUtcNow().UtcDateTime,
         };
         ctx.Conversations.Add(row);
         await ctx.SaveChangesAsync(ct);
@@ -31,7 +32,7 @@ public sealed class ConversationService(IDbContextFactory<MafDbContext> db, Time
         }
         await using var ctx = await db.CreateDbContextAsync(ct);
         var owned = await ctx.Conversations.AnyAsync(
-            c => c.Id == conversationId && c.UserId == principal.UserId && c.FirmId == principal.FirmId.Value, ct);
+            c => c.Id == conversationId && c.UserId == principal.UserId && c.FirmId == principal.FirmId.Value && c.DeletedAt == null, ct);
         return owned ? conversationId : null;
     }
 }

@@ -1,11 +1,41 @@
-/* Two panes: conversation left, behind-the-scenes monitor right; stacked below 1024px. */
+/* History | conversation | behind-the-scenes monitor; history is a drawer and panes stack below 1024px. */
 .page {
   display: grid;
-  grid-template-columns: minmax(420px, 1fr) minmax(480px, 1.2fr);
+  grid-template-columns: 260px minmax(380px, 1fr) minmax(440px, 1.2fr);
   gap: 16px;
   height: calc(100vh - 120px);
   max-width: 1800px;
   margin: 0 auto;
+}
+
+.historyCollapsed {
+  grid-template-columns: 44px minmax(420px, 1fr) minmax(480px, 1.2fr);
+}
+
+.historyPane {
+  min-height: 0;
+  min-width: 0;
+}
+
+.drawerToggle {
+  display: none;
+}
+
+.drawerBackdrop {
+  display: none;
+}
+
+.notFound {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.muted {
+  color: var(--muted);
 }
 
 .chatPane {
@@ -21,9 +51,40 @@
 }
 
 @media (max-width: 1023px) {
-  .page {
+  .page,
+  .historyCollapsed {
     grid-template-columns: 1fr;
     height: auto;
+  }
+
+  .historyPane {
+    display: none;
+  }
+
+  .historyPane.drawerOpen {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(320px, 85vw);
+    z-index: 15;
+    padding: 12px;
+    background: var(--surface);
+    box-shadow: 2px 0 12px rgb(0 0 0 / 25%);
+  }
+
+  .drawerBackdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 14;
+    border: 0;
+    background: rgb(0 0 0 / 30%);
+  }
+
+  .drawerToggle {
+    display: inline-block;
   }
 
   .chatPane {

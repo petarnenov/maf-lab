@@ -43,6 +43,21 @@ SSE frames are `event: <name>\ndata: <json>\n\n`:
 
 Errors during a streamed turn arrive as `done.error` (short user-facing text); there is no separate `error` event.
 
+## Conversation history (owner only)
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | `/api/conversations?search=&limit=&before=` | — | `{ conversations: [{ conversationId, title, createdAt, lastActivityAt, turnCount }], nextCursor }` — own, non-deleted, non-empty conversations, newest activity first; `search` matches title, questions and answers (case-insensitive); `limit` default 30, max 100; pass `nextCursor` as `before` for the next page |
+| GET | `/api/conversations/{id}` | — | `{ conversationId, title, createdAt, lastActivityAt, turns: [HistoryTurn] }`; `404` when not owned or deleted |
+| PATCH | `/api/conversations/{id}` | `{ title }` (1–120 chars) | `204`; `400` invalid title; `404` |
+| DELETE | `/api/conversations/{id}` | — | `204` (soft delete: hidden, cannot be continued; turns stay for the review queue); `404` |
+
+`HistoryTurn` = `{ turnId, question, answer, createdAt, toolCalls: [{ callId?, toolName, argumentSummary, outcome,
+resultSummary?, sourceCount }], sources: [{ docId, sectionPath, sourcePath, snippet }], feedbackKinds: [string],
+traceAvailable }`. Turns stored before this change may have empty `sourcePath`/`snippet` and null `callId`/`resultSummary`.
+The default title is the first question (≤ 80 chars, cut at a word boundary with "…"). `POST /api/chat` with a deleted
+conversation id returns `404`.
+
 ## Turn traces
 
 | Method | Path | Response |

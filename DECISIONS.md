@@ -327,3 +327,25 @@ referenced web projects' config files never collide.
   are pull-based, so every delta has already reached the runner at that point. The first live run showed the last
   chunk being recorded after `model.response` and `memory`, because it was flushed only at turn end.
 - **Out of scope:** time travel across turns or conversations, and server-side re-execution of a turn.
+
+## 17. Chat history (add-chat-history, 2026-09-19)
+
+- **Additive schema evolution:** `DatabaseInitializer` now runs in three steps: create missing tables, add missing
+  columns (`PRAGMA table_info` then `ALTER TABLE … ADD COLUMN`, with NOT NULL columns getting typed defaults), and
+  finally create indexes, because indexes may reference the new columns.
+  - Two replicas starting together are fine: a "duplicate column" error from the loser is ignored (tested with
+    concurrent initializers on an old-schema database).
+  - `LastActivityAt` is backfilled from the latest turn, or else `CreatedAt`.
+  - This replaces EF migrations for the lab. Destructive or renaming changes would need a real migration.
+- **Soft delete:** `ConversationRow.DeletedAt` hides a conversation from history and makes chat return 404 for it.
+  Turns, feedback, labels and traces stay, so the review queue and eval datasets are unaffected (tested). Hard
+  deletion would belong to a retention policy.
+- **Full restore:** turns now persist full `SourceRef`s (with source path and snippet), and `ToolCallRecord` carries
+  optional `CallId` and `ResultSummary`, so restored turns render like live ones. Older rows keep working with empty or
+  null fields.
+- **Titles:** default to the first question, whitespace collapsed and cut at a word boundary before 80 characters,
+  with "…". Renames are 1–120 characters. The title is stored when the first turn is persisted.
+- **Listing and search:** owner-only (user and firm must match), non-deleted, at least one turn; ordered by
+  `LastActivityAt DESC, Id DESC`, with an opaque `ticks:id` cursor. Search is SQLite `LIKE` (case-insensitive for
+  ASCII) over the title and each turn's question and answer.
+  - **Trigger for FTS5:** search latency above ~100 ms, or non-ASCII case folding needs.

@@ -1,4 +1,4 @@
-import type { ChatStreamEvent, SourceRef } from '../api/types';
+import type { ChatStreamEvent, FeedbackKind, HistoryTurn, SourceRef } from '../api/types';
 import { initialTraceState, traceReducer, type TraceState } from '../monitor/traceReducer';
 
 export interface ToolCallView {
@@ -27,6 +27,12 @@ export interface AssistantTurn {
   /** Server-issued turn id, known once `done` arrives. Feedback needs it. */
   turnId?: string;
   error?: string;
+  /** Restored turns: false once the stored trace has passed its retention period. */
+  traceAvailable?: boolean;
+  /** Restored turns: feedback the user already sent for this turn. */
+  feedbackKinds?: FeedbackKind[];
+  /** True for turns loaded from conversation history rather than streamed in this session. */
+  restored?: boolean;
 }
 
 export type Turn = UserTurn | AssistantTurn;
@@ -43,7 +49,8 @@ export type ChatAction =
   | { type: 'send'; userTurnId: string; assistantTurnId: string; text: string }
   | { type: 'event'; event: ChatStreamEvent }
   | { type: 'stream_error'; message: string }
-  | { type: 'reset' };
+  | { type: 'reset' }
+  | { type: 'hydrate'; conversationId: string; turns: HistoryTurn[] };
 
 export const initialChatState: ChatState = {
   turns: [],
@@ -86,7 +93,48 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
     case 'reset':
       return initialChatState;
+
+    case 'hydrate':
+      return {
+        conversationId: action.conversationId,
+        streaming: false,
+        traces: initialTraceState,
+        turns: action.turns.flatMap((t) => hydrateTurn(t)),
+      };
   }
+}
+
+/** Converts a stored turn into the same user + assistant shape live turns use. */
+export function hydrateTurn(turn: HistoryTurn): Turn[] {
+  return [
+    { id: `hu-${turn.turnId}`, role: 'user', text: turn.question },
+    {
+      id: `ha-${turn.turnId}`,
+      role: 'assistant',
+      text: turn.answer,
+      turnId: turn.turnId,
+      status: 'done',
+      restored: true,
+      traceAvailable: turn.traceAvailable,
+      feedbackKinds: turn.feedbackKinds,
+      sources: turn.sources.map((s) => ({
+        docId: s.docId,
+        sectionPath: s.sectionPath,
+        sourcePath: s.sourcePath ?? '',
+        snippet: s.snippet ?? '',
+      })),
+      toolCalls: turn.toolCalls.map((c, i) => ({
+        callId: c.callId ?? `${turn.turnId}-${i}`,
+        toolName: c.toolName,
+        argumentSummary: c.argumentSummary,
+        status: 'finished',
+        // Turns stored before summaries were persisted fall back to the outcome.
+        resultSummary: c.resultSummary ?? c.outcome,
+        sourceCount: c.sourceCount,
+        isError: c.outcome !== 'ok',
+      })),
+    },
+  ];
 }
 
 function applyEvent(state: ChatState, event: ChatStreamEvent): ChatState {

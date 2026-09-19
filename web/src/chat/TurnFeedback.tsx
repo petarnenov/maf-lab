@@ -13,12 +13,19 @@ const BUTTONS: { kind: FeedbackKind; label: string }[] = [
 export function TurnFeedback({
   conversationId,
   turnId,
+  initialSent = [],
 }: {
   conversationId: string;
   turnId: string;
+  /** Kinds already sent for this turn (restored conversations). */
+  initialSent?: FeedbackKind[];
 }) {
   const api = useApi();
-  const [state, dispatch] = useReducer(feedbackReducer, {});
+  const [state, dispatch] = useReducer(feedbackReducer, undefined, () =>
+    initialSent.length === 0
+      ? {}
+      : { [turnId]: Object.fromEntries(initialSent.map((k) => [k, 'sent' as const])) },
+  );
 
   async function send(kind: FeedbackKind) {
     if (

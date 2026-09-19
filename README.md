@@ -46,6 +46,14 @@ make help                  # every target
 | `make doctor` | Check Docker, .NET SDK, Node, make, `OLLAMA_API_KEY` (value never printed) |
 | `make clean` | Remove the stack **with volumes** and build outputs (asks; `FORCE=1` to skip) |
 
+## Chat history
+
+The left sidebar of `/chat` lists your own conversations, most recent activity first. You can search titles, questions
+and answers. Open a conversation to restore every turn exactly as it looked (answers, tool cards, sources, feedback,
+and the behind-the-scenes trace with time travel while it is kept), then continue it. The active conversation is in
+the URL (`/chat/{id}`), so a reload reopens it. Rename or delete from the item's menu. Delete hides the conversation
+and stops it being continued; its turns stay for the review queue and evals.
+
 ## Behind the scenes
 
 `/chat` shows the conversation on the left and a live **behind-the-scenes monitor** on the right: every step of the turn

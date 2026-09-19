@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { authHeaders } from '../api/client';
-import type { ChatRequest } from '../api/types';
+import type { ChatRequest, ConversationDetail } from '../api/types';
 import { useAuth } from '../auth/useAuth';
 import { chatReducer, initialChatState } from './chatReducer';
 import { readChatStream } from './readChatStream';
@@ -72,10 +72,18 @@ export function useChatStream() {
 
   const reset = useCallback(() => {
     abortRef.current?.abort();
+    conversationRef.current = undefined;
     dispatch({ type: 'reset' });
   }, []);
 
-  return { state, send, reset };
+  /** Replaces the chat with a stored conversation; further messages continue it. */
+  const hydrate = useCallback((detail: ConversationDetail) => {
+    abortRef.current?.abort();
+    conversationRef.current = detail.conversationId;
+    dispatch({ type: 'hydrate', conversationId: detail.conversationId, turns: detail.turns });
+  }, []);
+
+  return { state, send, reset, hydrate };
 }
 
 function failureMessage(status: number): string {

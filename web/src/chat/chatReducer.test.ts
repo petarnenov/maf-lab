@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ChatStreamEvent } from '../api/types';
+import type { ChatStreamEvent, HistoryTurn } from '../api/types';
 import { chatReducer, initialChatState, type AssistantTurn, type ChatState } from './chatReducer';
 
 const send = (state: ChatState = initialChatState) =>
@@ -138,5 +138,89 @@ describe('chatReducer', () => {
     });
     expect(state.conversationId).toBe('conv-1');
     expect(state.turns).toHaveLength(4);
+  });
+});
+
+describe('hydrate', () => {
+  const stored: HistoryTurn = {
+    turnId: 't1',
+    question: 'What if a fee schedule is missing?',
+    answer: 'Assign it and re-run.',
+    createdAt: '2026-09-19T10:00:00Z',
+    toolCalls: [
+      {
+        callId: 'c1',
+        toolName: 'search_documents',
+        argumentSummary: 'query="fee"',
+        outcome: 'ok',
+        resultSummary: '2 snippets',
+        sourceCount: 2,
+      },
+    ],
+    sources: [{ docId: 'd1', sectionPath: 'Fees', sourcePath: 'shared/fees.md', snippet: 's' }],
+    feedbackKinds: ['wrong_document'],
+    traceAvailable: true,
+  };
+
+  it('restores finished turns with tools, sources, feedback and trace availability', () => {
+    const state = chatReducer(send(), {
+      type: 'hydrate',
+      conversationId: 'conv-9',
+      turns: [stored],
+    });
+    expect(state.conversationId).toBe('conv-9');
+    expect(state.streaming).toBe(false);
+    expect(state.turns).toHaveLength(2);
+    expect(state.turns[0]).toMatchObject({ role: 'user', text: stored.question });
+    const turn = assistant(state);
+    expect(turn).toMatchObject({
+      turnId: 't1',
+      text: stored.answer,
+      status: 'done',
+      restored: true,
+      traceAvailable: true,
+      feedbackKinds: ['wrong_document'],
+      sources: stored.sources,
+    });
+    expect(turn.toolCalls).toEqual([
+      {
+        callId: 'c1',
+        toolName: 'search_documents',
+        argumentSummary: 'query="fee"',
+        status: 'finished',
+        resultSummary: '2 snippets',
+        sourceCount: 2,
+        isError: false,
+      },
+    ]);
+  });
+
+  it('handles old rows without a result summary, call id or snippet', () => {
+    const old: HistoryTurn = {
+      ...stored,
+      toolCalls: [
+        {
+          toolName: 'get_billing_run_status',
+          argumentSummary: 'runId=4417',
+          outcome: 'error',
+          resultSummary: null,
+          sourceCount: 0,
+        },
+      ],
+      sources: [{ docId: 'd1', sectionPath: 'Fees', sourcePath: 'shared/fees.md', snippet: '' }],
+      feedbackKinds: [],
+      traceAvailable: false,
+    };
+    const turn = assistant(
+      chatReducer(initialChatState, { type: 'hydrate', conversationId: 'c', turns: [old] }),
+    );
+    expect(turn.toolCalls[0]).toMatchObject({
+      callId: 't1-0',
+      resultSummary: 'error',
+      isError: true,
+      status: 'finished',
+    });
+    expect(turn.sources[0].snippet).toBe('');
+    expect(turn.traceAvailable).toBe(false);
   });
 });

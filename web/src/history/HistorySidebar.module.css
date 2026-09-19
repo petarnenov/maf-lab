@@ -1,0 +1,201 @@
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+  padding-right: 10px;
+}
+
+.rail {
+  align-items: center;
+  padding-right: 6px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.heading {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.iconButton {
+  padding: 2px 8px;
+  min-width: 32px;
+}
+
+.newButton {
+  text-align: left;
+}
+
+.search {
+  font: inherit;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.item {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  border-radius: 6px;
+}
+
+.item:hover {
+  background: var(--surface-2);
+}
+
+.active {
+  background: var(--surface-2);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.itemButton {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  background: transparent;
+  border: 0;
+  padding: 6px 8px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.title {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9rem;
+}
+
+.meta {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.menuWrap {
+  position: relative;
+}
+
+.menuButton {
+  background: transparent;
+  border: 0;
+  padding: 4px 6px;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  min-width: 110px;
+}
+
+.menu button {
+  text-align: left;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 6px 10px;
+}
+
+.renameRow {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+}
+
+.renameInput {
+  font: inherit;
+  padding: 4px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.loadMore {
+  align-self: center;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.error {
+  color: var(--danger);
+  font-size: 0.8rem;
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 35%);
+}
+
+.dialog {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 20px;
+  max-width: 420px;
+  width: calc(100% - 32px);
+}
+
+.dialogTitle {
+  margin: 0 0 8px;
+  font-size: 1rem;
+  word-break: break-word;
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.danger {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}

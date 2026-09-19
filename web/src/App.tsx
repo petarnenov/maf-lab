@@ -11,7 +11,8 @@ export function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<Navigate to="/chat" replace />} />
-        <Route path="chat" element={<ChatPage />} />
+        {/* One optional-segment route keeps ChatPage mounted when a new conversation gets its URL. */}
+        <Route path="chat/:conversationId?" element={<ChatPage />} />
         <Route path="evals" element={<EvalsPage />} />
         <Route
           path="admin/index"

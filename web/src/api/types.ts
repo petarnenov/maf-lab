@@ -236,3 +236,51 @@ export interface EvalReport {
   variants: EvalVariantResult[];
   passed: boolean;
 }
+
+// ---- Conversation history ----
+
+export interface ConversationSummary {
+  conversationId: string;
+  title: string;
+  createdAt: string;
+  lastActivityAt: string;
+  turnCount: number;
+}
+
+export interface ConversationPage {
+  conversations: ConversationSummary[];
+  nextCursor: string | null;
+}
+
+/** callId and resultSummary are null for turns stored before they were persisted. */
+export interface HistoryToolCall {
+  callId?: string | null;
+  toolName: string;
+  argumentSummary: string;
+  outcome: string;
+  resultSummary?: string | null;
+  sourceCount: number;
+}
+
+export interface HistoryTurn {
+  turnId: string;
+  question: string;
+  answer: string;
+  createdAt: string;
+  toolCalls: HistoryToolCall[];
+  sources: SourceRef[];
+  feedbackKinds: FeedbackKind[];
+  traceAvailable: boolean;
+}
+
+export interface ConversationDetail {
+  conversationId: string;
+  title: string;
+  createdAt: string;
+  lastActivityAt: string;
+  turns: HistoryTurn[];
+}
+
+export interface RenameConversationRequest {
+  title: string;
+}

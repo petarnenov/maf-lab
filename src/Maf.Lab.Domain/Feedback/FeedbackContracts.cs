@@ -23,7 +23,9 @@ public sealed record FeedbackRequest(string ConversationId, string TurnId, strin
 
 public sealed record FeedbackAccepted(string FeedbackId);
 
-public sealed record ToolCallRecord(string ToolName, string ArgumentSummary, string Outcome, int SourceCount, IReadOnlyList<string> DocIds, IReadOnlyList<string> ChunkIds);
+/// <summary>CallId and ResultSummary are optional: turns stored before chat history lack them.</summary>
+public sealed record ToolCallRecord(string ToolName, string ArgumentSummary, string Outcome, int SourceCount, IReadOnlyList<string> DocIds, IReadOnlyList<string> ChunkIds,
+    string? CallId = null, string? ResultSummary = null);
 
 public sealed record ReviewQueueItem(
     string TurnId,

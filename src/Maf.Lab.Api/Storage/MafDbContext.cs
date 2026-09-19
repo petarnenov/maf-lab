@@ -20,6 +20,7 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
     protected override void OnModelCreating(ModelBuilder b)
     {
         b.Entity<ConversationRow>().HasKey(x => x.Id);
+        b.Entity<ConversationRow>().HasIndex(x => new { x.UserId, x.FirmId, x.DeletedAt, x.LastActivityAt });
         b.Entity<MessageRow>().HasIndex(x => new { x.ConversationId, x.Id });
         b.Entity<TurnRow>().HasKey(x => x.Id);
         b.Entity<TurnRow>().HasIndex(x => new { x.FirmId, x.CreatedAt });
@@ -42,6 +43,11 @@ public sealed class ConversationRow
     public required string UserId { get; set; }
     public required string FirmId { get; set; }
     public DateTime CreatedAt { get; set; }
+    /// <summary>User-set title; null = derived from the first question.</summary>
+    public string? Title { get; set; }
+    public DateTime LastActivityAt { get; set; }
+    /// <summary>Soft delete: hidden from history and cannot be continued; turns stay for review and evals.</summary>
+    public DateTime? DeletedAt { get; set; }
 }
 
 public sealed class MessageRow
