@@ -33,11 +33,25 @@ export function ChatPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
-  // Opening /chat/:id loads the stored conversation unless it is already the one on screen.
+  /**
+   * The conversation the user is leaving. react-router applies a navigation a tick after it is asked for, so
+   * without this the route still points at the old conversation while the state is already empty — and the cached
+   * answer hydrates it straight back.
+   */
+  const leaving = useRef<string | null>(null);
+  /** Set when a message creates a conversation, so only *that* id is written into the URL. */
+  const urlNeedsId = useRef(false);
+
+  // Opening /chat/:id loads the stored conversation unless it is already the one on screen, or being left.
   const needsLoad = Boolean(routeId) && routeId !== state.conversationId;
   const conversation = useConversation(routeId, needsLoad && Boolean(session));
   useEffect(() => {
-    if (needsLoad && conversation.data && conversation.data.conversationId === routeId) {
+    if (
+      needsLoad &&
+      routeId !== leaving.current &&
+      conversation.data &&
+      conversation.data.conversationId === routeId
+    ) {
       hydrate(conversation.data);
     }
   }, [needsLoad, conversation.data, routeId, hydrate]);
@@ -52,11 +66,17 @@ export function ChatPage() {
       reset();
     }
     previousRoute.current = routeId;
+    // Only once the route has actually moved: clearing it earlier would let the cache hydrate the old conversation.
+    if (routeId !== leaving.current) {
+      leaving.current = null;
+    }
   }, [routeId, reset]);
 
-  // The first answer of a new conversation gives it an id: put it in the URL.
+  // A conversation the user just created by sending a message gives it an id: put it in the URL. Only then —
+  // any other state holding an id the route does not is the user on their way out of it.
   useEffect(() => {
-    if (!routeId && state.conversationId && !state.streaming) {
+    if (urlNeedsId.current && !routeId && state.conversationId && !state.streaming) {
+      urlNeedsId.current = false;
       void navigate(`/chat/${state.conversationId}`, { replace: true });
     }
   }, [routeId, state.conversationId, state.streaming, navigate]);
@@ -117,6 +137,8 @@ export function ChatPage() {
   function startNew() {
     setSelectedKey(null);
     setDrawerOpen(false);
+    leaving.current = routeId ?? null;
+    urlNeedsId.current = false;
     reset();
     void navigate('/chat');
   }
@@ -124,6 +146,7 @@ export function ChatPage() {
   function openConversation(id: string) {
     setSelectedKey(null);
     setDrawerOpen(false);
+    leaving.current = null;
     if (id !== routeId) void navigate(`/chat/${id}`);
   }
 
@@ -131,6 +154,8 @@ export function ChatPage() {
     event.preventDefault();
     if (state.streaming || loadingConversation || !draft.trim()) return;
     setSelectedKey(null);
+    // Sending from /chat creates a conversation; its id belongs in the URL once the answer arrives.
+    urlNeedsId.current = !routeId;
     void send(draft);
     setDraft('');
   }

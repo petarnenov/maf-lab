@@ -186,6 +186,31 @@ describe('ChatPage with history', () => {
     expect(screen.getAllByTestId('assistant-turn')).toHaveLength(1);
   });
 
+  it('starting a new conversation is not undone by the cached one', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.startsWith('/api/conversations?')) return jsonResponse(page('conv-7'));
+        if (url === '/api/conversations/conv-7') return jsonResponse(detail);
+        return jsonResponse({}, 404);
+      }),
+    );
+
+    // Opening the conversation first is what primes the query cache — the cache is the trap.
+    renderChat('/chat/conv-7');
+    expect(await screen.findAllByTestId('assistant-turn')).toHaveLength(2);
+
+    await userEvent.click(screen.getByRole('button', { name: '＋ New conversation' }));
+
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/chat$/);
+    expect(screen.queryAllByTestId('assistant-turn')).toHaveLength(0);
+    expect(screen.queryByText('What if a fee schedule is missing?')).not.toBeInTheDocument();
+    // The cached conversation must not creep back once the route has settled.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/chat$/);
+    expect(screen.queryAllByTestId('assistant-turn')).toHaveLength(0);
+  });
+
   it("switching persona clears the chat and shows only the new user's list", async () => {
     vi.stubGlobal(
       'fetch',
