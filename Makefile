@@ -115,7 +115,8 @@ test-web: require-npm ## Web tests (Vitest)
 lint: lint-dotnet lint-web ## Build .NET with warnings as errors; ESLint + Prettier for web
 
 lint-dotnet: require-dotnet ## .NET build with warnings as errors
-	$(DOTNET) build maf-lab.sln -warnaserror -nologo -v q
+	@# --no-incremental so the analyzers run over every file, as they do on a fresh CI checkout.
+	$(DOTNET) build maf-lab.sln -warnaserror -nologo -v q --no-incremental
 
 lint-web: require-npm ## ESLint + Prettier
 	cd web && { [ -d node_modules ] || $(NPM) ci --silent; } && $(NPM) run lint
