@@ -53,9 +53,9 @@ not intact — the first record at which it breaks.
 
 ### Requirement: Actions that must be recorded
 The record SHALL cover, at least: every tool invocation including attempts to call a tool that does not exist; the
-deletion of a conversation; the production of a compliance export; and every request received from another agent
-over A2A. Each record SHALL carry the kind of action, who performed it, their firm, when, what it concerned in
-identifiers, and its outcome.
+deletion of a conversation; the production of a compliance export; every request received from another agent over
+A2A; and every request this system sends to another agent over A2A. Each record SHALL carry the kind of action,
+who performed it, their firm, when, what it concerned in identifiers, and its outcome.
 
 Recording an action MUST NOT depend on the action's success: a refused or failed action SHALL be recorded with that
 outcome.
@@ -75,6 +75,11 @@ outcome.
 #### Scenario: A partner system's request is recorded
 - **WHEN** a partner system sends a request over A2A
 - **THEN** a record exists of that kind, naming the partner, the operation and the task it concerns
+
+#### Scenario: A consultation of another agent is recorded
+- **WHEN** this system consults a sub-agent over A2A
+- **THEN** a record exists of that kind, naming the agent consulted, the task it concerns, the outcome and the
+  duration — and none of the message content
 
 ### Requirement: Compliance export
 A FIRM_ADMIN SHALL be able to obtain, for a period they specify, a package containing the audited actions, the
