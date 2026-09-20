@@ -91,6 +91,80 @@ describe('ChatPage', () => {
     expect(within(timeline).getAllByRole('listitem')).toHaveLength(3);
   });
 
+  it('the button closes the monitor and opens it again', async () => {
+    const trace = fixtureTrace.slice(0, 3);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/api/chat') {
+          return streamResponse([
+            ...trace.map((e) => run.trace(e)),
+            run.delta('Answer.'),
+            run.done('conv-1', 't1'),
+          ]);
+        }
+        if (url.startsWith('/api/conversations')) return jsonResponse(emptyHistory);
+        return jsonResponse({
+          turnId: 't1',
+          conversationId: 'conv-1',
+          createdAt: '',
+          events: trace,
+        });
+      }),
+    );
+
+    renderWithProviders(<ChatPage />);
+    await userEvent.type(screen.getByLabelText('Message'), 'q');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    const turn = await screen.findByTestId('assistant-turn');
+
+    // The turn the monitor is showing says so, and pressing it closes the panel…
+    await userEvent.click(within(turn).getByRole('button', { name: 'Showing behind the scenes' }));
+    expect(screen.queryByRole('region', { name: 'Behind the scenes' })).not.toBeInTheDocument();
+    expect(turn).toHaveAttribute('data-selected', 'false');
+
+    // …and pressing it again opens it on the same turn. This is the direction that used to do nothing.
+    await userEvent.click(within(turn).getByRole('button', { name: 'Behind the scenes' }));
+    const monitor = screen.getByRole('region', { name: 'Behind the scenes' });
+    expect(
+      await within(monitor).findByText('Intent: Procedural (forced retrieval)'),
+    ).toBeInTheDocument();
+    expect(turn).toHaveAttribute('data-selected', 'true');
+  });
+
+  it('clicking the bubble shows its trace but never closes the monitor', async () => {
+    const trace = fixtureTrace.slice(0, 3);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/api/chat') {
+          return streamResponse([
+            ...trace.map((e) => run.trace(e)),
+            run.delta('Answer.'),
+            run.done('conv-1', 't1'),
+          ]);
+        }
+        if (url.startsWith('/api/conversations')) return jsonResponse(emptyHistory);
+        return jsonResponse({
+          turnId: 't1',
+          conversationId: 'conv-1',
+          createdAt: '',
+          events: trace,
+        });
+      }),
+    );
+
+    renderWithProviders(<ChatPage />);
+    await userEvent.type(screen.getByLabelText('Message'), 'q');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    const turn = await screen.findByTestId('assistant-turn');
+
+    await userEvent.click(turn);
+    expect(screen.getByRole('region', { name: 'Behind the scenes' })).toBeInTheDocument();
+    await userEvent.click(turn);
+    expect(screen.getByRole('region', { name: 'Behind the scenes' })).toBeInTheDocument();
+  });
+
   it('selecting an earlier turn loads its stored trace', async () => {
     let chatCalls = 0;
     const storedFirst = fixtureTrace;

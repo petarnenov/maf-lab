@@ -12,6 +12,15 @@
   grid-template-columns: 44px minmax(420px, 1fr) minmax(480px, 1.2fr);
 }
 
+/* The monitor is closed: the conversation takes the room it leaves. */
+.monitorClosed {
+  grid-template-columns: 260px minmax(380px, 1fr);
+}
+
+.historyCollapsed.monitorClosed {
+  grid-template-columns: 44px minmax(420px, 1fr);
+}
+
 .historyPane {
   min-height: 0;
   min-width: 0;
@@ -52,7 +61,9 @@
 
 @media (max-width: 1023px) {
   .page,
-  .historyCollapsed {
+  .historyCollapsed,
+  .monitorClosed,
+  .historyCollapsed.monitorClosed {
     grid-template-columns: 1fr;
     height: auto;
   }

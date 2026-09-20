@@ -10,7 +10,7 @@ OUT="$(dirname "$0")/../evals/ui-events.jsonl"
 export BASE OUT
 
 python3 - <<'PY'
-import json, os, urllib.request, uuid
+import datetime, json, os, urllib.request, uuid
 
 BASE, OUT = os.environ["BASE"], os.environ["OUT"]
 
@@ -70,8 +70,11 @@ for name, what, message in [
     ("pauses-for-confirmation", "a write that stops for the advisor's approval",
      "adjust the fee on A-1042 down by 200 because the client was overcharged in Q2"),
 ]:
+    # When the run happened. A recording carries real timestamps — a proposal's expiry, above all — so replaying
+    # it a week later would otherwise watch them all go stale. The test sets its clock to this.
+    at = datetime.datetime.now(datetime.timezone.utc).isoformat()
     frames = run(adam, message)
-    rows.append({"id": name, "what": what, "frames": frames, "expect": expected(frames)})
+    rows.append({"id": name, "what": what, "capturedAt": at, "frames": frames, "expect": expected(frames)})
     print(f"{name}: {len(frames)} frames, {len(rows[-1]['expect']['toolCalls'])} tool call(s), "
           f"{rows[-1]['expect']['sources']} source(s), pending={rows[-1]['expect']['pending'] is not None}")
 

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toChatEvents } from './chatEvents';
 import { traceFor } from '../monitor/traceReducer';
 import { chatReducer, initialChatState, type AssistantTurn, type ChatState } from './chatReducer';
@@ -9,6 +9,8 @@ import { chatReducer, initialChatState, type AssistantTurn, type ChatState } fro
 interface RecordedRun {
   id: string;
   what: string;
+  /** When the run happened. Its frames carry real timestamps, so it is replayed at its own moment. */
+  capturedAt: string;
   frames: { event: string; data: unknown }[];
   expect: {
     answer: string;
@@ -27,8 +29,10 @@ const runs: RecordedRun[] = readFileSync(
   .filter((line) => line.trim().length > 0)
   .map((line) => JSON.parse(line) as RecordedRun);
 
-/** Replays a recorded run the way useChatStream does: frame → events → reducer. */
+/** Replays a recorded run the way useChatStream does: frame → events → reducer, at the time it was recorded. */
 function replay(run: RecordedRun): ChatState {
+  // A proposal's expiry is a real moment; a recording replayed on today's clock would always be past it.
+  vi.setSystemTime(new Date(run.capturedAt));
   let state = chatReducer(initialChatState, {
     type: 'send',
     userTurnId: 'u1',
@@ -50,9 +54,13 @@ function assistant(state: ChatState): AssistantTurn {
 }
 
 describe('runs recorded from the running stack', () => {
+  beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
+  afterEach(() => vi.useRealTimers());
+
   // The reducer has always been tested against events a test author wrote. These are the frames the server
   // actually sent, so a change in what it emits fails here — which is when someone should look.
-  it('has all three kinds of run recorded', () => {
+  it('has all three kinds of run recorded, each with when it happened', () => {
+    expect(runs.every((r) => !Number.isNaN(Date.parse(r.capturedAt)))).toBe(true);
     expect(runs.map((r) => r.id)).toEqual([
       'plain-answer',
       'tool-call-with-sources',

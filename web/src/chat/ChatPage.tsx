@@ -30,6 +30,8 @@ export function ChatPage() {
   const [draft, setDraft] = useState('');
   /** Assistant turn the monitor shows; null = follow the latest turn. */
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  /** The monitor is a panel a person opens and closes; it follows the latest turn while it is open. */
+  const [monitorOpen, setMonitorOpen] = useState(true);
   const [historyCollapsed, setHistoryCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
@@ -164,7 +166,11 @@ export function ChatPage() {
   }
 
   return (
-    <div className={`${styles.page} ${historyCollapsed ? styles.historyCollapsed : ''}`}>
+    <div
+      className={`${styles.page} ${historyCollapsed ? styles.historyCollapsed : ''} ${
+        monitorOpen ? '' : styles.monitorClosed
+      }`}
+    >
       <div className={`${styles.historyPane} ${drawerOpen ? styles.drawerOpen : ''}`}>
         <HistorySidebar
           activeId={state.conversationId ?? routeId}
@@ -231,10 +237,22 @@ export function ChatPage() {
                     key={turn.id}
                     turn={turn}
                     conversationId={state.conversationId}
-                    selected={turn.id === selected?.id}
-                    rewound={turn.id === selected?.id ? rewound : null}
+                    selected={monitorOpen && turn.id === selected?.id}
+                    rewound={monitorOpen && turn.id === selected?.id ? rewound : null}
                     onReturnToNow={() => timeTravel.dispatch({ type: 'goLive' })}
-                    onSelect={() => setSelectedKey(turn.id === latest?.id ? null : turn.id)}
+                    onShow={() => {
+                      setSelectedKey(turn.id === latest?.id ? null : turn.id);
+                      setMonitorOpen(true);
+                    }}
+                    onToggle={() => {
+                      // The button on the turn already showing closes the panel; any other turn opens it there.
+                      if (monitorOpen && turn.id === selected?.id) {
+                        setMonitorOpen(false);
+                        return;
+                      }
+                      setSelectedKey(turn.id === latest?.id ? null : turn.id);
+                      setMonitorOpen(true);
+                    }}
                     onAnswer={answer}
                   />
                 ),
@@ -263,21 +281,23 @@ export function ChatPage() {
         </form>
       </div>
 
-      <aside className={styles.monitorPane}>
-        <MonitorPanel
-          events={events}
-          live={isStreaming}
-          timeTravel={timeTravel}
-          loading={!traceExpired && stored.isFetching && events.length === 0}
-          error={
-            traceExpired
-              ? TRACE_EXPIRED
-              : stored.isError && events.length === 0
-                ? 'Could not load the trace for this turn.'
-                : null
-          }
-        />
-      </aside>
+      {monitorOpen && (
+        <aside className={styles.monitorPane}>
+          <MonitorPanel
+            events={events}
+            live={isStreaming}
+            timeTravel={timeTravel}
+            loading={!traceExpired && stored.isFetching && events.length === 0}
+            error={
+              traceExpired
+                ? TRACE_EXPIRED
+                : stored.isError && events.length === 0
+                  ? 'Could not load the trace for this turn.'
+                  : null
+            }
+          />
+        </aside>
+      )}
     </div>
   );
 }
@@ -288,7 +308,8 @@ function AssistantBubble({
   selected,
   rewound,
   onReturnToNow,
-  onSelect,
+  onShow,
+  onToggle,
   onAnswer,
 }: {
   turn: AssistantTurn;
@@ -297,7 +318,10 @@ function AssistantBubble({
   /** Set when time travel shows this turn at an earlier step. */
   rewound: ReconstructedTurn | null;
   onReturnToNow: () => void;
-  onSelect: () => void;
+  /** Clicking the bubble shows this turn in the monitor; it never closes it. */
+  onShow: () => void;
+  /** The button opens the monitor on this turn, or closes it when this turn is the one showing. */
+  onToggle: () => void;
   onAnswer: (adjustmentId: string, approve: boolean) => void;
 }) {
   const toolCalls = rewound ? rewound.toolCalls : turn.toolCalls;
@@ -308,7 +332,7 @@ function AssistantBubble({
       className={`${styles.bubble} ${styles.assistant} ${selected ? styles.selected : ''}`}
       data-testid="assistant-turn"
       data-selected={selected}
-      onClick={onSelect}
+      onClick={onShow}
     >
       <button
         type="button"
@@ -316,7 +340,7 @@ function AssistantBubble({
         aria-pressed={selected}
         onClick={(e) => {
           e.stopPropagation();
-          onSelect();
+          onToggle();
         }}
       >
         {selected ? 'Showing behind the scenes' : 'Behind the scenes'}
