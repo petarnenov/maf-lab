@@ -72,7 +72,8 @@ structured artifact describing the result.
 
 A task that cannot proceed without something the caller did not supply SHALL enter the state that asks for input,
 SHALL say what is missing, and SHALL continue when the caller sends it under the same task. A task SHALL be
-cancellable while it is working, and cancelling SHALL stop it.
+cancellable while it is working, and cancelling SHALL stop it. A task SHALL be cancellable both by the partner
+that started it and by a firm admin of the firm it concerns, since the work is done on that firm's data.
 
 #### Scenario: A question is answered directly
 - **WHEN** a partner asks for the status of a known run
@@ -88,6 +89,10 @@ cancellable while it is working, and cancelling SHALL stop it.
 
 #### Scenario: Cancelled while working
 - **WHEN** a partner cancels a working task
+- **THEN** the task stops and reports that it was cancelled
+
+#### Scenario: Cancelled by the firm it concerns
+- **WHEN** a firm admin cancels a working task started by a partner against their firm
 - **THEN** the task stops and reports that it was cancelled
 
 ### Requirement: A task survives the connection and the replica
