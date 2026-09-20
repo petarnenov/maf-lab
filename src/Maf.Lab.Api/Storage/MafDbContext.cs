@@ -43,6 +43,7 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
         b.Entity<A2ATaskRow>().HasKey(x => x.Id);
         b.Entity<A2ATaskRow>().HasIndex(x => new { x.ContextId, x.UpdatedAt });
         b.Entity<A2ATaskRow>().HasIndex(x => new { x.PartnerId, x.UpdatedAt });
+        b.Entity<A2ATaskRow>().HasIndex(x => new { x.FirmId, x.UpdatedAt });
         b.Entity<A2APushConfigRow>().HasKey(x => x.Id);
         b.Entity<A2APushConfigRow>().HasIndex(x => x.TaskId);
         b.Entity<A2APushDeliveryRow>().HasIndex(x => new { x.TaskId, x.At });
@@ -214,6 +215,9 @@ public sealed class A2ATaskRow
     public required string Id { get; set; }
     public required string ContextId { get; set; }
     public string? PartnerId { get; set; }
+
+    /// <summary>The firm the partner was entitled to act for when the task was created.</summary>
+    public string? FirmId { get; set; }
     public required string State { get; set; }
     /// <summary>The task as the SDK serialises it, including its history and artifacts.</summary>
     public required string Json { get; set; }

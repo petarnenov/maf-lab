@@ -102,6 +102,7 @@ public partial class Program
         app.MapHistory();
         app.MapTopology();
         app.MapCompliance();
+        app.MapA2AAdmin();
         app.MapA2ASurface();
         app.MapA2AProtocol();
         return app;

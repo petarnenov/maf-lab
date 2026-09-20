@@ -53,7 +53,8 @@ public class A2ATaskStoreTests
         var second = new SqliteTaskStore(
             api.Services.GetRequiredService<IDbContextFactory<MafDbContext>>(),
             TimeProvider.System,
-            api.Services.GetRequiredService<PushNotificationDispatcher>());
+            api.Services.GetRequiredService<PushNotificationDispatcher>(),
+            api.Services.GetRequiredService<Maf.Lab.A2A.IPartnerAccessor>());
 
         await first.SaveTaskAsync("t-2", Task("t-2", TaskState.Submitted), Ct);
         var seenBySecond = await second.GetTaskAsync("t-2", Ct);

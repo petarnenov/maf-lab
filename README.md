@@ -86,9 +86,22 @@ run is **simulated**: it walks the real lifecycle over the seeded runs and bills
 final artifact says so (`"simulated": true`), and so does this paragraph.
 
 Two clients prove it from outside: `python3 scripts/a2a_probe.py` speaks the 1.0 wire format and imports no A2A
-library at all, and `dotnet run --project tools/Maf.Lab.A2AProbe` builds an agent from nothing but the card using
-the Agent Framework's A2A client. The preview SDK underneath does not yet speak 1.0 on the wire; every difference
-and what is done about it is in `DECISIONS.md`.
+library at all, and `make eval-a2a` runs `tools/Maf.Lab.A2AProbe`, which builds an agent from nothing but the card
+using the A2A client. The preview SDK underneath does not yet speak 1.0 on the wire; every difference and what is
+done about it is in `DECISIONS.md`.
+
+**Conformance is a dataset, run by an outside client.** `evals/a2a-conformance.jsonl` names what such a client
+must be able to do — discovery, the extended card after authenticating, a direct answer, a streamed task,
+resubscribing after a dropped stream, resuming a task that asked for something, cancelling, a push delivery to a
+webhook it registered, and a request outside its entitlement being refused. The probe reads that file and runs
+the scenario each row names; it has no project reference to `src/`, which is what makes it evidence rather than a
+self-assessment. It writes a report in the same shape every eval suite writes, to `evals/reports/`, and
+`make ci-e2e` runs it. `make eval SUITE=…` does **not** — that target dispatches into the harness, which links
+against the service.
+
+**`/admin/a2a`** (FIRM_ADMIN) is where that traffic is visible: what arrived from partners, what this system
+asked of the reviewer, and every push delivery — each with its state, when it happened and how long it took. A
+task still running can be cancelled from there, through the same protocol call a partner would make.
 
 ## A second agent it consults (A2A, the other way round)
 
@@ -105,8 +118,13 @@ a question back, a timeout that keeps the task id so the answer can be collected
 failure. Each one is written to the same audit record as everything else, with no message content.
 
 That verdict is **simulated** — a threshold and a stopwatch. It binds nobody, and the card, the artifact and this
-paragraph all say so. `dotnet run --project tools/Maf.Lab.A2AProbe` drives both agents from outside, using nothing
-but their cards.
+paragraph all say so. `make eval-a2a` drives both agents from outside, using nothing but their cards.
+
+A verdict is another system's word about our question, so it is checked before it is believed: it must decide,
+and it must decide about the adjustment and the account we asked about. `evals/injection-a2a.jsonl` holds what a
+broken or hostile reviewer might send — an instruction buried in its reason, a verdict about a different account,
+a decision that is neither approved nor refused — and each one is driven through that check and through the write
+flow against a reviewer that answers with it verbatim. None of them changes what executes.
 
 ## The first thing it can change
 
@@ -272,6 +290,10 @@ per-suite override; `retrieval` uses 0.03 because a non-English query is transla
 moved. `/evals` plots any metric across past runs with the baseline marked.
 
 Datasets are JSONL under `evals/`; reports land in `evals/reports/` (JSON for the `/evals` page, Markdown for humans).
+Three of them are not run by the harness: `a2a-conformance.jsonl` is run by the probe (`make eval-a2a`), and
+`injection-a2a.jsonl` and `ui-events.jsonl` are fixture sets driven by tests — the first through the verdict check
+and the write flow, the second replayed through the browser's reducer. `ui-events.jsonl` holds runs captured from
+a running stack by `scripts/capture_ui_events.sh`; re-capture it when what the server emits changes.
 Thresholds are configuration (`src/Maf.Lab.Eval/eval.json` → `Evals:Thresholds`); the command exits non-zero when a
 suite falls below them. Labeled production feedback (UI → `/admin/feedback`) is appended to the datasets, so the next
 run includes it. The contextual-retrieval variant needs a second index:

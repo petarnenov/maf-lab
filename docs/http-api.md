@@ -186,6 +186,23 @@ name, each asked its own `/health`; `facts` are display strings (chunk count, mo
 secret — the chat provider reports only *whether* its key is configured. The report is probed concurrently with a
 2 s budget per service and reused for `cacheSeconds`.
 
+## Agent to agent (FIRM_ADMIN only, otherwise `403`)
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | `/api/admin/a2a` | — | `{ inbound, outbound, deliveries }` |
+| POST | `/api/admin/a2a/tasks/{id}/cancel` | — | `{ taskId, state }`, `404` unknown, `409` already finished |
+
+`inbound` is one row per task a partner started — partner, operation, state, when it started and last changed,
+how long it took, and whether it can still be cancelled. `outbound` is one row per consultation this system asked
+of the reviewer, with its outcome. `deliveries` is every push-webhook attempt, with its attempts and its error.
+No message content appears anywhere: the operation name, the state and the duration are what an operator needs.
+
+Both are scoped by the caller's firm, taken from the principal. An inbound task carries the firm its partner was
+entitled to act for, stamped when the task was created; a task belonging to another firm answers `404`, not
+`403`, because its existence is not the caller's business. Cancelling goes through the same `CancelTask` a
+partner's cancel does, and is itself audited as `a2a.cancel`.
+
 ## Compliance (FIRM_ADMIN only, otherwise `403`)
 
 | Method | Path | Query | Response |

@@ -57,8 +57,12 @@ public static class SpecWire
         return request["pushNotificationConfig"] is not null || request["configId"] is null;
     }
 
-    /// <summary>The methods whose answer is a stream of events rather than a single JSON document.</summary>
-    public static bool IsStreaming(string? specMethod) => specMethod is "message/stream" or "tasks/resubscribe";
+    /// <summary>
+    /// The methods whose answer is a stream of events rather than a single JSON document — under either spelling,
+    /// because an SDK-spelled call streams just as much as a specification-spelled one.
+    /// </summary>
+    public static bool IsStreaming(string? method) => method is
+        "message/stream" or "tasks/resubscribe" or "SendStreamingMessage" or "SubscribeToTask";
 
     private static readonly Dictionary<string, string> RolesToSdk = new(StringComparer.Ordinal)
     {
@@ -197,8 +201,28 @@ public static class SpecWire
             response["result"] = ResultToSpec(result);
             return response;
         }
-        // An error, or a request id echoed with nothing else: there is no payload to translate.
-        return response.ContainsKey("error") || response.ContainsKey("jsonrpc") ? response : ResultToSpec(response);
+        // An error, or an envelope with nothing in it: there is no payload to translate, only the envelope to
+        // make well-formed.
+        return response.ContainsKey("error") || response.ContainsKey("jsonrpc")
+            ? EnsureEnvelope(response)
+            : ResultToSpec(response);
+    }
+
+    /// <summary>
+    /// The repair every answer gets, in either dialect: a JSON-RPC success response carries `result`.
+    ///
+    /// The preview SDK answers a method that returns nothing — deleting a push configuration — with an envelope
+    /// holding neither `result` nor `error`, which its own client then refuses to read. The A2A conformance
+    /// probe found it. An empty answer is an empty object, the way `google.protobuf.Empty` is written here.
+    /// </summary>
+    public static JsonNode? EnsureEnvelope(JsonNode? body)
+    {
+        if (body is JsonObject response && response.ContainsKey("jsonrpc")
+            && !response.ContainsKey("result") && !response.ContainsKey("error"))
+        {
+            response["result"] = new JsonObject();
+        }
+        return body;
     }
 
     private static JsonNode? ResultToSpec(JsonNode? result)
@@ -351,8 +375,10 @@ public static class SpecWire
         {
             config["pushNotificationConfig"] = inner;
         }
-        // The specification identifies a configuration inside the object, not beside it.
-        config.Remove("id");
+        // The id stays beside the configuration as well as inside it. It was dropped here once, on the reading
+        // that the specification identifies a configuration only from within — and the A2A conformance probe
+        // found what that costs: `TaskPushNotificationConfig.id` is required, so every SDK client failed to read
+        // any push-configuration answer at all. A field a client cannot do without is not tidied away.
         return config;
     }
 

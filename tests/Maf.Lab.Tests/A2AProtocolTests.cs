@@ -154,9 +154,14 @@ public class A2AProtocolTests
         }));
         Assert.Equal("http://localhost:9/hook",
             created.GetProperty("pushNotificationConfig").GetProperty("url").GetString());
+        // The id a client needs to fetch or delete this configuration again. Required by the SDK's own type, so a
+        // response without it is one no A2A client can read.
+        Assert.False(string.IsNullOrEmpty(created.GetProperty("id").GetString()), created.GetRawText());
 
         var listed = Result(await RpcAsync(client, "tasks/pushNotificationConfig/list", new { id = "task-push" }));
         Assert.Contains("http://localhost:9/hook", listed.GetRawText());
+        Assert.False(string.IsNullOrEmpty(
+            listed.GetProperty("configs")[0].GetProperty("id").GetString()), listed.GetRawText());
 
         string configId;
         await using (var db = ChatApiTests.Db(api))
@@ -173,6 +178,10 @@ public class A2AProtocolTests
         var deleted = await RpcAsync(client, "tasks/pushNotificationConfig/delete",
             new { id = "task-push", pushNotificationConfigId = configId });
         Assert.False(deleted.TryGetProperty("error", out _), deleted.GetRawText());
+        // Nothing to report is still an answer: JSON-RPC wants `result`, and a client that finds neither it nor
+        // an error cannot read the response at all.
+        Assert.True(deleted.TryGetProperty("result", out var nothing), deleted.GetRawText());
+        Assert.Equal(JsonValueKind.Object, nothing.ValueKind);
 
         await using var after = ChatApiTests.Db(api);
         Assert.Empty(await after.A2APushConfigs.Where(c => c.TaskId == "task-push").ToListAsync(Ct));

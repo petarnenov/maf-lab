@@ -44,7 +44,7 @@ export DOTNET_NOLOGO := 1
 HOST_ENV := Models__OllamaEndpoint=http://localhost:11435
 
 .PHONY: all help up down restart ps logs clean index reindex drift migrate test test-dotnet test-web lint verify \
-        eval eval-accept eval-selection eval-retrieval eval-generation eval-injection dev doctor banner index-if-empty \
+        eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-a2a dev doctor banner index-if-empty \
         specs lint-dotnet lint-web build-web ci ci-e2e \
         require-docker require-dotnet require-npm
 
@@ -131,8 +131,8 @@ specs: require-npm ## Validate all OpenSpec specs and changes (strict)
 
 ci: specs lint-dotnet test-dotnet lint-web test-web build-web ci-e2e ## Run locally what GitHub Actions runs on every push
 
-ci-e2e: require-docker require-dotnet ## Model-free end-to-end: stack with the Ollama stub, index, verify (CI mode)
-	$(MAKE) up index-if-empty verify CI_MODE=1
+ci-e2e: require-docker require-dotnet ## Model-free end-to-end: stack with the Ollama stub, index, verify, A2A conformance (CI mode)
+	$(MAKE) up index-if-empty verify eval-a2a CI_MODE=1
 
 verify: ## Verify the running stack through the load balancer (17 checks)
 	scripts/verify_lb.sh $(BASE_URL)
@@ -159,6 +159,10 @@ eval-injection: require-dotnet ## Eval: prompt-injection pass rate
 
 eval-confirmation: require-dotnet ## Eval: does the summary a person approves say what would happen
 	$(EVAL) confirmation
+
+eval-a2a: require-dotnet ## Conformance: an outside client drives the agents through evals/a2a-conformance.jsonl
+	@# Not $(EVAL): this one is deliberately not run by the harness, which links against the service. See DECISIONS.md.
+	$(DOTNET) run --project tools/Maf.Lab.A2AProbe -- $(BASE_URL)
 
 # ── local development ────────────────────────────────────────────────────────────────────────────────────────────
 dev: require-docker require-dotnet require-npm ## Run mcp/api/web locally without Docker (infra stays in compose); Ctrl-C stops

@@ -58,7 +58,25 @@ public sealed partial class BillingAgentHandler(
     {
         var started = time.GetUtcNow();
         await new TaskUpdater(queue, context.TaskId, context.ContextId).CancelAsync(cancellationToken);
-        await RecordAsync(partners.Current, "cancel", context.TaskId, started, cancellationToken);
+
+        // A cancel can also come from the firm whose data is being worked on, who is not a partner at all. The
+        // task ends the same way; who asked is recorded by whoever asked.
+        if (Partner() is { } partner)
+        {
+            await RecordAsync(partner, "cancel", context.TaskId, started, cancellationToken);
+        }
+    }
+
+    private PartnerPrincipal? Partner()
+    {
+        try
+        {
+            return partners.Current;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

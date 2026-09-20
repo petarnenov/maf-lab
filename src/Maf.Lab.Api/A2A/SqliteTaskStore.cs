@@ -14,7 +14,11 @@ namespace Maf.Lab.Api.A2A;
 /// Every save also tells the dispatcher a state change happened, because the store is the one place every
 /// transition passes through.
 /// </summary>
-public sealed class SqliteTaskStore(IDbContextFactory<MafDbContext> db, TimeProvider time, PushNotificationDispatcher push)
+public sealed class SqliteTaskStore(
+    IDbContextFactory<MafDbContext> db,
+    TimeProvider time,
+    PushNotificationDispatcher push,
+    Maf.Lab.A2A.IPartnerAccessor partners)
     : ITaskStore
 {
     private static readonly JsonSerializerOptions Json = A2AJsonUtilities.DefaultOptions;
@@ -39,7 +43,10 @@ public sealed class SqliteTaskStore(IDbContextFactory<MafDbContext> db, TimeProv
                 {
                     Id = taskId,
                     ContextId = task.ContextId ?? "",
-                    PartnerId = Metadata(task, "partnerId"),
+                    // Who this task belongs to is known at the moment it is created: the request that created it
+                    // was authenticated, and its entitlement is what decides who may see or stop the task later.
+                    PartnerId = Metadata(task, "partnerId") ?? Caller()?.PartnerId,
+                    FirmId = Caller() is { AllowedFirms.Count: > 0 } caller ? caller.AllowedFirms.First().Value : null,
                     State = state,
                     Json = JsonSerializer.Serialize(task, Json),
                     CreatedAt = time.GetUtcNow().UtcDateTime,
@@ -90,6 +97,20 @@ public sealed class SqliteTaskStore(IDbContextFactory<MafDbContext> db, TimeProv
             PageSize = size,
             TotalSize = rows.Count,
         };
+    }
+
+    /// <summary>The partner whose request is being served, when there is one.</summary>
+    private Maf.Lab.A2A.PartnerPrincipal? Caller()
+    {
+        try
+        {
+            return partners.Current;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException)
+        {
+            // Saved outside a partner's request — background work continuing after the response, or a test.
+            return null;
+        }
     }
 
     private static string? Metadata(AgentTask task, string key) =>

@@ -123,6 +123,10 @@ services:
       Topology__DiagramPath: /docs/topology.drawio
     deploy:
       replicas: 2
+    # A push webhook points at whatever the caller registered, and the A2A conformance probe registers one on the
+    # machine running it. Docker Desktop defines this name already; on Linux it has to be asked for.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - api-data:/app-data
       # The A2A billing skill reads the same seeded runs the retrieval server does.

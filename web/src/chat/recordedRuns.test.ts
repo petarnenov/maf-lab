@@ -1,0 +1,96 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { toChatEvents } from './chatEvents';
+import { traceFor } from '../monitor/traceReducer';
+import { chatReducer, initialChatState, type AssistantTurn, type ChatState } from './chatReducer';
+
+/** One run captured from the stack by `scripts/capture_ui_events.sh`. */
+interface RecordedRun {
+  id: string;
+  what: string;
+  frames: { event: string; data: unknown }[];
+  expect: {
+    answer: string;
+    toolCalls: string[];
+    sources: number;
+    traceSteps: number;
+    pending: { id: string; reason: string } | null;
+  };
+}
+
+const runs: RecordedRun[] = readFileSync(
+  join(process.cwd(), '..', 'evals', 'ui-events.jsonl'),
+  'utf8',
+)
+  .split('\n')
+  .filter((line) => line.trim().length > 0)
+  .map((line) => JSON.parse(line) as RecordedRun);
+
+/** Replays a recorded run the way useChatStream does: frame → events → reducer. */
+function replay(run: RecordedRun): ChatState {
+  let state = chatReducer(initialChatState, {
+    type: 'send',
+    userTurnId: 'u1',
+    assistantTurnId: 'a1',
+    text: 'recorded',
+  });
+  for (const frame of run.frames) {
+    for (const event of toChatEvents({ event: frame.event, data: JSON.stringify(frame.data) })) {
+      state = chatReducer(state, { type: 'event', event });
+    }
+  }
+  return state;
+}
+
+function assistant(state: ChatState): AssistantTurn {
+  const turn = state.turns.find((t) => t.role === 'assistant');
+  if (!turn || turn.role !== 'assistant') throw new Error('no assistant turn');
+  return turn;
+}
+
+describe('runs recorded from the running stack', () => {
+  // The reducer has always been tested against events a test author wrote. These are the frames the server
+  // actually sent, so a change in what it emits fails here — which is when someone should look.
+  it('has all three kinds of run recorded', () => {
+    expect(runs.map((r) => r.id)).toEqual([
+      'plain-answer',
+      'tool-call-with-sources',
+      'pauses-for-confirmation',
+    ]);
+  });
+
+  it.each(runs.map((run) => [run.id, run] as const))(
+    '%s reaches the state it recorded',
+    (_id, run) => {
+      const state = replay(run);
+      const turn = assistant(state);
+
+      expect(turn.text).toBe(run.expect.answer);
+      expect(turn.toolCalls.map((c) => c.toolName)).toEqual(run.expect.toolCalls);
+      expect(turn.sources).toHaveLength(run.expect.sources);
+      expect(turn.status).toBe('done');
+
+      // Every tool call the run started also finished; a card left spinning is a bug the browser would show.
+      expect(turn.toolCalls.every((c) => c.status === 'finished')).toBe(true);
+
+      if (run.expect.pending) {
+        expect(turn.confirmation?.adjustmentId).toBe(run.expect.pending.id);
+        expect(turn.confirmationState).toBe('waiting');
+      } else {
+        expect(turn.confirmation).toBeUndefined();
+      }
+
+      // The monitor saw the same run the chat did.
+      expect(traceFor(state.traces, 'a1')).toHaveLength(run.expect.traceSteps);
+    },
+  );
+
+  it('shows no message content in a tool card', () => {
+    const state = replay(runs.find((r) => r.id === 'tool-call-with-sources')!);
+    for (const call of assistant(state).toolCalls) {
+      expect(call.resultSummary ?? '').not.toContain('{');
+      expect(call.argumentSummary).not.toContain('fee schedule is missing');
+    }
+  });
+});

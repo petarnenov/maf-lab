@@ -9,6 +9,7 @@ const LINKS = [
   { to: '/admin/index', label: 'Index admin' },
   { to: '/admin/feedback', label: 'Feedback review' },
   { to: '/admin/compliance', label: 'Compliance' },
+  { to: '/admin/a2a', label: 'Agent to agent' },
 ];
 
 export function Layout() {

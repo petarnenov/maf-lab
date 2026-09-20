@@ -21,17 +21,15 @@ public static class SpecWireMiddleware
 
     private static async Task TranslateAsync(HttpContext context, RequestDelegate next)
     {
-        var (specMethod, spoken) = await RewriteRequestAsync(context);
-        if (!spoken)
-        {
-            // The caller used the SDK's own spelling, so it expects the SDK's own answer. Clients built on the
-            // preview SDK — including the Agent Framework's A2A client — keep working while it lags 1.0.
-            await next(context);
-            return;
-        }
+        var (method, spoken) = await RewriteRequestAsync(context);
+
+        // A caller that used the SDK's own spelling expects the SDK's own answer — clients built on the preview
+        // SDK keep working while it lags 1.0 — but every answer, in either dialect, still has to be a well-formed
+        // JSON-RPC response. So that one repair applies to both, and only the translation depends on the dialect.
+        Func<JsonNode?, JsonNode?> translate = spoken ? SpecWire.ResponseToSpec : SpecWire.EnsureEnvelope;
 
         var original = context.Response.Body;
-        await using var translating = new SpecWireStream(original, SpecWire.IsStreaming(specMethod));
+        await using var translating = new SpecWireStream(original, SpecWire.IsStreaming(method), translate);
         context.Response.Body = translating;
         // The translation changes the length of everything it touches.
         context.Response.OnStarting(state =>
@@ -52,8 +50,8 @@ public static class SpecWireMiddleware
     }
 
     /// <summary>
-    /// Rewrites the request into the SDK's dialect and says which method it was and whether the caller spoke the
-    /// specification — which is also how it expects to be answered.
+    /// Rewrites the request into the SDK's dialect and says which method it was — in whichever spelling the
+    /// caller used — and whether the caller spoke the specification, which is also how it expects to be answered.
     /// </summary>
     private static async Task<(string? SpecMethod, bool SpokeSpec)> RewriteRequestAsync(HttpContext context)
     {
@@ -82,8 +80,9 @@ public static class SpecWireMiddleware
         var specMethod = fromPath is null ? SpecWire.RequestToSdk(body) : fromPath;
         if (specMethod is null)
         {
-            // A JSON-RPC request in the SDK's own spelling: left alone, answer included.
-            return (null, false);
+            // A JSON-RPC request in the SDK's own spelling: left alone. Its method still comes back, because a
+            // streamed answer must be let through event by event whichever dialect asked for it.
+            return ((body as JsonObject)?["method"]?.GetValue<string>(), false);
         }
         if (fromPath is not null)
         {
@@ -133,10 +132,11 @@ public static class SpecWireMiddleware
 /// The response body, translated as it is written. A single document is held until the end because it is one
 /// object; a stream of events is translated event by event, so a caller watching a task keeps seeing it live.
 /// </summary>
-internal sealed class SpecWireStream(Stream inner, bool expectStream) : Stream
+internal sealed class SpecWireStream(Stream inner, bool expectStream, Func<JsonNode?, JsonNode?> translate) : Stream
 {
     private readonly MemoryStream buffer = new();
     private readonly bool streaming = expectStream;
+    private readonly Func<JsonNode?, JsonNode?> translate = translate;
 
     public override bool CanRead => false;
     public override bool CanSeek => false;
@@ -185,7 +185,7 @@ internal sealed class SpecWireStream(Stream inner, bool expectStream) : Stream
             return;
         }
 
-        var translated = Translate(body, SpecWire.ResponseToSpec) ?? body;
+        var translated = Translate(body, translate) ?? body;
         await inner.WriteAsync(translated, cancellationToken);
         await inner.FlushAsync(cancellationToken);
     }
@@ -220,14 +220,14 @@ internal sealed class SpecWireStream(Stream inner, bool expectStream) : Stream
         buffer.SetLength(0);
     }
 
-    private static byte[] TranslateFrame(ReadOnlySpan<byte> frame)
+    private byte[] TranslateFrame(ReadOnlySpan<byte> frame)
     {
         var text = Encoding.UTF8.GetString(frame);
         var translated = new StringBuilder(text.Length);
         foreach (var line in text.Split('\n'))
         {
             if (line.StartsWith("data: ", StringComparison.Ordinal)
-                && Translate(Encoding.UTF8.GetBytes(line[6..]), SpecWire.ResponseToSpec) is { } payload)
+                && Translate(Encoding.UTF8.GetBytes(line[6..]), translate) is { } payload)
             {
                 translated.Append("data: ").Append(Encoding.UTF8.GetString(payload)).Append('\n');
             }

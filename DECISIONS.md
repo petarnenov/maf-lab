@@ -739,3 +739,42 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
   resulting fee the server computed, or it does not — an arithmetic question, not a matter of taste. It is
   checked against the sentence a person actually reads, formatted the way they read it, so a change in how the
   number is written is a change the suite notices.
+
+## 28. What the agents did, and proving it (add-a2a-admin-evals, 2026-09-20)
+
+- **The screen is scoped by a firm on the task, not by the audit.** The plan was to scope `/admin/a2a` by the
+  audit chain, which already knows which firm each A2A request concerned — no new column, one source of truth.
+  Building it disproved that: the audit row is written when the request *finishes*, so a task still running has
+  no record at all, and "what is running right now" is the first question an operator asks. `A2ATaskRow` now
+  carries `FirmId` beside the `PartnerId` it already meant to, both stamped by `SqliteTaskStore` from the same
+  `IPartnerAccessor` that resolved the partner's entitlement. It is not a second tenancy rule — it is the same
+  resolution, written one row earlier. It also fixed an existing hole: `PartnerId` was read by the store and
+  never written by anything.
+- **Cancelling from the screen goes through the protocol.** A firm admin's cancel calls the same
+  `CancelTaskAsync` a partner's does, so a task ends the same way whoever stopped it. The handler's cancel path
+  had to stop requiring an authenticated partner, since an admin has none.
+- **Conformance is run by the probe, not by the eval harness.** `Maf.Lab.Eval` references `Maf.Lab.Api`, which
+  is exactly what disqualifies it from proving what an *outside* client can do. So `evals/a2a-conformance.jsonl`
+  is read by `tools/Maf.Lab.A2AProbe`, which still has no project reference to `src/`, and the probe writes a
+  report in the harness's shape — suite, variant, `passRate`, named failures — so a conformance failure reads
+  like any other failing eval. The cost: `make eval SUITE=…` does not run it, because that target dispatches into
+  the harness. `make eval-a2a` runs the probe and `make ci-e2e` runs it after `verify`.
+- **The dataset found three real defects on its first run**, which is the argument for it existing:
+  `TaskPushNotificationConfig.id` was stripped from every push-configuration answer (the SDK requires it, so no
+  A2A client could read one); a method that returns nothing answered with neither `result` nor `error`, which is
+  not a JSON-RPC success response; and that repair only reached callers who used the specification's spelling,
+  while the SDK's own clients — the ones most likely to call — still got the malformed envelope. The envelope
+  repair now applies to both dialects; only the translation depends on which one was spoken.
+- **A scenario with no runner fails.** The probe dispatches on the name in the row, and a name nothing implements
+  is reported as a failure rather than skipped, because a dataset that can grow a claim nobody checks and still
+  read green is worse than no dataset.
+- **The hostile verdicts are a fixture set, not a model suite.** "A verdict with an embedded instruction changes
+  nothing about what executes" is a claim about code: the verdict is checked before it is believed, and the
+  identifiers carried on afterwards are the ones this system sent. So `evals/injection-a2a.jsonl` is driven
+  through the verdict check *and* through the write flow against a reviewer that answers with the fixture
+  verbatim — each row also asserting what the review's outcome was, so an approval really does reach the advisor
+  and a hostile one really is refused.
+- **The reducer's tests are recordings now.** `evals/ui-events.jsonl` holds three runs as they came off the wire,
+  captured by `scripts/capture_ui_events.sh`, each with the state the browser should reach. Writing them by hand
+  would have made them agree with the reducer by construction; capturing them makes them agree with the server.
+  When the server's events change, these fail — which is when someone should look. Re-capture with that script.
