@@ -81,6 +81,8 @@ public sealed class ReviewAgentHandler(
                     Data = JsonSerializer.SerializeToElement(new
                     {
                         adjustmentId = adjustment.AdjustmentId,
+                        // The account is echoed so the caller can tell that this verdict answers its question.
+                        accountId = adjustment.AccountId,
                         decision = refused ? "refused" : "approved",
                         reason,
                         reviewedAt = time.GetUtcNow().UtcDateTime,

@@ -591,3 +591,78 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
 - **The assistant holds its own credentials at the reviewer**, and the two agents' tokens are not
   interchangeable: different audiences, and `scripts/verify_lb.sh` asserts that a billing token is refused at
   `/compliance/a2a`.
+
+## 25. The first write (add-fee-adjustment, 2026-09-20)
+
+- **`Microsoft.Data.Sqlite` 10.0.12 is pinned** and referenced by `Maf.Lab.Retrieval`. The ledger is one table;
+  EF Core there would mean a second `DbContext`, a second model and a second migration story for nine columns.
+- **The MCP server got its own store.** Applied adjustments live in `Maf.Lab.Retrieval`'s SQLite on the
+  `retrieval-data` volume, not in the API's database. The alternatives were worse: having the MCP tool call back
+  into the API makes the server the host calls start calling the host, with a second authentication hop for every
+  write; moving the write tool into the API breaks the project's own rule that a write is confirmed at the MCP
+  layer and gives the model tools from two different sources. The cost is a second database, and it is named
+  here so nobody discovers it by accident.
+- **The seed stays read-only; the ledger is the only thing that moves.** An account's current fee is its seeded
+  fee plus every adjustment applied to it, so `compose/seed/billing-accounts.json` remains a fixture and a test
+  can reason about it.
+- **MRTR `input_required`, not elicitation.** Both exist in ModelContextProtocol 2.2.0. Elicitation would park
+  the tool call inside one API replica while the only channel to the user is that replica's SSE response, and
+  the browser has no way to answer mid-stream; recovering a lost connection would need a pending-call registry
+  pinned to a replica. MRTR ends the turn, and the answer can arrive minutes later, on any replica.
+  `DECISIONS.md` §7 recorded MRTR as "not exercised here"; it is exercised now.
+- **The client resolves input requests itself.** `McpClient.CallToolAsync` sees an `InputRequiredResult`, calls
+  the registered `ElicitationHandler` and retries — with no handler it throws "no ElicitationHandler is
+  registered". There is no opt-out. So the API registers a handler that does not decide: it takes the question
+  down and answers `cancel`, which the tool treats as *nobody was asked* rather than as a refusal. A dismissal
+  and a refusal must not be the same thing, or a user who closes a tab has declined an adjustment.
+- **The proposal is signed, not stored.** The state carries the adjustment id, firm, user, account, amount, a
+  digest of the reason and an expiry, under an HMAC. The second call executes the state and **ignores the
+  arguments**, because the arguments pass through a language model. Nothing needs storing until something is
+  applied, and a confirmation can land on any replica. The key is `Billing:ProposalSigningKey`, falling back to
+  `Auth:SigningKey`; symmetric, because the issuer and the verifier are the same service — a real deployment
+  would sign asymmetrically so a verifier need not hold the secret. The reason travels as a digest so no free
+  text rides along.
+- **The database enforces "applied once".** `UNIQUE (FirmId, AdjustmentId)` refuses the second insert, and that
+  refusal is the answer "already applied" rather than an error. The same `AdminJobRow` pattern: let the store
+  hold the invariant instead of a check that races two replicas.
+- **A pending proposal is a row in the API's database** (`PendingAdjustments`), because the person who answers
+  may reach a different replica or come back tomorrow. It holds the state, the summary shown, the review's task
+  id and how many times the reviewer has asked — never the advisor's words.
+- **No `Microsoft.Agents.AI.Workflows`.** The flow is one branch (a threshold), one bounded loop (at most two
+  questions) and one wait. Taking the package would add a dependency and a second place where control flow
+  lives to express a dozen lines of C# as a graph. What would change it: a second sub-agent, a fan-out, or a
+  flow that must survive a process restart half-way.
+- **Why one assistant agent.** The triggers for splitting an agent are different system prompts, different
+  permissions, different owners or different context budgets. None applies: the billing assistant has one
+  prompt, one principal and one budget, and the reviewer — which does have its own prompt, owner and identity —
+  is already a separate service reached over A2A. A second *local* agent would be ceremony.
+- **No OpenTelemetry.** The Day-4 brief asked for spans carrying the A2A task id. The repo has no OTel and no
+  `ActivitySource`; it has its own turn trace, which the monitor renders and time travel replays. Each step of a
+  write is an `adjustment` trace event carrying the adjustment id and, where one exists, the task id.
+  Introducing a whole observability stack to satisfy one sentence would have been the wrong trade; the gap is
+  recorded instead of half-built.
+- **A verdict is checked before it is believed.** It must carry a decision and name the same adjustment *and*
+  the same account that was sent; anything else counts as a failed review, not as an approval or a refusal. The
+  identifiers carried onwards are the ones this system sent — previously the consumer took `adjustmentId` from
+  the reply, which made an untrusted system the source of the correlation key. The reviewer now echoes the
+  account id so there is something to compare.
+- **A consultation streams.** `SendMessageAsync` cannot report a task id when the deadline fires, so a timeout
+  returned an empty id — exactly when `a2a-client` requires the id be kept. `SendStreamingMessageAsync` gives the
+  id in the first event, and what is known when the deadline falls is all there is.
+- **The card says where it answers; configuration says how to get there.** Found live: the assistant's
+  consultations came back `unreachable` although the reviewer was up. A card is public, so the reviewer
+  advertises `http://localhost:7171/compliance/a2a` — which, from inside the compose network, is the api
+  container itself. Discovery worked (it uses `Compliance:BaseUrl`), the send did not. The consultant now takes
+  the **path** from the card's `supportedInterfaces` and the **origin** from its configured address, as any
+  client behind a reverse proxy does. Assembling the path here instead would be hard-coding a route, which is
+  what the card exists to avoid. This was a pre-existing bug from add-compliance-agent: nothing called the
+  consultant in a production path until this change, and `scripts/verify_lb.sh` reaches the reviewer from the
+  host, where `localhost:7171` *is* the balancer.
+- **A type union change can break a build that lint and tests do not run.** Adding `confirmation_required` to
+  the web's `ChatStreamEvent` made `chatReducer`'s exhaustive switch non-exhaustive. `make lint` (eslint +
+  prettier) and `make test-web` (vitest) both passed; only `tsc -b`, which runs in `make build-web` and in the
+  web image build, caught it — and the failed image build left the stack running the *previous* images, which
+  is how a "healthy" stack served three tools instead of four. `make ci` runs `build-web`, so CI would have
+  caught it; worth remembering when verifying by hand.
+- **Defaults.** `FeeAdjustments:ReviewAboveAmount` is 500 (absolute), `FeeAdjustments:MaxQuestions` is 2,
+  `Billing:ProposalValidFor` is 30 minutes.

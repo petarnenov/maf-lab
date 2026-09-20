@@ -19,6 +19,7 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
     public DbSet<A2ATaskRow> A2ATasks => Set<A2ATaskRow>();
     public DbSet<A2APushConfigRow> A2APushConfigs => Set<A2APushConfigRow>();
     public DbSet<A2APushDeliveryRow> A2APushDeliveries => Set<A2APushDeliveryRow>();
+    public DbSet<PendingAdjustmentRow> PendingAdjustments => Set<PendingAdjustmentRow>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -45,6 +46,9 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
         b.Entity<A2APushConfigRow>().HasKey(x => x.Id);
         b.Entity<A2APushConfigRow>().HasIndex(x => x.TaskId);
         b.Entity<A2APushDeliveryRow>().HasIndex(x => new { x.TaskId, x.At });
+        b.Entity<PendingAdjustmentRow>().HasKey(x => x.Id);
+        b.Entity<PendingAdjustmentRow>().HasIndex(x => new { x.FirmId, x.UserId, x.UpdatedAt });
+        b.Entity<PendingAdjustmentRow>().HasIndex(x => new { x.ConversationId, x.UpdatedAt });
     }
 }
 
@@ -138,6 +142,42 @@ public sealed class AuditRow
 }
 
 /// <summary>An admin job (index, migrate). Shared by all api replicas; the owner keeps HeartbeatAt fresh while it runs.</summary>
+/// <summary>
+/// A proposal that has been made but not yet resolved. It lives here rather than in a replica's memory
+/// because the person who answers it may reach a different replica — or come back tomorrow.
+/// The signed state is what actually executes; this row is how the flow finds it again.
+/// </summary>
+public sealed class PendingAdjustmentRow
+{
+    public required string Id { get; set; }
+    public required string FirmId { get; set; }
+    public required string UserId { get; set; }
+    public required string ConversationId { get; set; }
+    public required string TurnId { get; set; }
+    public required string ToolName { get; set; }
+    public required string State { get; set; }
+    /// <summary>The summary as it was put to the person — identifiers and amounts, no free text.</summary>
+    public required string Summary { get; set; }
+    public required string Status { get; set; }
+    /// <summary>The compliance review this proposal is under, when there is one.</summary>
+    public string? ReviewTaskId { get; set; }
+    /// <summary>How many times the reviewer has asked for a justification. Never more than twice.</summary>
+    public int Questions { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>What has become of a proposal.</summary>
+public static class PendingAdjustmentStatus
+{
+    public const string AwaitingConfirmation = "awaiting_confirmation";
+    public const string AwaitingJustification = "awaiting_justification";
+    public const string Applied = "applied";
+    public const string Declined = "declined";
+    public const string Refused = "refused";
+    public const string Failed = "failed";
+}
+
 public sealed class AdminJobRow
 {
     public required string Id { get; set; }

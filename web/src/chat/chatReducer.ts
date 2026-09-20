@@ -1,4 +1,10 @@
-import type { ChatStreamEvent, FeedbackKind, HistoryTurn, SourceRef } from '../api/types';
+import type {
+  ChatStreamEvent,
+  FeedbackKind,
+  HistoryTurn,
+  SourceRef,
+  ConfirmationRequiredData,
+} from '../api/types';
 import { initialTraceState, traceReducer, type TraceState } from '../monitor/traceReducer';
 
 export interface ToolCallView {
@@ -33,6 +39,8 @@ export interface AssistantTurn {
   feedbackKinds?: FeedbackKind[];
   /** True for turns loaded from conversation history rather than streamed in this session. */
   restored?: boolean;
+  /** A write this turn put to the advisor. Rendering it is the next change's work. */
+  confirmation?: ConfirmationRequiredData;
 }
 
 export type Turn = UserTurn | AssistantTurn;
@@ -185,6 +193,10 @@ function applyEvent(state: ChatState, event: ChatStreamEvent): ChatState {
 
     case 'sources':
       return updateActiveTurn(state, (turn) => ({ ...turn, sources: event.data.sources }));
+
+    // The card that renders this belongs to the next change; the turn keeps it so nothing is lost meanwhile.
+    case 'confirmation_required':
+      return updateActiveTurn(state, (turn) => ({ ...turn, confirmation: event.data }));
 
     case 'trace': {
       const active = activeTurn(state);

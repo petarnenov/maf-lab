@@ -3,6 +3,7 @@ using Maf.Lab.Retrieval.Store;
 using Maf.Lab.Retrieval.Tools;
 
 using Maf.Lab.Hosting;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Maf.Lab.Retrieval;
 
@@ -19,12 +20,18 @@ public partial class Program
 
         builder.Services.AddMafRetrievalCore(builder.Configuration);
         builder.Services.AddDevJwtAuthentication(builder.Configuration);
+        // The writable store belongs to this server alone, so it is registered here and not in the shared core.
+        builder.Services.AddSingleton<Billing.FeeAdjustmentLedger>();
+        builder.Services.AddSingleton<Billing.AccountFees>();
+        builder.Services.AddSingleton<Billing.ProposalSigner>();
+        builder.Services.TryAddSingleton(TimeProvider.System);
         builder.Services.AddHostedService<BootstrapService>();
         builder.Services
             .AddMcpServer(o => o.ServerInfo = new() { Name = "maf-lab-retrieval", Version = "1.0.0" })
             .WithHttpTransport(o => o.Stateless = true)
             .WithTools<SearchDocumentsTool>()
-            .WithTools<BillingTools>();
+            .WithTools<BillingTools>()
+            .WithTools<FeeAdjustmentTools>();
 
         var app = builder.Build();
         app.UseInstanceHeader();

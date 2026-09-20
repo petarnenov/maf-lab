@@ -19,6 +19,7 @@ x-app-env: &app-env
   Models__OpenAIEndpoint: ${OPENAI_ENDPOINT:-}
   Auth__SigningKey: ${AUTH_SIGNING_KEY:-maf-lab-dev-signing-key-change-me-0123456789}
   Billing__SeedPath: /seed/billing-runs.json
+  Billing__AccountsSeedPath: /seed/billing-accounts.json
   # One A2A partner, so the agent card has something to authenticate. A dev secret, like the signing key above.
   A2A__PublicBaseUrl: ${A2A_PUBLIC_BASE_URL:-http://localhost:7171}
   A2A__Partners__acme-portal__Secret: ${A2A_PARTNER_SECRET:-acme-portal-dev-secret}
@@ -77,8 +78,12 @@ services:
     environment:
       <<: *app-env
       Urls: http://+:8080
+      # Only this server writes, so only this server is told where the ledger lives.
+      Billing__AdjustmentsConnectionString: Data Source=/app-data/maf-lab-adjustments.db
     volumes:
       - ./seed:/seed:ro
+      # The applied-adjustments ledger: the only thing this server writes. Shared by its replicas, like the api's store.
+      - retrieval-data:/app-data
     depends_on:
       qdrant:
         condition: service_healthy
@@ -163,3 +168,4 @@ volumes:
   qdrant-data:
   ollama-models:
   api-data:
+  retrieval-data:

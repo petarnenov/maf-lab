@@ -41,6 +41,9 @@ public partial class Program
         builder.Services.AddSingleton<IToolSource, McpToolSource>();
         builder.Services.AddSingleton<ConversationService>();
         builder.Services.AddSingleton<IIntentClassifier, ModelIntentClassifier>();
+        builder.Services.Configure<Agent.FeeAdjustmentOptions>(builder.Configuration.GetSection("FeeAdjustments"));
+        builder.Services.AddScoped<Agent.FeeAdjustmentFlow>();
+        builder.Services.AddScoped<Agent.ConfirmationService>();
         builder.Services.AddScoped<ChatTurnRunner>();
         builder.Services.AddSingleton<DatasetWriter>();
         builder.Services.Configure<AdminJobOptions>(builder.Configuration.GetSection("AdminJobs"));

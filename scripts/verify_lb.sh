@@ -74,7 +74,9 @@ def mcp(method, params, tok):
 
 status, _, listing = mcp("tools/list", {}, adam)
 names = sorted(t["name"] for t in listing.get("result", {}).get("tools", []))
-check("MCP tools/list through /mcp", names == ["get_billing_run_status", "search_billing_runs", "search_documents"], str(names or listing))
+check("MCP tools/list through /mcp",
+      names == ["get_billing_run_status", "propose_fee_adjustment", "search_billing_runs", "search_documents"],
+      str(names or listing))
 mcp_instances = collections.Counter()
 ok_calls = 0
 for _ in range(8):
@@ -231,6 +233,41 @@ if reviewer:
         replicas.add(headers.get("X-Instance"))
     check("the compliance tier answers from more than one replica", len(replicas) >= 2,
           str(sorted(r for r in replicas if r)))
+
+# 4.6 a write proposed on one replica and confirmed through the balancer --------------------------------
+# The MCP server keeps nothing between the two calls, so whichever replica answers must honour the proposal.
+def propose(request_state=None, approve=None):
+    params = {"name": "propose_fee_adjustment",
+              "arguments": {"accountId": "A-1042", "amount": -200, "reason": "verify_lb end-to-end check"}}
+    if request_state:
+        params["requestState"] = request_state
+    if approve is not None:
+        params["inputResponses"] = {"confirmation": {"action": "accept" if approve else "decline",
+                                                     "content": {"approve": True} if approve else None}}
+    _, _, body = mcp("tools/call", params, adam)
+    return body
+
+asked = propose().get("result", {})
+state = asked.get("requestState")
+check("a proposal asks for input and writes nothing", bool(state) and bool(asked.get("inputRequests")),
+      json.dumps(asked)[:140])
+
+if state:
+    summary = next((r.get("params", {}).get("_meta", {}).get("maf-lab/adjustment", {})
+                    for r in (asked.get("inputRequests") or {}).values()), {})
+    check("the proposal names the account, its fee and what it would become",
+          summary.get("accountId") == "A-1042" and "currentFee" in summary and "resultingFee" in summary,
+          json.dumps(summary)[:140])
+
+    first = propose(state, approve=True).get("result", {}).get("structuredContent", {})
+    check("confirming through the balancer applies it", first.get("status") == "applied",
+          json.dumps(first)[:140])
+
+    second = propose(state, approve=True).get("result", {}).get("structuredContent", {})
+    check("confirming the same proposal twice applies it once",
+          second.get("status") == "already_applied"
+          and second.get("adjustment", {}).get("currentFee") == first.get("adjustment", {}).get("currentFee"),
+          json.dumps(second)[:140])
 
 print()
 print("ALL CHECKS PASSED" if not failures else f"{len(failures)} CHECK(S) FAILED: {failures}")

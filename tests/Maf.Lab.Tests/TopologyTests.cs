@@ -238,8 +238,9 @@ public class TopologyTests
 
         var node = (await GetAsync(api)).Nodes.Single(n => n.Id == "mcp");
 
-        Assert.StartsWith("3: ", node.Facts["tools"]);
+        Assert.StartsWith("4: ", node.Facts["tools"]);
         Assert.Contains("search_documents", node.Facts["tools"]);
+        Assert.Contains(Maf.Lab.Domain.Billing.FeeAdjustmentTool.Name, node.Facts["tools"]);
         Assert.Equal(NodeHealth.Healthy, node.Health);
     }
 

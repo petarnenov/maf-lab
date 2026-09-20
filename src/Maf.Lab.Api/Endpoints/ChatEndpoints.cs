@@ -41,6 +41,32 @@ public static class ChatEndpoints
             return TypedResults.ServerSentEvents(Stream(runner, principal, token, conversationId, request.Message.Trim(), ct));
         });
 
+        // A person's answer to a proposal. Approving applies what was proposed; rejecting applies nothing.
+        api.MapPost("/chat/confirm", async (ConfirmationDecision decision, HttpContext http, IPrincipalAccessor principals,
+            ConversationService conversations, ConfirmationService confirmations, CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(decision.AdjustmentId))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["adjustmentId"] = ["adjustmentId is required."] });
+            }
+            var principal = principals.Current;
+            var conversationId = await conversations.ResolveAsync(principal, decision.ConversationId, ct);
+            if (conversationId is null)
+            {
+                return Results.NotFound();
+            }
+            var token = http.Request.Headers.Authorization.ToString()["Bearer ".Length..].Trim();
+            var outcome = await confirmations.AnswerAsync(principal, token, conversationId, decision.AdjustmentId, decision.Approve, ct);
+            return outcome switch
+            {
+                ConfirmationOutcome.Applied applied => Results.Ok(applied.Result),
+                ConfirmationOutcome.Rejected => Results.Ok(new FeeAdjustmentOutcomeDto(
+                    "declined", null, "Nothing was applied. The advisor declined the adjustment.")),
+                ConfirmationOutcome.NotFound => Results.NotFound(),
+                _ => Results.Problem(((ConfirmationOutcome.Failed)outcome).Message, statusCode: StatusCodes.Status503ServiceUnavailable),
+            };
+        });
+
         return app;
     }
 

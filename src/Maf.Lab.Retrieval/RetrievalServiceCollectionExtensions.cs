@@ -41,6 +41,7 @@ public static class RetrievalServiceCollectionExtensions
                 : new NoOpQueryTranslator());
         services.TryAddSingleton<DocumentSearchService>();
         services.TryAddSingleton<BillingSeedStore>();
+        services.TryAddSingleton<BillingAccountStore>();
         return services;
     }
 }

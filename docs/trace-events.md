@@ -22,6 +22,7 @@ trace at 1 MB; `truncated: true` marks a capped event. JSON is camelCase.
 | `envelope` | `{ callId, tool, text }` — the exact `<tool_data>` string the model received |
 | `tool.unknown` | `{ callId, tool }` — the model asked for a tool that does not exist |
 | `audit` | `{ callId, tool, arguments, outcome, durationMs }` — the audit row written (identifiers only) |
+| `adjustment` | `{ callId, step, adjustmentId, accountId, amount, currentFee, resultingFee, taskId?, outcome? }` — one per step of a write: `proposed`, `reviewed` (with the A2A task id and the reviewer's outcome), `awaiting_confirmation`. Never the advisor's reason or the reviewer's words |
 | `sources` | `{ sources: [{ docId, sectionPath }] }` |
 | `signals` | `{ signals: [string] }` |
 | `memory` | `{ stored: [{ role, tokens }] }` |

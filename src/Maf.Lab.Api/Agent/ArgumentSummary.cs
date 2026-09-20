@@ -5,7 +5,7 @@ namespace Maf.Lab.Api.Agent;
 /// <summary>Identifier-only view of tool arguments for audit logs and UI cards. Free-text fields are never included.</summary>
 public static class ArgumentSummary
 {
-    private static readonly HashSet<string> FreeText = new(StringComparer.OrdinalIgnoreCase) { "query", "question", "text", "message", "comment", "note" };
+    private static readonly HashSet<string> FreeText = new(StringComparer.OrdinalIgnoreCase) { "query", "question", "text", "message", "comment", "note", "reason", "justification" };
 
     public static string From(IDictionary<string, object?>? arguments)
     {

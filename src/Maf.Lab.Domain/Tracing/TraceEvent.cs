@@ -26,6 +26,8 @@ public static class TraceKinds
     public const string AnswerDelta = "answer.delta";
     public const string ToolUnknown = "tool.unknown";
     public const string Audit = "audit";
+    /// <summary>A step of a write: proposed, reviewed, confirmed, rejected or applied.</summary>
+    public const string Adjustment = "adjustment";
     public const string Sources = "sources";
     public const string Signals = "signals";
     public const string Memory = "memory";

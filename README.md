@@ -108,6 +108,29 @@ That verdict is **simulated** — a threshold and a stopwatch. It binds nobody, 
 paragraph all say so. `dotnet run --project tools/Maf.Lab.A2AProbe` drives both agents from outside, using nothing
 but their cards.
 
+## The first thing it can change
+
+Everything else the assistant does can be undone by closing the tab. `propose_fee_adjustment` is the exception —
+and it cannot use itself. Asking for a fee to be adjusted gets you a **proposal**, never a change: the tool
+returns the account, its current fee, the amount, the fee that would result and the period it would affect, and
+the turn ends there. The adjustment happens only when the advisor answers, and only then.
+
+What the advisor confirms is what executes. The proposal travels back as an opaque, signed token, and the second
+call runs *that* rather than whatever the model repeated in the meantime — point it at another account and the
+original one is still what moves. Approving twice charges once: the ledger's unique key refuses the second
+application and reports the first one's result. Nothing is stored until something is actually applied; the seeded
+accounts stay read-only, and an account's current fee is the seed plus its applied adjustments.
+
+Above a configured amount (`FeeAdjustments:ReviewAboveAmount`, 500 by default) the compliance reviewer sees it
+before the advisor does. Its refusal ends the flow, its question is put to the advisor and answered under the
+same review, and a timeout, an unreachable reviewer or a failure ends the flow with an explanation — never with a
+confirmation, and never with a write. Its verdict is treated as coming from a system this one does not control:
+checked against the account and adjustment that were sent, and handed to the model as data. An instruction
+embedded in it changes nothing, because nothing reads it for instructions.
+
+Every step — proposed, reviewed, confirmed, rejected, applied — is in the audit record under `fee.adjustment`,
+naming the person who acted and the account, and never the reason they gave.
+
 ## Behind the scenes
 
 `/chat` shows the conversation on the left and a live **behind-the-scenes monitor** on the right: every step of the turn

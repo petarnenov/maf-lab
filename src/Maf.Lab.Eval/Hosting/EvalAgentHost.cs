@@ -69,6 +69,14 @@ public sealed class EvalAgentHost : IAsyncDisposable
         services.AddSingleton<IToolSource, McpToolSource>();
         services.AddSingleton<ConversationService>();
         services.AddSingleton<IIntentClassifier, ModelIntentClassifier>();
+        // The write flow: an eval turn can propose an adjustment, so the turn runner needs it. No compliance
+        // agent is configured here, so a proposal over the threshold ends as "unreachable" — which is an
+        // honest outcome for a suite that measures which tool the model picks, not what a reviewer says.
+        services.Configure<FeeAdjustmentOptions>(configuration.GetSection("FeeAdjustments"));
+        services.Configure<Maf.Lab.Api.A2A.ComplianceOptions>(configuration.GetSection("Compliance"));
+        services.AddHttpClient("a2a-consult");
+        services.AddSingleton<Maf.Lab.Api.A2A.ComplianceConsultant>();
+        services.AddTransient<FeeAdjustmentFlow>();
         services.AddTransient<ChatTurnRunner>();
 
         var provider = services.BuildServiceProvider();

@@ -197,7 +197,7 @@ public sealed class TopologyProbe(
         try
         {
             using var cts = Linked(timeout, ct);
-            await using var set = await tools.GetToolsAsync(bearerToken, cts.Token);
+            await using var set = await tools.GetToolsAsync(bearerToken, null, cts.Token);
             toolNames = [.. set.Names.Order()];
         }
         catch (Exception ex)

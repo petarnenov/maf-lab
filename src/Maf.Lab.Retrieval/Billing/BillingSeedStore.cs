@@ -64,20 +64,6 @@ public sealed class BillingSeedStore
             .Where(char.IsLetterOrDigit).ToArray());
 
     /// <summary>Billing:SeedPath if set; otherwise compose/seed/billing-runs.json of the repository containing the working directory.</summary>
-    internal static string ResolvePath(IConfiguration configuration)
-    {
-        if (configuration["Billing:SeedPath"] is { Length: > 0 } configured)
-        {
-            return Path.GetFullPath(configured);
-        }
-        for (var dir = new DirectoryInfo(Directory.GetCurrentDirectory()); dir is not null; dir = dir.Parent)
-        {
-            var candidate = Path.Combine(dir.FullName, "compose", "seed", "billing-runs.json");
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
-        return Path.Combine(AppContext.BaseDirectory, "seed", "billing-runs.json");
-    }
+    internal static string ResolvePath(IConfiguration configuration) =>
+        SeedPaths.Resolve(configuration, "Billing:SeedPath", "billing-runs.json");
 }

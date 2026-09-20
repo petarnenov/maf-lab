@@ -90,7 +90,7 @@ public class TurnTraceTests
         Assert.True(intent.GetProperty("forcedRetrieval").GetBoolean());
         var prompt = trace.Single(t => t.Kind == TraceKinds.Prompt).Data;
         Assert.Contains("<tool_data>", prompt.GetProperty("systemPrompt").GetString());
-        Assert.Equal(3, prompt.GetProperty("tools").GetArrayLength());
+        Assert.Equal(4, prompt.GetProperty("tools").GetArrayLength());
 
         var request = trace.First(t => t.Kind == TraceKinds.ModelRequest).Data;
         Assert.Contains("functionResult", request.GetProperty("messages").GetRawText());

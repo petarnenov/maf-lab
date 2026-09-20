@@ -38,9 +38,11 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
             NullLoggerFactory.Instance, new ServerHttpClientFactory(server));
         var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.ADVISOR, []);
 
-        await using var tools = await source.GetToolsAsync(token, TestContext.Current.CancellationToken);
+        await using var tools = await source.GetToolsAsync(token, null, TestContext.Current.CancellationToken);
 
-        Assert.Equal(["get_billing_run_status", "search_billing_runs", "search_documents"], tools.Names.Order());
+        Assert.Equal(
+            ["get_billing_run_status", "propose_fee_adjustment", "search_billing_runs", "search_documents"],
+            tools.Names.Order());
         var search = (AIFunction)tools.Tools.Single(t => t.Name == "search_documents");
         var result = await search.InvokeAsync(new AIFunctionArguments { ["query"] = "household rebalancing fee" }, TestContext.Current.CancellationToken);
         var (payload, structured, isError) = ToolDataEnvelope.Unpack(result);

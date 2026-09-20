@@ -52,6 +52,28 @@ export interface ToolCallFinishedData {
   isError: boolean;
 }
 
+/** A fee adjustment waiting for the advisor. `state` is opaque: hand it back, never read it. */
+export interface FeeAdjustmentSummary {
+  adjustmentId: string;
+  accountId: string;
+  accountName: string;
+  currentFee: number;
+  amount: number;
+  resultingFee: number;
+  currency: string;
+  periodStart: string;
+  periodEnd: string;
+}
+
+export interface ConfirmationRequiredData {
+  callId: string;
+  toolName: string;
+  adjustmentId: string;
+  adjustment: FeeAdjustmentSummary;
+  question: string;
+  state: string;
+}
+
 export interface DoneData {
   conversationId: string;
   turnId: string;
@@ -64,6 +86,7 @@ export type ChatStreamEvent =
   | { type: 'tool_call_finished'; data: ToolCallFinishedData }
   | { type: 'sources'; data: { sources: SourceRef[] } }
   | { type: 'trace'; data: TraceEvent }
+  | { type: 'confirmation_required'; data: ConfirmationRequiredData }
   | { type: 'done'; data: DoneData };
 
 // ---- Turn trace (behind the scenes). See docs/trace-events.md. ----
@@ -82,6 +105,7 @@ export type TraceKind =
   | 'envelope'
   | 'tool.unknown'
   | 'audit'
+  | 'adjustment'
   | 'sources'
   | 'signals'
   | 'memory'
@@ -338,7 +362,13 @@ export interface TopologyReport {
 
 // ---- Compliance ----
 
-export type AuditKind = 'tool' | 'conversation.delete' | 'compliance.export';
+export type AuditKind =
+  | 'tool'
+  | 'conversation.delete'
+  | 'compliance.export'
+  | 'a2a.request'
+  | 'a2a.consultation'
+  | 'fee.adjustment';
 
 export interface ChainReport {
   intact: boolean;

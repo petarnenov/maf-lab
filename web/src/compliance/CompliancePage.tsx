@@ -6,7 +6,15 @@ import page from '../components/Page.module.css';
 import { formatDate } from '../evals/format';
 import styles from './Compliance.module.css';
 
-const KINDS = ['tool', 'conversation.delete', 'compliance.export'] as const;
+// Every kind the record can hold, so nothing written is invisible to whoever is looking.
+const KINDS = [
+  'tool',
+  'conversation.delete',
+  'compliance.export',
+  'a2a.request',
+  'a2a.consultation',
+  'fee.adjustment',
+] as const;
 const PAGE_SIZE = 25;
 
 export function CompliancePage() {

@@ -7,6 +7,7 @@ using Maf.Lab.Api.Agent.Tracing;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.Domain.Tracing;
 using Maf.Lab.Hosting;
+using Maf.Lab.Domain.Billing;
 using Maf.Lab.Domain.Chat;
 using Maf.Lab.Domain.Feedback;
 using Maf.Lab.Domain.Tenancy;
@@ -32,6 +33,7 @@ public sealed class ChatTurnRunner(
     SystemPrompt prompt,
     ToolAudit audit,
     TokenCounter tokens,
+    FeeAdjustmentFlow adjustments,
     IDbContextFactory<MafDbContext> db,
     IOptions<AgentOptions> options,
     TimeProvider time,
@@ -64,7 +66,8 @@ public sealed class ChatTurnRunner(
         try
         {
             await MarkRephraseAsync(conversationId, message, ct);
-            await using var tools = await toolSource.GetToolsAsync(bearerToken, ct);
+            state.UserMessage = message;
+            await using var tools = await toolSource.GetToolsAsync(bearerToken, state.Confirmations, ct);
             state.KnownTools = tools.Names;
 
             var chatOptions = models.BaseChatOptions();
@@ -195,6 +198,17 @@ public sealed class ChatTurnRunner(
         var name = context.Function.Name;
         var callId = context.CallContent?.CallId ?? Guid.NewGuid().ToString("N");
         var args = ArgumentSummary.From(context.Arguments);
+
+        // Once a write is waiting for a person, the turn has said all it can say.
+        if (state.AwaitingConfirmation)
+        {
+            state.Trace.Add(TraceKinds.ToolCall, $"{name} not called: a confirmation is pending", new JsonObject
+            {
+                ["callId"] = callId, ["tool"] = name,
+            });
+            return ToolDataEnvelope.Wrap(name, "An adjustment is waiting for the advisor to confirm. Nothing further happens until they answer.");
+        }
+
         state.Answer.Flush();
         await state.Events.WriteAsync(new ToolCallStartedEvent(callId, name, args), ct);
         state.Trace.Add(TraceKinds.ToolCall, $"Calling {name} over MCP", new JsonObject
@@ -222,6 +236,14 @@ public sealed class ChatTurnRunner(
         }
 
         var latency = sw.ElapsedMilliseconds;
+
+        // A proposal is not a result: the server asked for a person, and the client took the question down
+        // rather than answering it. What happens next is the flow's business, not the model's.
+        if (state.Confirmations.Captured is { } captured && name == FeeAdjustmentTool.Name)
+        {
+            return await ProposedAsync(state, captured, callId, name, latency, ct);
+        }
+
         var (payload, structured, isError) = ToolDataEnvelope.Unpack(result);
         TraceToolResult(state.Trace, callId, name, result, isError, latency);
         var (summary, sources) = Summarise(name, structured, isError);
@@ -275,6 +297,44 @@ public sealed class ChatTurnRunner(
         }
     }
 
+    /// <summary>
+    /// A write was proposed. Either it goes to a person — and this turn ends there — or it does not, and the
+    /// model is told why in words it can pass on. Nothing has been written either way.
+    /// </summary>
+    private async ValueTask<object?> ProposedAsync(TurnState state, CapturedConfirmation captured, string callId,
+        string name, long latency, CancellationToken ct)
+    {
+        var outcome = await adjustments.ProposedAsync(
+            state.Principal, state.ConversationId, state.TurnId, callId, name, state.UserMessage, captured, state.Trace, ct);
+
+        var summary = $"proposed {captured.Adjustment.Amount:0.##} on {captured.Adjustment.AccountId}";
+        state.ToolCalls.Add(new ToolCallRecord(name, $"accountId={captured.Adjustment.AccountId}", "input_required", 0, [], [], callId, summary));
+        await state.Events.WriteAsync(new ToolCallFinishedEvent(callId, name, summary, 0, false), ct);
+
+        if (outcome is FlowOutcome.AskUser ask)
+        {
+            state.Trace.Add(TraceKinds.Adjustment, $"Waiting for the advisor to confirm {ask.Event.AdjustmentId}", new JsonObject
+            {
+                ["callId"] = callId,
+                ["step"] = "awaiting_confirmation",
+                ["adjustmentId"] = ask.Event.AdjustmentId,
+                ["accountId"] = ask.Event.Adjustment.AccountId,
+            });
+            await state.Events.WriteAsync(ask.Event, ct);
+            state.AwaitingConfirmation = true;
+            // The model gets nothing more to say this turn: the next word is the advisor's.
+            return ToolDataEnvelope.Wrap(name, "Waiting for the advisor to confirm. Nothing has been changed.");
+        }
+
+        var told = ((FlowOutcome.TellModel)outcome).Message;
+        var envelope = ToolDataEnvelope.Wrap(name, told);
+        state.Trace.Add(TraceKinds.Envelope, $"Data envelope handed to the model ({envelope.Length} chars)", new JsonObject
+        {
+            ["callId"] = callId, ["tool"] = name, ["text"] = envelope,
+        });
+        return envelope;
+    }
+
     private static (string Summary, List<SourceRef> Sources) Summarise(string tool, JsonElement? structured, bool isError)
     {
         var sources = new List<SourceRef>();
@@ -294,6 +354,14 @@ public sealed class ChatTurnRunner(
                 return ($"run {Str(s, "runId")}: {Str(s, "status")}", sources);
             case "search_billing_runs" when s.TryGetProperty("runs", out var runs):
                 return ($"{runs.GetArrayLength()} run(s)", sources);
+            case FeeAdjustmentTool.Name:
+                return (Str(s, "status") switch
+                {
+                    "applied" => "applied",
+                    "already_applied" => "already applied",
+                    "declined" => "declined by the advisor",
+                    _ => "nothing applied",
+                }, sources);
             default:
                 return ("done", sources);
         }
@@ -389,5 +457,14 @@ public sealed class ChatTurnRunner(
         public List<ToolCallRecord> ToolCalls { get; } = [];
         public List<SourceRef> Sources { get; } = [];
         public bool ZeroResults { get; set; }
+
+        /// <summary>The user's words this turn, which is what a reviewer's question gets answered with.</summary>
+        public string UserMessage { get; set; } = "";
+
+        /// <summary>Catches a request for a person's approval instead of answering it.</summary>
+        public ConfirmationSink Confirmations { get; } = new();
+
+        /// <summary>Set when the turn has ended waiting for a person.</summary>
+        public bool AwaitingConfirmation { get; set; }
     }
 }

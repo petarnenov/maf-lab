@@ -23,21 +23,39 @@ namespace Maf.Lab.IntegrationTests;
 public sealed class McpServerTests(CorpusIndexFixture corpus) : IAsyncDisposable
 {
     private readonly List<IAsyncDisposable> _owned = [];
+    private readonly List<string> _ledgers = [];
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
-    public async Task Server_lists_exactly_three_read_only_tools_without_tenant_inputs()
+    public async Task Server_lists_its_tools_annotated_honestly_and_without_tenant_inputs()
     {
         var client = await ClientAsync("adam", "firm-a", Role.ADVISOR);
         var tools = await client.ListToolsAsync(cancellationToken: Ct);
 
-        Assert.Equal(["get_billing_run_status", "search_billing_runs", "search_documents"], tools.Select(t => t.Name).Order());
-        foreach (var tool in tools.Select(t => t.ProtocolTool))
+        Assert.Equal(
+            ["get_billing_run_status", "propose_fee_adjustment", "search_billing_runs", "search_documents"],
+            tools.Select(t => t.Name).Order());
+
+        string[] reading = ["get_billing_run_status", "search_billing_runs", "search_documents"];
+        foreach (var tool in tools.Where(t => reading.Contains(t.Name)).Select(t => t.ProtocolTool))
         {
             Assert.True(tool.Annotations!.ReadOnlyHint);
             Assert.True(tool.Annotations.IdempotentHint);
             Assert.False(tool.Annotations.DestructiveHint);
             Assert.False(tool.Annotations.OpenWorldHint);
+        }
+
+        // A tool that writes does not get to claim otherwise.
+        var write = tools.Single(t => t.Name == "propose_fee_adjustment").ProtocolTool;
+        Assert.False(write.Annotations!.ReadOnlyHint);
+        Assert.False(write.Annotations.IdempotentHint);
+        Assert.True(write.Annotations.DestructiveHint);
+        Assert.False(write.Annotations.OpenWorldHint);
+        Assert.Contains("only a proposal a person confirmed is applied", write.Description);
+        Assert.Contains("search_documents", write.Description);
+
+        foreach (var tool in tools.Select(t => t.ProtocolTool))
+        {
             var schema = tool.InputSchema.GetRawText();
             Assert.DoesNotContain("tenant", schema, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("firm", schema, StringComparison.OrdinalIgnoreCase);
@@ -155,12 +173,35 @@ public sealed class McpServerTests(CorpusIndexFixture corpus) : IAsyncDisposable
         }
     }
 
+    [Fact]
+    public async Task A_proposal_over_the_wire_asks_for_input_and_writes_nothing()
+    {
+        var factory = Factory();
+        var client = await ClientAsync("adam", "firm-a", Role.ADVISOR, factory);
+
+        var asked = await Assert.ThrowsAnyAsync<Exception>(async () => await client.CallToolAsync(
+            "propose_fee_adjustment",
+            new Dictionary<string, object?> { ["accountId"] = "A-1042", ["amount"] = -200m, ["reason"] = "moved to the flat schedule" },
+            cancellationToken: Ct));
+
+        // Whatever the client surfaces, it must not be a silent success and nothing may have been written.
+        // The SDK client resolves input requests itself, so without a handler it says so rather than writing.
+        Assert.Contains("ElicitationHandler", asked.Message);
+        Assert.DoesNotContain("applied", asked.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string Text(CallToolResult result) => string.Join("\n", result.Content.OfType<TextContentBlock>().Select(t => t.Text));
 
     private WebApplicationFactory<Maf.Lab.Retrieval.Program> Factory(Action<Dictionary<string, string?>>? configure = null)
     {
         var values = corpus.Qdrant.Config(corpus.Collection, corpus.CorpusRoot);
         values["Billing:SeedPath"] = Path.Combine(CorpusIndexFixture.RepoRoot(), "compose", "seed", "billing-runs.json");
+        values["Billing:AccountsSeedPath"] = Path.Combine(CorpusIndexFixture.RepoRoot(), "compose", "seed", "billing-accounts.json");
+        // Its own file per factory, so one test's adjustments are not another's.
+        var ledger = Path.Combine(Path.GetTempPath(), $"maf-lab-mcp-{Guid.NewGuid():N}.db");
+        values["Billing:AdjustmentsConnectionString"] = $"Data Source={ledger}";
+        values["Auth:SigningKey"] = new AuthOptions().SigningKey;
+        _ledgers.Add(ledger);
         configure?.Invoke(values);
         var factory = new WebApplicationFactory<Maf.Lab.Retrieval.Program>().WithWebHostBuilder(b =>
         {
@@ -197,6 +238,11 @@ public sealed class McpServerTests(CorpusIndexFixture corpus) : IAsyncDisposable
         foreach (var d in Enumerable.Reverse(_owned))
         {
             await d.DisposeAsync();
+        }
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        foreach (var file in _ledgers.SelectMany(l => new[] { l, l + "-wal", l + "-shm" }).Where(File.Exists))
+        {
+            File.Delete(file);
         }
     }
 }

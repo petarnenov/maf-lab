@@ -157,6 +157,23 @@ public class ComplianceConsultantTests
     }
 
     [Fact]
+    public async Task A_timeout_keeps_the_task_id_so_the_answer_can_be_collected_later()
+    {
+        var (agent, url) = await ReviewerAsync(reviewMs: 5_000);
+        await using var _ = agent;
+        using var api = ApiFor(url, s => s["Compliance:Deadline"] = "00:00:00.300");
+
+        var result = await Consultant(api).ReviewAsync(Adjustment, Ct);
+
+        var timedOut = Assert.IsType<ConsultationResult.TimedOut>(result);
+        Assert.NotEqual("", timedOut.TaskId);
+
+        // The review is still running over there, and that id reaches it.
+        var answered = await Consultant(api).AnswerAsync(Adjustment, timedOut.TaskId, "the client agreed in writing", Ct);
+        Assert.IsNotType<ConsultationResult.Unreachable>(answered);
+    }
+
+    [Fact]
     public async Task An_agent_that_is_not_there_is_unreachable()
     {
         // Port 9 discards: nothing answers, so discovery fails rather than hanging.

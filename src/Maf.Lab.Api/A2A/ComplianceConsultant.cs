@@ -32,7 +32,6 @@ public sealed class ComplianceConsultant(
     public const string Operation = "a2a.consult";
 
     private readonly SemaphoreSlim discovery = new(1, 1);
-    private AIAgent? agent;
     private IA2AClient? client;
     private DateTimeOffset cardFetchedAt;
 
@@ -77,19 +76,26 @@ public sealed class ComplianceConsultant(
 
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(options.Value.Deadline);
+
+        // Streamed, not awaited whole: a review that outlives the deadline must still leave us its task id,
+        // which only the first event carries. Without it the answer could never be collected later.
+        var seen = new Review(taskId);
         try
         {
-            var response = await remote.SendMessageAsync(new SendMessageRequest { Message = Ask(adjustment, taskId) }, deadline.Token);
-            return Read(response, adjustment);
+            await foreach (var update in remote.SendStreamingMessageAsync(new SendMessageRequest { Message = Ask(adjustment, taskId) }, deadline.Token))
+            {
+                seen.Observe(update);
+            }
+            return Read(seen, adjustment);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             // The review is still running over there; its id is how the answer is collected later.
-            return new ConsultationResult.TimedOut(taskId ?? "");
+            return new ConsultationResult.TimedOut(seen.TaskId);
         }
         catch (A2AException ex)
         {
-            return new ConsultationResult.Failed(taskId ?? "", $"{ex.ErrorCode}");
+            return new ConsultationResult.Failed(seen.TaskId, $"{ex.ErrorCode}");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -129,11 +135,23 @@ public sealed class ComplianceConsultant(
             var address = new Uri(baseUrl);
             var cardPath = $"{address.AbsolutePath.TrimEnd('/')}{AgentCardFactory.WellKnownPath}";
             var resolver = new A2ACardResolver(new Uri(address.GetLeftPart(UriPartial.Authority)), authenticated, cardPath);
-            agent = await resolver.GetAIAgentAsync(authenticated, cancellationToken: ct);
-            client = agent.GetService(typeof(IA2AClient)) as IA2AClient
-                ?? throw new InvalidOperationException("The resolved agent exposes no A2A client.");
+            var card = await resolver.GetAgentCardAsync(ct);
+
+            // The card says *where* it answers; the configured address says *how this system gets there*. A card
+            // is public, so it advertises the public entry point — which, from inside the network the assistant
+            // runs in, is not a route at all. So the path comes from the card and the origin from configuration,
+            // as it does for every client behind a reverse proxy. Assembling the path here instead would be
+            // hard-coding a route, which is the thing the card exists to avoid.
+            var advertised = card.SupportedInterfaces?
+                .FirstOrDefault(i => string.Equals(i.ProtocolBinding, "JSONRPC", StringComparison.OrdinalIgnoreCase))
+                ?? card.SupportedInterfaces?.FirstOrDefault();
+            var endpoint = advertised?.Url is { Length: > 0 } advertisedUrl && Uri.TryCreate(advertisedUrl, UriKind.Absolute, out var parsed)
+                ? new Uri(new Uri(address.GetLeftPart(UriPartial.Authority)), parsed.AbsolutePath)
+                : new Uri($"{baseUrl}/a2a");
+
+            client = new A2AClient(endpoint, authenticated);
             cardFetchedAt = time.GetUtcNow();
-            logger.LogInformation("compliance agent discovered name={Name}", agent.Name);
+            logger.LogInformation("compliance agent discovered name={Name} endpoint={Endpoint}", card.Name, endpoint);
             return client;
         }
         finally
@@ -142,11 +160,7 @@ public sealed class ComplianceConsultant(
         }
     }
 
-    private void Forget()
-    {
-        client = null;
-        agent = null;
-    }
+    private void Forget() => client = null;
 
     private async Task<string> TokenAsync(string baseUrl, CancellationToken ct)
     {
@@ -178,25 +192,73 @@ public sealed class ComplianceConsultant(
         ],
     };
 
-    private static ConsultationResult Read(SendMessageResponse response, FeeAdjustment adjustment)
+    /// <summary>
+    /// What the stream has told us so far. Kept as it arrives, because a deadline can fall at any point and
+    /// what we know by then is all we will have.
+    /// </summary>
+    private sealed class Review(string? taskId)
     {
-        if (response.Task is not { } task)
+        public string TaskId { get; private set; } = taskId ?? "";
+
+        public TaskState? State { get; private set; }
+
+        public Message? Question { get; private set; }
+
+        public List<Artifact> Artifacts { get; } = [];
+
+        public Message? DirectReply { get; private set; }
+
+        public void Observe(StreamResponse update)
+        {
+            if (update.Task is { } task)
+            {
+                TaskId = task.Id is { Length: > 0 } id ? id : TaskId;
+                State = task.Status?.State ?? State;
+                Question = task.Status?.Message ?? Question;
+                if (task.Artifacts is { Count: > 0 } artifacts)
+                {
+                    Artifacts.AddRange(artifacts);
+                }
+            }
+            if (update.StatusUpdate is { } status)
+            {
+                TaskId = status.TaskId is { Length: > 0 } statusId ? statusId : TaskId;
+                State = status.Status?.State ?? State;
+                Question = status.Status?.Message ?? Question;
+            }
+            if (update.ArtifactUpdate is { } artifact)
+            {
+                TaskId = artifact.TaskId is { Length: > 0 } artifactId ? artifactId : TaskId;
+                if (artifact.Artifact is { } a)
+                {
+                    Artifacts.Add(a);
+                }
+            }
+            if (update.Message is { } message)
+            {
+                DirectReply = message;
+            }
+        }
+    }
+
+    private static ConsultationResult Read(Review review, FeeAdjustment adjustment)
+    {
+        if (review.State is null)
         {
             // A message rather than a task: the reviewer declined to review this at all.
-            var text = string.Join(' ', response.Message?.Parts?.Select(p => p.Text).Where(t => t is not null) ?? []);
-            return new ConsultationResult.Failed("", text is { Length: > 0 } ? text : "The reviewer returned no task.");
+            var text = string.Join(' ', review.DirectReply?.Parts?.Select(p => p.Text).Where(t => t is not null) ?? []);
+            return new ConsultationResult.Failed(review.TaskId, text is { Length: > 0 } ? text : "The reviewer returned no task.");
         }
 
-        var id = task.Id ?? "";
-        switch (task.Status?.State)
+        var id = review.TaskId;
+        switch (review.State)
         {
             case TaskState.InputRequired or TaskState.AuthRequired:
-                var question = string.Join(' ',
-                    task.Status.Message?.Parts?.Select(p => p.Text).Where(t => t is not null) ?? []);
+                var question = string.Join(' ', review.Question?.Parts?.Select(p => p.Text).Where(t => t is not null) ?? []);
                 return new ConsultationResult.QuestionAsked(id, question);
 
             case TaskState.Completed:
-                var verdict = task.Artifacts?
+                var verdict = review.Artifacts
                     .SelectMany(a => a.Parts ?? [])
                     .Select(p => p.Data)
                     .FirstOrDefault(d => d is not null && d.Value.TryGetProperty("decision", out _));
@@ -204,19 +266,43 @@ public sealed class ComplianceConsultant(
                 {
                     return new ConsultationResult.Failed(id, "The review completed without a verdict.");
                 }
-                var decision = verdict.Value.GetProperty("decision").GetString();
-                return new ConsultationResult.Verdict(
-                    id,
-                    verdict.Value.TryGetProperty("adjustmentId", out var adjustmentId)
-                        ? adjustmentId.GetString() ?? adjustment.AdjustmentId
-                        : adjustment.AdjustmentId,
-                    Approved: string.Equals(decision, "approved", StringComparison.OrdinalIgnoreCase),
-                    Reason: verdict.Value.TryGetProperty("reason", out var reason) ? reason.GetString() ?? "" : "");
+                return Judge(verdict.Value, id, adjustment);
 
             default:
-                return new ConsultationResult.Failed(id, $"The review ended {task.Status?.State}.");
+                return new ConsultationResult.Failed(id, $"The review ended {review.State}.");
         }
     }
+
+    /// <summary>
+    /// A verdict is another system's word about our question, so it is checked before it is believed: it must
+    /// say what it decided, and it must be about the adjustment and the account we asked about. The
+    /// identifiers we carry on are the ones we sent — never the ones that came back.
+    /// </summary>
+    internal static ConsultationResult Judge(JsonElement verdict, string taskId, FeeAdjustment adjustment)
+    {
+        if (!verdict.TryGetProperty("decision", out var decisionValue) || decisionValue.GetString() is not { Length: > 0 } decision)
+        {
+            return new ConsultationResult.Failed(taskId, "The review returned no decision.");
+        }
+        if (!Echoes(verdict, "adjustmentId", adjustment.AdjustmentId))
+        {
+            return new ConsultationResult.Failed(taskId, "The review answered about a different adjustment.");
+        }
+        if (!Echoes(verdict, "accountId", adjustment.AccountId))
+        {
+            return new ConsultationResult.Failed(taskId, "The review answered about a different account.");
+        }
+
+        return new ConsultationResult.Verdict(
+            taskId,
+            adjustment.AdjustmentId,
+            Approved: string.Equals(decision, "approved", StringComparison.OrdinalIgnoreCase),
+            Reason: verdict.TryGetProperty("reason", out var reason) ? reason.GetString() ?? "" : "");
+    }
+
+    private static bool Echoes(JsonElement verdict, string property, string expected) =>
+        verdict.TryGetProperty(property, out var value)
+        && string.Equals(value.GetString(), expected, StringComparison.Ordinal);
 
     /// <summary>
     /// The same record every other action leaves: who, what, which task, the outcome, how long — no content. It is

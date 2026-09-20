@@ -26,6 +26,7 @@ Roles: `FIRM_ADMIN`, `ADVISOR`, `OPS`, `READ_ONLY`. Firms: `firm-a`, `firm-b`, `
 |---|---|---|---|
 | POST | `/api/conversations` | — | `201 { conversationId }` |
 | POST | `/api/chat` | `{ conversationId?, message }` | `text/event-stream` |
+| POST | `/api/chat/confirm` | `{ conversationId, adjustmentId, approve }` | `200 { status, adjustment?, message }` |
 
 If `conversationId` is omitted a new conversation is created; its id arrives in `done`.
 A conversation id issued to another principal returns `404`.
@@ -39,7 +40,29 @@ SSE frames are `event: <name>\ndata: <json>\n\n`:
 | `sources` | `{ sources: [{ docId, sectionPath, sourcePath, snippet }] }` — before `done` |
 | `text_delta` | `{ text }` |
 | `trace` | one turn-trace event `{ seq, atMs, kind, title, durationMs?, data, truncated }` — interleaves with everything, all before `done`; see [trace-events.md](trace-events.md) |
+| `confirmation_required` | `{ callId, toolName, adjustmentId, adjustment, question, state }` — a write is waiting for the advisor. At most one per turn, and `done` follows it; no further tool runs in that turn |
 | `done` | `{ conversationId, turnId, error? }` — always last |
+
+`adjustment` is `{ adjustmentId, accountId, accountName, currentFee, amount, resultingFee, currency, periodStart, periodEnd }`
+— identifiers and amounts, never the advisor's reason. `state` is opaque and integrity-protected: hand it back
+unchanged, do not parse it, and do not expect to learn anything from it.
+
+### Answering a confirmation
+
+`POST /api/chat/confirm` is how the advisor answers. Approving applies exactly what the proposal said — the
+arguments are re-derived from the state, so nothing that has been said since can change what executes. Rejecting
+applies nothing and lets the conversation continue.
+
+| outcome | response |
+|---|---|
+| applied | `200 { status: "applied", adjustment: { adjustmentId, accountId, previousFee, amount, currentFee, currency, appliedAt, alreadyApplied }, message }` |
+| already applied | `200 { status: "already_applied", … }` — the fee moved once, however many answers arrive |
+| rejected | `200 { status: "declined", adjustment: null, message }` |
+| not waiting, or not this person's | `404` |
+| the tools are unavailable | `503` with a short problem detail; nothing was changed |
+
+A proposal belongs to the person it was put to, in the conversation it was made in. Anyone else gets `404` — the
+same answer as for a proposal that does not exist.
 
 Errors during a streamed turn arrive as `done.error` (short user-facing text); there is no separate `error` event.
 

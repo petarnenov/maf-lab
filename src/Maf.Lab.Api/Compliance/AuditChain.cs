@@ -15,6 +15,8 @@ public static class AuditKinds
     public const string A2ARequest = "a2a.request";
     /// <summary>A request this system sent to another agent over A2A.</summary>
     public const string A2AConsultation = "a2a.consultation";
+    /// <summary>A step of a write: an adjustment proposed, reviewed, confirmed, rejected or applied.</summary>
+    public const string FeeAdjustment = "fee.adjustment";
 }
 
 /// <param name="Intact">False when a row's content or a row's absence breaks a link.</param>

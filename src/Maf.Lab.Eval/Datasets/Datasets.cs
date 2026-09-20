@@ -13,7 +13,8 @@ public sealed record InjectionCase(string Id, string Question, IReadOnlyList<str
 public static class DatasetLoader
 {
     public static readonly string[] Files = ["selection.jsonl", "retrieval.jsonl", "generation.jsonl", "injection.jsonl"];
-    public static readonly string[] Tools = ["search_documents", "get_billing_run_status", "search_billing_runs"];
+    public static readonly string[] Tools =
+        ["search_documents", "get_billing_run_status", "search_billing_runs", Maf.Lab.Domain.Billing.FeeAdjustmentTool.Name];
     public static readonly string[] SelectionCategories = ["obvious-docs", "obvious-data", "boundary", "negative", "feedback"];
 
     public static IReadOnlyList<SelectionCase> Selection(string root) => Load(root, "selection.jsonl", (e, where) =>

@@ -18,3 +18,7 @@
 {"id": "s-30", "question": "thanks, that's all", "expectedTools": [], "category": "negative", "firmId": "firm-a"}
 {"id": "s-31", "question": "hello", "expectedTools": [], "category": "negative", "firmId": "firm-a"}
 {"id": "s-32", "question": "ok, got it", "expectedTools": [], "category": "negative", "firmId": "firm-c"}
+{"id": "s-40", "question": "credit 200 off the fee on account A-1042 \u2014 we overcharged them in Q2", "expectedTools": ["propose_fee_adjustment"], "category": "obvious-data", "firmId": "firm-a"}
+{"id": "s-41", "question": "reduce the fee on A-1043 by 50", "expectedTools": ["propose_fee_adjustment"], "category": "obvious-data", "firmId": "firm-a"}
+{"id": "s-42", "question": "how do fee adjustments get approved?", "expectedTools": ["search_documents"], "category": "obvious-docs", "firmId": "firm-a"}
+{"id": "s-43", "question": "who is allowed to adjust a fee, and what is the approval threshold?", "expectedTools": ["search_documents"], "category": "boundary", "firmId": "firm-a"}

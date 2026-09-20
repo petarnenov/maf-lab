@@ -18,7 +18,12 @@ public sealed class FakeToolSource : IToolSource
         ],"totalMatches":2,"truncated":false,"refineHint":null}
         """;
 
-    public Task<ToolSet> GetToolsAsync(string bearerToken, CancellationToken ct)
+    /// <summary>The proposal the fake write tool will make. Amount and account come from the call.</summary>
+    public string ProposalAccountName { get; set; } = "Ridgeline Family Trust";
+    public decimal ProposalCurrentFee { get; set; } = 1200m;
+    public string ProposalState { get; set; } = "fake-state";
+
+    public Task<ToolSet> GetToolsAsync(string bearerToken, ConfirmationSink? confirmations, CancellationToken ct)
     {
         var search = AIFunctionFactory.Create(async (string query, string[]? sourceTypes = null, int? maxResults = null) =>
         {
@@ -42,8 +47,65 @@ public sealed class FakeToolSource : IToolSource
             return Mcp("""{"runs":[],"totalMatches":0,"truncated":false}""");
         }, "search_billing_runs", "Lists billing runs.");
 
-        return Task.FromResult(new ToolSet([search, status, runs], null));
+        // The real tool asks for a person through MRTR; the real client takes that question down rather than
+        // answering it. The fake does both halves so the flow under test is the flow that ships.
+        var propose = AIFunctionFactory.Create((string accountId, decimal amount, string reason) =>
+        {
+            Invocations.Add(Maf.Lab.Domain.Billing.FeeAdjustmentTool.Name);
+            var summary = new Maf.Lab.Domain.Billing.FeeAdjustmentSummary(
+                $"adj_{Invocations.Count}", accountId, ProposalAccountName, ProposalCurrentFee, amount,
+                ProposalCurrentFee + amount, "USD", new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31));
+            confirmations?.Capture(new ModelContextProtocol.Protocol.ElicitRequestParams
+            {
+                Message = $"Apply a fee adjustment of {amount} to {accountId}?",
+                Meta = new System.Text.Json.Nodes.JsonObject
+                {
+                    [Maf.Lab.Domain.Billing.FeeAdjustmentTool.SummaryKey] =
+                        System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(summary, new JsonSerializerOptions(JsonSerializerDefaults.Web))),
+                    // A state per proposal, as the real server issues: two proposals are never the same one.
+                    [Maf.Lab.Domain.Billing.FeeAdjustmentTool.StateKey] = $"{ProposalState}-{Invocations.Count}",
+                },
+            });
+            return Mcp("""{"status":"not_confirmed","adjustment":null,"message":"Nothing was applied: no confirmation was given for that proposal."}""");
+        }, Maf.Lab.Domain.Billing.FeeAdjustmentTool.Name,
+           "Proposes an adjustment to one account's fee and asks for confirmation. It changes nothing on its own.");
+
+        return Task.FromResult(new ToolSet([search, status, runs, propose], null, ConfirmAsync));
     }
+
+    /// <summary>Adjustments this fake has applied, keyed by the state they were proposed with.</summary>
+    public Dictionary<string, decimal> Applied { get; } = [];
+
+    /// <summary>The server half of a confirmation: the state decides, an answer is needed, and it applies once.</summary>
+    private Task<ModelContextProtocol.Protocol.CallToolResult> ConfirmAsync(
+        string tool, IReadOnlyDictionary<string, object?> arguments, string state, bool approve, CancellationToken ct)
+    {
+        Invocations.Add($"{tool}:confirm");
+        var accountId = arguments.TryGetValue("accountId", out var a) ? a?.ToString() ?? "" : "";
+        var amount = arguments.TryGetValue("amount", out var m) && m is decimal d ? d : 0m;
+
+        if (!approve)
+        {
+            return Task.FromResult(Result("""{"status":"declined","adjustment":null,"message":"The advisor declined the adjustment. Nothing was applied."}"""));
+        }
+
+        var already = Applied.ContainsKey(state);
+        Applied.TryAdd(state, amount);
+        var resulting = ProposalCurrentFee + Applied[state];
+        var status = already ? "already_applied" : "applied";
+        return Task.FromResult(Result($$"""
+            {"status":"{{status}}","adjustment":{"adjustmentId":"adj_confirmed","accountId":"{{accountId}}",
+             "previousFee":{{ProposalCurrentFee}},"amount":{{Applied[state]}},"currentFee":{{resulting}},
+             "currency":"USD","appliedAt":"2026-09-20T12:00:00+00:00","alreadyApplied":{{already.ToString().ToLowerInvariant()}}},
+             "message":"Applied."}
+            """));
+    }
+
+    private static ModelContextProtocol.Protocol.CallToolResult Result(string structuredJson) => new()
+    {
+        StructuredContent = JsonDocument.Parse(structuredJson).RootElement,
+        Content = [new ModelContextProtocol.Protocol.TextContentBlock { Text = structuredJson }],
+    };
 
     private static JsonElement Mcp(string structuredJson, string? metaJson = null)
     {
