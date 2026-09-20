@@ -18,8 +18,12 @@
     <ProjectReference Include="..\..\src\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />
     <ProjectReference Include="..\..\src\Maf.Lab.Retrieval\Maf.Lab.Retrieval.csproj" />
     <ProjectReference Include="..\..\src\Maf.Lab.Api\Maf.Lab.Api.csproj" />
+    <ProjectReference Include="..\..\src\Maf.Lab.ComplianceAgent\Maf.Lab.ComplianceAgent.csproj" />
     <ProjectReference Include="..\..\src\Maf.Lab.Indexing\Maf.Lab.Indexing.csproj" />
     <ProjectReference Include="..\..\src\Maf.Lab.Eval\Maf.Lab.Eval.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\Shared\**\*.cs" Link="Shared\%(RecursiveDir)%(Filename)%(Extension)" />

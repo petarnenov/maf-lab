@@ -13,6 +13,7 @@ describe('parseDiagram', () => {
     expect(diagram.nodes.map((n) => n.id).sort()).toEqual([
       'api',
       'chat-provider',
+      'compliance',
       'lb',
       'mcp',
       'ollama-embeddings',

@@ -1,11 +1,8 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Routing;
-
-namespace Maf.Lab.Retrieval.Hosting;
+namespace Maf.Lab.Hosting;
 
 /// <summary>
-/// Makes load balancing observable: every response carries X-Instance (the container hostname) and /health reports it.
+/// Makes load balancing observable: every response carries X-Instance (the container hostname) and /health reports
+/// it. Every service in the lab uses it, which is why it sits in a library none of them owns.
 /// </summary>
 public static class InstanceIdentity
 {

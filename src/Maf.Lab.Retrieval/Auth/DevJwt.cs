@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text;
 using Maf.Lab.Domain.Tenancy;
+using Maf.Lab.Domain.Configuration;
 using Maf.Lab.Retrieval.Configuration;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Configuration;

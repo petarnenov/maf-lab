@@ -1,3 +1,4 @@
+using Maf.Lab.A2A;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -126,11 +127,11 @@ public class A2AProtocolTests
         Assert.Equal(HttpStatusCode.Unauthorized, refused.StatusCode);
 
         var allowed = await RpcAsync(partner, "agent/getAuthenticatedExtendedCard", new { });
-        Assert.Contains(AgentCardFactory.PrivateSkillId, allowed.GetRawText());
+        Assert.Contains(BillingAgentCard.PrivateSkillId, allowed.GetRawText());
 
         // …and the public card still does not mention it.
         var publicCard = await anonymous.GetStringAsync(AgentCardFactory.WellKnownPath, Ct);
-        Assert.DoesNotContain(AgentCardFactory.PrivateSkillId, publicCard);
+        Assert.DoesNotContain(BillingAgentCard.PrivateSkillId, publicCard);
     }
 
     [Fact]
@@ -143,7 +144,7 @@ public class A2AProtocolTests
         {
             Id = "task-push",
             ContextId = "ctx",
-            Status = new A2A.TaskStatus { State = TaskState.Working },
+            Status = new global::A2A.TaskStatus { State = TaskState.Working },
         }, Ct);
 
         var created = Result(await RpcAsync(client, "tasks/pushNotificationConfig/set", new

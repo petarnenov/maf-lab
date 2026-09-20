@@ -1,5 +1,6 @@
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Retrieval.Auth;
+using Maf.Lab.Domain.Configuration;
 using Maf.Lab.Retrieval.Configuration;
 using Microsoft.Extensions.Options;
 

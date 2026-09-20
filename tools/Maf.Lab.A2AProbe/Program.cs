@@ -53,6 +53,83 @@ var refused = await agent.RunAsync("start a billing run for firm-b 2026-06", awa
 Check(!refused.Text.Contains("firm-b", StringComparison.OrdinalIgnoreCase), "another firm's run tells us nothing",
     Trim(refused.Text));
 
+// The second agent, reached the way the assistant reaches it: card, own credentials, one review.
+var complianceUrl = args.Length > 3 ? args[3] : $"{baseUrl.TrimEnd('/')}/compliance";
+var complianceSecret = args.Length > 4 ? args[4] : "assistant-dev-secret";
+Console.WriteLine();
+Console.WriteLine($"compliance reviewer at {complianceUrl}");
+try
+{
+    // The reviewer is served under a prefix, and the resolver appends the well-known path to the origin: ask for
+    // the card by its full path or the billing agent's card comes back.
+    var complianceUri = new Uri(complianceUrl);
+    var complianceOrigin = new Uri(complianceUri.GetLeftPart(UriPartial.Authority));
+    var complianceCardPath = $"{complianceUri.AbsolutePath.TrimEnd('/')}/.well-known/agent-card.json";
+    using var anonymousReviewer = new HttpClient { BaseAddress = new Uri(complianceUrl) };
+    var reviewerCard = await new A2ACardResolver(complianceOrigin, anonymousReviewer, complianceCardPath).GetAgentCardAsync();
+    Check(reviewerCard.Skills?.Count == 1, "the reviewer's card offers one skill",
+        string.Join(", ", reviewerCard.Skills?.Select(s => s.Id) ?? []));
+
+    // An absolute path would drop the prefix and reach the *other* agent's token endpoint.
+    var reviewerToken = await anonymousReviewer.PostAsJsonAsync($"{complianceUrl.TrimEnd('/')}/a2a/token",
+        new { clientId = "maf-lab-assistant", clientSecret = complianceSecret });
+    reviewerToken.EnsureSuccessStatusCode();
+    var reviewerAccess = (await reviewerToken.Content.ReadFromJsonAsync<TokenResponse>())!.AccessToken;
+
+    using var asAssistant = new HttpClient { BaseAddress = new Uri(complianceUrl) };
+    asAssistant.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", reviewerAccess);
+    var reviewer = await new A2ACardResolver(complianceOrigin, asAssistant, complianceCardPath).GetAIAgentAsync(asAssistant);
+    Check(reviewer.Name is { Length: > 0 }, "the reviewer's card became an agent", reviewer.Name ?? "");
+
+    var client = reviewer.GetService(typeof(IA2AClient)) as IA2AClient;
+    Check(client is not null, "the agent exposes an A2A client");
+    var review = await client!.SendMessageAsync(new SendMessageRequest
+    {
+        Message = new Message
+        {
+            MessageId = Guid.NewGuid().ToString("N"),
+            Role = A2A.Role.User,
+            Parts =
+            [
+                new Part
+                {
+                    Data = System.Text.Json.JsonSerializer.SerializeToElement(new
+                    {
+                        adjustmentId = "ADJ-PROBE",
+                        firmId = "firm-a",
+                        accountId = "ACC-1042",
+                        amount = 250m,
+                        reason = "Overcharged in Q2",
+                    }),
+                },
+            ],
+        },
+    });
+
+    var state = review.Task?.Status?.State;
+    Check(state is TaskState.Completed or TaskState.InputRequired, "a review ran to a conclusion", $"{state}");
+    if (state == TaskState.Completed)
+    {
+        var verdict = review.Task!.Artifacts?.SelectMany(a => a.Parts ?? []).Select(p => p.Data)
+            .FirstOrDefault(d => d is not null && d.Value.TryGetProperty("decision", out _));
+        Check(verdict is not null, "the review ended with a structured verdict",
+            verdict?.GetProperty("decision").GetString() ?? "");
+        Check(verdict?.GetProperty("simulated").GetBoolean() == true, "the verdict says it is simulated");
+    }
+    else
+    {
+        // One review in five asks first; that is an answer too.
+        var question = string.Join(" ", review.Task!.Status!.Message?.Parts?.Select(p => p.Text) ?? []);
+        Check(question.Contains("justification", StringComparison.OrdinalIgnoreCase),
+            "the reviewer asked for a justification", Trim(question));
+    }
+}
+catch (Exception ex)
+{
+    // A reviewer that is not there is a legitimate state — but the probe says so rather than passing quietly.
+    Check(false, "the compliance reviewer answered", $"{ex.GetType().Name}: {Trim(ex.Message)}");
+}
+
 Console.WriteLine();
 if (failures.Count > 0)
 {

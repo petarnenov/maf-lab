@@ -1,10 +1,11 @@
 using System.Diagnostics;
+using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Text.Json;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Domain.Topology;
 using Maf.Lab.Retrieval.Configuration;
-using Maf.Lab.Retrieval.Hosting;
+using Maf.Lab.Hosting;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using Qdrant.Client;
@@ -48,6 +49,7 @@ public sealed class TopologyProbe(
     IOptions<QdrantOptions> qdrant,
     IOptions<ModelOptions> models,
     IOptions<AgentOptions> agent,
+    IOptions<A2A.ComplianceOptions> compliance,
     IToolSource tools,
     QdrantClient qdrantClient,
     IHttpClientFactory http,
@@ -64,6 +66,8 @@ public sealed class TopologyProbe(
         new("lb", "api", "/api, /dev"),
         new("api", "mcp", "/mcp via lb"),
         new("api", "chat-provider", "chat"),
+        new("lb", "compliance", "/compliance"),
+        new("api", "compliance", "A2A via lb"),
         new("api", "qdrant", "index admin"),
         new("mcp", "qdrant", "gRPC"),
         new("mcp", "ollama-embeddings", "embed"),
@@ -72,7 +76,8 @@ public sealed class TopologyProbe(
     private readonly ILogger _logger = loggers.CreateLogger<TopologyProbe>();
 
     /// <summary>Node ids the report always contains; the drawn diagram must hold exactly these.</summary>
-    public static IReadOnlyList<string> NodeIds { get; } = ["lb", "web", "api", "mcp", "qdrant", "ollama-embeddings", "chat-provider"];
+    public static IReadOnlyList<string> NodeIds { get; } =
+        ["lb", "web", "api", "mcp", "compliance", "qdrant", "ollama-embeddings", "chat-provider"];
 
     public async Task<TopologyReport> GetAsync(string bearerToken, CancellationToken ct)
     {
@@ -94,16 +99,18 @@ public sealed class TopologyProbe(
         var timeout = TimeSpan.FromSeconds(o.ProbeTimeoutSeconds);
         var apiAddresses = await resolver.ResolveAsync(o.ApiService, ct);
         var mcpAddresses = await resolver.ResolveAsync(o.McpService, ct);
+        var complianceAddresses = await resolver.ResolveAsync(o.ComplianceService, ct);
         var discovery = apiAddresses.Count > 0 || mcpAddresses.Count > 0;
 
         var lb = Http("lb", "lb", o.LoadBalancerHealthUrl, timeout, ct);
         var web = Http("web", "web", o.WebHealthUrl, timeout, ct);
         var api = ReplicasAsync("api", "api", apiAddresses, timeout, ct);
         var mcp = McpAsync(mcpAddresses, bearerToken, timeout, ct);
+        var compliance = ComplianceAsync(complianceAddresses, timeout, ct);
         var store = QdrantAsync(timeout, ct);
         var embeddings = EmbeddingsAsync(timeout, ct);
 
-        var probed = await Task.WhenAll(lb, web, api, mcp, store, embeddings);
+        var probed = await Task.WhenAll(lb, web, api, mcp, compliance, store, embeddings);
         var byId = probed.Append(ChatProvider()).ToDictionary(n => n.Id);
         var ordered = NodeIds.Select(id => byId[id]).ToList();
 
@@ -146,6 +153,39 @@ public sealed class TopologyProbe(
         }
         var instances = await Task.WhenAll(addresses.Select(a => HealthOfAsync(a, timeout, ct)));
         return Aggregate(id, name, instances);
+    }
+
+    /// <summary>
+    /// The second agent: its replicas, and whether it is still the agent we think it is — the card says both.
+    /// </summary>
+    private async Task<TopologyNode> ComplianceAsync(IReadOnlyList<string> addresses, TimeSpan timeout, CancellationToken ct)
+    {
+        var node = await ReplicasAsync("compliance", "compliance", addresses, timeout, ct);
+        var facts = new Dictionary<string, string>(node.Facts) { ["baseUrl"] = compliance.Value.BaseUrl };
+        if (string.IsNullOrWhiteSpace(compliance.Value.BaseUrl))
+        {
+            return node with { Facts = facts, Health = NodeHealth.Degraded, Reason = "no compliance agent is configured" };
+        }
+        try
+        {
+            using var cts = Linked(timeout, ct);
+            var client = http.CreateClient("topology");
+            var card = await client.GetFromJsonAsync<System.Text.Json.JsonElement>(
+                $"{compliance.Value.BaseUrl.TrimEnd('/')}{Maf.Lab.A2A.AgentCardFactory.WellKnownPath}", cts.Token);
+            facts["agent"] = card.TryGetProperty("name", out var name) ? name.GetString() ?? "?" : "?";
+            facts["skills"] = string.Join(", ", card.GetProperty("skills").EnumerateArray()
+                .Select(s => s.GetProperty("id").GetString()));
+        }
+        catch (Exception ex)
+        {
+            return node with
+            {
+                Facts = facts,
+                Health = node.Instances.Any(i => i.Health == NodeHealth.Healthy) ? NodeHealth.Degraded : node.Health,
+                Reason = Describe(ex, timeout),
+            };
+        }
+        return node with { Facts = facts };
     }
 
     private async Task<TopologyNode> McpAsync(IReadOnlyList<string> addresses, string bearerToken, TimeSpan timeout, CancellationToken ct)

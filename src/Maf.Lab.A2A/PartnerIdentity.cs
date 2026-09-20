@@ -1,11 +1,11 @@
 using System.Security.Claims;
 using System.Text;
 using Maf.Lab.Domain.Tenancy;
-using Maf.Lab.Retrieval.Configuration;
+using Maf.Lab.Domain.Configuration;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 
-namespace Maf.Lab.Api.A2A;
+namespace Maf.Lab.A2A;
 
 /// <summary>Claims of a partner token. Deliberately disjoint from the user claims a chat token carries.</summary>
 public static class PartnerClaims
@@ -50,8 +50,15 @@ public sealed class A2AOptions
     public string Audience { get; set; } = "maf-lab-a2a";
     /// <summary>Where the agent answers, as advertised in the card.</summary>
     public string PublicBaseUrl { get; set; } = "http://localhost:7171";
+    /// <summary>The prefix this agent is served under, when more than one agent shares an entry point.</summary>
+    public string PathBase { get; set; } = "";
     public string AgentVersion { get; set; } = "1.0.0";
     public TimeSpan TokenLifetime { get; set; } = TimeSpan.FromHours(1);
+    /// <summary>
+    /// The scope a caller must hold to reach this agent's protocol endpoints at all. Empty means any scope the
+    /// partner's registration grants, which is what a single-purpose agent needs.
+    /// </summary>
+    public string RequiredScope { get; set; } = "";
     /// <summary>partner id → what it may see. The token never decides this.</summary>
     public Dictionary<string, PartnerRegistration> Partners { get; set; } = [];
     /// <summary>How many times a push delivery is retried before it is recorded as failed.</summary>

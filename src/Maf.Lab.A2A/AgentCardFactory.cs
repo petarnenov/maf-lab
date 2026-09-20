@@ -2,19 +2,20 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using A2A;
-using Maf.Lab.Retrieval.Configuration;
+using Maf.Lab.Domain.Configuration;
 
-namespace Maf.Lab.Api.A2A;
+namespace Maf.Lab.A2A;
 
 /// <summary>
-/// The card another agent discovers us by. Each skill says what it is for *and* what it is not for, because a
-/// caller choosing a skill from a one-line description is how the wrong agent gets asked the wrong question.
+/// The card another agent discovers an agent by. What differs between agents comes in as an
+/// <see cref="AgentCardDescriptor"/>; what every agent in this lab shares — the two transports, the client
+/// credentials scheme, the signature and the rendering it covers — is here, so the two cards cannot drift apart.
 /// </summary>
 public static class AgentCardFactory
 {
     public const string WellKnownPath = "/.well-known/agent-card.json";
     public const string A2APath = "/a2a";
-    public const string PrivateSkillId = "start_billing_run";
+    public const string TokenPath = "/a2a/token";
 
     /// <summary>The rendering the signature covers, written so that a stranger can reproduce it from what it received.</summary>
     private static readonly JsonWriterOptions CanonicalWriter = new()
@@ -23,63 +24,27 @@ public static class AgentCardFactory
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
-    public static AgentCard Public(A2AOptions options) => Build(options, includePrivateSkills: false);
+    public static AgentCard Public(A2AOptions options, AgentCardDescriptor agent) =>
+        Build(options, agent, includePrivateSkills: false);
 
-    public static AgentCard Extended(A2AOptions options) => Build(options, includePrivateSkills: true);
+    public static AgentCard Extended(A2AOptions options, AgentCardDescriptor agent) =>
+        Build(options, agent, includePrivateSkills: true);
 
-    private static AgentCard Build(A2AOptions options, bool includePrivateSkills)
+    private static AgentCard Build(A2AOptions options, AgentCardDescriptor agent, bool includePrivateSkills)
     {
         var baseUrl = options.PublicBaseUrl.TrimEnd('/');
-        var skills = new List<AgentSkill>
-        {
-            new()
-            {
-                Id = "search_billing_documentation",
-                Name = "Search billing documentation",
-                Description =
-                    "Use when you need the procedure, policy or definition behind a billing question: what to do "
-                    + "when a fee schedule is missing, how a tiered fee is calculated, what a failure code means. "
-                    + "Do not use for the current state of a billing run, for anything outside the firms you are "
-                    + "entitled to, or to change anything — this skill only reads documentation.",
-                Tags = ["documentation", "procedures", "read-only"],
-                Examples = ["What is the procedure when a fee schedule is missing?"],
-            },
-            new()
-            {
-                Id = "billing_run_status",
-                Name = "Billing run status",
-                Description =
-                    "Use to ask the current state of a billing run you are entitled to see, by run id. Do not use "
-                    + "to list runs of other firms, to ask why a run failed in procedural terms (use the "
-                    + "documentation skill), or to start or change a run.",
-                Tags = ["billing", "status", "read-only"],
-                Examples = ["What is the status of run 4417?"],
-            },
-        };
+        List<AgentSkill> skills = [.. agent.PublicSkills];
         if (includePrivateSkills)
         {
-            skills.Add(new AgentSkill
-            {
-                Id = PrivateSkillId,
-                Name = "Start a billing run",
-                Description =
-                    "Starts a billing run for a firm you are entitled to and reports progress until it completes. "
-                    + "Simulated in this lab: it walks the real task lifecycle over seeded data and does not bill "
-                    + "anyone. Do not use it expecting money to move. Requires the period; the task will ask for it "
-                    + "if you leave it out.",
-                Tags = ["billing", "long-running", "simulated"],
-                Examples = ["Start the billing run for firm-a for 2026-06."],
-            });
+            skills.AddRange(agent.PrivateSkills);
         }
 
         return new AgentCard
         {
-            Name = "maf-lab billing assistant",
-            Description =
-                "Answers questions about a TAMP billing domain from firm-scoped documentation and billing run data. "
-                + "Every answer is grounded in retrieved documents; the agent never invents billing figures.",
+            Name = agent.Name,
+            Description = agent.Description,
             Version = options.AgentVersion,
-            DocumentationUrl = $"{baseUrl}/docs/http-api.md",
+            DocumentationUrl = $"{baseUrl}{agent.DocumentationPath}",
             SupportedInterfaces =
             [
                 // Both transports the SDK maps. gRPC is not offered; see DECISIONS.md.
@@ -106,28 +71,25 @@ public static class AgentCardFactory
                         {
                             ClientCredentials = new ClientCredentialsOAuthFlow
                             {
-                                TokenUrl = $"{baseUrl}/a2a/token",
-                                Scopes = new Dictionary<string, string>
-                                {
-                                    [A2AScopes.BillingRead] = "Ask questions about firms you are entitled to.",
-                                },
+                                TokenUrl = $"{baseUrl}{TokenPath}",
+                                Scopes = new Dictionary<string, string>(agent.Scopes),
                             },
                         },
                     },
                 },
             },
-            SecurityRequirements = [ReadRequirement()],
+            SecurityRequirements = [Requirement(agent)],
         };
     }
 
-    private static SecurityRequirement ReadRequirement()
+    private static SecurityRequirement Requirement(AgentCardDescriptor agent)
     {
         // The SDK leaves Schemes null on a fresh instance.
         return new SecurityRequirement
         {
             Schemes = new Dictionary<string, StringList>
             {
-                ["oauth2"] = new() { List = [A2AScopes.BillingRead] },
+                ["oauth2"] = new() { List = [.. agent.Scopes.Keys] },
             },
         };
     }
@@ -166,11 +128,12 @@ public static class AgentCardFactory
     }
 
     /// <summary>
-    /// The card as the signature covers it: the served document without its own <c>signatures</c>, with every
+    /// The card as the signature covers it — and the form a verifier reproduces: the served document without its
+    /// own <c>signatures</c>, with every
     /// object's members in lexicographic order and no whitespace. A verifier reproduces it from the card it was
     /// served — it never has to guess this service's property order or serializer settings.
     /// </summary>
-    private static string CanonicalJson(AgentCard card)
+    public static string CanonicalJson(AgentCard card)
     {
         var signatures = card.Signatures;
         card.Signatures = null;

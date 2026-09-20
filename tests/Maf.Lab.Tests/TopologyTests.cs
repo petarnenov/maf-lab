@@ -18,9 +18,13 @@ public class TopologyTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    private static ApiFactory Api(StubHandler handler, IReadOnlyDictionary<string, string[]>? dns = null)
+    private static ApiFactory Api(StubHandler handler, IReadOnlyDictionary<string, string[]>? dns = null,
+        string complianceUrl = "http://compliance")
     {
-        var api = new ApiFactory(ApiFactory.ProceduralModel());
+        var api = new ApiFactory(ApiFactory.ProceduralModel())
+        {
+            ExtraSettings = new Dictionary<string, string?> { ["Compliance:BaseUrl"] = complianceUrl },
+        };
         api.ConfigureTestServices = s =>
         {
             s.RemoveAll<IServiceResolver>();
@@ -35,6 +39,48 @@ public class TopologyTests
         var response = await api.ClientFor("adam", "firm-a", role).GetAsync("/api/topology", Ct);
         response.EnsureSuccessStatusCode();
         return JsonSerializer.Deserialize<TopologyReport>(await response.Content.ReadAsStringAsync(Ct), Json)!;
+    }
+
+    [Fact]
+    public async Task The_second_agent_is_reported_with_what_its_card_says()
+    {
+        using var api = Api(StubHandler.AllHealthy(),
+            new Dictionary<string, string[]> { ["compliance"] = ["10.0.0.7", "10.0.0.8"] });
+
+        var report = await GetAsync(api);
+
+        var node = Assert.Single(report.Nodes, n => n.Id == "compliance");
+        Assert.Equal(NodeHealth.Healthy, node.Health);
+        Assert.Equal(2, node.Instances.Count);
+        Assert.Equal("maf-lab compliance reviewer", node.Facts["agent"]);
+        Assert.Equal("review_fee_adjustment", node.Facts["skills"]);
+        Assert.Contains(report.Edges, e => e is { From: "api", To: "compliance" });
+    }
+
+    [Fact]
+    public async Task A_compliance_agent_that_does_not_answer_is_reported_as_such()
+    {
+        var handler = StubHandler.AllHealthy();
+        handler.Fail.Add("agent-card.json");
+        using var api = Api(handler, new Dictionary<string, string[]> { ["compliance"] = ["10.0.0.7"] });
+
+        var report = await GetAsync(api);
+
+        var node = Assert.Single(report.Nodes, n => n.Id == "compliance");
+        Assert.Equal(NodeHealth.Degraded, node.Health);
+        Assert.False(string.IsNullOrWhiteSpace(node.Reason));
+    }
+
+    [Fact]
+    public async Task With_no_compliance_agent_configured_the_node_says_so()
+    {
+        using var api = Api(StubHandler.AllHealthy(), complianceUrl: "");
+
+        var report = await GetAsync(api);
+
+        var node = Assert.Single(report.Nodes, n => n.Id == "compliance");
+        Assert.Equal(NodeHealth.Degraded, node.Health);
+        Assert.Contains("configured", node.Reason!);
     }
 
     [Fact]
@@ -269,6 +315,12 @@ internal sealed class StubHandler : HttpMessageHandler
         if (url.Contains("/api/tags"))
         {
             return Json($$"""{"models":[{{string.Join(",", PulledModels.Select(m => $$"""{"model":"{{m}}"}"""))}}]}""");
+        }
+        if (url.Contains("agent-card.json"))
+        {
+            return Json("""
+                {"name":"maf-lab compliance reviewer","skills":[{"id":"review_fee_adjustment"}]}
+                """);
         }
         if (url.Contains("/health") && !url.Contains("lb-health"))
         {

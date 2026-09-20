@@ -1,6 +1,6 @@
 using System.Text.Json.Nodes;
 
-namespace Maf.Lab.Api.A2A;
+namespace Maf.Lab.A2A;
 
 /// <summary>
 /// Translates between the A2A 1.0 wire format and the dialect this preview SDK speaks. A partner writes its client

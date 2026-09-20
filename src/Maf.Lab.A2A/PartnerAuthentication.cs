@@ -1,9 +1,9 @@
-using Maf.Lab.Retrieval.Configuration;
+using Maf.Lab.Domain.Configuration;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
 
-namespace Maf.Lab.Api.A2A;
+namespace Maf.Lab.A2A;
 
 /// <summary>Adds the partner bearer scheme beside the user one. The two never overlap: different audiences.</summary>
 public static class PartnerAuthentication
@@ -30,7 +30,9 @@ public static class PartnerAuthentication
                 options.AddPolicy(Policy, policy => policy
                     .AddAuthenticationSchemes(PartnerJwt.Scheme)
                     .RequireAssertion(context => PartnerJwt.Resolve(context.User, a2a.CurrentValue) is { } partner
-                        && partner.Has(A2AScopes.BillingRead))));
+                        && (a2a.CurrentValue.RequiredScope is { Length: > 0 } scope
+                            ? partner.Has(scope)
+                            : partner.Scopes.Count > 0))));
 
         // Singleton: it reads the current HttpContext on every call, so it is safe outside a scope.
         services.AddSingleton<IPartnerAccessor, HttpPartnerAccessor>();

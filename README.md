@@ -90,6 +90,24 @@ library at all, and `dotnet run --project tools/Maf.Lab.A2AProbe` builds an agen
 the Agent Framework's A2A client. The preview SDK underneath does not yet speak 1.0 on the wire; every difference
 and what is done about it is in `DECISIONS.md`.
 
+## A second agent it consults (A2A, the other way round)
+
+The lab runs a **second agent** of its own: a compliance reviewer, in its own container behind the same entry
+point at `/compliance`, with its own card, its own audience and its own credentials. Its single skill is to review
+a proposed fee adjustment and return a verdict — and it behaves like a real dependency rather than a function
+call: it takes tens of seconds, reports progress while it works, and about one review in five stops and asks for
+the advisor's justification before deciding.
+
+The assistant consults it as a **sub-agent** through the Agent Framework's A2A client: it fetches the reviewer's
+card, turns it into an agent, and authenticates **as itself** — a user's token is never forwarded, and the
+reviewer never learns who asked. Every way the consultation can end is a value the caller must handle: a verdict,
+a question back, a timeout that keeps the task id so the answer can be collected later, an unreachable agent, or a
+failure. Each one is written to the same audit record as everything else, with no message content.
+
+That verdict is **simulated** — a threshold and a stopwatch. It binds nobody, and the card, the artifact and this
+paragraph all say so. `dotnet run --project tools/Maf.Lab.A2AProbe` drives both agents from outside, using nothing
+but their cards.
+
 ## Behind the scenes
 
 `/chat` shows the conversation on the left and a live **behind-the-scenes monitor** on the right: every step of the turn

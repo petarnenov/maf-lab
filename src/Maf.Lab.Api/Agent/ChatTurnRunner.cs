@@ -6,7 +6,7 @@ using System.Text.Json.Nodes;
 using Maf.Lab.Api.Agent.Tracing;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.Domain.Tracing;
-using Maf.Lab.Retrieval.Hosting;
+using Maf.Lab.Hosting;
 using Maf.Lab.Domain.Chat;
 using Maf.Lab.Domain.Feedback;
 using Maf.Lab.Domain.Tenancy;

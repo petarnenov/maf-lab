@@ -181,3 +181,32 @@ card with its `signatures` member removed, every object's members sorted lexicog
 has to guess this service's property order. `scripts/a2a_probe.py` does exactly that. In the lab the key is
 symmetric, so verification needs the same secret; a real deployment would sign asymmetrically and publish the
 public half (see `DECISIONS.md`).
+
+## The compliance reviewer (a second agent)
+
+A separate service, behind the same entry point under `/compliance`, with its own identity and its own card. It is
+what the assistant consults before a fee adjustment is applied.
+
+| Method | Path | Auth | Response |
+|---|---|---|---|
+| GET | `/compliance/.well-known/agent-card.json` | anonymous | the signed card: one skill, `review_fee_adjustment` |
+| POST | `/compliance/a2a/token` | anonymous | a token for **this** agent's audience, scope `a2a.compliance.review` |
+| POST | `/compliance/a2a` | partner | JSON-RPC, and the HTTP+JSON paths beside it |
+
+Send the adjustment as a **data part** — `{ adjustmentId, firmId, accountId, amount, reason }` — and the review
+comes back as a task: progress while it works, then a `compliance-verdict` artifact carrying
+`{ adjustmentId, decision, reason, reviewedAt, simulated }`. About one review in five stops in `input-required`
+and asks for the advisor's justification; sending it under the same task id continues that review. Anything that
+is not a fee adjustment is answered with one sentence and no verdict.
+
+The review is **simulated**: a threshold (`Review:RefuseAboveAmount`) and a stopwatch
+(`Review:MinDurationMs`/`MaxDurationMs`, 20–60 s in the stack), with `Review:AskForJustificationRate` deciding how
+often it asks first. It binds nobody.
+
+**How the assistant authenticates to it.** With its own client credentials (`Compliance:ClientId` /
+`Compliance:ClientSecret`), exchanged at the reviewer's own token endpoint. A user's token is never forwarded: the
+audiences differ, so a token for `/a2a` is refused at `/compliance/a2a` and the other way round. The reviewer is
+found by fetching its card from `Compliance:BaseUrl` — the card says where it answers, and nothing else is
+hard-coded. A consultation ends as a verdict, a question, a timeout (`Compliance:Deadline`), an unreachable agent
+or a failure, and each one is written to the audit record as `a2a.consultation` — agent, adjustment id, task id,
+outcome and duration, never the content.

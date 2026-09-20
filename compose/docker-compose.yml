@@ -24,6 +24,10 @@ x-app-env: &app-env
   A2A__Partners__acme-portal__Secret: ${A2A_PARTNER_SECRET:-acme-portal-dev-secret}
   A2A__Partners__acme-portal__Firms__0: firm-a
   A2A__Partners__acme-portal__Scopes__0: a2a.billing.read
+  # The assistant's own credentials at the compliance reviewer: it consults as a system, never as a user.
+  Compliance__BaseUrl: ${COMPLIANCE_BASE_URL:-http://lb/compliance}
+  Compliance__ClientId: maf-lab-assistant
+  Compliance__ClientSecret: ${COMPLIANCE_CLIENT_SECRET:-assistant-dev-secret}
 
 services:
   qdrant:
@@ -81,6 +85,23 @@ services:
       ollama-init:
         condition: service_completed_successfully
 
+  compliance:
+    build:
+      context: ..
+      dockerfile: src/Maf.Lab.ComplianceAgent/Dockerfile
+    deploy:
+      replicas: 2
+    environment:
+      <<: *app-env
+      Urls: http://+:8080
+      # Its own audience and its own registry: a token for the assistant's surface is no good here.
+      A2A__Audience: maf-lab-compliance
+      A2A__PublicBaseUrl: ${COMPLIANCE_PUBLIC_URL:-http://localhost:7171/compliance}
+      A2A__PathBase: /compliance
+      A2A__RequiredScope: a2a.compliance.review
+      A2A__Partners__maf-lab-assistant__Secret: ${COMPLIANCE_CLIENT_SECRET:-assistant-dev-secret}
+      A2A__Partners__maf-lab-assistant__Scopes__0: a2a.compliance.review
+
   api:
     build:
       context: ..
@@ -132,6 +153,8 @@ services:
       api:
         condition: service_healthy
       mcp-retrieval:
+        condition: service_healthy
+      compliance:
         condition: service_healthy
       web:
         condition: service_healthy

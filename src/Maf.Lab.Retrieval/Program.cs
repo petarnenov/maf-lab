@@ -2,7 +2,7 @@ using Maf.Lab.Retrieval.Auth;
 using Maf.Lab.Retrieval.Store;
 using Maf.Lab.Retrieval.Tools;
 
-using Maf.Lab.Retrieval.Hosting;
+using Maf.Lab.Hosting;
 
 namespace Maf.Lab.Retrieval;
 

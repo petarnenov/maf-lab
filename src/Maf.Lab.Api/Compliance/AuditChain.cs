@@ -13,6 +13,8 @@ public static class AuditKinds
     public const string ComplianceExport = "compliance.export";
     /// <summary>A request that arrived from another agent over A2A.</summary>
     public const string A2ARequest = "a2a.request";
+    /// <summary>A request this system sent to another agent over A2A.</summary>
+    public const string A2AConsultation = "a2a.consultation";
 }
 
 /// <param name="Intact">False when a row's content or a row's absence breaks a link.</param>

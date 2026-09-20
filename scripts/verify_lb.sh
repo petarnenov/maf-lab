@@ -14,6 +14,7 @@ COMPOSE = os.environ["COMPOSE"]
 failures = []
 
 A2A_SECRET = os.environ.get("A2A_PARTNER_SECRET", "acme-portal-dev-secret")
+COMPLIANCE_SECRET = os.environ.get("COMPLIANCE_CLIENT_SECRET", "assistant-dev-secret")
 
 def check(name, ok, detail=""):
     print(f"{'PASS' if ok else 'FAIL'}  {name}{('  — ' + detail) if detail else ''}")
@@ -186,6 +187,50 @@ if partner:
     check("the task reads the same through every replica",
           fetched.get("result", {}).get("id") == task.get("id"), str(sorted(i for i in instances if i)))
     check("more than one replica answered for the task", len(instances) >= 2, str(sorted(i for i in instances if i)))
+
+# 4.6 the second agent, through the same entry point --------------------------------------------------
+status, _, card = req("/compliance/.well-known/agent-card.json")
+check("the compliance agent's card is served through the balancer",
+      status == 200 and "review_fee_adjustment" in card and "maf-lab compliance reviewer" in card)
+
+status, _, body = req("/compliance/a2a/token", "POST",
+                      {"clientId": "maf-lab-assistant", "clientSecret": COMPLIANCE_SECRET})
+reviewer = json.loads(body)["accessToken"] if status == 200 else ""
+check("the assistant's credentials are accepted by the reviewer", status == 200 and bool(reviewer), f"HTTP {status}")
+
+if reviewer:
+    # A token for the assistant's own surface must not open this one: different agent, different audience.
+    _, _, crossed = req("/compliance/a2a", "POST",
+                        {"jsonrpc": "2.0", "id": 1, "method": "message/send", "params": user_message("hello")},
+                        token=partner)
+    check("a token for the billing agent does not open the compliance agent", "error" in crossed or not crossed,
+          crossed[:60])
+
+    adjustment = {"adjustmentId": "ADJ-LB", "firmId": "firm-a", "accountId": "ACC-1042",
+                  "amount": 250, "reason": "Overcharged in Q2"}
+    review = {"message": {"kind": "message", "messageId": uuid.uuid4().hex, "role": "user",
+                          "parts": [{"kind": "data", "data": adjustment}]}}
+    _, headers, raw = req("/compliance/a2a", "POST",
+                          {"jsonrpc": "2.0", "id": 1, "method": "message/send", "params": review},
+                          token=reviewer, timeout=180)
+    answer = json.loads(raw)
+    task = answer.get("result", {})
+    state = task.get("status", {}).get("state")
+    check("a review runs end to end through the balancer", state in ("completed", "input-required"),
+          json.dumps(answer)[:90])
+    if state == "completed":
+        verdict = next((p.get("data") for a in task.get("artifacts", []) for p in a.get("parts", [])
+                        if p.get("kind") == "data"), {})
+        check("the verdict is structured and says it is simulated",
+              verdict.get("decision") in ("approved", "refused") and verdict.get("simulated") is True,
+              json.dumps(verdict)[:80])
+
+    replicas = set()
+    for _ in range(8):
+        _, headers, _ = req("/compliance/.well-known/agent-card.json")
+        replicas.add(headers.get("X-Instance"))
+    check("the compliance tier answers from more than one replica", len(replicas) >= 2,
+          str(sorted(r for r in replicas if r)))
 
 print()
 print("ALL CHECKS PASSED" if not failures else f"{len(failures)} CHECK(S) FAILED: {failures}")

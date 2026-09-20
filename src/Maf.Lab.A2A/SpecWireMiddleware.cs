@@ -2,7 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace Maf.Lab.Api.A2A;
+namespace Maf.Lab.A2A;
 
 /// <summary>
 /// Puts <see cref="SpecWire"/> on the wire: every A2A request is translated into the dialect the preview SDK

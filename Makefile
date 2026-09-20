@@ -19,6 +19,7 @@ endif
 BASE_URL      ?= http://localhost:7171
 API_REPLICAS  ?= 2
 MCP_REPLICAS  ?= 2
+COMPLIANCE_REPLICAS ?= 2
 CHAT_MODEL    ?= gpt-oss:120b
 SUITE         ?= all
 WAIT_TIMEOUT  ?= 300
@@ -50,18 +51,19 @@ HOST_ENV := Models__OllamaEndpoint=http://localhost:11435
 all: require-docker up index-if-empty banner ## Start everything: build, run, wait for health, index if empty (default)
 
 help: ## List the targets
-	@echo "maf-lab — make targets (variables: API_REPLICAS MCP_REPLICAS CHAT_MODEL SUITE BASE_URL WAIT_TIMEOUT TO FORCE)"
+	@echo "maf-lab — make targets (variables: API_REPLICAS MCP_REPLICAS COMPLIANCE_REPLICAS CHAT_MODEL SUITE BASE_URL WAIT_TIMEOUT TO FORCE)"
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 # ── lifecycle ────────────────────────────────────────────────────────────────────────────────────────────────────
-up: require-docker ## Build and start the stack (api/mcp replicas via API_REPLICAS/MCP_REPLICAS), wait until healthy
+up: require-docker ## Build and start the stack (replicas via API_REPLICAS/MCP_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy
 	@if [ "$(CI_MODE)" != "1" ] && [ -z "$$OLLAMA_API_KEY" ]; then echo "⚠ OLLAMA_API_KEY is not set: the stack starts, but chat (Ollama Cloud) will fail. See 'make doctor'."; fi
 	@# compose itself waits for the balancer's dependencies to be healthy; if that fails, show which service and why.
 	$(COMPOSE) up -d --build --remove-orphans --scale api=$(API_REPLICAS) --scale mcp-retrieval=$(MCP_REPLICAS) \
+	  --scale compliance=$(COMPLIANCE_REPLICAS) \
 	  || { scripts/wait_healthy.sh 0; exit 1; }
 	@scripts/wait_healthy.sh $(WAIT_TIMEOUT)
 	@# The balancer resolves the replicas when it (re)loads; reload so it sees the current set after scaling/recreation.
-	@$(COMPOSE) exec -T lb nginx -s reload >/dev/null 2>&1 && echo "✓ load balancer reloaded ($(API_REPLICAS) api, $(MCP_REPLICAS) mcp replicas)"
+	@$(COMPOSE) exec -T lb nginx -s reload >/dev/null 2>&1 && echo "✓ load balancer reloaded ($(API_REPLICAS) api, $(MCP_REPLICAS) mcp, $(COMPLIANCE_REPLICAS) compliance replicas)"
 
 down: require-docker ## Stop the stack (data volumes are kept)
 	$(COMPOSE) down --remove-orphans

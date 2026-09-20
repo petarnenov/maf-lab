@@ -1,0 +1,10 @@
+<!-- The few lines every service in the lab runs, and nothing else: it exists so that sharing them does not make
+     one service depend on another's packages. -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Using Include="Microsoft.AspNetCore.Builder" />
+    <Using Include="Microsoft.AspNetCore.Http" />
+    <Using Include="Microsoft.AspNetCore.Routing" />
+  </ItemGroup>
+</Project>

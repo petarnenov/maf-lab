@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Retrieval.Auth;
+using Maf.Lab.Domain.Configuration;
 using Maf.Lab.Retrieval.Configuration;
 using Maf.Lab.Retrieval.Models;
 using Maf.Lab.TestSupport;
@@ -41,6 +42,8 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
     public bool EmulateForcing { get; }
     /// <summary>How long each stage of a simulated A2A billing run takes; instant unless a test needs to interrupt one.</summary>
     public int SimulatedStepMs { get; init; } = 1;
+    /// <summary>Extra configuration for one test, applied over the standard settings.</summary>
+    public IReadOnlyDictionary<string, string?> ExtraSettings { get; init; } = new Dictionary<string, string?>();
     /// <summary>Extra service overrides for one test (applied after the standard ones).</summary>
     public Action<IServiceCollection>? ConfigureTestServices { get; set; }
 
@@ -59,7 +62,7 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
             ["A2A:Partners:acme-portal:Firms:0"] = "firm-a",
             ["A2A:Partners:acme-portal:Scopes:0"] = "a2a.billing.read",
             ["A2A:SimulatedStepMs"] = SimulatedStepMs.ToString(),
-        }));
+        }).AddInMemoryCollection(ExtraSettings));
         builder.ConfigureLogging(l => l.AddProvider(Logs).SetMinimumLevel(LogLevel.Debug));
         builder.ConfigureTestServices(s =>
         {

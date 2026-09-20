@@ -1,3 +1,4 @@
+using Maf.Lab.A2A;
 using Maf.Lab.Api.A2A;
 using Maf.Lab.Api.Admin;
 using Maf.Lab.Api.Agent;
@@ -8,7 +9,7 @@ using Maf.Lab.Indexing;
 using Maf.Lab.Retrieval.Auth;
 using Microsoft.EntityFrameworkCore;
 
-using Maf.Lab.Retrieval.Hosting;
+using Maf.Lab.Hosting;
 
 namespace Maf.Lab.Api;
 
@@ -49,6 +50,10 @@ public partial class Program
         builder.Services.AddHttpClient("topology");
         builder.Services.AddSingleton<Topology.IServiceResolver, Topology.DnsServiceResolver>();
         builder.Services.AddSingleton<Topology.TopologyProbe>();
+        builder.Services.AddSingleton(A2A.BillingAgentCard.Descriptor);
+        builder.Services.Configure<A2A.ComplianceOptions>(builder.Configuration.GetSection(A2A.ComplianceOptions.Section));
+        builder.Services.AddHttpClient("a2a-consult");
+        builder.Services.AddSingleton<A2A.ComplianceConsultant>();
         builder.Services.AddHttpClient("a2a-push");
         builder.Services.AddSingleton<A2A.PushNotificationDispatcher>();
         builder.Services.AddSingleton<global::A2A.ITaskStore, A2A.SqliteTaskStore>();
@@ -59,7 +64,8 @@ public partial class Program
         builder.Services.AddSingleton<global::A2A.ChannelEventNotifier>();
         builder.Services.AddSingleton<global::A2A.A2AServer>();
         // The SDK's server does the protocol; five operations it leaves throwing are implemented around it.
-        builder.Services.AddSingleton<global::A2A.IA2ARequestHandler, A2A.A2ARequestHandlerWithExtras>();
+        builder.Services.AddSingleton<IPushConfigStore, A2A.SqlitePushConfigStore>();
+        builder.Services.AddSingleton<global::A2A.IA2ARequestHandler, A2ARequestHandlerWithExtras>();
         builder.Services.Configure<Agent.Tracing.TracingOptions>(builder.Configuration.GetSection(Agent.Tracing.TracingOptions.Section));
         builder.Services.AddSingleton<Agent.Tracing.TraceRetentionService>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<Agent.Tracing.TraceRetentionService>());

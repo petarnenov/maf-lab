@@ -1,6 +1,7 @@
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Retrieval.Auth;
+using Maf.Lab.Domain.Configuration;
 using Maf.Lab.Retrieval.Configuration;
 using Maf.Lab.Retrieval.Models;
 using Maf.Lab.TestSupport;

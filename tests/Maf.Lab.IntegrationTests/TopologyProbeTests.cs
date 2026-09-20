@@ -22,6 +22,7 @@ public class TopologyProbeTests(QdrantFixture qdrant)
             Options.Create(new QdrantOptions { Collection = collection, Host = "test", GrpcPort = 6334 }),
             Options.Create(new ModelOptions()),
             Options.Create(new AgentOptions()),
+            Options.Create(new Maf.Lab.Api.A2A.ComplianceOptions()),
             new FakeToolSource(),
             client,
             new StubHttpClientFactory(),

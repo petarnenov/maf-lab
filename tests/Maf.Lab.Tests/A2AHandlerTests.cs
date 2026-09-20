@@ -1,3 +1,4 @@
+using Maf.Lab.A2A;
 using A2A;
 using Maf.Lab.Api.A2A;
 // Both libraries have a Role; the message role is the one this file means.
@@ -142,7 +143,7 @@ public class A2AHandlerTests
         {
             Id = "t-1",
             ContextId = "ctx-1",
-            Status = new A2A.TaskStatus { State = TaskState.InputRequired },
+            Status = new global::A2A.TaskStatus { State = TaskState.InputRequired },
             History = [new Message { MessageId = "m-1", Role = MessageRole.User, Parts = [new Part { Text = "start a billing run for firm-a" }] }],
         };
         var resumed = await DrainAsync(q => handler.ExecuteAsync(Context("2026-06", existing: existing), q, Ct), Ct);

@@ -22,6 +22,9 @@
           <mxGeometry x="470" y="290" width="160" height="80" as="geometry" />
         </mxCell>
 
+        <mxCell id="compliance" value="compliance&#10;A2A reviewer (2x)" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="470" y="420" width="160" height="80" as="geometry" />
+        </mxCell>
         <mxCell id="mcp" value="mcp-retrieval&#10;MCP server" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
           <mxGeometry x="700" y="290" width="160" height="80" as="geometry" />
         </mxCell>
@@ -42,6 +45,12 @@
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e-lb-api" value="/api, /dev" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="lb" target="api">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-lb-compliance" value="/compliance" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="lb" target="compliance">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-api-compliance" value="A2A via lb" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="api" target="compliance">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e-api-mcp" value="/mcp via lb" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="api" target="mcp">

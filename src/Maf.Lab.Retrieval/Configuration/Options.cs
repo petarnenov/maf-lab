@@ -103,14 +103,3 @@ public static class FusionModes
     public const string Rrf = "rrf";
     public const string Dbsf = "dbsf";
 }
-
-public sealed class AuthOptions
-{
-    public const string Section = "Auth";
-
-    public string Issuer { get; set; } = "maf-lab-dev-issuer";
-    public string Audience { get; set; } = "maf-lab";
-    /// <summary>HMAC key, at least 32 bytes. Dev only; override via environment in compose.</summary>
-    public string SigningKey { get; set; } = "maf-lab-dev-signing-key-change-me-0123456789";
-    public TimeSpan TokenLifetime { get; set; } = TimeSpan.FromHours(8);
-}

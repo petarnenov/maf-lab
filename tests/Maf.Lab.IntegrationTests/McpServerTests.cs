@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Retrieval.Auth;
+using Maf.Lab.Domain.Configuration;
 using Maf.Lab.Retrieval.Configuration;
 using Maf.Lab.Retrieval.Models;
 using Maf.Lab.TestSupport;

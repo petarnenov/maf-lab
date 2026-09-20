@@ -1,7 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Maf.Lab.Domain.Tenancy;
-using Maf.Lab.Retrieval.Hosting;
+using Maf.Lab.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace Maf.Lab.Tests;

@@ -9,6 +9,8 @@ public sealed class TopologyOptions
     public string ApiService { get; set; } = "api";
     /// <summary>Compose service name of the MCP server. Empty disables discovery.</summary>
     public string McpService { get; set; } = "mcp-retrieval";
+    /// <summary>The second agent's container name, resolved the same way the others are.</summary>
+    public string ComplianceService { get; set; } = "compliance";
     /// <summary>Port both hosts listen on inside the network.</summary>
     public int ServicePort { get; set; } = 8080;
     public string LoadBalancerHealthUrl { get; set; } = "http://lb/lb-health";

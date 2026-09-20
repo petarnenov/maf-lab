@@ -1,3 +1,4 @@
+using Maf.Lab.A2A;
 using A2A;
 using Maf.Lab.Api.A2A;
 using Maf.Lab.Api.Storage;
@@ -21,7 +22,7 @@ public class A2ATaskStoreTests
     {
         Id = id,
         ContextId = context,
-        Status = new A2A.TaskStatus { State = state, Timestamp = DateTimeOffset.UtcNow },
+        Status = new global::A2A.TaskStatus { State = state, Timestamp = DateTimeOffset.UtcNow },
         History = [new Message { MessageId = "m1", Role = Role.User, Parts = [new Part { Text = "status of run 4417" }] }],
     };
 

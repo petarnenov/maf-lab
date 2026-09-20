@@ -560,3 +560,34 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
   from Python, which is now part of `scripts/a2a_probe.py`.
 - **A push delivery carries a Content-Length.** Chunked delivery is legal and broke a receiver that reads by
   length — including the probe's. The payload is serialized before the request is built.
+
+## 24. A second agent, consulted (add-compliance-agent, 2026-09-20)
+
+- **Three projects came out of one.** `Maf.Lab.A2A` holds what both agents need — partner identity, the card
+  factory, the 1.0 wire translation, the request handler — and `Maf.Lab.Hosting` holds the thirty lines every
+  service shares (`X-Instance`, `/health`). Putting the A2A code in `Maf.Lab.Retrieval` would have made the MCP
+  server and the indexer carry the protocol packages; copying it into the reviewer would have let the two agents
+  drift apart on the wire. `AuthOptions` moved to `Maf.Lab.Domain` for the same reason: everything that mints or
+  validates a token needs it, including services that know nothing about retrieval.
+- **The card factory takes a descriptor.** Name, description, skills and scopes come from the service; the two
+  transports, the security scheme, the signature and the canonical rendering are shared, so the two cards cannot
+  disagree about the parts that are not about the agent. A recorded copy of the billing card, captured from the
+  running stack before the change, is asserted byte for byte after it.
+- **The required scope is configuration.** The policy used to demand `a2a.billing.read` by name, which is
+  meaningless at an agent that reviews adjustments. `A2A:RequiredScope` names it per service; empty means any
+  scope the partner's registration grants.
+- **A consultation returns a result, it does not throw.** `ConsultationResult` is a verdict, a question, a
+  timeout, an unreachable agent or a failure. The caller — the workflow, in the next change — must handle each,
+  and a type that enumerates them is better than a `catch` that hopes. A timeout keeps the task id on purpose: the
+  review is still running over there.
+- **The reviewer keeps its tasks in memory, and the balancer keeps a task on its replica.** It has no other state
+  and nothing outside it reads a finished review, so a database would be ceremony. The cost is that a replica's
+  in-flight reviews die with it; `hash $request_uri consistent` keeps a task's follow-ups on the replica that owns
+  it, and the caller's deadline is what turns a lost review into a truthful answer rather than a hang.
+- **`A2ACardResolver` appends the well-known path to the origin, not to the address it is given.** With two agents
+  behind one entry point, asking `http://lb/compliance` for a card returns the *billing* agent's. Found live, by
+  the probe, after the unit tests passed — they served the reviewer at a root. The card is now requested by full
+  path, and a test serves the reviewer under a prefix so the bug cannot come back.
+- **The assistant holds its own credentials at the reviewer**, and the two agents' tokens are not
+  interchangeable: different audiences, and `scripts/verify_lb.sh` asserts that a billing token is refused at
+  `/compliance/a2a`.

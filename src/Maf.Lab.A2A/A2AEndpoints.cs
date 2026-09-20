@@ -1,9 +1,9 @@
 using A2A;
 using A2A.AspNetCore;
-using Maf.Lab.Retrieval.Configuration;
+using Maf.Lab.Domain.Configuration;
 using Microsoft.Extensions.Options;
 
-namespace Maf.Lab.Api.A2A;
+namespace Maf.Lab.A2A;
 
 /// <summary>
 /// The A2A surface: discovery, the token a partner obtains, and the protocol endpoints themselves. The public card
@@ -15,13 +15,14 @@ public static class A2AEndpoints
     {
         // Served with the protocol's own serializer options, so the document a partner receives is member for
         // member the document the signature was computed over.
-        app.MapGet(AgentCardFactory.WellKnownPath, (IOptions<A2AOptions> a2a, IOptions<AuthOptions> auth) =>
-            Results.Json(AgentCardFactory.Signed(AgentCardFactory.Public(a2a.Value), auth.Value),
-                A2AJsonUtilities.DefaultOptions))
+        app.MapGet(AgentCardFactory.WellKnownPath,
+            (AgentCardDescriptor agent, IOptions<A2AOptions> a2a, IOptions<AuthOptions> auth) =>
+                Results.Json(AgentCardFactory.Signed(AgentCardFactory.Public(a2a.Value, agent), auth.Value),
+                    A2AJsonUtilities.DefaultOptions))
             .AllowAnonymous();
 
         // Client credentials, as the card advertises. The lab's stand-in for a real token endpoint.
-        app.MapPost("/a2a/token", (TokenRequest request, IOptions<A2AOptions> a2a, IOptions<AuthOptions> auth) =>
+        app.MapPost(AgentCardFactory.TokenPath, (TokenRequest request, IOptions<A2AOptions> a2a, IOptions<AuthOptions> auth) =>
         {
             if (!a2a.Value.Partners.TryGetValue(request.ClientId, out var registration)
                 || !string.Equals(registration.Secret, request.ClientSecret, StringComparison.Ordinal))
@@ -45,11 +46,12 @@ public static class A2AEndpoints
     public static IEndpointRouteBuilder MapA2AProtocol(this IEndpointRouteBuilder app)
     {
         var handler = app.ServiceProvider.GetRequiredService<IA2ARequestHandler>();
-        var card = app.ServiceProvider.GetRequiredService<IOptions<A2AOptions>>().Value;
+        var options = app.ServiceProvider.GetRequiredService<IOptions<A2AOptions>>().Value;
+        var agent = app.ServiceProvider.GetRequiredService<AgentCardDescriptor>();
 
         app.MapA2A(handler, AgentCardFactory.A2APath)
             .RequireAuthorization(PartnerAuthentication.Policy);
-        app.MapHttpA2A(handler, AgentCardFactory.Public(card), AgentCardFactory.A2APath)
+        app.MapHttpA2A(handler, AgentCardFactory.Public(options, agent), AgentCardFactory.A2APath)
             .RequireAuthorization(PartnerAuthentication.Policy);
         return app;
     }

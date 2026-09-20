@@ -8,6 +8,7 @@
     <PackageReference Include="OllamaSharp" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Maf.Lab.Hosting\Maf.Lab.Hosting.csproj" />
     <ProjectReference Include="..\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />
   </ItemGroup>
   <ItemGroup>

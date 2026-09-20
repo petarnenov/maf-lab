@@ -5,6 +5,7 @@ using Maf.Lab.Domain.Chat;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Indexing;
 using Maf.Lab.Retrieval.Auth;
+using Maf.Lab.Domain.Configuration;
 using Maf.Lab.Retrieval.Configuration;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;

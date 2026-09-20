@@ -1,10 +1,8 @@
 using A2A;
-using Maf.Lab.Api.Storage;
-using Maf.Lab.Retrieval.Configuration;
-using Microsoft.EntityFrameworkCore;
+using Maf.Lab.Domain.Configuration;
 using Microsoft.Extensions.Options;
 
-namespace Maf.Lab.Api.A2A;
+namespace Maf.Lab.A2A;
 
 /// <summary>
 /// The SDK's <see cref="A2AServer"/> does the protocol work, except for five operations that throw in
@@ -17,8 +15,9 @@ namespace Maf.Lab.Api.A2A;
 public sealed class A2ARequestHandlerWithExtras(
     A2AServer inner,
     ITaskStore tasks,
-    IDbContextFactory<MafDbContext> db,
+    IPushConfigStore pushConfigs,
     IPartnerAccessor partners,
+    AgentCardDescriptor agent,
     IOptions<A2AOptions> a2a,
     IOptions<AuthOptions> auth,
     TimeProvider time) : IA2ARequestHandler
@@ -116,7 +115,7 @@ public sealed class A2ARequestHandlerWithExtras(
     public Task<AgentCard> GetExtendedAgentCardAsync(GetExtendedAgentCardRequest request, CancellationToken cancellationToken = default)
     {
         _ = partners.Current; // throws when the caller is not an authenticated partner
-        return Task.FromResult(AgentCardFactory.Signed(AgentCardFactory.Extended(a2a.Value), auth.Value));
+        return Task.FromResult(AgentCardFactory.Signed(AgentCardFactory.Extended(a2a.Value, agent), auth.Value));
     }
 
     public async Task<TaskPushNotificationConfig> CreateTaskPushNotificationConfigAsync(
@@ -127,21 +126,7 @@ public sealed class A2ARequestHandlerWithExtras(
         await EnsureTaskExistsAsync(taskId, cancellationToken);
 
         var id = (request.ConfigId ?? push.Id) is { Length: > 0 } given ? given : Guid.NewGuid().ToString("N");
-        await using var ctx = await db.CreateDbContextAsync(cancellationToken);
-        var existing = await ctx.A2APushConfigs.FirstOrDefaultAsync(c => c.Id == id && c.TaskId == taskId, cancellationToken);
-        if (existing is null)
-        {
-            ctx.A2APushConfigs.Add(new A2APushConfigRow
-            {
-                Id = id, TaskId = taskId, Url = push.Url ?? "", Token = push.Token, CreatedAt = time.GetUtcNow().UtcDateTime,
-            });
-        }
-        else
-        {
-            existing.Url = push.Url ?? "";
-            existing.Token = push.Token;
-        }
-        await ctx.SaveChangesAsync(cancellationToken);
+        await pushConfigs.SaveAsync(new PushConfigRecord(id, taskId, push.Url ?? "", push.Token), cancellationToken);
         push.Id = id;
         return new TaskPushNotificationConfig { Id = id, TaskId = taskId, PushNotificationConfig = push };
     }
@@ -149,46 +134,38 @@ public sealed class A2ARequestHandlerWithExtras(
     public async Task<TaskPushNotificationConfig> GetTaskPushNotificationConfigAsync(
         GetTaskPushNotificationConfigRequest request, CancellationToken cancellationToken = default)
     {
-        await using var ctx = await db.CreateDbContextAsync(cancellationToken);
-        var row = await ctx.A2APushConfigs.AsNoTracking()
-            .FirstOrDefaultAsync(c => c.TaskId == request.TaskId && (request.Id == null || c.Id == request.Id), cancellationToken)
+        var configs = await pushConfigs.ListAsync(request.TaskId ?? "", cancellationToken);
+        var record = configs.FirstOrDefault(c => request.Id is null || c.Id == request.Id)
             ?? throw new A2AException("No such push notification configuration.", A2AErrorCode.TaskNotFound);
-        return Wrap(row);
+        return Wrap(record);
     }
 
     public async Task<ListTaskPushNotificationConfigResponse> ListTaskPushNotificationConfigAsync(
         ListTaskPushNotificationConfigRequest request, CancellationToken cancellationToken = default)
     {
-        await using var ctx = await db.CreateDbContextAsync(cancellationToken);
-        var rows = await ctx.A2APushConfigs.AsNoTracking()
-            .Where(c => c.TaskId == request.TaskId)
-            .OrderBy(c => c.CreatedAt)
-            .ToListAsync(cancellationToken);
-        return new ListTaskPushNotificationConfigResponse { Configs = [.. rows.Select(Wrap)] };
+        var configs = await pushConfigs.ListAsync(request.TaskId ?? "", cancellationToken);
+        return new ListTaskPushNotificationConfigResponse { Configs = [.. configs.Select(Wrap)] };
     }
 
     public async Task DeleteTaskPushNotificationConfigAsync(
         DeleteTaskPushNotificationConfigRequest request, CancellationToken cancellationToken = default)
     {
-        await using var ctx = await db.CreateDbContextAsync(cancellationToken);
-        await ctx.A2APushConfigs
-            .Where(c => c.TaskId == request.TaskId && c.Id == request.Id)
-            .ExecuteDeleteAsync(cancellationToken);
+        await pushConfigs.DeleteAsync(request.TaskId ?? "", request.Id ?? "", cancellationToken);
     }
 
+    /// <summary>A configuration belongs to a task, so a task that does not exist cannot have one.</summary>
     private async Task EnsureTaskExistsAsync(string taskId, CancellationToken ct)
     {
-        await using var ctx = await db.CreateDbContextAsync(ct);
-        if (!await ctx.A2ATasks.AsNoTracking().AnyAsync(t => t.Id == taskId, ct))
+        if (await tasks.GetTaskAsync(taskId, ct) is null)
         {
             throw new A2AException($"Task {taskId} does not exist.", A2AErrorCode.TaskNotFound);
         }
     }
 
-    private static TaskPushNotificationConfig Wrap(A2APushConfigRow row) => new()
+    private static TaskPushNotificationConfig Wrap(PushConfigRecord record) => new()
     {
-        Id = row.Id,
-        TaskId = row.TaskId,
-        PushNotificationConfig = new PushNotificationConfig { Id = row.Id, Url = row.Url, Token = row.Token },
+        Id = record.Id,
+        TaskId = record.TaskId,
+        PushNotificationConfig = new PushNotificationConfig { Id = record.Id, Url = record.Url, Token = record.Token },
     };
 }
