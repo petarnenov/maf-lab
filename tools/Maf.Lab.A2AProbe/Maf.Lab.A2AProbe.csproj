@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <!-- The Agent Framework marks its A2A client as evaluation-only; this probe is exactly that. -->
+    <NoWarn>$(NoWarn);MEAI001;MAAI001</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="A2A" />
+    <PackageReference Include="Microsoft.Agents.AI" />
+    <PackageReference Include="Microsoft.Agents.AI.A2A" />
+  </ItemGroup>
+</Project>

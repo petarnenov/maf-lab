@@ -69,6 +69,27 @@ retrieval eval reports recall per language. Measured over the eval set, Bulgaria
 0.68** while English stayed at 0.69. Switch it off with `Retrieval__NormalizeQueryLanguage=false`; the corpus
 language is `Retrieval__CorpusLanguage` (default `en`).
 
+## Another agent talking to this one (A2A)
+
+The assistant is also an **[A2A 1.0](https://a2a-protocol.org) agent**, so another system can work with it without
+a person in the loop. It advertises itself at `http://localhost:7171/.well-known/agent-card.json` — a signed card
+naming its skills, its transports (JSON-RPC and HTTP+JSON) and how to authenticate — and answers on `/a2a`.
+
+A partner is a **system, not a user**: its token's audience is the A2A endpoint, it carries no user identity, and
+the firms it may see come from the server's `A2A:Partners` registration rather than from anything it sends. Ask
+about a firm outside that set and you get one fixed sentence and no data — not the run, not whether it exists.
+
+It can ask about a billing run, ask anything else (answered by the same agent and the same MCP tools the chat UI
+uses), or **start a billing run** — which comes back as a task it can follow, resume when the agent asks for a
+missing period, resubscribe to after a dropped connection, cancel, or be notified about through a webhook. That
+run is **simulated**: it walks the real lifecycle over the seeded runs and bills nobody. The card says so, the
+final artifact says so (`"simulated": true`), and so does this paragraph.
+
+Two clients prove it from outside: `python3 scripts/a2a_probe.py` speaks the 1.0 wire format and imports no A2A
+library at all, and `dotnet run --project tools/Maf.Lab.A2AProbe` builds an agent from nothing but the card using
+the Agent Framework's A2A client. The preview SDK underneath does not yet speak 1.0 on the wire; every difference
+and what is done about it is in `DECISIONS.md`.
+
 ## Behind the scenes
 
 `/chat` shows the conversation on the left and a live **behind-the-scenes monitor** on the right: every step of the turn

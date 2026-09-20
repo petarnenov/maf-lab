@@ -39,6 +39,8 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
     public string DataDir { get; }
     public CapturingLoggerProvider Logs { get; } = new();
     public bool EmulateForcing { get; }
+    /// <summary>How long each stage of a simulated A2A billing run takes; instant unless a test needs to interrupt one.</summary>
+    public int SimulatedStepMs { get; init; } = 1;
     /// <summary>Extra service overrides for one test (applied after the standard ones).</summary>
     public Action<IServiceCollection>? ConfigureTestServices { get; set; }
 
@@ -52,6 +54,11 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
             ["Qdrant:GrpcPort"] = "1",
             ["Agent:EmulateRequiredToolMode"] = EmulateForcing.ToString(),
             ["Agent:IntentModel"] = IntentModelName,
+            // One partner, so the A2A surface has something to authenticate.
+            ["A2A:Partners:acme-portal:Secret"] = "s3cret",
+            ["A2A:Partners:acme-portal:Firms:0"] = "firm-a",
+            ["A2A:Partners:acme-portal:Scopes:0"] = "a2a.billing.read",
+            ["A2A:SimulatedStepMs"] = SimulatedStepMs.ToString(),
         }));
         builder.ConfigureLogging(l => l.AddProvider(Logs).SetMinimumLevel(LogLevel.Debug));
         builder.ConfigureTestServices(s =>

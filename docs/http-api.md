@@ -138,3 +138,46 @@ followed by one line per row, fields joined with `U+001F` in the order the DTOs 
 |---|---|---|
 | GET | `/api/evals/reports` | `EvalReportSummary[]`, newest first |
 | GET | `/api/evals/reports/{runId}` | `EvalReport` |
+
+## A2A (partner systems, not users)
+
+The assistant is also an [A2A 1.0](https://a2a-protocol.org) agent. A partner is a **system**, not a person: its
+token's audience is the A2A endpoint, it carries no user identity, and what it may see comes from the server's
+`A2A:Partners` registration — never from the request.
+
+| Method | Path | Auth | Response |
+|---|---|---|---|
+| GET | `/.well-known/agent-card.json` | anonymous | the signed public agent card |
+| POST | `/a2a/token` | anonymous | `{ accessToken, tokenType, expiresIn, scope }` for `{ clientId, clientSecret, scope? }` |
+| POST | `/a2a` | partner | JSON-RPC 2.0 for every A2A method |
+| POST/GET/DELETE | `/a2a/message:send`, `/a2a/message:stream`, `/a2a/tasks…` | partner | the same methods over HTTP+JSON |
+
+Both transports carry the specification's own wire format: `message/send`, `tasks/get`,
+`tasks/pushNotificationConfig/set`, `agent/getAuthenticatedExtendedCard`, roles `user`/`agent`, states such as
+`input-required`, parts with their `kind`, and a result that *is* the task or the message. The preview SDK
+underneath speaks a different dialect; `SpecWire` translates both ways and `DECISIONS.md` lists every divergence.
+
+What a partner can do:
+
+- **Ask about a run** — `message/send` with "status of run 4417" answers with a message, from the run's own record.
+- **Ask anything else** — answered by the assistant itself, the same agent and the same MCP tools as the chat UI,
+  scoped to the partner's firm.
+- **Start a billing run** — a task, streamed over `message/stream`, ending in a `billing-run-result` artifact
+  (a data part). The run is **simulated**: it walks the real lifecycle over seeded data and bills nobody.
+- **Follow, resume, cancel** — `tasks/resubscribe` sends the whole current task first, so a dropped stream misses
+  no transition; `tasks/cancel` stops a working task; a task in `input-required` continues when the caller sends
+  the missing value under the same task id.
+- **Be notified** — `tasks/pushNotificationConfig/set` registers a webhook, which receives one POST per state
+  change carrying the task and the caller's own token in `X-A2A-Notification-Token`.
+
+A request about a firm outside the partner's entitlement is rejected with one fixed sentence and no data — not the
+firm, not the run, not whether either exists.
+
+**Verifying the card.** The card carries a JWS in `signatures[0]`: `protected` is base64url JSON
+(`{"alg":"HS256","typ":"JOSE"}`), and `signature` is base64url HMAC-SHA256 over
+`protected + "." + base64url(canonical(card))`, keyed with the issuer's signing key. `canonical` is the served
+card with its `signatures` member removed, every object's members sorted lexicographically, and no whitespace —
+`json.dumps(card, sort_keys=True, separators=(",", ":"), ensure_ascii=False)` reproduces it, so a verifier never
+has to guess this service's property order. `scripts/a2a_probe.py` does exactly that. In the lab the key is
+symmetric, so verification needs the same secret; a real deployment would sign asymmetrically and publish the
+public half (see `DECISIONS.md`).

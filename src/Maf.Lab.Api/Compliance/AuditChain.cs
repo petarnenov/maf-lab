@@ -11,6 +11,8 @@ public static class AuditKinds
     public const string Tool = "tool";
     public const string ConversationDelete = "conversation.delete";
     public const string ComplianceExport = "compliance.export";
+    /// <summary>A request that arrived from another agent over A2A.</summary>
+    public const string A2ARequest = "a2a.request";
 }
 
 /// <param name="Intact">False when a row's content or a row's absence breaks a link.</param>

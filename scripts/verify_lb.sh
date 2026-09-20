@@ -7,11 +7,13 @@ COMPOSE="docker compose -f $(dirname "$0")/../compose/docker-compose.yml"
 export BASE COMPOSE
 
 python3 - <<'PY'
-import json, os, subprocess, sys, time, urllib.request, urllib.error, socket, collections
+import json, os, subprocess, sys, time, urllib.request, urllib.error, socket, collections, uuid
 
 BASE = os.environ["BASE"]
 COMPOSE = os.environ["COMPOSE"]
 failures = []
+
+A2A_SECRET = os.environ.get("A2A_PARTNER_SECRET", "acme-portal-dev-secret")
 
 def check(name, ok, detail=""):
     print(f"{'PASS' if ok else 'FAIL'}  {name}{('  — ' + detail) if detail else ''}")
@@ -139,6 +141,51 @@ while (state not in ("succeeded", "failed") or polls < 8) and time.time() < dead
     time.sleep(0.3)
 check("job finishes succeeded", state == "succeeded", state)
 check("job status was served by >= 2 replicas", len(seen) >= 2, str(dict(seen)))
+
+# 4.5 the A2A surface through the balancer ------------------------------------------------------------
+status, _, card = req("/.well-known/agent-card.json")
+check("agent card is served anonymously through the balancer",
+      status == 200 and "skills" in card and "start_billing_run" not in card)
+status, _, _ = req("/a2a", "POST", {"jsonrpc": "2.0", "id": 1, "method": "message/send"})
+check("the protocol endpoint refuses an anonymous caller", status == 401, f"HTTP {status}")
+
+status, _, body = req("/a2a/token", "POST", {"clientId": "acme-portal", "clientSecret": A2A_SECRET})
+partner = json.loads(body)["accessToken"] if status == 200 else ""
+check("a partner token is issued through the balancer", status == 200 and bool(partner), f"HTTP {status}")
+
+def a2a(method, params, timeout=90):
+    _, headers, raw = req("/a2a", "POST", {"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
+                          token=partner, timeout=timeout)
+    return json.loads(raw), headers.get("X-Instance")
+
+def user_message(text, task=None):
+    message = {"kind": "message", "messageId": uuid.uuid4().hex, "role": "user",
+               "parts": [{"kind": "text", "text": text}]}
+    if task:
+        message["taskId"] = task
+    return {"message": message}
+
+if partner:
+    answer, _ = a2a("message/send", user_message("status of run 4417"))
+    check("a partner question is answered in the 1.0 shape",
+          answer.get("result", {}).get("kind") == "message" and answer["result"].get("role") == "agent",
+          json.dumps(answer)[:90])
+
+    started, first_instance = a2a("message/send", user_message("start a billing run for firm-a 2026-06"))
+    task = started.get("result", {})
+    check("a run through the balancer completes as a task",
+          task.get("kind") == "task" and task.get("status", {}).get("state") == "completed",
+          json.dumps(task.get("status", {}))[:90])
+
+    # The task lives in the shared store, so it can be read back through a different replica.
+    instances = set()
+    fetched = {}
+    for _ in range(8):
+        fetched, instance = a2a("tasks/get", {"id": task.get("id", "")})
+        instances.add(instance)
+    check("the task reads the same through every replica",
+          fetched.get("result", {}).get("id") == task.get("id"), str(sorted(i for i in instances if i)))
+    check("more than one replica answered for the task", len(instances) >= 2, str(sorted(i for i in instances if i)))
 
 print()
 print("ALL CHECKS PASSED" if not failures else f"{len(failures)} CHECK(S) FAILED: {failures}")

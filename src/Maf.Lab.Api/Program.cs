@@ -1,3 +1,4 @@
+using Maf.Lab.Api.A2A;
 using Maf.Lab.Api.Admin;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Endpoints;
@@ -23,6 +24,7 @@ public partial class Program
 
         builder.Services.AddMafIndexing(builder.Configuration);
         builder.Services.AddDevJwtAuthentication(builder.Configuration);
+        builder.Services.AddA2APartnerAuthentication(builder.Configuration);
         builder.Services.AddAuthorizationBuilder();
         builder.Services.Configure<Microsoft.AspNetCore.Authorization.AuthorizationOptions>(AuthPolicies.Add);
         builder.Services.Configure<AgentOptions>(builder.Configuration.GetSection(AgentOptions.Section));
@@ -47,6 +49,17 @@ public partial class Program
         builder.Services.AddHttpClient("topology");
         builder.Services.AddSingleton<Topology.IServiceResolver, Topology.DnsServiceResolver>();
         builder.Services.AddSingleton<Topology.TopologyProbe>();
+        builder.Services.AddHttpClient("a2a-push");
+        builder.Services.AddSingleton<A2A.PushNotificationDispatcher>();
+        builder.Services.AddSingleton<global::A2A.ITaskStore, A2A.SqliteTaskStore>();
+        // Singletons: the protocol endpoints are mapped once, and the partner is read from the current request
+        // through IHttpContextAccessor rather than captured per instance.
+        builder.Services.AddSingleton<A2A.AssistantBridge>();
+        builder.Services.AddSingleton<global::A2A.IAgentHandler, A2A.BillingAgentHandler>();
+        builder.Services.AddSingleton<global::A2A.ChannelEventNotifier>();
+        builder.Services.AddSingleton<global::A2A.A2AServer>();
+        // The SDK's server does the protocol; five operations it leaves throwing are implemented around it.
+        builder.Services.AddSingleton<global::A2A.IA2ARequestHandler, A2A.A2ARequestHandlerWithExtras>();
         builder.Services.Configure<Agent.Tracing.TracingOptions>(builder.Configuration.GetSection(Agent.Tracing.TracingOptions.Section));
         builder.Services.AddSingleton<Agent.Tracing.TraceRetentionService>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<Agent.Tracing.TraceRetentionService>());
@@ -60,6 +73,7 @@ public partial class Program
         }
 
         app.UseInstanceHeader();
+        app.UseA2ASpecWire();
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapInstanceHealth();
@@ -75,6 +89,8 @@ public partial class Program
         app.MapHistory();
         app.MapTopology();
         app.MapCompliance();
+        app.MapA2ASurface();
+        app.MapA2AProtocol();
         return app;
     }
 }

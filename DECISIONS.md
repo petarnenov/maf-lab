@@ -486,3 +486,77 @@ referenced web projects' config files never collide.
 - **The trend is drawn from local reports, the gate never is.** The screen plots a metric across whatever runs this
   machine has, with the baseline marked — 14 runs at the time of writing, showing `recall@5:bg` climbing from 0.188
   to 0.646 over one day.
+
+## 23. A2A hosting (add-a2a-hosting, 2026-09-20)
+
+- **Which packages, and why they are not interchangeable.** `A2A` and `A2A.AspNetCore` 1.0.0-preview2 carry the
+  protocol itself. The Agent Framework's own A2A packages (`Microsoft.Agents.AI.A2A`,
+  `Microsoft.Agents.AI.Hosting.A2A[.AspNetCore]`, 1.22.0-preview.260918.1) are a layer *on top of those exact
+  versions*, not an alternative to them: their nuspecs depend on `A2A 1.0.0-preview2`. So the wire behaviour below
+  is the same whichever one is referenced.
+- **The client package is used; the hosting package is not.** `Microsoft.Agents.AI.A2A` turns a remote agent into
+  an `AIAgent` (`A2ACardResolver.GetAIAgentAsync`), which is how the verification client — and, next, the
+  compliance sub-agent — talks to an A2A agent. The hosting bridge would have been the natural way to expose ours,
+  but `A2AAgentHandler` is `internal` in this preview and reachable only through `MapA2AJsonRpc(agent, …)`, which
+  takes an `AIAgent` rather than an `IAgentHandler`. An `AIAgent` cannot express `rejected` or `input-required`,
+  and both are required here — a partner asking about another firm's run, and a run whose period is missing. The
+  handler is therefore ours, and the assistant's own answers are produced by running the same `ChatClientAgent`
+  the chat UI runs, under a token minted for the partner's firm.
+- **Both transports are mapped, gRPC is not.** `MapA2A` (JSON-RPC) and `MapHttpA2A` (HTTP+JSON) both answer behind
+  the partner policy. The SDK ships no gRPC server, so the card does not advertise one.
+
+### Where the preview SDK departs from A2A 1.0
+
+Verified by driving the endpoint, not by reading release notes. `SpecWire` translates each one in both
+directions, and every item disappears from the code the day the SDK speaks 1.0 itself:
+
+| The specification | 1.0.0-preview2 |
+| --- | --- |
+| `message/send`, `tasks/get`, `tasks/pushNotificationConfig/set`, … | `SendMessage`, `GetTask`, `CreateTaskPushNotificationConfig`, … |
+| `"role": "user"` / `"agent"` | `ROLE_USER` / `ROLE_AGENT` |
+| `"state": "input-required"` | `TASK_STATE_INPUT_REQUIRED` |
+| a part carries `"kind"`, a file part nests `file.bytes`/`file.uri` | no `kind`; `raw`/`url`/`mediaType`/`filename` flattened onto the part |
+| a message, task or artifact update carries `"kind"` | no `kind` |
+| a status update carries `"final"` | absent; the caller is left to work out when the stream ends |
+| the result *is* the task or message | wrapped: `{"task": …}`, `{"message": …}`, `{"statusUpdate": …}` |
+| `pushNotificationConfig`, server-assigned id | `config` plus a **required** `configId` the caller must invent |
+
+- **Five methods throw.** `A2AServer` implements send, stream, get, list, cancel and subscribe, but
+  `Create/Get/List/DeleteTaskPushNotificationConfigAsync` and `GetExtendedAgentCardAsync` throw
+  `NotImplementedException` — while `IA2ARequestHandler` declares them and our card advertises them. They are
+  implemented in `A2ARequestHandlerWithExtras`, which delegates everything else untouched.
+- **`ITaskStore` had to be ours.** The SDK ships only `InMemoryTaskStore`, which two replicas behind the balancer
+  cannot share: a task started on one would not exist on the other. `SqliteTaskStore` keeps it in the database the
+  replicas already share, and — being the one place every transition passes through — is also where push delivery
+  is triggered, outside the write transaction so a slow webhook never holds it.
+- **The card signature is symmetric (HS256) because the lab's issuer is.** A real deployment would sign with a key
+  whose public half is published, so a partner can verify without holding a secret. Said plainly rather than
+  implied.
+- **Push is at-least-once with a shared token.** One POST per transition, retried `A2A:PushRetries` times, the
+  caller's own token echoed in `X-A2A-Notification-Token`, and a failure recorded rather than raised: a receiver
+  being down is not the task's problem. A real deployment would sign the notification instead.
+- **A partner registration grants only what it names.** `PartnerRegistration.Scopes` starts empty, because
+  configuration binding *appends* to a non-empty default — a partner configured with only the write scope would
+  have silently kept the read one too.
+- **Options are read per request, not at start-up.** The partner policy resolved `A2AOptions` once while the
+  pipeline was built, which in a test host reads configuration that has not been added yet: every partner token
+  was authenticated and then forbidden. It now reads `IOptionsMonitor` when a request is authorized.
+- **The answer follows the dialect the question was asked in.** Serving 1.0 and serving the SDK's spelling are
+  mutually exclusive on one endpoint: a specification client sends `message/send` and cannot read
+  `{"task": {…}}`, while the Agent Framework's own A2A client sends `SendMessage` and cannot read
+  `{"kind": "task"}`. The middleware therefore answers in whichever dialect the request used — translated when the
+  caller spoke 1.0, untouched when it spoke the SDK's. `scripts/a2a_probe.py` proves the first, the
+  `Maf.Lab.A2AProbe` tool proves the second, and both run against the balancer.
+- **Resubscription follows the store, not the SDK's event channel.** The channel lives in one process; the
+  balancer sends a reconnecting caller to whichever replica is free, which is usually the other one. Live, that
+  looked like a stream delivering the task and then hanging until the caller timed out. `SubscribeToTaskAsync` is
+  therefore ours: the current task first, then every change read from the shared store until the task is done.
+- **A run outlives the connection that asked for it.** The handler took the request's cancellation token, so a
+  dropped stream killed the run mid-way and the task stayed `working` for ever — the opposite of what
+  resubscription is for. The simulated run now stops only for an explicit cancel or the host shutting down.
+- **The card is served with the protocol's serializer.** The signature covers a canonical rendering — the card
+  without `signatures`, members sorted, no whitespace — and `Results.Ok` was serializing the served document with
+  different options, so a partner recomputing the digest got a different answer. Found by verifying the live card
+  from Python, which is now part of `scripts/a2a_probe.py`.
+- **A push delivery carries a Content-Length.** Chunked delivery is legal and broke a receiver that reads by
+  length — including the probe's. The payload is serialized before the request is built.
