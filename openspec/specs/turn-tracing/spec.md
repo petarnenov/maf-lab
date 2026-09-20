@@ -41,12 +41,17 @@ For every chat turn the system SHALL record an ordered trace of timestamped even
 - **THEN** the `answer.delta` events have contiguous offsets starting at 0, and their texts concatenated equal the full answer
 
 ### Requirement: Live streaming of the trace
-Trace events SHALL be streamed to the requesting client while the turn runs, interleaved with the existing chat events,
-so that each step is visible when it happens.
+Trace events SHALL be streamed to the requesting client while the turn runs, interleaved with the run's other
+events, so that each step is visible when it happens. They SHALL travel as the event stream's extension point
+rather than as a type of its own, so a consumer that does not know about them can still follow the run.
 
 #### Scenario: Trace arrives before the answer completes
 - **WHEN** a turn calls `search_documents`
-- **THEN** the client receives the trace events for the tool call before the `done` event
+- **THEN** the client receives the trace events for the tool call before the run's terminal event
+
+#### Scenario: A consumer that ignores the trace
+- **WHEN** a client drops the trace events
+- **THEN** the run still renders from the protocol's own events
 
 ### Requirement: Persistence and retention
 The complete trace of each turn SHALL be stored with the turn and returned by `GET /api/turns/{turnId}/trace`. Traces
