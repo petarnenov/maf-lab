@@ -434,3 +434,30 @@ referenced web projects' config files never collide.
 - **Results (gpt-oss:120b, hybrid):** recall@5 for Bulgarian **0.208 → 0.681**, English **0.693 → 0.693**
   (unchanged, which was the acceptance criterion), overall 0.456 → 0.687, recall@20 0.612 → 0.922, MRR 0.402 →
   0.635. `selection` (recall 1.0, precision 0.913) and `generation` (faithfulness 0.969, relevance 1.0) unchanged.
+
+## 21. Compliance audit (add-compliance-audit, 2026-09-20)
+
+- **One record, not two.** Tool calls, deletions and exports share `Audit`, separated by `Kind`. A second table
+  would need its own chain, and two chains cannot be ordered against each other — while the whole value is one
+  sequence in which a deletion sits between the tool calls before and after it.
+- **The chain follows row ids, never clocks.** `Hash = sha256(previousHash ⋮ stored fields)`. Two replicas share one
+  SQLite file and their clocks can disagree; row ids cannot. The head is read and the row written inside one
+  serializable transaction, so two replicas appending at the same moment cannot link to the same predecessor
+  (tested with twelve parallel appends).
+- **The digest must survive a round trip.** The first version hashed `At` with `"O"`, which renders a `Utc` kind as
+  `…Z` and the `Unspecified` kind the store returns without it — every verification failed. The canonical form now
+  forces UTC. Found by a test, not in production.
+- **The 65 pre-existing rows are not rewritten.** They verify as "before the chain". Back-filling hashes would have
+  been the one thing an audit trail must never do: restate the past.
+- **Deletion is recorded, a refused deletion is not.** Someone else's conversation still returns 404 and is
+  attributed to nobody, because nothing was deleted. Stated in the spec so the absence is deliberate.
+- **The export's digest is canonical, not JSON.** The first version hashed `JsonSerializer` output, so only this
+  service could reproduce it — a digest nobody else can recompute is not worth publishing. Caught while re-hashing a
+  live export in Python. The canonical rendering then failed again because .NET writes 100-nanosecond ticks that
+  Python's microsecond timestamps truncate; timestamps are now millisecond precision, and the Python re-hash
+  matches. The format is documented in `docs/http-api.md`.
+- **The export records itself before returning**, so a failed download still leaves the attempt recorded; its
+  manifest carries the chain head from *before* its own row, since a package cannot contain its own digest.
+- **`(PrincipalId, At)` index** beside `(FirmId, At)`: an investigation starts from a person.
+- **Not solved, and said so:** tamper-evidence is not immutability (needs append-only external storage), and the dev
+  token issuer means identity is not provable. Both are in the README rather than implied away.

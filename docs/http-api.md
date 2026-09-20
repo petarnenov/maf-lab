@@ -108,6 +108,26 @@ name, each asked its own `/health`; `facts` are display strings (chunk count, mo
 secret — the chat provider reports only *whether* its key is configured. The report is probed concurrently with a
 2 s budget per service and reused for `cacheSeconds`.
 
+## Compliance (FIRM_ADMIN only, otherwise `403`)
+
+| Method | Path | Query | Response |
+|---|---|---|---|
+| GET | `/api/admin/compliance/verify` | — | `{ intact, checked, unchained, from, to, head, firstBrokenId, reason }` |
+| GET | `/api/admin/compliance/export` | `from`, `to`, optional `userId` | `{ manifest, conversations, turns, actions }` |
+
+Every audited action carries `hash` = SHA-256 over the previous action's hash and its own stored fields, so a
+changed or removed row breaks the chain; `verify` walks it by row id and names the first row that does not hold.
+`unchained` counts rows written before chaining began — they are reported, never rewritten.
+
+The export's firm comes from the token; a `firmId` parameter is ignored, and `userId` only narrows (a data subject
+request). Deleted conversations are included, carrying `deletedAt`. The manifest is
+`{ firmId, subjectUserId, from, to, generatedAt, by, counts, sha256, auditChainHead }`.
+
+`sha256` covers the three content sections in a **canonical rendering**, not this service's JSON output, so any
+recipient can recompute it: the literal section names `conversations`, `turns`, `actions` each on their own line,
+followed by one line per row, fields joined with `U+001F` in the order the DTOs declare them, timestamps as UTC
+`yyyy-MM-ddTHH:mm:ss.fffZ`, booleans as `true`/`false`, nulls as the empty string, rows terminated by `\n`.
+
 ## Evals (any authenticated role)
 
 | Method | Path | Response |

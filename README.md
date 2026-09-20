@@ -177,6 +177,28 @@ Qdrant__Collection=maf_chunks_ctx Qdrant__MetaCollection=maf_chunks_ctx_meta \
 dotnet run --project src/Maf.Lab.Eval -- --suite retrieval --contextual
 ```
 
+## Compliance
+
+Every audited action — a tool call, a conversation deletion, a compliance export — is one row in a **single ordered
+record**, carrying identifiers only and never message content. Each row is chained: its digest covers its own fields
+and the previous row's digest, so a changed or removed row can be detected and *named*.
+
+```bash
+GET /api/admin/compliance/verify                      # intact? how many checked? where does it break?
+GET /api/admin/compliance/export?from=&to=[&userId=]  # the package, with a manifest
+```
+
+A FIRM_ADMIN can hand an authorised person a package for a period: their firm's conversations, turns and actions,
+including deleted conversations marked as deleted. Adding `userId` narrows it to one person, for a data subject
+request. The firm comes from the token, so no parameter reaches another firm. The manifest carries who produced it,
+when, the counts, the audit chain head, and a digest over a canonical rendering of the content — documented in
+[`docs/http-api.md`](docs/http-api.md) so a recipient can recompute it in any language.
+
+**What this does not promise.** A hash chain is evidence of tampering, not protection from it: whoever can write the
+database can recompute the whole chain. Real immutability needs storage the application cannot rewrite (a WORM
+bucket, an external log service), which is a deployment decision. And the dev token issuer still decides who "adam"
+is — the chain proves what was recorded, not that the recorded person is who they claim.
+
 ## Non-negotiables
 
 Tenant comes from the token only · one tenant-scoped query path · tool results are DTOs · no message content in logs ·

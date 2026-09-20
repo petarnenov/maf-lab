@@ -206,7 +206,8 @@ public class ChatApiTests
         await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "how do I fix ZEBRA-MARKER-991 fee schedule?");
 
         Assert.NotEmpty(api.Logs.Messages);
-        Assert.Contains(api.Logs.Messages, m => m.Contains("tool_audit"));
+        // The audit line now covers every kind of action, not only tools, so it is prefixed "audit kind=".
+        Assert.Contains(api.Logs.Messages, m => m.Contains("audit kind=tool"));
         foreach (var marker in new[] { "ZEBRA-MARKER-991", "ANSWER-MARKER-552", "SNIPPET-MARKER-313", "fee schedule?" })
         {
             Assert.DoesNotContain(api.Logs.Messages, m => m.Contains(marker));

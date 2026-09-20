@@ -29,6 +29,8 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
         b.Entity<FeedbackRow>().HasIndex(x => x.TurnId);
         b.Entity<LabelRow>().HasKey(x => x.Id);
         b.Entity<AuditRow>().HasIndex(x => new { x.FirmId, x.At });
+        // An investigation starts from a person, not from a firm.
+        b.Entity<AuditRow>().HasIndex(x => new { x.PrincipalId, x.At });
         b.Entity<AdminJobRow>().HasKey(x => x.Id);
         b.Entity<TurnTraceRow>().HasKey(x => x.TurnId);
         b.Entity<TurnTraceRow>().HasIndex(x => x.CreatedAt);
@@ -101,6 +103,10 @@ public sealed class LabelRow
     public DateTime CreatedAt { get; set; }
 }
 
+/// <summary>
+/// One audited action. Tool calls, deletions and exports share this record so they form a single ordered history;
+/// <see cref="Hash"/> links each row to the one before it, so a changed or missing row can be pointed at.
+/// </summary>
 public sealed class AuditRow
 {
     public long Id { get; set; }
@@ -109,11 +115,17 @@ public sealed class AuditRow
     public required string FirmId { get; set; }
     public string? ConversationId { get; set; }
     public string? TurnId { get; set; }
+    /// <summary>The action: a tool name for a tool call, otherwise the action name (e.g. conversation.delete).</summary>
     public required string ToolName { get; set; }
     /// <summary>Argument identifiers only (key=value), never free text.</summary>
     public required string Arguments { get; set; }
     public required string Outcome { get; set; }
     public long DurationMs { get; set; }
+    /// <summary>tool | conversation.delete | compliance.export. Null on rows written before kinds existed.</summary>
+    public string? Kind { get; set; }
+    /// <summary>Digest over this row's stored fields and the previous row's digest. Null before chaining began.</summary>
+    public string? Hash { get; set; }
+    public string? PreviousHash { get; set; }
 }
 
 /// <summary>An admin job (index, migrate). Shared by all api replicas; the owner keeps HeartbeatAt fresh while it runs.</summary>

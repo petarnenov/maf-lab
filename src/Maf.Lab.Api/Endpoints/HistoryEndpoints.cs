@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
+using Maf.Lab.Api.Agent;
+using Maf.Lab.Api.Compliance;
 using Maf.Lab.Api.History;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.Domain.Chat;
@@ -98,16 +100,21 @@ public static class HistoryEndpoints
             return Results.NoContent();
         });
 
-        api.MapDelete("/{id}", async (string id, IPrincipalAccessor principals, IDbContextFactory<MafDbContext> db, TimeProvider time, CancellationToken ct) =>
+        api.MapDelete("/{id}", async (string id, IPrincipalAccessor principals, IDbContextFactory<MafDbContext> db, TimeProvider time,
+            ToolAudit audit, CancellationToken ct) =>
         {
             await using var ctx = await db.CreateDbContextAsync(ct);
             var conversation = await Owned(ctx, principals.Current).FirstOrDefaultAsync(c => c.Id == id, ct);
             if (conversation is null)
             {
+                // Nothing was deleted, so nothing is attributed to the caller as a deletion.
                 return Results.NotFound();
             }
             conversation.DeletedAt = time.GetUtcNow().UtcDateTime; // soft delete: turns stay for the review queue and evals
             await ctx.SaveChangesAsync(ct);
+            // Destroying data is the action an investigator asks about first: it belongs in the record.
+            await audit.RecordAsync(new AuditEntry(principals.Current, id, null, AuditKinds.ConversationDelete,
+                $"conversationId={id}", "ok", 0, AuditKinds.ConversationDelete), ct);
             return Results.NoContent();
         });
 

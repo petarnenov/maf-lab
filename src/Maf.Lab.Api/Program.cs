@@ -74,6 +74,7 @@ public partial class Program
         app.MapTraces();
         app.MapHistory();
         app.MapTopology();
+        app.MapCompliance();
         return app;
     }
 }
