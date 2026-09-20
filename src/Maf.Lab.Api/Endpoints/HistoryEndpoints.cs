@@ -82,6 +82,45 @@ public static class HistoryEndpoints
             return Results.Ok(new ConversationDetail(conversation.Id, title, Utc(conversation.CreatedAt), Utc(conversation.LastActivityAt), history));
         });
 
+        // What this conversation is waiting on, so a proposal outlives the page that made it. The run is gone;
+        // the proposal is not, and approving twice applies once either way.
+        api.MapGet("/{id}/pending", async (string id, IPrincipalAccessor principals, IDbContextFactory<MafDbContext> db,
+            TimeProvider time, CancellationToken ct) =>
+        {
+            var principal = principals.Current;
+            await using var context = await db.CreateDbContextAsync(ct);
+            var owns = await context.Conversations.AnyAsync(
+                c => c.Id == id && c.UserId == principal.UserId && c.FirmId == principal.FirmId.Value && c.DeletedAt == null, ct);
+            if (!owns)
+            {
+                return Results.NotFound();
+            }
+
+            var row = await context.PendingAdjustments
+                .Where(p => p.ConversationId == id
+                    && p.UserId == principal.UserId
+                    && p.FirmId == principal.FirmId.Value
+                    && p.Status == PendingAdjustmentStatus.AwaitingConfirmation)
+                .OrderByDescending(p => p.UpdatedAt)
+                .FirstOrDefaultAsync(ct);
+
+            if (row is null
+                || JsonSerializer.Deserialize<Maf.Lab.Domain.Billing.FeeAdjustmentSummary>(row.Summary, Json) is not { } summary
+                || (row.ExpiresAt is { } expiry && expiry <= time.GetUtcNow().UtcDateTime))
+            {
+                return Results.Ok(new { pending = (object?)null });
+            }
+
+            return Results.Ok(new
+            {
+                pending = new Maf.Lab.Domain.Billing.PendingProposal(
+                    row.Id,
+                    summary,
+                    row.Question ?? "",
+                    row.ExpiresAt is { } at ? new DateTimeOffset(at, TimeSpan.Zero) : null),
+            });
+        });
+
         api.MapPatch("/{id}", async (string id, RenameConversationRequest request, IPrincipalAccessor principals, IDbContextFactory<MafDbContext> db, CancellationToken ct) =>
         {
             var title = ConversationTitles.Validate(request.Title);

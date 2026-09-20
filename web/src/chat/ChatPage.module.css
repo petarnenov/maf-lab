@@ -205,3 +205,16 @@
   color: #8a5a00;
   font-style: italic;
 }
+
+/* Three faces for three failures: something down, something not yours, something else. */
+.unavailable {
+  border-left: 3px solid var(--warn, #b06f00);
+}
+
+.refused {
+  border-left: 3px solid var(--muted);
+}
+
+.unexpected {
+  border-left: 3px solid var(--danger, #b3261e);
+}

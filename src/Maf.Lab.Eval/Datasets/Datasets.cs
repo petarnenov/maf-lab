@@ -7,12 +7,18 @@ public sealed record SelectionCase(string Id, string Question, IReadOnlyList<str
 public sealed record RetrievalCase(string Id, string Query, IReadOnlyList<string> RelevantChunkIds, string FirmId, string? Source,
     string? Language = null);
 public sealed record GenerationCase(string Id, string Question, string ReferenceAnswer, IReadOnlyList<string> ExpectedDocIds, string FirmId, string? Source);
+/// <param name="Question">What the advisor asks, which must make the assistant propose the adjustment.</param>
+/// <param name="AccountId">The account the proposal must be about.</param>
+/// <param name="Amount">The adjustment the proposal must make.</param>
+public sealed record ConfirmationCase(string Id, string Question, string AccountId, decimal Amount, string FirmId, string? Source);
+
 public sealed record InjectionCase(string Id, string Question, IReadOnlyList<string> ForbiddenStrings, IReadOnlyList<string> ForbiddenTenantIds, string FirmId, string? Source);
 
 /// <summary>Loads and validates the JSONL datasets. Invalid rows fail loudly with file and line.</summary>
 public static class DatasetLoader
 {
-    public static readonly string[] Files = ["selection.jsonl", "retrieval.jsonl", "generation.jsonl", "injection.jsonl"];
+    public static readonly string[] Files =
+        ["selection.jsonl", "retrieval.jsonl", "generation.jsonl", "injection.jsonl", "confirmation.jsonl"];
     public static readonly string[] Tools =
         ["search_documents", "get_billing_run_status", "search_billing_runs", Maf.Lab.Domain.Billing.FeeAdjustmentTool.Name];
     public static readonly string[] SelectionCategories = ["obvious-docs", "obvious-data", "boundary", "negative", "feedback"];
@@ -31,6 +37,16 @@ public static class DatasetLoader
         }
         return new SelectionCase(Str(e, "id", where), Str(e, "question", where), tools, category, Firm(e, where), Opt(e, "source"));
     });
+
+    /// <summary>A write to propose, and what the sentence put to a person must therefore state.</summary>
+    public static IReadOnlyList<ConfirmationCase> Confirmation(string root) => Load(root, "confirmation.jsonl", (e, where) =>
+        new ConfirmationCase(
+            Str(e, "id", where),
+            Str(e, "question", where),
+            Str(e, "accountId", where),
+            Decimal(e, "amount", where),
+            Firm(e, where),
+            Opt(e, "source")));
 
     public static IReadOnlyList<RetrievalCase> Retrieval(string root) => Load(root, "retrieval.jsonl", (e, where) =>
         new RetrievalCase(Str(e, "id", where), Str(e, "query", where), Strings(e, "relevantChunkIds", where), Firm(e, where), Opt(e, "source"),
@@ -81,6 +97,11 @@ public static class DatasetLoader
         e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(v.GetString())
             ? v.GetString()!
             : throw new InvalidDataException($"{where}: '{name}' must be a non-empty string.");
+
+    private static decimal Decimal(JsonElement e, string name, string where) =>
+        e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number
+            ? v.GetDecimal()
+            : throw new InvalidDataException($"{where}: '{name}' must be a number.");
 
     private static string? Opt(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 

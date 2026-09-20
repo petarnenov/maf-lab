@@ -10,15 +10,24 @@ const BUTTONS: { kind: FeedbackKind; label: string }[] = [
   { kind: 'wrong_answer', label: 'Wrong answer' },
 ];
 
+/** Only a turn that asked for a confirmation has a summary that can be wrong. */
+const CONFIRMATION_BUTTON: { kind: FeedbackKind; label: string } = {
+  kind: 'wrong_confirmation',
+  label: 'Wrong confirmation summary',
+};
+
 export function TurnFeedback({
   conversationId,
   turnId,
   initialSent = [],
+  hasConfirmation = false,
 }: {
   conversationId: string;
   turnId: string;
   /** Kinds already sent for this turn (restored conversations). */
   initialSent?: FeedbackKind[];
+  /** True when this turn put a write to the advisor, which is the only thing the fourth kind is about. */
+  hasConfirmation?: boolean;
 }) {
   const api = useApi();
   const [state, dispatch] = useReducer(feedbackReducer, undefined, () =>
@@ -46,7 +55,7 @@ export function TurnFeedback({
 
   return (
     <div className={styles.row} role="group" aria-label="Feedback">
-      {BUTTONS.map(({ kind, label }) => {
+      {[...BUTTONS, ...(hasConfirmation ? [CONFIRMATION_BUTTON] : [])].map(({ kind, label }) => {
         const status = feedbackStatus(state, turnId, kind);
         return (
           <button

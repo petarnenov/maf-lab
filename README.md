@@ -131,6 +131,13 @@ embedded in it changes nothing, because nothing reads it for instructions.
 Every step — proposed, reviewed, confirmed, rejected, applied — is in the audit record under `fee.adjustment`,
 naming the person who acted and the account, and never the reason they gave.
 
+In the browser the proposal is a card in the conversation, not a dialog over it: the account, the fee now, the
+change, the fee after, the period, and Approve or Reject. It says when it stops being answerable and stops
+offering the buttons once it has. Close the tab and come back and the card is still there — the run is gone, but
+the proposal is a row, and approving twice applies once. A fourth feedback button says what none of the other
+three could: this summary reads correctly and describes the wrong adjustment. What it reports is measured by its
+own eval suite, which checks that the sentence states the account, the amount and the fee that would result.
+
 ## What the browser and the API speak
 
 A turn is a **run of the agent**, streamed as [AG-UI](https://github.com/ag-ui-protocol/ag-ui) — a protocol

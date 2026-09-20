@@ -1,0 +1,76 @@
+.card {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent, #b06f00);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin: 10px 0;
+  background: var(--surface-2);
+  font-size: 0.9375rem;
+}
+
+.question {
+  margin: 0 0 10px;
+  font-weight: 600;
+}
+
+.facts {
+  margin: 0 0 12px;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 14px;
+}
+
+.fact {
+  display: contents;
+}
+
+.fact dt {
+  color: var(--muted);
+}
+
+.fact dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.approve,
+.reject {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font: inherit;
+}
+
+.approve {
+  background: var(--accent, #b06f00);
+  color: #fff;
+  border-color: transparent;
+}
+
+.approve:disabled,
+.reject:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.expiry,
+.outcome {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.applied .outcome {
+  color: var(--ok, #2e7d32);
+}
+
+.expired .outcome,
+.gone .outcome {
+  color: var(--muted);
+}

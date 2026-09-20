@@ -23,6 +23,9 @@ public sealed class FakeToolSource : IToolSource
     public decimal ProposalCurrentFee { get; set; } = 1200m;
     public string ProposalState { get; set; } = "fake-state";
 
+    /// <summary>When the fake's proposals stop being answerable.</summary>
+    public DateTimeOffset ProposalExpiresAt { get; set; } = DateTimeOffset.UtcNow.AddMinutes(30);
+
     public Task<ToolSet> GetToolsAsync(string bearerToken, ConfirmationSink? confirmations, CancellationToken ct)
     {
         var search = AIFunctionFactory.Create(async (string query, string[]? sourceTypes = null, int? maxResults = null) =>
@@ -64,6 +67,7 @@ public sealed class FakeToolSource : IToolSource
                         System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(summary, new JsonSerializerOptions(JsonSerializerDefaults.Web))),
                     // A state per proposal, as the real server issues: two proposals are never the same one.
                     [Maf.Lab.Domain.Billing.FeeAdjustmentTool.StateKey] = $"{ProposalState}-{Invocations.Count}",
+                    [Maf.Lab.Domain.Billing.FeeAdjustmentTool.ExpiresAtKey] = ProposalExpiresAt.ToString("O"),
                 },
             });
             return Mcp("""{"status":"not_confirmed","adjustment":null,"message":"Nothing was applied: no confirmation was given for that proposal."}""");

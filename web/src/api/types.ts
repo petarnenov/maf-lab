@@ -72,6 +72,16 @@ export interface ConfirmationRequiredData {
   adjustment: FeeAdjustmentSummary;
   question: string;
   state: string;
+  /** When the proposal stops being answerable, as the server issued it. */
+  expiresAt?: string | null;
+}
+
+/** A proposal a conversation is still waiting on, as `GET /api/conversations/{id}/pending` reports it. */
+export interface PendingProposal {
+  adjustmentId: string;
+  adjustment: FeeAdjustmentSummary;
+  question: string;
+  expiresAt?: string | null;
 }
 
 export interface DoneData {
@@ -136,7 +146,7 @@ export interface ChatRequest {
 
 // ---- Feedback ----
 
-export type FeedbackKind = 'wrong_tool' | 'wrong_document' | 'wrong_answer';
+export type FeedbackKind = 'wrong_tool' | 'wrong_document' | 'wrong_answer' | 'wrong_confirmation';
 
 export interface FeedbackRequest {
   conversationId: string;

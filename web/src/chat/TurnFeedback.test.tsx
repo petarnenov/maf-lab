@@ -42,3 +42,17 @@ describe('TurnFeedback', () => {
     expect(await screen.findByText(/retry/)).toBeInTheDocument();
   });
 });
+
+describe('the fourth kind', () => {
+  it('is offered on a turn that put a write to the advisor', () => {
+    renderWithProviders(<TurnFeedback conversationId="c1" turnId="t1" hasConfirmation />);
+    expect(screen.getByRole('button', { name: 'Wrong confirmation summary' })).toBeInTheDocument();
+  });
+
+  it('is not offered where there is no summary to be wrong', () => {
+    renderWithProviders(<TurnFeedback conversationId="c1" turnId="t1" />);
+    expect(
+      screen.queryByRole('button', { name: 'Wrong confirmation summary' }),
+    ).not.toBeInTheDocument();
+  });
+});

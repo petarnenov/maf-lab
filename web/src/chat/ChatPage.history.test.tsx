@@ -135,7 +135,9 @@ describe('ChatPage with history', () => {
       string,
       RequestInit,
     ];
-    expect(JSON.parse(init.body as string)).toEqual({ message: 'more', conversationId: 'conv-7' });
+    const body = JSON.parse(init.body as string);
+    expect(body.threadId).toBe('conv-7');
+    expect(body.messages[0].content).toBe('more');
   });
 
   it('shows "Conversation not found" for an unknown or deleted id', async () => {

@@ -104,6 +104,16 @@ That run applies the proposal (or applies nothing, for anything but an approval)
 answer. An interrupt that was already answered, belongs to someone else, or has expired is refused, and nothing
 happens twice. `metadata.state` is opaque and integrity-protected: hand it back, do not parse it.
 
+### What a conversation is waiting on
+
+`GET /api/conversations/{id}/pending` → `200 { pending }`, where `pending` is `null` or
+`{ adjustmentId, adjustment, question, expiresAt }`. The run that proposed it is gone once its stream ends; the
+proposal is not, so this is how a reopened page finds it again. A proposal that was applied, declined or has
+expired is not waiting. A conversation that is not the caller's own is `404`.
+
+The opaque state is deliberately absent: it never leaves the run that issued it, and an answer names the
+proposal by `adjustmentId` rather than carrying what would execute.
+
 ### Stopping
 
 `POST /api/chat/{runId}/stop` ends a run within a second, and no tool executes after it. Abandoning the stream
@@ -137,7 +147,8 @@ conversation id returns `404`.
 |---|---|---|---|
 | POST | `/api/feedback` | `{ conversationId, turnId, kind, comment? }` | `202 { feedbackId }` |
 
-`kind`: `wrong_tool` \| `wrong_document` \| `wrong_answer`.
+`kind`: `wrong_tool` \| `wrong_document` \| `wrong_answer` \| `wrong_confirmation`. The last one is about the
+summary a person was asked to approve, so the UI offers it only on a turn that asked for one.
 
 ## Admin (FIRM_ADMIN only, otherwise `403`)
 

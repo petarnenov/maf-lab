@@ -711,3 +711,31 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
   requests, so a stop sent elsewhere answers 404 rather than pretending. What a browser actually does — abandon
   the stream — always works, because the run's token hangs off the request's own. The in-memory test host does
   not abort a request the way a real socket does, so that half is a live check and a unit test of the wiring.
+
+## 27. A write a person can see (add-confirmation-ui, 2026-09-20)
+
+- **What survives a closed tab is the proposal, not the run.** The Day-4 brief asked the client to re-attach to a
+  run in progress and receive a state snapshot. That would mean storing runs, which nothing else needs, to solve
+  a problem the server already solved: the proposal is a durable row, and approving twice applies once. Opening a
+  conversation asks `GET /api/conversations/{id}/pending` and renders the same card. A stream that was abandoned
+  is over, and saying so is more honest than pretending to resume it.
+- **The row learned two things it did not keep.** The sentence a person was asked and the expiry were computed
+  when the proposal was made — by the tool and by the signer — and thrown away. Both are stored now, because a
+  card rebuilt after a reload has to ask the same question with the same deadline.
+- **The expiry is decided twice, on purpose.** The card stops offering the buttons once it has passed, because
+  asking someone to press a button that cannot work is worse than telling them. The server refuses an expired
+  state regardless, and if the clocks disagree the server's refusal is what the card then shows.
+- **Three faces, decided where the failure is known.** `useChatStream` knows whether it saw a status code, a
+  `RUN_ERROR` or a dropped connection, so it dispatches a kind — `unavailable`, `refused`, `unexpected` — and the
+  page renders the kind. A refusal says only that the conversation is not available: why is the server's
+  business, and explaining it would be explaining someone else's data. The rule that nothing internal is rendered
+  is asserted against the DOM, not against the strings in the source.
+- **The fourth feedback kind is a stored enum with three owners** — the domain's allowlist, the web's union and
+  the button list — so a round-trip test posts it, reads it back from the review queue and proves the three
+  agree. The button appears only on a turn that asked for a confirmation, because a turn without one has no
+  summary to be wrong. It deliberately does *not* add a labelling dataset to the review queue: the fourth kind
+  is judged by its own suite, not by hand.
+- **The confirmation suite has no judge model.** A summary either states the account, the amount and the
+  resulting fee the server computed, or it does not — an arithmetic question, not a matter of taste. It is
+  checked against the sentence a person actually reads, formatted the way they read it, so a change in how the
+  number is written is a change the suite notices.

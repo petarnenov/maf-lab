@@ -22,6 +22,9 @@
       },
       "injection": {
         "passRate": 1.0
+      },
+      "confirmation": {
+        "faithfulness": 1.0
       }
     },
     "ContextualCollection": "maf_chunks_ctx",

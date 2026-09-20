@@ -46,7 +46,7 @@ public static class Program
         }
 
         var suite = flags.GetValueOrDefault("suite") ?? "all";
-        var suites = suite == "all" ? new[] { "selection", "retrieval", "generation", "injection" } : suite.Split(',');
+        var suites = suite == "all" ? new[] { "selection", "retrieval", "generation", "injection", "confirmation" } : suite.Split(',');
         var ctx = new SuiteContext(root, options, flags.TryGetValue("limit", out var l) ? int.Parse(l) : null, m => Console.WriteLine($"  {m}"),
             configuration["Retrieval:CorpusLanguage"] ?? "en");
         var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss");
@@ -81,6 +81,7 @@ public static class Program
                 "retrieval" => await RunRetrievalAsync(host, configuration, options, retrieval, ctx, flags, settings, ct),
                 "generation" => await new GenerationSuite(host, new RubricJudge(host.Services.GetRequiredService<IChatClientFactory>())).RunAsync(ctx, ct),
                 "injection" => await new InjectionSuite(host).RunAsync(ctx, ct),
+                "confirmation" => await new ConfirmationSuite(host).RunAsync(ctx, ct),
                 _ => throw new ArgumentException($"Unknown suite '{name}'."),
             };
             var comparisons = RegressionGate.Compare(baseline.Suites.GetValueOrDefault(name), variants, options.ToleranceFor(name));

@@ -13,6 +13,7 @@ import { useTurnTrace } from '../monitor/useTurnTrace';
 import type { AssistantTurn } from './chatReducer';
 import styles from './ChatPage.module.css';
 import { SourcesPanel } from './SourcesPanel';
+import { ConfirmationCard } from './ConfirmationCard';
 import { ToolCallCard } from './ToolCallCard';
 import { TurnFeedback } from './TurnFeedback';
 import { useChatStream } from './useChatStream';
@@ -25,7 +26,7 @@ export function ChatPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const userKey = useUserKey();
-  const { state, send, reset, hydrate } = useChatStream();
+  const { state, send, reset, hydrate, answer, loadPending } = useChatStream();
   const [draft, setDraft] = useState('');
   /** Assistant turn the monitor shows; null = follow the latest turn. */
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -53,8 +54,10 @@ export function ChatPage() {
       conversation.data.conversationId === routeId
     ) {
       hydrate(conversation.data);
+      // The run that proposed it is gone; the proposal is not. Ask what this conversation is still waiting on.
+      void loadPending(conversation.data.conversationId);
     }
-  }, [needsLoad, conversation.data, routeId, hydrate]);
+  }, [needsLoad, conversation.data, routeId, hydrate, loadPending]);
   const notFound =
     needsLoad && conversation.error instanceof ApiError && conversation.error.status === 404;
 
@@ -232,6 +235,7 @@ export function ChatPage() {
                     rewound={turn.id === selected?.id ? rewound : null}
                     onReturnToNow={() => timeTravel.dispatch({ type: 'goLive' })}
                     onSelect={() => setSelectedKey(turn.id === latest?.id ? null : turn.id)}
+                    onAnswer={answer}
                   />
                 ),
               )}
@@ -285,6 +289,7 @@ function AssistantBubble({
   rewound,
   onReturnToNow,
   onSelect,
+  onAnswer,
 }: {
   turn: AssistantTurn;
   conversationId?: string;
@@ -293,6 +298,7 @@ function AssistantBubble({
   rewound: ReconstructedTurn | null;
   onReturnToNow: () => void;
   onSelect: () => void;
+  onAnswer: (adjustmentId: string, approve: boolean) => void;
 }) {
   const toolCalls = rewound ? rewound.toolCalls : turn.toolCalls;
   const text = rewound ? rewound.text : turn.text;
@@ -341,13 +347,26 @@ function AssistantBubble({
         (turn.status === 'streaming' || rewound) && <div className={styles.thinking}>Thinking…</div>
       )}
       {turn.error && (
-        <div className={styles.error} role="alert">
+        <div
+          className={`${styles.error} ${styles[turn.errorKind ?? 'unexpected'] ?? ''}`}
+          data-testid="turn-error"
+          data-kind={turn.errorKind ?? 'unexpected'}
+          role="alert"
+        >
           {turn.error}
         </div>
+      )}
+      {turn.confirmation && !rewound && (
+        <ConfirmationCard
+          confirmation={turn.confirmation}
+          state={turn.confirmationState ?? 'waiting'}
+          onAnswer={(approve) => onAnswer(turn.confirmation!.adjustmentId, approve)}
+        />
       )}
       <SourcesPanel sources={sources} />
       {turn.status !== 'streaming' && turn.turnId && conversationId && (
         <TurnFeedback
+          hasConfirmation={turn.confirmation !== undefined}
           key={turn.turnId}
           conversationId={conversationId}
           turnId={turn.turnId}

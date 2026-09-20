@@ -219,6 +219,8 @@ public sealed class FeeAdjustmentFlow(
                 ToolName = toolName,
                 State = captured.State,
                 Summary = JsonSerializer.Serialize(captured.Adjustment, Json),
+                Question = captured.Question,
+                ExpiresAt = captured.ExpiresAt?.UtcDateTime,
                 Status = status,
                 CreatedAt = now,
                 UpdatedAt = now,

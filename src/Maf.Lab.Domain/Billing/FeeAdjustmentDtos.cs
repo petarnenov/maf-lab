@@ -45,6 +45,16 @@ public sealed record FeeAdjustmentSummary(
     DateOnly PeriodStart,
     DateOnly PeriodEnd);
 
+/// <summary>
+/// A proposal a conversation is still waiting on. Everything a person needs to answer it, and nothing they
+/// would have to answer it with — the state that actually executes never leaves the run that issued it.
+/// </summary>
+public sealed record PendingProposal(
+    string AdjustmentId,
+    FeeAdjustmentSummary Adjustment,
+    string Question,
+    DateTimeOffset? ExpiresAt);
+
 /// <summary>The outcome of applying an adjustment. <paramref name="AlreadyApplied"/> marks a repeated confirmation.</summary>
 public sealed record FeeAdjustmentApplied(
     string AdjustmentId,

@@ -1,0 +1,4 @@
+{"id": "cf-01", "question": "credit 200 off the fee on account A-1042 — we overcharged them in Q2", "accountId": "A-1042", "amount": -200, "firmId": "firm-a"}
+{"id": "cf-02", "question": "reduce the fee on A-1043 by 50, goodwill after the billing error", "accountId": "A-1043", "amount": -50, "firmId": "firm-a"}
+{"id": "cf-03", "question": "add 25 to the fee on account A-1043 — we undercharged the advisory tier", "accountId": "A-1043", "amount": 25, "firmId": "firm-a"}
+{"id": "cf-04", "question": "credit 100 off the fee on C-78 for the service outage", "accountId": "C-78", "amount": -100, "firmId": "firm-c"}

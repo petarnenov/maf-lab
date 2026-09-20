@@ -1,5 +1,14 @@
 {
   "suites": {
+    "confirmation": {
+      "metrics": {
+        "agent": {
+          "faithfulness": 1
+        }
+      },
+      "acceptedFrom": "20260920-163754-confirmation",
+      "acceptedAt": "2026-09-20T16:38:08.128896+00:00"
+    },
     "generation": {
       "metrics": {
         "agent": {

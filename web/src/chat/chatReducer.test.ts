@@ -224,3 +224,107 @@ describe('hydrate', () => {
     expect(turn.traceAvailable).toBe(false);
   });
 });
+
+describe('a write waiting for a person', () => {
+  const adjustment = {
+    adjustmentId: 'adj_1',
+    accountId: 'A-1042',
+    accountName: 'Ridgeline Family Trust',
+    currentFee: 1200,
+    amount: -200,
+    resultingFee: 1000,
+    currency: 'USD',
+    periodStart: '2026-10-01',
+    periodEnd: '2026-10-31',
+  };
+  const confirmation = (expiresAt?: string | null) => ({
+    callId: 'c1',
+    toolName: 'propose_fee_adjustment',
+    adjustmentId: 'adj_1',
+    adjustment,
+    question: 'Apply a fee adjustment of -200.00 USD to A-1042?',
+    state: 'opaque',
+    expiresAt,
+  });
+
+  const proposing = (expiresAt?: string | null) => {
+    let state = chatReducer(initialChatState, {
+      type: 'send',
+      userTurnId: 'u1',
+      assistantTurnId: 'a1',
+      text: 'adjust the fee',
+    });
+    state = chatReducer(state, {
+      type: 'event',
+      event: { type: 'confirmation_required', data: confirmation(expiresAt) },
+    });
+    return state;
+  };
+
+  const card = (state: ChatState) =>
+    state.turns.find((t) => t.role === 'assistant') as AssistantTurn;
+
+  it('waits once a proposal arrives', () => {
+    const state = proposing(new Date(Date.now() + 60_000).toISOString());
+    expect(card(state).confirmationState).toBe('waiting');
+    expect(card(state).confirmation?.adjustment.accountId).toBe('A-1042');
+  });
+
+  it('is already too late when the proposal arrives expired', () => {
+    expect(card(proposing(new Date(Date.now() - 1).toISOString())).confirmationState).toBe(
+      'expired',
+    );
+  });
+
+  it('has no expiry to miss when the server sent none', () => {
+    expect(card(proposing(null)).confirmationState).toBe('waiting');
+  });
+
+  it('moves through answering to what it became', () => {
+    let state = proposing(new Date(Date.now() + 60_000).toISOString());
+    state = chatReducer(state, { type: 'answering', adjustmentId: 'adj_1' });
+    expect(card(state).confirmationState).toBe('answering');
+
+    state = chatReducer(state, { type: 'answered', adjustmentId: 'adj_1', outcome: 'applied' });
+    expect(card(state).confirmationState).toBe('applied');
+  });
+
+  it.each(['declined', 'gone', 'expired'] as const)('settles into %s', (outcome) => {
+    let state = proposing(new Date(Date.now() + 60_000).toISOString());
+    state = chatReducer(state, { type: 'answered', adjustmentId: 'adj_1', outcome });
+    expect(card(state).confirmationState).toBe(outcome);
+  });
+
+  it('leaves another proposal alone', () => {
+    let state = proposing(new Date(Date.now() + 60_000).toISOString());
+    state = chatReducer(state, { type: 'answered', adjustmentId: 'adj_other', outcome: 'applied' });
+    expect(card(state).confirmationState).toBe('waiting');
+  });
+
+  it('puts a proposal found after a reload on the last answer', () => {
+    let state = chatReducer(initialChatState, {
+      type: 'hydrate',
+      conversationId: 'c1',
+      turns: [
+        {
+          turnId: 't1',
+          question: 'adjust the fee',
+          answer: 'I have put it to you.',
+          createdAt: '2026-09-20T12:00:00Z',
+          toolCalls: [],
+          sources: [],
+          feedbackKinds: [],
+          traceAvailable: true,
+        },
+      ],
+    });
+    state = chatReducer(state, {
+      type: 'pending',
+      confirmation: confirmation(null),
+      expired: false,
+    });
+
+    expect(card(state).confirmationState).toBe('waiting');
+    expect(card(state).confirmation?.question).toContain('A-1042');
+  });
+});

@@ -8,7 +8,7 @@ on:
       suite:
         description: Eval suite
         type: choice
-        options: [all, selection, retrieval, generation, injection]
+        options: [all, selection, retrieval, generation, injection, confirmation]
         default: all
 
 permissions:

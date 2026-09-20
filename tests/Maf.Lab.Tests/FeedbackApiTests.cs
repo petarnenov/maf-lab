@@ -100,5 +100,40 @@ public class FeedbackApiTests
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    internal static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+}
+
+/// <summary>The fourth kind, which has to be known in the domain, stored, and read back by the queue.</summary>
+public class ConfirmationFeedbackTests
+{
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    [Fact]
+    public void The_domain_knows_it()
+    {
+        Assert.True(FeedbackKind.IsKnown(FeedbackKind.WrongConfirmation));
+        Assert.False(FeedbackKind.IsKnown("wrong_everything"));
+    }
+
+    [Fact]
+    public async Task It_is_stored_and_comes_back_in_the_queue()
+    {
+        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var done = (await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing"))[^1].Data;
+        var conversationId = done.GetProperty("threadId").GetString()!;
+        var turnId = done.GetProperty("result").GetProperty("turnId").GetString()!;
+
+        var response = await adam.PostAsJsonAsync(
+            "/api/feedback",
+            new FeedbackRequest(conversationId, turnId, FeedbackKind.WrongConfirmation, null),
+            Ct);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+
+        var queue = await api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN)
+            .GetFromJsonAsync<List<ReviewQueueItem>>("/api/admin/feedback/queue", FeedbackApiTests.JsonOptions, Ct);
+
+        Assert.Contains(queue!, item => item.TurnId == turnId && item.FeedbackKinds.Contains(FeedbackKind.WrongConfirmation));
+    }
 }

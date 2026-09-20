@@ -21,12 +21,29 @@ public class EvalHarnessTests
     private static string EvalsRoot => Path.Combine(CorpusLoaderTests.RepoRoot(), "evals");
 
     [Fact]
-    public void All_four_datasets_validate()
+    public void Every_dataset_validates()
     {
         Assert.NotEmpty(DatasetLoader.Selection(EvalsRoot));
         Assert.NotEmpty(DatasetLoader.Retrieval(EvalsRoot));
         Assert.NotEmpty(DatasetLoader.Generation(EvalsRoot));
         Assert.NotEmpty(DatasetLoader.Injection(EvalsRoot));
+        Assert.NotEmpty(DatasetLoader.Confirmation(EvalsRoot));
+    }
+
+    [Fact]
+    public void A_confirmation_case_says_what_to_propose()
+    {
+        var cases = DatasetLoader.Confirmation(EvalsRoot);
+
+        Assert.All(cases, c =>
+        {
+            Assert.NotEmpty(c.AccountId);
+            Assert.NotEqual(0m, c.Amount);
+            Assert.NotEmpty(c.Question);
+        });
+        // A credit and a charge, so the summary is checked in both directions.
+        Assert.Contains(cases, c => c.Amount < 0);
+        Assert.Contains(cases, c => c.Amount > 0);
     }
 
     [Fact]

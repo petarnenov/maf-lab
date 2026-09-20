@@ -137,7 +137,7 @@ ci-e2e: require-docker require-dotnet ## Model-free end-to-end: stack with the O
 verify: ## Verify the running stack through the load balancer (17 checks)
 	scripts/verify_lb.sh $(BASE_URL)
 
-eval: require-dotnet ## Run evals (SUITE=all|selection|retrieval|generation|injection) against the stack's MCP
+eval: require-dotnet ## Run evals (SUITE=all|selection|retrieval|generation|injection|confirmation) against the stack's MCP
 	Evals__McpEndpoint=$(BASE_URL)/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval -- --suite $(SUITE)
 
 EVAL = Evals__McpEndpoint=$(BASE_URL)/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval -- --suite
@@ -156,6 +156,9 @@ eval-generation: require-dotnet ## Eval: answers judged for faithfulness/relevan
 
 eval-injection: require-dotnet ## Eval: prompt-injection pass rate
 	$(EVAL) injection
+
+eval-confirmation: require-dotnet ## Eval: does the summary a person approves say what would happen
+	$(EVAL) confirmation
 
 # ── local development ────────────────────────────────────────────────────────────────────────────────────────────
 dev: require-docker require-dotnet require-npm ## Run mcp/api/web locally without Docker (infra stays in compose); Ctrl-C stops

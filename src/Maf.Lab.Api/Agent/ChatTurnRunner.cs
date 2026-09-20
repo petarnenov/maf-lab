@@ -24,7 +24,13 @@ using Microsoft.Extensions.Options;
 namespace Maf.Lab.Api.Agent;
 
 public sealed record TurnResult(string ConversationId, string TurnId, Intent Intent, bool ForcedRetrieval, string Answer,
-    IReadOnlyList<ToolCallRecord> ToolCalls, IReadOnlyList<SourceRef> Sources, IReadOnlyList<string> Signals, string? Error);
+    IReadOnlyList<ToolCallRecord> ToolCalls, IReadOnlyList<SourceRef> Sources, IReadOnlyList<string> Signals, string? Error)
+{
+    /// <summary>The write this turn put to a person, when it paused for one, and the sentence it asked.</summary>
+    public Maf.Lab.Domain.Billing.FeeAdjustmentSummary? Proposal { get; init; }
+
+    public string? ProposalQuestion { get; init; }
+}
 
 /// <summary>
 /// Runs one chat turn through the Microsoft Agent Framework agent and publishes SSE events.
@@ -208,7 +214,11 @@ public sealed class ChatTurnRunner(
             turnId, decision.Intent, forced, state.ToolCalls.Count, sources.Count, string.Join(",", signals), sw.ElapsedMilliseconds);
 
         await events.WriteAsync(Terminal(state, conversationId, runId, error), ct);
-        return new TurnResult(conversationId, turnId, decision.Intent, forced, text, state.ToolCalls, sources, signals, error);
+        return new TurnResult(conversationId, turnId, decision.Intent, forced, text, state.ToolCalls, sources, signals, error)
+        {
+            Proposal = state.Proposal,
+            ProposalQuestion = state.Interrupt?.Message,
+        };
     }
 
     /// <summary>
@@ -401,6 +411,7 @@ public sealed class ChatTurnRunner(
                 ["accountId"] = captured.Adjustment.AccountId,
             });
             state.Interrupt = ask.Interrupt;
+            state.Proposal = captured.Adjustment;
             state.AwaitingConfirmation = true;
             // The model gets nothing more to say this turn: the next word is the advisor's.
             return ToolDataEnvelope.Wrap(name, "Waiting for the advisor to confirm. Nothing has been changed.");
@@ -549,6 +560,9 @@ public sealed class ChatTurnRunner(
 
         /// <summary>What the run is waiting on, when it is waiting.</summary>
         public AGUIInterrupt? Interrupt { get; set; }
+
+        /// <summary>The proposal behind that interrupt, for anything that judges what was put to the person.</summary>
+        public Maf.Lab.Domain.Billing.FeeAdjustmentSummary? Proposal { get; set; }
 
         /// <summary>Identifier-only argument summaries by tool-call id, for what reaches the client.</summary>
         public Dictionary<string, string> Arguments { get; } = [];

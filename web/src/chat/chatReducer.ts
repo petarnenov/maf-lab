@@ -33,14 +33,17 @@ export interface AssistantTurn {
   /** Server-issued turn id, known once `done` arrives. Feedback needs it. */
   turnId?: string;
   error?: string;
+  /** Which of the three faces this error wears. */
+  errorKind?: FailureKind;
   /** Restored turns: false once the stored trace has passed its retention period. */
   traceAvailable?: boolean;
   /** Restored turns: feedback the user already sent for this turn. */
   feedbackKinds?: FeedbackKind[];
   /** True for turns loaded from conversation history rather than streamed in this session. */
   restored?: boolean;
-  /** A write this turn put to the advisor. Rendering it is the next change's work. */
+  /** A write this turn put to the advisor, and what has become of it. */
   confirmation?: ConfirmationRequiredData;
+  confirmationState?: ConfirmationState;
 }
 
 export type Turn = UserTurn | AssistantTurn;
@@ -53,12 +56,36 @@ export interface ChatState {
   traces: TraceState;
 }
 
+/**
+ * What has become of a write the turn is waiting on.
+ * `waiting` — nobody has answered · `answering` — an answer is in flight · `applied` / `declined` — they did ·
+ * `gone` — the server says it is no longer waiting · `expired` — too late to answer.
+ */
+/**
+ * Which of three situations a failure is, because they call for three different reactions:
+ * `unavailable` — something is down and trying again may work · `refused` — this is not yours to see, and why
+ * is not explained · `unexpected` — anything else, said plainly.
+ */
+export type FailureKind = 'unavailable' | 'refused' | 'unexpected';
+
+export type ConfirmationState =
+  'waiting' | 'answering' | 'applied' | 'declined' | 'gone' | 'expired';
+
 export type ChatAction =
   | { type: 'send'; userTurnId: string; assistantTurnId: string; text: string }
   | { type: 'event'; event: ChatStreamEvent }
-  | { type: 'stream_error'; message: string }
+  | { type: 'stream_error'; message: string; kind?: FailureKind }
   | { type: 'reset' }
-  | { type: 'hydrate'; conversationId: string; turns: HistoryTurn[] };
+  | { type: 'hydrate'; conversationId: string; turns: HistoryTurn[] }
+  | { type: 'pending'; confirmation: ConfirmationRequiredData; expired: boolean }
+  | { type: 'answering'; adjustmentId: string }
+  | {
+      type: 'answered';
+      adjustmentId: string;
+      outcome: Exclude<ConfirmationState, 'waiting' | 'answering'>;
+      /** What the run said about it, which joins the conversation like any other answer. */
+      said?: string;
+    };
 
 export const initialChatState: ChatState = {
   turns: [],
@@ -94,6 +121,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...turn,
         status: 'error',
         error: action.message,
+        errorKind: action.kind ?? 'unexpected',
         toolCalls: turn.toolCalls.map((c) =>
           c.status === 'running' ? { ...c, status: 'finished', isError: true } : c,
         ),
@@ -109,7 +137,73 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         traces: initialTraceState,
         turns: action.turns.flatMap((t) => hydrateTurn(t)),
       };
+
+    // A proposal found waiting after a reload belongs to the last assistant turn, which is where it was made.
+    case 'pending':
+      return updateLastAssistantTurn(state, (turn) => ({
+        ...turn,
+        confirmation: action.confirmation,
+        confirmationState: action.expired ? 'expired' : 'waiting',
+      }));
+
+    case 'answering':
+      return updateConfirmation(state, action.adjustmentId, 'answering');
+
+    case 'answered': {
+      const settled = updateConfirmation(state, action.adjustmentId, action.outcome);
+      if (!action.said) return settled;
+      return {
+        ...settled,
+        turns: [
+          ...settled.turns,
+          {
+            id: `answer-${action.adjustmentId}`,
+            role: 'assistant',
+            text: action.said,
+            toolCalls: [],
+            sources: [],
+            status: 'done',
+          },
+        ],
+      };
+    }
   }
+}
+
+/** True when a proposal can no longer be answered. The server decides again; this only stops asking. */
+export function expired(
+  confirmation: Pick<ConfirmationRequiredData, 'expiresAt'>,
+  now = Date.now(),
+): boolean {
+  const at = confirmation.expiresAt;
+  return typeof at === 'string' && Date.parse(at) <= now;
+}
+
+function updateConfirmation(
+  state: ChatState,
+  adjustmentId: string,
+  next: ConfirmationState,
+): ChatState {
+  return {
+    ...state,
+    turns: state.turns.map((turn) =>
+      turn.role === 'assistant' && turn.confirmation?.adjustmentId === adjustmentId
+        ? { ...turn, confirmationState: next }
+        : turn,
+    ),
+  };
+}
+
+function updateLastAssistantTurn(
+  state: ChatState,
+  update: (turn: AssistantTurn) => AssistantTurn,
+): ChatState {
+  const index = state.turns.map((t) => t.role).lastIndexOf('assistant');
+  if (index < 0) return state;
+  return {
+    ...state,
+    turns: state.turns.map((turn, i) => (i === index ? update(turn as AssistantTurn) : turn)),
+  };
 }
 
 /** Converts a stored turn into the same user + assistant shape live turns use. */
@@ -196,7 +290,11 @@ function applyEvent(state: ChatState, event: ChatStreamEvent): ChatState {
 
     // The card that renders this belongs to the next change; the turn keeps it so nothing is lost meanwhile.
     case 'confirmation_required':
-      return updateActiveTurn(state, (turn) => ({ ...turn, confirmation: event.data }));
+      return updateActiveTurn(state, (turn) => ({
+        ...turn,
+        confirmation: event.data,
+        confirmationState: expired(event.data) ? 'expired' : 'waiting',
+      }));
 
     case 'trace': {
       const active = activeTurn(state);

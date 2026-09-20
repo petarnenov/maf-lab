@@ -136,6 +136,7 @@ function finished(data: Record<string, unknown>): ChatStreamEvent[] {
           adjustment: metadata.adjustment as ConfirmationRequiredData['adjustment'],
           question: String(interrupt.message ?? ''),
           state: String(metadata.state ?? ''),
+          expiresAt: interrupt.expiresAt ? String(interrupt.expiresAt) : null,
         },
       });
     }

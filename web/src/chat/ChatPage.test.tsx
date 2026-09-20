@@ -43,9 +43,17 @@ describe('ChatPage', () => {
       string,
       RequestInit,
     ];
-    expect(JSON.parse(init.body as string)).toEqual({
-      message: 'What if a fee schedule is missing?',
-    });
+    // A turn is a run of the agent: a thread, a run and the message.
+    const body = JSON.parse(init.body as string);
+    expect(body.threadId).toBeNull();
+    expect(body.runId).toMatch(/^r-/);
+    expect(body.messages).toEqual([
+      {
+        id: expect.stringMatching(/^u-/),
+        role: 'user',
+        content: 'What if a fee schedule is missing?',
+      },
+    ]);
   });
 
   it('shows the live trace in the monitor next to the chat', async () => {

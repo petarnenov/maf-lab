@@ -6,7 +6,11 @@ public static class FeedbackKind
     public const string WrongDocument = "wrong_document";
     public const string WrongAnswer = "wrong_answer";
 
-    public static bool IsKnown(string? value) => value is WrongTool or WrongDocument or WrongAnswer;
+    /// <summary>A confirmation summary that reads correctly and describes the wrong adjustment.</summary>
+    public const string WrongConfirmation = "wrong_confirmation";
+
+    public static bool IsKnown(string? value) =>
+        value is WrongTool or WrongDocument or WrongAnswer or WrongConfirmation;
 }
 
 /// <summary>Production signals that put a turn into the review queue.</summary>

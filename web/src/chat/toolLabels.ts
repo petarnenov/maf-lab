@@ -13,6 +13,11 @@ export function toolCallLabel(call: Pick<ToolCallView, 'toolName' | 'argumentSum
     }
     case 'search_billing_runs':
       return running ? 'Searching billing runs…' : 'Searched billing runs';
+    // The reviewer is another system and takes its time; saying so beats looking stuck for half a minute.
+    case 'propose_fee_adjustment':
+      return running
+        ? 'Checking the adjustment with compliance (about 30s)…'
+        : 'Prepared the adjustment';
     default:
       return running ? `Calling ${call.toolName}…` : `Called ${call.toolName}`;
   }

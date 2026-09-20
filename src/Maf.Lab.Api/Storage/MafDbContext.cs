@@ -158,6 +158,12 @@ public sealed class PendingAdjustmentRow
     public required string State { get; set; }
     /// <summary>The summary as it was put to the person — identifiers and amounts, no free text.</summary>
     public required string Summary { get; set; }
+
+    /// <summary>The sentence the person was asked, so a proposal read back later asks it the same way.</summary>
+    public string? Question { get; set; }
+
+    /// <summary>When it stops being answerable. Only the signer knows it, so it is kept here too.</summary>
+    public DateTime? ExpiresAt { get; set; }
     public required string Status { get; set; }
     /// <summary>The compliance review this proposal is under, when there is one.</summary>
     public string? ReviewTaskId { get; set; }
