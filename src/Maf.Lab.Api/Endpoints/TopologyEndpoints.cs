@@ -19,12 +19,20 @@ public static class TopologyEndpoints
 
         // The diagram lives in docs/ so it is edited in draw.io and diffed like any other file; the api serves it
         // because the web image is built from web/ only.
-        api.MapGet("/diagram", (IOptions<TopologyOptions> options, IWebHostEnvironment env) =>
+        api.MapGet("/diagram", (HttpContext http, IOptions<TopologyOptions> options, IWebHostEnvironment env) =>
         {
             var path = DiagramStore.ResolvePath(options.Value.DiagramPath, env.ContentRootPath);
-            return path is null
-                ? Results.NotFound(new { error = "topology.drawio was not found" })
-                : (IResult)Results.File(path, "application/xml");
+            if (path is null)
+            {
+                return Results.NotFound(new { error = "topology.drawio was not found" });
+            }
+
+            // The drawing changes when someone redraws the stack, and the page must show what is drawn now. With
+            // no directive a browser is free to guess how long it stays fresh — from its age, which for a file
+            // edited months ago is days — so a redrawn diagram kept rendering as the old one. `no-cache` still
+            // lets the entity tag save the transfer; it only forbids serving it without asking.
+            http.Response.Headers.CacheControl = "no-cache";
+            return Results.File(path, "application/xml");
         });
 
         return api;

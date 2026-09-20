@@ -265,14 +265,59 @@ public class TopologyTests
         using var api = Api(StubHandler.AllHealthy());
         var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
 
-        var xml = await client.GetStringAsync("/api/topology/diagram", Ct);
+        var response = await client.GetAsync("/api/topology/diagram", Ct);
+        var xml = await response.Content.ReadAsStringAsync(Ct);
 
         Assert.StartsWith("<?xml", xml);
+        // A redrawn diagram has to reach the page. Without this a browser decides for itself how long the old
+        // one stays fresh, and answers from its own cache without asking.
+        Assert.True(response.Headers.CacheControl?.NoCache, $"{response.Headers.CacheControl}");
         Assert.DoesNotContain("<diagram>", xml.Replace(" ", "")); // compressed diagrams have a bare <diagram> holding base64
         var drawn = DiagramIds(xml);
         var reported = TopologyProbe.NodeIds.ToHashSet();
         Assert.True(drawn.SetEquals(reported),
             $"drawn but not reported: [{string.Join(", ", drawn.Except(reported))}]; reported but not drawn: [{string.Join(", ", reported.Except(drawn))}]");
+    }
+
+    [Fact]
+    public async Task No_two_boxes_in_the_diagram_overlap()
+    {
+        using var api = Api(StubHandler.AllHealthy());
+        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+
+        var xml = await client.GetStringAsync("/api/topology/diagram", Ct);
+        var boxes = Boxes(xml);
+
+        // A box drawn over another hides whatever is under it — which is how the compliance agent's health line
+        // disappeared behind the chat provider.
+        foreach (var (first, second) in boxes.SelectMany((a, i) => boxes.Skip(i + 1).Select(b => (a, b))))
+        {
+            var apart = first.Right <= second.Left || second.Right <= first.Left
+                || first.Bottom <= second.Top || second.Bottom <= first.Top;
+            Assert.True(apart, $"{first.Id} and {second.Id} overlap in docs/topology.drawio");
+        }
+    }
+
+    private sealed record Box(string Id, double Left, double Top, double Right, double Bottom);
+
+    private static List<Box> Boxes(string xml)
+    {
+        var document = System.Xml.Linq.XDocument.Parse(xml);
+        var boxes = new List<Box>();
+        foreach (var cell in document.Descendants("mxCell").Where(c => (string?)c.Attribute("vertex") == "1"))
+        {
+            var geometry = cell.Element("mxGeometry");
+            if (geometry is null)
+            {
+                continue;
+            }
+            double Number(string name) =>
+                double.TryParse((string?)geometry.Attribute(name), System.Globalization.CultureInfo.InvariantCulture,
+                    out var value) ? value : 0;
+            var (x, y) = (Number("x"), Number("y"));
+            boxes.Add(new Box((string?)cell.Attribute("id") ?? "", x, y, x + Number("width"), y + Number("height")));
+        }
+        return boxes;
     }
 
     /// <summary>Vertex ids of the committed diagram (edges and the two mxGraph roots are not nodes).</summary>

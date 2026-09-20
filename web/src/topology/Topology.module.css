@@ -28,6 +28,9 @@
 .edge {
   stroke: var(--border);
   stroke-width: 1.5;
+  /* A polyline is a shape as far as SVG is concerned, and an unfilled one is the line we mean. */
+  fill: none;
+  stroke-linejoin: round;
 }
 
 .arrowHead {

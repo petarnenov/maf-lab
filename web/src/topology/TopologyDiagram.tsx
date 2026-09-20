@@ -1,5 +1,6 @@
 import type { TopologyNode } from '../api/types';
 import { HEALTH_MARK } from './health';
+import { routeEdge } from './layout';
 import type { Diagram } from './parseDiagram';
 import styles from './Topology.module.css';
 
@@ -35,18 +36,16 @@ export function TopologyDiagram({ diagram, state, selected, onSelect }: Props) {
       {diagram.edges.map((edge) => {
         const from = diagram.nodes.find((n) => n.id === edge.source)!;
         const to = diagram.nodes.find((n) => n.id === edge.target)!;
-        const [x1, y1] = [from.x + from.width / 2, from.y + from.height / 2];
-        const [x2, y2] = [to.x + to.width / 2, to.y + to.height / 2];
+        const { points, label } = routeEdge(from, to, diagram.nodes);
         return (
           <g key={edge.id}>
-            <line x1={x1} y1={y1} x2={x2} y2={y2} className={styles.edge} markerEnd="url(#arrow)" />
+            <polyline
+              points={points.map((p) => `${p.x},${p.y}`).join(' ')}
+              className={styles.edge}
+              markerEnd="url(#arrow)"
+            />
             {edge.label && (
-              <text
-                x={(x1 + x2) / 2}
-                y={(y1 + y2) / 2 - 6}
-                className={styles.edgeLabel}
-                textAnchor="middle"
-              >
+              <text x={label.x} y={label.y - 6} className={styles.edgeLabel} textAnchor="middle">
                 {edge.label}
               </text>
             )}
