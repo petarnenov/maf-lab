@@ -1,6 +1,8 @@
 using System.Net.ServerSentEvents;
 using System.Threading.Channels;
+using AGUI.Abstractions;
 using Maf.Lab.Api.Agent;
+using Maf.Lab.Api.Agent.Streaming;
 using Maf.Lab.Domain.Chat;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Retrieval.Auth;
@@ -24,73 +26,102 @@ public static class ChatEndpoints
         api.MapPost("/conversations", async (IPrincipalAccessor principals, ConversationService conversations, CancellationToken ct) =>
             Results.Created((string?)null, new ConversationCreated(await conversations.CreateAsync(principals.Current, ct))));
 
-        api.MapPost("/chat", async (ChatRequest request, HttpContext http, IPrincipalAccessor principals, ConversationService conversations,
-            ChatTurnRunner runner, CancellationToken ct) =>
+        // A run of the agent. The thread is the conversation; the run is this turn. A resume answers something
+        // a previous run stopped for, which is how a write gets its approval.
+        api.MapPost("/chat", async (RunAgentInput input, HttpContext http, IPrincipalAccessor principals,
+            ConversationService conversations, ChatTurnRunner runner, ConfirmationService confirmations,
+            RunRegistry runs, CancellationToken ct) =>
         {
-            if (string.IsNullOrWhiteSpace(request.Message) || request.Message.Length > MaxMessageChars)
-            {
-                return Results.ValidationProblem(new Dictionary<string, string[]> { ["message"] = [$"message is required (max {MaxMessageChars} characters)."] });
-            }
             var principal = principals.Current;
-            var conversationId = await conversations.ResolveAsync(principal, request.ConversationId, ct);
+            var message = LastUserMessage(input);
+            var resume = input.Resume?.FirstOrDefault();
+
+            if (resume is null && (string.IsNullOrWhiteSpace(message) || message.Length > MaxMessageChars))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["messages"] = [$"a user message is required (max {MaxMessageChars} characters)."],
+                });
+            }
+
+            var conversationId = await conversations.ResolveAsync(principal, input.ThreadId, ct);
             if (conversationId is null)
             {
                 return Results.NotFound();
             }
+
+            var runId = string.IsNullOrWhiteSpace(input.RunId) ? $"r_{Guid.NewGuid():N}" : input.RunId;
             var token = http.Request.Headers.Authorization.ToString()["Bearer ".Length..].Trim();
-            return TypedResults.ServerSentEvents(Stream(runner, principal, token, conversationId, request.Message.Trim(), ct));
+
+            return TypedResults.ServerSentEvents(
+                Stream(runner, confirmations, runs, principal, token, conversationId, runId, message?.Trim() ?? "", resume, ct));
         });
 
-        // A person's answer to a proposal. Approving applies what was proposed; rejecting applies nothing.
-        api.MapPost("/chat/confirm", async (ConfirmationDecision decision, HttpContext http, IPrincipalAccessor principals,
-            ConversationService conversations, ConfirmationService confirmations, CancellationToken ct) =>
+        // Stopping a run this caller started, wherever it is running. Abandoning the stream does the same thing
+        // through the request itself, which is what a browser actually does.
+        api.MapPost("/chat/{runId}/stop", async (string runId, HttpContext http, RunStopper stopper, CancellationToken ct) =>
         {
-            if (string.IsNullOrWhiteSpace(decision.AdjustmentId))
-            {
-                return Results.ValidationProblem(new Dictionary<string, string[]> { ["adjustmentId"] = ["adjustmentId is required."] });
-            }
-            var principal = principals.Current;
-            var conversationId = await conversations.ResolveAsync(principal, decision.ConversationId, ct);
-            if (conversationId is null)
-            {
-                return Results.NotFound();
-            }
+            var localOnly = http.Request.Query[RunStopper.LocalOnlyQuery] == "true";
             var token = http.Request.Headers.Authorization.ToString()["Bearer ".Length..].Trim();
-            var outcome = await confirmations.AnswerAsync(principal, token, conversationId, decision.AdjustmentId, decision.Approve, ct);
-            return outcome switch
-            {
-                ConfirmationOutcome.Applied applied => Results.Ok(applied.Result),
-                ConfirmationOutcome.Rejected => Results.Ok(new FeeAdjustmentOutcomeDto(
-                    "declined", null, "Nothing was applied. The advisor declined the adjustment.")),
-                ConfirmationOutcome.NotFound => Results.NotFound(),
-                _ => Results.Problem(((ConfirmationOutcome.Failed)outcome).Message, statusCode: StatusCodes.Status503ServiceUnavailable),
-            };
+            return await stopper.StopAsync(runId, token, localOnly, ct) ? Results.Accepted() : Results.NotFound();
         });
 
         return app;
     }
 
-    private static async IAsyncEnumerable<SseItem<object>> Stream(ChatTurnRunner runner, Principal principal, string token, string conversationId,
-        string message, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    /// <summary>The turn's question: the last thing the user said. Parts are read as their text, in order.</summary>
+    private static string? LastUserMessage(RunAgentInput input) =>
+        input.Messages?.OfType<AGUIUserMessage>().LastOrDefault() is { } last ? last.Content.ToString() : null;
+
+    private static async IAsyncEnumerable<SseItem<object>> Stream(
+        ChatTurnRunner runner, ConfirmationService confirmations, RunRegistry runs, Principal principal, string token,
+        string conversationId, string runId, string message, AGUIResume? resume,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
-        var channel = Channel.CreateUnbounded<ChatEvent>(new UnboundedChannelOptions { SingleReader = true });
+        var channel = Channel.CreateUnbounded<BaseEvent>(new UnboundedChannelOptions { SingleReader = true });
+        using var registration = runs.Start(runId, ct);
+
         var run = Task.Run(async () =>
         {
             try
             {
-                await runner.RunAsync(principal, token, conversationId, message, channel.Writer, ct);
+                if (resume is not null)
+                {
+                    await confirmations.ResumeAsync(principal, token, conversationId, runId, resume, channel.Writer, registration.Token);
+                }
+                else
+                {
+                    await runner.RunAsync(principal, token, conversationId, message, runId, channel.Writer, registration.Token);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // A stopped run still ends once, and says so: the client asked, and is still listening.
+                channel.Writer.TryWrite(new RunFinishedEvent
+                {
+                    ThreadId = conversationId,
+                    RunId = runId,
+                    Outcome = new RunFinishedCancelledOutcome(),
+                });
             }
             finally
             {
                 channel.Writer.TryComplete();
             }
-        }, ct);
+        }, registration.Token);
 
         await foreach (var ev in channel.Reader.ReadAllAsync(ct))
         {
-            // The trace event's payload is the TraceEvent itself (docs/trace-events.md), not the wrapper.
-            yield return new SseItem<object>(ev is Maf.Lab.Domain.Tracing.TraceChatEvent trace ? trace.Event : ev, ev.EventName);
+            yield return new SseItem<object>(ev, AGUIStream.FrameName(ev));
         }
-        await run;
+
+        try
+        {
+            await run;
+        }
+        catch (OperationCanceledException)
+        {
+            // Stopped, or the client walked away. Either way the run is over and the stream ends here.
+        }
     }
 }

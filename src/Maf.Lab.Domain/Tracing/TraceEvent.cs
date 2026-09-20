@@ -34,12 +34,5 @@ public static class TraceKinds
     public const string TurnEnd = "turn.end";
 }
 
-/// <summary>SSE wrapper so the trace travels in the same channel as the other chat events.</summary>
-public sealed record TraceChatEvent(TraceEvent Event) : ChatEvent
-{
-    [JsonIgnore]
-    public override string EventName => ChatEventNames.Trace;
-}
-
 /// <summary>Stored trace of one turn (GET /api/turns/{turnId}/trace).</summary>
 public sealed record TurnTraceDocument(string TurnId, string ConversationId, DateTimeOffset CreatedAt, IReadOnlyList<TraceEvent> Events);

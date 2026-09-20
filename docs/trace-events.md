@@ -1,7 +1,8 @@
 # Turn trace events
 
 Every chat turn produces an ordered list of `TraceEvent`s: `{ seq, atMs, kind, title, durationMs?, data, truncated }`.
-They are streamed live as SSE `event: trace` (data = one TraceEvent) and stored with the turn:
+They are streamed live as an AG-UI custom event named `maf-lab/trace`, whose `value` is one TraceEvent (see
+[http-api.md](http-api.md)), and stored with the turn:
 `GET /api/turns/{turnId}/trace` → `{ turnId, conversationId, createdAt, events: TraceEvent[] }` (owner, or a FIRM_ADMIN
 of the same firm for turns in the review queue; otherwise 404). Text fields are capped at 20,000 characters and a
 trace at 1 MB; `truncated: true` marks a capped event. JSON is camelCase.

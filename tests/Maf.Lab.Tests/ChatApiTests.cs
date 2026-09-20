@@ -15,7 +15,7 @@ public class ChatApiTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
-    public async Task Sse_stream_emits_tool_call_started_before_the_tool_runs_and_sources_before_done()
+    public async Task A_run_streams_its_tool_call_before_the_tool_runs_and_its_sources_before_it_ends()
     {
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var tools = new FakeToolSource { BeforeSearchExecutes = () => started.Task.WaitAsync(TimeSpan.FromSeconds(10)) };
@@ -23,28 +23,30 @@ public class ChatApiTests
         var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
 
         var events = await ApiFactory.ChatAsync(client, "what is the procedure when a fee schedule is missing",
-            onEvent: e => { if (e.Name == "tool_call_started") started.TrySetResult(); });
+            onEvent: e => { if (e.Name == "TOOL_CALL_START") started.TrySetResult(); });
 
-        // Trace events interleave with everything; the chat events keep their order among themselves.
-        events = events.Where(e => e.Name != "trace").ToList();
         var names = events.Select(e => e.Name).ToList();
-        Assert.Equal("tool_call_started", names[0]);
-        Assert.True(names.IndexOf("tool_call_finished") > names.IndexOf("tool_call_started"));
-        Assert.True(names.IndexOf("sources") < names.IndexOf("done"));
-        Assert.Equal("done", names[^1]);
-        Assert.Contains("text_delta", names);
+        Assert.Equal("RUN_STARTED", names[0]);
+        Assert.Equal("RUN_FINISHED", names[^1]);
+        Assert.True(names.IndexOf("TOOL_CALL_END") > names.IndexOf("TOOL_CALL_START"));
+        Assert.True(names.IndexOf("TOOL_CALL_RESULT") > names.IndexOf("TOOL_CALL_END"));
+        Assert.Contains("TEXT_MESSAGE_CONTENT", names);
 
-        var startedEvent = events[0].Data;
-        Assert.Equal("search_documents", startedEvent.GetProperty("toolName").GetString());
-        Assert.Equal("", startedEvent.GetProperty("argumentSummary").GetString()); // forced call carries only the free-text query, which is never summarised
-        var finished = events.Single(e => e.Name == "tool_call_finished").Data;
-        Assert.Equal(2, finished.GetProperty("sourceCount").GetInt32());
-        Assert.False(finished.GetProperty("isError").GetBoolean());
-        var sources = events.Single(e => e.Name == "sources").Data.GetProperty("sources");
-        Assert.Equal("shared/procedures/missing-fee-schedule.txt", sources[0].GetProperty("docId").GetString());
-        var done = events[^1].Data;
-        Assert.StartsWith("c_", done.GetProperty("conversationId").GetString());
-        Assert.StartsWith("t_", done.GetProperty("turnId").GetString());
+        var call = events.Single(e => e.Name == "TOOL_CALL_START").Data;
+        Assert.Equal("search_documents", call.GetProperty("toolCallName").GetString());
+
+        // The query the user typed is free text and does not travel; the arguments are identifiers only.
+        var args = events.Single(e => e.Name == "TOOL_CALL_ARGS").Data.GetProperty("delta").GetString();
+        Assert.DoesNotContain("fee schedule is missing", args);
+
+        var sources = ApiFactory.SourcesOf(events);
+        Assert.NotNull(sources);
+        Assert.Equal("shared/procedures/missing-fee-schedule.txt", sources.Value[0].GetProperty("docId").GetString());
+
+        var finished = events[^1].Data;
+        Assert.StartsWith("c_", finished.GetProperty("threadId").GetString());
+        Assert.StartsWith("t_", finished.GetProperty("result").GetProperty("turnId").GetString());
+        Assert.Equal("success", finished.GetProperty("outcome").GetProperty("type").GetString());
     }
 
     [Fact]
@@ -57,8 +59,9 @@ public class ChatApiTests
         var events = await ApiFactory.ChatAsync(client, "Каква е процедурата, когато липсва фий схедюл?");
 
         Assert.Equal(["search_documents"], tools.Invocations);
-        var sources = events.Single(e => e.Name == "sources").Data.GetProperty("sources");
-        Assert.Equal("shared/procedures/missing-fee-schedule.txt", sources[0].GetProperty("docId").GetString());
+        var sources = ApiFactory.SourcesOf(events);
+        Assert.NotNull(sources);
+        Assert.Equal("shared/procedures/missing-fee-schedule.txt", sources.Value[0].GetProperty("docId").GetString());
         var intent = Intent(events);
         Assert.Equal("Procedural", intent.GetProperty("intent").GetString());
         Assert.Equal("model", intent.GetProperty("stage").GetString());
@@ -81,10 +84,10 @@ public class ChatApiTests
         Assert.False(intent.GetProperty("forcedRetrieval").GetBoolean());
     }
 
-    /// <summary>The intent event's payload, which the SSE stream carries as a trace event.</summary>
+    /// <summary>The intent event's payload, which the run carries as a custom trace event.</summary>
     private static JsonElement Intent(IEnumerable<SseEvent> events) =>
-        events.Where(e => e.Name == "trace")
-            .Select(e => e.Data.GetProperty("data"))
+        ApiFactory.TracesOf(events)
+            .Select(t => t.GetProperty("data"))
             .Single(d => d.TryGetProperty("forcedRetrieval", out _));
 
     [Fact]
@@ -94,7 +97,7 @@ public class ChatApiTests
         var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
 
         var first = await ApiFactory.ChatAsync(client, "what is the procedure when a fee schedule is missing");
-        var conversationId = first[^1].Data.GetProperty("conversationId").GetString();
+        var conversationId = ApiFactory.ThreadOf(first);
         var turn1Requests = api.Chat.Requests.Count;
 
         // The forced call is issued before the model is asked; the model's first request already carries the result
@@ -163,9 +166,11 @@ public class ChatApiTests
         using var api = new ApiFactory(chat);
         var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "summarise our fee arrangement for me");
 
-        var finished = events.Single(e => e.Name == "tool_call_finished").Data;
-        Assert.Equal("send_email", finished.GetProperty("toolName").GetString());
-        Assert.True(finished.GetProperty("isError").GetBoolean());
+        // The model asked for a tool that does not exist: the call is reported, and its result says so.
+        var call = events.Single(e => e.Name == "TOOL_CALL_START").Data;
+        Assert.Equal("send_email", call.GetProperty("toolCallName").GetString());
+        var result = events.Single(e => e.Name == "TOOL_CALL_RESULT").Data;
+        Assert.Contains("does not exist", result.GetProperty("content").GetString());
         var audit = await Db(api).Audit.SingleAsync(Ct);
         Assert.Equal(("send_email", "unknown_tool"), (audit.ToolName, audit.Outcome));
         var error = chat.Requests[1].Messages.SelectMany(m => m.Contents).OfType<FunctionResultContent>().Single();
@@ -181,7 +186,7 @@ public class ChatApiTests
         using (var api = new ApiFactory(ApiFactory.ProceduralModel("Remember: FS-REQUIRED means a missing schedule."), dataDir: dir))
         {
             var first = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "explain FS-REQUIRED");
-            conversationId = first[^1].Data.GetProperty("conversationId").GetString()!;
+            conversationId = ApiFactory.ThreadOf(first);
         }
 
         using var restarted = new ApiFactory(ApiFactory.ProceduralModel(), dataDir: dir);
@@ -192,7 +197,12 @@ public class ChatApiTests
 
         foreach (var (user, firm) in new[] { ("bob", "firm-b"), ("rita", "firm-a") })
         {
-            var response = await restarted.ClientFor(user, firm, Role.ADVISOR).PostAsJsonAsync("/api/chat", new { conversationId, message = "hi" }, Ct);
+            var response = await restarted.ClientFor(user, firm, Role.ADVISOR).PostAsJsonAsync("/api/chat", new
+            {
+                threadId = conversationId,
+                runId = "r_probe",
+                messages = new[] { new { id = "u_probe", role = "user", content = "hi" } },
+            }, Ct);
             Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         }
     }

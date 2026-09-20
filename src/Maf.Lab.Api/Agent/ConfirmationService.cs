@@ -1,4 +1,7 @@
 using System.Text.Json;
+using System.Threading.Channels;
+using AGUI.Abstractions;
+using Maf.Lab.Api.Agent.Streaming;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.Domain.Billing;
 using Maf.Lab.Domain.Tenancy;
@@ -108,6 +111,55 @@ public sealed class ConfirmationService(
         await flow.RecordAsync(principal, conversationId, row.TurnId, FeeAdjustmentFlow.Applied, summary, outcome.Status, 0, ct);
         await ResolveAsync(row.Id, PendingAdjustmentStatus.Applied, ct);
         return new ConfirmationOutcome.Applied(outcome);
+    }
+
+    /// <summary>
+    /// A person's answer arriving as a run that resumes the interrupt the previous run stopped for. The run
+    /// reports what happened and ends; underneath, nothing about applying an adjustment has changed.
+    /// </summary>
+    public async Task ResumeAsync(
+        Principal principal, string bearerToken, string conversationId, string runId, AGUIResume resume,
+        ChannelWriter<BaseEvent> events, CancellationToken ct)
+    {
+        await events.WriteAsync(new RunStartedEvent { ThreadId = conversationId, RunId = runId }, ct);
+
+        var approve = Approved(resume);
+        var outcome = await AnswerAsync(principal, bearerToken, conversationId, resume.InterruptId ?? "", approve, ct);
+
+        var messageId = $"m_{Guid.NewGuid():N}";
+        var text = outcome switch
+        {
+            ConfirmationOutcome.Applied applied => applied.Result.Message,
+            ConfirmationOutcome.Rejected => "Nothing was applied. The advisor declined the adjustment.",
+            ConfirmationOutcome.NotFound => "That proposal is no longer waiting for an answer.",
+            _ => ((ConfirmationOutcome.Failed)outcome).Message,
+        };
+
+        await events.WriteAsync(new TextMessageStartEvent { MessageId = messageId, Role = AGUIRoles.Assistant }, ct);
+        await events.WriteAsync(new TextMessageContentEvent { MessageId = messageId, Delta = text }, ct);
+        await events.WriteAsync(new TextMessageEndEvent { MessageId = messageId }, ct);
+        await events.WriteAsync(new RunFinishedEvent
+        {
+            ThreadId = conversationId,
+            RunId = runId,
+            Outcome = new RunFinishedSuccessOutcome(),
+        }, ct);
+    }
+
+    /// <summary>An answer is an approval only when it says so. Anything else leaves the fee where it is.</summary>
+    private static bool Approved(AGUIResume resume)
+    {
+        if (resume.Payload is not { } payload)
+        {
+            return false;
+        }
+        if (payload.ValueKind == JsonValueKind.True)
+        {
+            return true;
+        }
+        return payload.ValueKind == JsonValueKind.Object
+            && payload.TryGetProperty("approve", out var approve)
+            && approve.ValueKind == JsonValueKind.True;
     }
 
     private async Task ResolveAsync(string id, string status, CancellationToken ct)

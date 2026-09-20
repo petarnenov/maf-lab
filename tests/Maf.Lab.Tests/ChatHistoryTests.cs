@@ -106,7 +106,7 @@ public class ChatHistoryTests
         using var api = new ApiFactory(ApiFactory.ProceduralModel("Assign the schedule and re-run."));
         var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
         var done = (await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing"))[^1].Data;
-        var (conversationId, turnId) = (done.GetProperty("conversationId").GetString()!, done.GetProperty("turnId").GetString()!);
+        var (conversationId, turnId) = (done.GetProperty("threadId").GetString()!, done.GetProperty("result").GetProperty("turnId").GetString()!);
         await adam.PostAsJsonAsync("/api/feedback", new FeedbackRequest(conversationId, turnId, FeedbackKind.WrongDocument, null), Ct);
 
         var detail = await adam.GetFromJsonAsync<ConversationDetail>($"/api/conversations/{conversationId}", Json, Ct);
@@ -180,7 +180,7 @@ public class ChatHistoryTests
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
         var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
         var done = (await ApiFactory.ChatAsync(adam, "explain breakpoint pricing"))[^1].Data;
-        var (conversationId, turnId) = (done.GetProperty("conversationId").GetString()!, done.GetProperty("turnId").GetString()!);
+        var (conversationId, turnId) = (done.GetProperty("threadId").GetString()!, done.GetProperty("result").GetProperty("turnId").GetString()!);
         var url = $"/api/conversations/{conversationId}";
 
         Assert.Equal(HttpStatusCode.BadRequest, (await adam.PatchAsJsonAsync(url, new RenameConversationRequest("   "), Ct)).StatusCode);
@@ -195,7 +195,12 @@ public class ChatHistoryTests
 
         Assert.Empty((await adam.GetFromJsonAsync<ConversationPage>("/api/conversations", Json, Ct))!.Conversations);
         Assert.Equal(HttpStatusCode.NotFound, (await adam.GetAsync(url, Ct)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await adam.PostAsJsonAsync("/api/chat", new { conversationId, message = "more?" }, Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await adam.PostAsJsonAsync("/api/chat", new
+        {
+            threadId = conversationId,
+            runId = "r_after_delete",
+            messages = new[] { new { id = "u1", role = "user", content = "more?" } },
+        }, Ct)).StatusCode);
 
         var queue = await api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN).GetFromJsonAsync<List<ReviewQueueItem>>("/api/admin/feedback/queue", Json, Ct);
         Assert.Contains(queue!, q => q.TurnId == turnId);
@@ -206,12 +211,12 @@ public class ChatHistoryTests
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel("First answer."));
         var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
-        var first = (await ApiFactory.ChatAsync(adam, "explain breakpoint pricing"))[^1].Data.GetProperty("conversationId").GetString()!;
+        var first = ApiFactory.ThreadOf(await ApiFactory.ChatAsync(adam, "explain breakpoint pricing"));
         await ApiFactory.ChatAsync(adam, "what is proration");
 
         // "Reload": a fresh client continues the first conversation by id.
         var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "and for new accounts?", first);
-        var history = events.Where(e => e.Name == "trace").Select(e => e.Data.Deserialize<TraceEvent>(Json)!).Single(t => t.Kind == TraceKinds.History);
+        var history = ApiFactory.TracesOf(events).Select(t => t.Deserialize<TraceEvent>(Json)!).Single(t => t.Kind == TraceKinds.History);
         Assert.Contains("explain breakpoint pricing", history.Data.GetProperty("included").GetRawText());
 
         var list = await adam.GetFromJsonAsync<ConversationPage>("/api/conversations", Json, Ct);

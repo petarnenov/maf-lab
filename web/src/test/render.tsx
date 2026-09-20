@@ -51,3 +51,48 @@ export function streamResponse(chunks: string[], status = 200): Response {
 
 export const sse = (event: string, data: unknown) =>
   `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+
+/**
+ * A run as the protocol streams it. Tests say what happened; this says it in AG-UI, so the shape of the wire
+ * lives in one place rather than in every fixture.
+ */
+export const run = {
+  started: (threadId = 'conv-1', runId = 'r1') => sse('RUN_STARTED', { threadId, runId }),
+
+  text: (text: string, messageId = 'm1') => [
+    sse('TEXT_MESSAGE_START', { messageId, role: 'assistant' }),
+    sse('TEXT_MESSAGE_CONTENT', { messageId, delta: text }),
+    sse('TEXT_MESSAGE_END', { messageId }),
+  ],
+
+  /** Just the content of a message already open — for tests about chunking. */
+  delta: (text: string, messageId = 'm1') =>
+    sse('TEXT_MESSAGE_CONTENT', { messageId, delta: text }),
+
+  toolCall: (toolCallId: string, toolCallName: string, args = '') => [
+    sse('TOOL_CALL_START', { toolCallId, toolCallName }),
+    sse('TOOL_CALL_ARGS', { toolCallId, delta: args }),
+    sse('TOOL_CALL_END', { toolCallId }),
+  ],
+
+  toolResult: (toolCallId: string, summary: string, tool = '', sourceCount = 0, isError = false) =>
+    sse('TOOL_CALL_RESULT', {
+      toolCallId,
+      messageId: toolCallId,
+      content: JSON.stringify({ tool, summary, sourceCount, isError }),
+    }),
+
+  sources: (sources: unknown[]) => sse('CUSTOM', { name: 'maf-lab/sources', value: { sources } }),
+
+  trace: (event: unknown) => sse('CUSTOM', { name: 'maf-lab/trace', value: event }),
+
+  done: (threadId = 'conv-1', turnId = 't1') =>
+    sse('RUN_FINISHED', {
+      threadId,
+      runId: 'r1',
+      outcome: { type: 'success' },
+      result: { turnId },
+    }),
+
+  error: (message: string) => sse('RUN_ERROR', { message }),
+};

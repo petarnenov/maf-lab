@@ -9,7 +9,7 @@ import {
   jsonResponse,
   makeSession,
   renderWithProviders,
-  sse,
+  run,
   streamResponse,
 } from '../test/render';
 import { ChatPage } from './ChatPage';
@@ -126,10 +126,7 @@ describe('ChatPage with history', () => {
 
     // Continuing sends the conversation id from the URL.
     fetchMock.mockImplementationOnce(async () =>
-      streamResponse([
-        sse('text_delta', { text: 'Third.' }),
-        sse('done', { conversationId: 'conv-7', turnId: 't3' }),
-      ]),
+      streamResponse([run.delta('Third.'), run.done('conv-7', 't3')]),
     );
     await userEvent.type(screen.getByLabelText('Message'), 'more');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
@@ -165,10 +162,7 @@ describe('ChatPage with history', () => {
         return jsonResponse(listCalls === 1 ? page() : page('conv-new'));
       }
       if (url === '/api/chat')
-        return streamResponse([
-          sse('text_delta', { text: 'Hello.' }),
-          sse('done', { conversationId: 'conv-new', turnId: 't1' }),
-        ]);
+        return streamResponse([run.delta('Hello.'), run.done('conv-new', 't1')]);
       return jsonResponse({}, 404);
     });
     vi.stubGlobal('fetch', fetchMock);

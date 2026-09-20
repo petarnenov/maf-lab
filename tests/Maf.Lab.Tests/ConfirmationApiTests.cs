@@ -35,15 +35,18 @@ public class ConfirmationApiTests
     private static ApiFactory Api(FakeToolSource tools) =>
         new(ProposingModel(), tools) { ExtraSettings = new Dictionary<string, string?> { ["Compliance:BaseUrl"] = "" } };
 
+    /// <summary>A run that pauses on a proposal. The interrupt's id is what an answer names.</summary>
     private static async Task<(string ConversationId, string AdjustmentId)> ProposeAsync(HttpClient client)
     {
         var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by 200");
-        var confirmation = events.Single(e => e.Name == "confirmation_required").Data;
-        return (events[^1].Data.GetProperty("conversationId").GetString()!, confirmation.GetProperty("adjustmentId").GetString()!);
+        var interrupt = ApiFactory.InterruptOf(events);
+        Assert.NotNull(interrupt);
+        return (ApiFactory.ThreadOf(events), interrupt.Value.GetProperty("id").GetString()!);
     }
 
-    private static Task<HttpResponseMessage> AnswerAsync(HttpClient client, string conversationId, string adjustmentId, bool approve) =>
-        client.PostAsJsonAsync("/api/chat/confirm", new { conversationId, adjustmentId, approve }, Ct);
+    /// <summary>The answer: a run that resumes the interrupt.</summary>
+    private static Task<List<SseEvent>> AnswerAsync(HttpClient client, string conversationId, string adjustmentId, bool approve) =>
+        ApiFactory.ResumeAsync(client, conversationId, adjustmentId, approve);
 
     [Fact]
     public async Task Approving_applies_the_adjustment()
@@ -53,12 +56,11 @@ public class ConfirmationApiTests
         var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
         var (conversationId, adjustmentId) = await ProposeAsync(client);
 
-        var response = await AnswerAsync(client, conversationId, adjustmentId, approve: true);
+        var events = await AnswerAsync(client, conversationId, adjustmentId, approve: true);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var outcome = await response.Content.ReadFromJsonAsync<JsonElement>(Ct);
-        Assert.Equal("applied", outcome.GetProperty("status").GetString());
-        Assert.Equal(1000m, outcome.GetProperty("adjustment").GetProperty("currentFee").GetDecimal());
+        Assert.Equal("RUN_FINISHED", events[^1].Name);
+        Assert.Contains("Applied", ApiFactory.AnswerOf(events));
+        Assert.Single(tools.Applied);
     }
 
     [Fact]
@@ -72,9 +74,9 @@ public class ConfirmationApiTests
         var first = await AnswerAsync(client, conversationId, adjustmentId, approve: true);
         var second = await AnswerAsync(client, conversationId, adjustmentId, approve: true);
 
-        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Contains("Applied", ApiFactory.AnswerOf(first));
         // The proposal is no longer waiting, so the second answer finds nothing to answer.
-        Assert.Equal(HttpStatusCode.NotFound, second.StatusCode);
+        Assert.Contains("no longer waiting", ApiFactory.AnswerOf(second));
         Assert.Single(tools.Applied);
     }
 
@@ -86,11 +88,9 @@ public class ConfirmationApiTests
         var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
         var (conversationId, adjustmentId) = await ProposeAsync(client);
 
-        var response = await AnswerAsync(client, conversationId, adjustmentId, approve: false);
+        var events = await AnswerAsync(client, conversationId, adjustmentId, approve: false);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var outcome = await response.Content.ReadFromJsonAsync<JsonElement>(Ct);
-        Assert.Equal("declined", outcome.GetProperty("status").GetString());
+        Assert.Contains("declined", ApiFactory.AnswerOf(events));
         Assert.Empty(tools.Applied);
     }
 
@@ -102,10 +102,17 @@ public class ConfirmationApiTests
         var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
         var (conversationId, adjustmentId) = await ProposeAsync(adam);
 
+        // The proposal was put to adam, in adam's conversation. Amy cannot even reach the thread.
         var amy = api.ClientFor("amy", "firm-a", Role.ADVISOR);
-        var response = await AnswerAsync(amy, conversationId, adjustmentId, approve: true);
+        var response = await amy.PostAsJsonAsync("/api/chat", new
+        {
+            threadId = conversationId,
+            runId = "r_amy",
+            messages = Array.Empty<object>(),
+            resume = new[] { new { interruptId = adjustmentId, payload = new { approve = true } } },
+        }, Ct);
 
-        Assert.Contains(response.StatusCode, new[] { HttpStatusCode.NotFound, HttpStatusCode.Forbidden });
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Empty(tools.Applied);
     }
 
@@ -117,9 +124,9 @@ public class ConfirmationApiTests
         var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
         var (conversationId, _) = await ProposeAsync(client);
 
-        var response = await AnswerAsync(client, conversationId, "adj_nothing", approve: true);
+        var events = await AnswerAsync(client, conversationId, "adj_nothing", approve: true);
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Contains("no longer waiting", ApiFactory.AnswerOf(events));
     }
 
     [Fact]

@@ -95,9 +95,10 @@ public sealed class EvalAgentHost : IAsyncDisposable
         var auth = Services.GetRequiredService<IOptions<AuthOptions>>().Value;
         var (token, _) = DevJwt.Issue(auth, principal.UserId, principal.FirmId, principal.Role, []);
         var conversationId = await Services.GetRequiredService<ConversationService>().CreateAsync(principal, ct);
-        var channel = Channel.CreateUnbounded<ChatEvent>();
+        // The eval reads the turn's result, not its stream, so the run's events go to a channel nobody drains.
+        var channel = Channel.CreateUnbounded<AGUI.Abstractions.BaseEvent>();
         var runner = Services.GetRequiredService<ChatTurnRunner>();
-        var result = await runner.RunAsync(principal, token, conversationId, question, channel.Writer, ct);
+        var result = await runner.RunAsync(principal, token, conversationId, question, $"r_{Guid.NewGuid():N}", channel.Writer, ct);
         channel.Writer.TryComplete();
         return result;
     }

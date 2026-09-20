@@ -19,7 +19,7 @@ public class TurnTraceTests
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private static List<TraceEvent> Trace(IEnumerable<SseEvent> events) =>
-        events.Where(e => e.Name == "trace").Select(e => e.Data.Deserialize<TraceEvent>(Json)!).ToList();
+        ApiFactory.TracesOf(events).Select(t => t.Deserialize<TraceEvent>(Json)!).ToList();
 
     private const string Diagnostics = """
         {"maf-lab/trace":{"instance":"mcp-1","tenantScope":["firm-a","shared"],"settings":{"mode":"hybrid","fusion":"rrf"},
@@ -56,14 +56,14 @@ public class TurnTraceTests
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
         var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "what is the procedure when a fee schedule is missing");
 
-        var traces = events.Where(e => e.Name == "trace").Select(e => e.Data.Deserialize<TraceEvent>(Json)!).ToList();
+        var traces = ApiFactory.TracesOf(events).Select(t => t.Deserialize<TraceEvent>(Json)!).ToList();
         Assert.NotEmpty(traces);
         Assert.Equal(Enumerable.Range(1, traces.Count), traces.Select(t => t.Seq));
         Assert.Equal(TraceKinds.TurnStart, traces[0].Kind);
         Assert.Equal(TraceKinds.TurnEnd, traces[^1].Kind);
         var names = events.Select(e => e.Name).ToList();
-        Assert.True(names.LastIndexOf("trace") < names.IndexOf("done"));
-        Assert.True(names.IndexOf("tool_call_started") < names.IndexOf("tool_call_finished"));
+        Assert.True(names.LastIndexOf("CUSTOM") < names.IndexOf("RUN_FINISHED"));
+        Assert.True(names.IndexOf("TOOL_CALL_START") < names.IndexOf("TOOL_CALL_RESULT"));
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public class TurnTraceTests
         var tools = new FakeToolSource { SearchMetaJson = Diagnostics };
         using var api = new ApiFactory(ApiFactory.ProceduralModel("ANSWER-X per the procedure."), tools);
         var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "what is the procedure when a fee schedule is missing");
-        var trace = events.Where(e => e.Name == "trace").Select(e => e.Data.Deserialize<TraceEvent>(Json)!).ToList();
+        var trace = ApiFactory.TracesOf(events).Select(t => t.Deserialize<TraceEvent>(Json)!).ToList();
         var kinds = trace.Select(t => t.Kind).ToList();
 
         string[] expected =
@@ -153,9 +153,9 @@ public class TurnTraceTests
         using var api = new ApiFactory(chat);
         var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
         var first = await ApiFactory.ChatAsync(client, "hello there");
-        var conversationId = first[^1].Data.GetProperty("conversationId").GetString();
+        var conversationId = ApiFactory.ThreadOf(first);
         var second = await ApiFactory.ChatAsync(client, "please email this", conversationId);
-        var trace = second.Where(e => e.Name == "trace").Select(e => e.Data.Deserialize<TraceEvent>(Json)!).ToList();
+        var trace = ApiFactory.TracesOf(second).Select(t => t.Deserialize<TraceEvent>(Json)!).ToList();
 
         var history = trace.Single(t => t.Kind == TraceKinds.History).Data;
         Assert.Contains("hello there", history.GetProperty("included").GetRawText());
@@ -171,9 +171,9 @@ public class TurnTraceTests
         using var api = new ApiFactory(ApiFactory.ProceduralModel(longAnswer));
         var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "what is the procedure when a fee schedule is missing");
 
-        var streamed = string.Concat(events.Where(e => e.Name == "text_delta").Select(e => e.Data.GetProperty("text").GetString()));
-        var deltas = events.Count(e => e.Name == "text_delta");
-        var chunks = events.Where(e => e.Name == "trace").Select(e => e.Data.Deserialize<TraceEvent>(Json)!)
+        var streamed = string.Concat(events.Where(e => e.Name == "TEXT_MESSAGE_CONTENT").Select(e => e.Data.GetProperty("delta").GetString()));
+        var deltas = events.Count(e => e.Name == "TEXT_MESSAGE_CONTENT");
+        var chunks = ApiFactory.TracesOf(events).Select(t => t.Deserialize<TraceEvent>(Json)!)
             .Where(t => t.Kind == TraceKinds.AnswerDelta).ToList();
 
         Assert.NotEmpty(chunks);
@@ -188,7 +188,7 @@ public class TurnTraceTests
         Assert.All(chunks.SkipLast(1), c => Assert.True(c.Data.GetProperty("text").GetString()!.Length >= 1));
 
         // Chunks sit between the model request and its response; the trace still ends with turn.end.
-        var kinds = events.Where(e => e.Name == "trace").Select(e => e.Data.GetProperty("kind").GetString()).ToList();
+        var kinds = ApiFactory.TracesOf(events).Select(t => t.GetProperty("kind").GetString()).ToList();
         Assert.True(kinds.IndexOf(TraceKinds.ModelRequest) < kinds.IndexOf(TraceKinds.AnswerDelta));
         Assert.True(kinds.LastIndexOf(TraceKinds.AnswerDelta) < kinds.IndexOf(TraceKinds.ModelResponse), "all answer text is recorded before the model response that produced it");
     }
@@ -199,7 +199,7 @@ public class TurnTraceTests
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
         var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
         var done = (await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing"))[^1].Data;
-        var turnId = done.GetProperty("turnId").GetString();
+        var turnId = done.GetProperty("result").GetProperty("turnId").GetString()!;
         var url = $"/api/turns/{turnId}/trace";
 
         var own = await adam.GetFromJsonAsync<TurnTraceDocument>(url, Json, Ct);
@@ -212,7 +212,7 @@ public class TurnTraceTests
         var alice = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
         Assert.Equal(HttpStatusCode.NotFound, (await alice.GetAsync(url, Ct)).StatusCode); // not in the review queue yet
 
-        await adam.PostAsJsonAsync("/api/feedback", new Maf.Lab.Domain.Feedback.FeedbackRequest(done.GetProperty("conversationId").GetString()!, turnId!, "wrong_answer", null), Ct);
+        await adam.PostAsJsonAsync("/api/feedback", new Maf.Lab.Domain.Feedback.FeedbackRequest(done.GetProperty("threadId").GetString()!, turnId!, "wrong_answer", null), Ct);
         Assert.Equal(HttpStatusCode.OK, (await alice.GetAsync(url, Ct)).StatusCode);
     }
 
@@ -221,7 +221,8 @@ public class TurnTraceTests
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel("ANSWER-MARKER-777."));
         var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
-        var turnId = (await ApiFactory.ChatAsync(adam, "how do I fix ZEBRA-TRACE-42?"))[^1].Data.GetProperty("turnId").GetString()!;
+        var turnId = (await ApiFactory.ChatAsync(adam, "how do I fix ZEBRA-TRACE-42?"))[^1]
+            .Data.GetProperty("result").GetProperty("turnId").GetString()!;
 
         await using (var ctx = ChatApiTests.Db(api))
         {

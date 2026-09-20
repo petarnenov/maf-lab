@@ -1,5 +1,5 @@
 import type { ChatStreamEvent } from '../api/types';
-import { toChatEvent } from './chatEvents';
+import { toChatEvents } from './chatEvents';
 import { SseParser } from './sseParser';
 
 /**
@@ -17,10 +17,10 @@ export async function readChatStream(
 
   const emit = (frames: ReturnType<SseParser['push']>) => {
     for (const frame of frames) {
-      const event = toChatEvent(frame);
-      if (!event) continue;
-      if (event.type === 'done') sawDone = true;
-      onEvent(event);
+      for (const event of toChatEvents(frame)) {
+        if (event.type === 'done') sawDone = true;
+        onEvent(event);
+      }
     }
   };
 

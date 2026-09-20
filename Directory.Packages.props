@@ -12,6 +12,9 @@
     <PackageVersion Include="A2A.AspNetCore" Version="1.0.0-preview2" />
     <!-- The Agent Framework's A2A client: a remote A2A agent used as an AIAgent (see DECISIONS.md for the server side) -->
     <PackageVersion Include="Microsoft.Agents.AI.A2A" Version="1.22.0-preview.260918.1" />
+    <!-- AG-UI: the protocol between this system and whatever watches a run (see DECISIONS.md) -->
+    <PackageVersion Include="AGUI.Abstractions" Version="1.0.0" />
+    <PackageVersion Include="AGUI.Server" Version="1.0.0" />
     <!-- MCP -->
     <PackageVersion Include="ModelContextProtocol" Version="2.2.0" />
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />

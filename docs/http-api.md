@@ -22,49 +22,93 @@ Roles: `FIRM_ADMIN`, `ADVISOR`, `OPS`, `READ_ONLY`. Firms: `firm-a`, `firm-b`, `
 
 ## Chat
 
+A turn is a **run of the agent**, streamed as [AG-UI](https://github.com/ag-ui-protocol/ag-ui) events over SSE.
+
 | Method | Path | Body | Response |
 |---|---|---|---|
 | POST | `/api/conversations` | — | `201 { conversationId }` |
-| POST | `/api/chat` | `{ conversationId?, message }` | `text/event-stream` |
-| POST | `/api/chat/confirm` | `{ conversationId, adjustmentId, approve }` | `200 { status, adjustment?, message }` |
+| POST | `/api/chat` | `RunAgentInput` | `text/event-stream` of AG-UI events |
+| POST | `/api/chat/{runId}/stop` | — | `202` when this instance was running it, `404` otherwise |
 
-If `conversationId` is omitted a new conversation is created; its id arrives in `done`.
-A conversation id issued to another principal returns `404`.
+`RunAgentInput` carries `threadId` (the conversation), `runId` (this turn), `messages` (the last user message is
+the question) and, when answering something a previous run paused for, `resume`. A run without a `threadId`
+starts a new conversation, whose id arrives on the run's terminal event. A `threadId` issued to another
+principal returns `404`.
 
-SSE frames are `event: <name>\ndata: <json>\n\n`:
+```jsonc
+{
+  "threadId": "c_8f…",                 // omit to start a new conversation
+  "runId": "r_2b…",
+  "messages": [{ "id": "u_1", "role": "user", "content": "why did run 4417 fail?" }]
+}
+```
 
-| event | data |
+SSE frames are `event: <TYPE>\ndata: <json>\n\n`, where `<TYPE>` is the event's own protocol discriminator:
+
+| event | what it carries |
 |---|---|
-| `tool_call_started` | `{ callId, toolName, argumentSummary }` — emitted before the tool executes. `argumentSummary` is `key=value` pairs of identifiers only (e.g. `runId=4417`, `sourceTypes=docs`), never the free-text query |
-| `tool_call_finished` | `{ callId, toolName, resultSummary, sourceCount, isError }` |
-| `sources` | `{ sources: [{ docId, sectionPath, sourcePath, snippet }] }` — before `done` |
-| `text_delta` | `{ text }` |
-| `trace` | one turn-trace event `{ seq, atMs, kind, title, durationMs?, data, truncated }` — interleaves with everything, all before `done`; see [trace-events.md](trace-events.md) |
-| `confirmation_required` | `{ callId, toolName, adjustmentId, adjustment, question, state }` — a write is waiting for the advisor. At most one per turn, and `done` follows it; no further tool runs in that turn |
-| `done` | `{ conversationId, turnId, error? }` — always last |
+| `RUN_STARTED` | `{ threadId, runId }` — first, exactly once |
+| `TEXT_MESSAGE_START` / `TEXT_MESSAGE_CONTENT` / `TEXT_MESSAGE_END` | the answer, under one `messageId`. A run that produces no answer opens no message |
+| `TOOL_CALL_START` / `TOOL_CALL_ARGS` / `TOOL_CALL_END` / `TOOL_CALL_RESULT` | one tool call, under one `toolCallId`. The start is emitted before the tool runs |
+| `CUSTOM` | this system's own events, by `name` — see below |
+| `RUN_FINISHED` | `{ threadId, runId, outcome, result }` — last. `result.turnId` is the turn, which feedback names |
+| `RUN_ERROR` | `{ message }` — last instead, when the turn failed. Short user-facing text only |
 
-`adjustment` is `{ adjustmentId, accountId, accountName, currentFee, amount, resultingFee, currency, periodStart, periodEnd }`
-— identifiers and amounts, never the advisor's reason. `state` is opaque and integrity-protected: hand it back
-unchanged, do not parse it, and do not expect to learn anything from it.
+**Arguments and results are identifiers and summaries, never free text.** `TOOL_CALL_ARGS.delta` carries the
+argument summary (`runId=4417`), not the query a user typed; `TOOL_CALL_RESULT.content` is structured —
+`{ tool, summary, sourceCount, isError }` — not the documents the tool found. The full result is in the trace.
 
-### Answering a confirmation
+### The two names this system adds
 
-`POST /api/chat/confirm` is how the advisor answers. Approving applies exactly what the proposal said — the
-arguments are re-derived from the state, so nothing that has been said since can change what executes. Rejecting
-applies nothing and lets the conversation continue.
-
-| outcome | response |
+| custom `name` | value |
 |---|---|
-| applied | `200 { status: "applied", adjustment: { adjustmentId, accountId, previousFee, amount, currentFee, currency, appliedAt, alreadyApplied }, message }` |
-| already applied | `200 { status: "already_applied", … }` — the fee moved once, however many answers arrive |
-| rejected | `200 { status: "declined", adjustment: null, message }` |
-| not waiting, or not this person's | `404` |
-| the tools are unavailable | `503` with a short problem detail; nothing was changed |
+| `maf-lab/sources` | `{ sources: [{ docId, sectionPath, sourcePath, snippet }] }` — before the run ends |
+| `maf-lab/trace` | one turn-trace event `{ seq, atMs, kind, title, durationMs?, data, truncated }`; see [trace-events.md](trace-events.md) |
 
-A proposal belongs to the person it was put to, in the conversation it was made in. Anyone else gets `404` — the
-same answer as for a proposal that does not exist.
+A consumer that does not recognise a custom event ignores it and still follows the run.
 
-Errors during a streamed turn arrive as `done.error` (short user-facing text); there is no separate `error` event.
+### A run that waits for a person
+
+When a turn proposes something that needs approval, the run finishes **paused**:
+
+```jsonc
+{
+  "type": "RUN_FINISHED",
+  "outcome": {
+    "type": "interrupt",
+    "interrupts": [{
+      "id": "adj_9b…",                 // what an answer names
+      "message": "Apply a fee adjustment of -200.00 USD to A-1042 (…)?",
+      "reason": "approval_required",
+      "toolCallId": "c1",
+      "expiresAt": "2026-09-20T15:21:14Z",
+      "responseSchema": { "type": "object", "properties": { "approve": { "type": "boolean" } } },
+      "metadata": { "adjustment": { "accountId": "A-1042", "currentFee": 1200, "…": "…" }, "state": "…", "tool": "propose_fee_adjustment" }
+    }]
+  }
+}
+```
+
+Nothing has been changed and no further tool runs in that run. Answering is a **new run** that resumes it:
+
+```jsonc
+{
+  "threadId": "c_8f…",
+  "runId": "r_3c…",
+  "messages": [],
+  "resume": [{ "interruptId": "adj_9b…", "payload": { "approve": true } }]
+}
+```
+
+That run applies the proposal (or applies nothing, for anything but an approval) and says what happened as its
+answer. An interrupt that was already answered, belongs to someone else, or has expired is refused, and nothing
+happens twice. `metadata.state` is opaque and integrity-protected: hand it back, do not parse it.
+
+### Stopping
+
+`POST /api/chat/{runId}/stop` ends a run within a second, and no tool executes after it. Abandoning the stream
+does the same thing through the request itself and is what a browser actually does. The registry of running runs
+is per instance, so a stop sent to the replica that is not running the turn answers `404`.
 
 ## Conversation history (owner only)
 

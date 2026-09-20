@@ -34,6 +34,7 @@ public sealed class FeeAdjustmentTools(
     public const string ConfirmationKey = FeeAdjustmentTool.ConfirmationKey;
     public const string SummaryKey = FeeAdjustmentTool.SummaryKey;
     public const string StateKey = FeeAdjustmentTool.StateKey;
+    public const string ExpiresAtKey = FeeAdjustmentTool.ExpiresAtKey;
 
     [McpServerTool(
         Name = ProposeName,
@@ -101,6 +102,7 @@ public sealed class FeeAdjustmentTools(
             PeriodStart: account.NextPeriodStart,
             PeriodEnd: account.NextPeriodEnd);
 
+        var expiresAt = now.Add(signer.ValidFor);
         var state = signer.Issue(new FeeAdjustmentProposalState(
             summary.AdjustmentId,
             principal.FirmId.Value,
@@ -110,7 +112,7 @@ public sealed class FeeAdjustmentTools(
             account.Currency,
             ProposalSigner.DigestOf(reason),
             now,
-            now.Add(signer.ValidFor)));
+            expiresAt));
 
         var elicit = new ElicitRequestParams
         {
@@ -132,6 +134,7 @@ public sealed class FeeAdjustmentTools(
             {
                 [SummaryKey] = JsonSerializer.SerializeToNode(summary, McpJson.Options),
                 [StateKey] = state,
+                [ExpiresAtKey] = expiresAt.ToString("O"),
             },
         };
 

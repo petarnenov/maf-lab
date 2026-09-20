@@ -21,7 +21,7 @@ public class ComplianceApiTests
     private static async Task<string> ChatAsync(ApiFactory api, HttpClient client, string message)
     {
         var events = await ApiFactory.ChatAsync(client, message);
-        return events[^1].Data.GetProperty("conversationId").GetString()!;
+        return ApiFactory.ThreadOf(events);
     }
 
     private static async Task<T> GetAsync<T>(HttpClient client, string path)

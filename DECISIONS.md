@@ -666,3 +666,48 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
   caught it; worth remembering when verifying by hand.
 - **Defaults.** `FeeAdjustments:ReviewAboveAmount` is 500 (absolute), `FeeAdjustments:MaxQuestions` is 2,
   `Billing:ProposalValidFor` is 30 minutes.
+
+## 26. One protocol for the wire (add-agui-stream, 2026-09-20)
+
+- **`AGUI.Server` and `AGUI.Abstractions` 1.0.0 are pinned.** Published by the AG-UI Protocol organisation
+  (github.com/ag-ui-protocol/ag-ui), MIT, stable since 2026-09-17. The server package describes itself as a
+  framework-agnostic adapter from `Microsoft.Extensions.AI` chat streams to AG-UI events, which is this
+  project's chat loop named. They depend on `Microsoft.Extensions.AI.Abstractions` 10.6.0; NuGet resolves
+  upward to the pinned 10.10.0, which `dotnet list package --include-transitive` confirms.
+- **The adapter maps the model's output, inside the existing pipeline.** Three options: hand-write the protocol
+  (rejected — the fiddly parts are message ids, ordering and when a text message opens and closes, which is what
+  the SDK exists to get right); restructure the turn around the adapter and move audit, tracing and the
+  fee-adjustment flow behind its mapping hooks (rejected — the trace begins before the model is called and the
+  flow can block for a minute mid-call; neither is a mapping of a content item); or let the adapter own the
+  model's output while the runner keeps the channel, the order and everything else. The third. `ChatTurnRunner`
+  enumerates `AsChatResponseUpdatesAsync(agent stream).AsAGUIEventStreamAsync(context, ct)` and writes what
+  comes out into the same channel its own events go into.
+- **What the adapter produces is not what a client may see.** It attaches the whole originating
+  `ChatResponseUpdate` to every event as `rawEvent` — carrying a tool call's arguments and a tool result's full
+  payload, document text included — and renders arguments and results verbatim. Its mapping hooks add events
+  *after* the built-in ones rather than replacing them, so they cannot prevent it. Every event therefore passes
+  through `RunRedaction`: `rawEvent` is dropped, `TOOL_CALL_ARGS` becomes the identifier-only summary the audit
+  already computes, and `TOOL_CALL_RESULT` becomes `{ tool, summary, sourceCount, isError }`. Found by a probe
+  before any of it shipped.
+- **The runner owns the run's beginning and end.** The adapter emits its own `RUN_STARTED`/`RUN_FINISHED`, but a
+  turn's first trace events happen before the model is ever called, and its last word may be that it is waiting
+  for a person. Those are dropped and the runner emits its own.
+- **A failed run must be read off the stream.** The adapter catches what the model throws and turns it into a
+  `RUN_ERROR` rather than letting it out, so without watching for that event a failed turn would have ended as a
+  success. A test caught it. A run that was *stopped* is not a failure, so cancellation is checked first.
+- **Confirmation-before-write is an interrupt, not an invention.** The Day-4 brief planned a custom
+  `confirmation_required` event. The protocol already has `AGUIInterrupt` — id, message, response schema, tool
+  call id, expiry, metadata — and `RunFinishedInterruptOutcome`, answered by an `AGUIResume` on the run that
+  continues. Every field the proposal needed had a slot. The proposal's expiry, which until now only the signer
+  knew, is carried to the host through the elicitation's `_meta` so it can reach `expiresAt`.
+- **`POST /api/chat/confirm` was deleted, not kept as an alias.** It was three hours old with no consumers, and
+  two ways to answer one proposal is one too many.
+- **Sources and the trace are custom events**, `maf-lab/sources` and `maf-lab/trace`. The protocol says a
+  consumer may ignore a custom event it does not know, which is what makes them safe to add.
+- **The web client translates; it does not adopt an SDK.** `toChatEvents` maps protocol frames to the reducer's
+  existing actions, so `chatReducer`, the monitor and time travel kept their shape and their tests. The
+  protocol's TypeScript packages would be a second dependency for a client that renders six kinds of event.
+- **A stop only reaches the replica running the turn.** Runs are registered per instance; the balancer spreads
+  requests, so a stop sent elsewhere answers 404 rather than pretending. What a browser actually does — abandon
+  the stream — always works, because the run's token hangs off the request's own. The in-memory test host does
+  not abort a request the way a real socket does, so that half is a live check and a unit test of the wiring.

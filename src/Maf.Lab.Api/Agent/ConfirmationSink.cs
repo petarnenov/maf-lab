@@ -5,7 +5,12 @@ using ModelContextProtocol.Protocol;
 namespace Maf.Lab.Api.Agent;
 
 /// <summary>A confirmation the server asked for and nobody has answered yet.</summary>
-public sealed record CapturedConfirmation(FeeAdjustmentSummary Adjustment, string State, string Question);
+public sealed record CapturedConfirmation(
+    FeeAdjustmentSummary Adjustment,
+    string State,
+    string Question,
+    DateTimeOffset? ExpiresAt,
+    JsonElement? AnswerSchema);
 
 /// <summary>
 /// The MCP client resolves a server's request for input itself, which would mean answering on the user's
@@ -39,6 +44,19 @@ public sealed class ConfirmationSink
         }
 
         var adjustment = JsonSerializer.Deserialize<FeeAdjustmentSummary>(summary.ToJsonString(), Json);
-        return adjustment is null ? null : new CapturedConfirmation(adjustment, state, request.Message ?? "");
+        if (adjustment is null)
+        {
+            return null;
+        }
+
+        var expiresAt = meta[FeeAdjustmentTool.ExpiresAtKey]?.GetValue<string>() is { Length: > 0 } text
+            && DateTimeOffset.TryParse(text, System.Globalization.CultureInfo.InvariantCulture, out var parsed)
+                ? parsed
+                : (DateTimeOffset?)null;
+        var schema = request.RequestedSchema is { } requested
+            ? JsonSerializer.SerializeToElement(requested, Json)
+            : (JsonElement?)null;
+
+        return new CapturedConfirmation(adjustment, state, request.Message ?? "", expiresAt, schema);
     }
 }

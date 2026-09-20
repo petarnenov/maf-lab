@@ -18,7 +18,7 @@ public class FeedbackApiTests
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
         var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
         var done = (await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing"))[^1].Data;
-        var (conversationId, turnId) = (done.GetProperty("conversationId").GetString(), done.GetProperty("turnId").GetString()!);
+        var (conversationId, turnId) = (done.GetProperty("threadId").GetString()!, done.GetProperty("result").GetProperty("turnId").GetString()!);
 
         var feedback = await adam.PostAsJsonAsync("/api/feedback", new FeedbackRequest(conversationId!, turnId, FeedbackKind.WrongDocument, null), Ct);
         Assert.Equal(HttpStatusCode.Accepted, feedback.StatusCode);
@@ -62,7 +62,7 @@ public class FeedbackApiTests
 
         await ApiFactory.ChatAsync(adam, "how does proration zero work");        // forced but returns zero results
         await ApiFactory.ChatAsync(adam, "tell me something long");              // long answer, no sources
-        var c = (await ApiFactory.ChatAsync(adam, "explain breakpoint pricing"))[^1].Data.GetProperty("conversationId").GetString(); // how/why, model ignored tools
+        var c = ApiFactory.ThreadOf(await ApiFactory.ChatAsync(adam, "explain breakpoint pricing")); // how/why, model ignored tools
         await ApiFactory.ChatAsync(adam, "explain breakpoint pricing please", c); // rephrase of the previous question
 
         var queue = await api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN).GetFromJsonAsync<List<ReviewQueueItem>>("/api/admin/feedback/queue", JsonOptions, Ct);
@@ -94,7 +94,7 @@ public class FeedbackApiTests
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
         var done = (await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "hello"))[^1].Data;
-        var request = new FeedbackRequest(done.GetProperty("conversationId").GetString()!, done.GetProperty("turnId").GetString()!, FeedbackKind.WrongAnswer, null);
+        var request = new FeedbackRequest(done.GetProperty("threadId").GetString()!, done.GetProperty("result").GetProperty("turnId").GetString()!, FeedbackKind.WrongAnswer, null);
 
         var response = await api.ClientFor("bianca", "firm-b", Role.ADVISOR).PostAsJsonAsync("/api/feedback", request, Ct);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);

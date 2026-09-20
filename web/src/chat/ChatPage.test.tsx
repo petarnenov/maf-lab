@@ -2,7 +2,7 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { fixtureTrace } from '../monitor/fixtures';
-import { jsonResponse, renderWithProviders, sse, streamResponse } from '../test/render';
+import { jsonResponse, renderWithProviders, run, streamResponse } from '../test/render';
 import { ChatPage } from './ChatPage';
 
 const emptyHistory = { conversations: [], nextCursor: null };
@@ -13,30 +13,18 @@ describe('ChatPage', () => {
       url.startsWith('/api/conversations')
         ? jsonResponse(emptyHistory)
         : streamResponse([
-            sse('tool_call_started', {
-              callId: 'c1',
-              toolName: 'search_documents',
-              argumentSummary: 'query="fee"',
-            }),
-            sse('tool_call_finished', {
-              callId: 'c1',
-              toolName: 'search_documents',
-              resultSummary: '2 snippets',
-              sourceCount: 2,
-              isError: false,
-            }),
-            sse('sources', {
-              sources: [
-                {
-                  docId: 'd1',
-                  sectionPath: 'Fees > Missing',
-                  sourcePath: 'shared/docs/fees.md',
-                  snippet: 's',
-                },
-              ],
-            }),
-            sse('text_delta', { text: 'Open a ticket.' }),
-            sse('done', { conversationId: 'conv-1', turnId: 't1' }),
+            ...run.toolCall('c1', 'search_documents', 'sourceTypes=docs'),
+            run.toolResult('c1', '2 snippets', 'search_documents', 2),
+            run.sources([
+              {
+                docId: 'd1',
+                sectionPath: 'Fees > Missing',
+                sourcePath: 'shared/docs/fees.md',
+                snippet: 's',
+              },
+            ]),
+            run.delta('Open a ticket.'),
+            run.done('conv-1', 't1'),
           ]),
     );
     vi.stubGlobal('fetch', fetchMock);
@@ -67,9 +55,9 @@ describe('ChatPage', () => {
       vi.fn(async (url: string) => {
         if (url === '/api/chat') {
           return streamResponse([
-            ...trace.map((e) => sse('trace', e)),
-            sse('text_delta', { text: 'Answer.' }),
-            sse('done', { conversationId: 'conv-1', turnId: 't1' }),
+            ...trace.map((e) => run.trace(e)),
+            run.delta('Answer.'),
+            run.done('conv-1', 't1'),
           ]);
         }
         if (url.startsWith('/api/conversations')) return jsonResponse(emptyHistory);
@@ -103,9 +91,9 @@ describe('ChatPage', () => {
         chatCalls += 1;
         const turnId = `t${chatCalls}`;
         return streamResponse([
-          sse('trace', { ...fixtureTrace[0], title: `Live start ${turnId}` }),
-          sse('text_delta', { text: `Answer ${chatCalls}` }),
-          sse('done', { conversationId: 'conv-1', turnId }),
+          run.trace({ ...fixtureTrace[0], title: `Live start ${turnId}` }),
+          run.delta(`Answer ${chatCalls}`),
+          run.done('conv-1', turnId),
         ]);
       }
       if (url === '/api/turns/t1/trace') {
@@ -151,14 +139,11 @@ describe('ChatPage', () => {
       if (url === '/api/chat') {
         chatCalls += 1;
         return chatCalls === 1
-          ? streamResponse([
-              sse('text_delta', { text: 'First answer.' }),
-              sse('done', { conversationId: 'conv-1', turnId: 't1' }),
-            ])
+          ? streamResponse([run.delta('First answer.'), run.done('conv-1', 't1')])
           : streamResponse([
-              ...fixtureTrace.map((e) => sse('trace', e)),
-              sse('text_delta', { text: answer }),
-              sse('done', { conversationId: 'conv-1', turnId: 't2' }),
+              ...fixtureTrace.map((e) => run.trace(e)),
+              run.delta(answer),
+              run.done('conv-1', 't2'),
             ]);
       }
       if (url === '/api/turns/t2/trace') {

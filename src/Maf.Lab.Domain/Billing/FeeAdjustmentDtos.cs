@@ -16,6 +16,9 @@ public static class FeeAdjustmentTool
 
     /// <summary>The opaque state, repeated in _meta because a client resolving an elicitation cannot see it otherwise.</summary>
     public const string StateKey = "maf-lab/proposal-state";
+
+    /// <summary>When the proposal stops being answerable. Only the signer knows it; the host must be told.</summary>
+    public const string ExpiresAtKey = "maf-lab/proposal-expires-at";
 }
 
 /// <summary>An account as anything outside the store may see it. Deliberately has no free-text note field.</summary>

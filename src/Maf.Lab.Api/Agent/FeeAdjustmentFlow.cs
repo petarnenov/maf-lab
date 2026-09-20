@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using AGUI.Abstractions;
 using Maf.Lab.Api.A2A;
 using Maf.Lab.Api.Agent.Tracing;
 using Maf.Lab.Api.Compliance;
@@ -25,8 +26,8 @@ public sealed class FeeAdjustmentOptions
 /// <summary>What the turn should do with a proposal the server has asked to have confirmed.</summary>
 public abstract record FlowOutcome
 {
-    /// <summary>Put it to the person: the turn ends here.</summary>
-    public sealed record AskUser(ConfirmationRequiredEvent Event) : FlowOutcome;
+    /// <summary>Put it to the person: the run pauses here.</summary>
+    public sealed record AskUser(AGUIInterrupt Interrupt) : FlowOutcome;
 
     /// <summary>Nothing will be confirmed; the model is told why and answers in its own words.</summary>
     public sealed record TellModel(string Message) : FlowOutcome;
@@ -147,9 +148,32 @@ public sealed class FeeAdjustmentFlow(
         }
     }
 
-    private static FlowOutcome Ask(string callId, string toolName, CapturedConfirmation captured) =>
-        new FlowOutcome.AskUser(new ConfirmationRequiredEvent(
-            callId, toolName, captured.Adjustment.AdjustmentId, captured.Adjustment, captured.Question, captured.State));
+    /// <summary>
+    /// The proposal as the protocol's own way of waiting: the adjustment's id identifies the interrupt, the
+    /// sentence the tool composed is what a person reads, the tool's own input schema is the shape of the
+    /// answer, and the proposal's expiry — which until now only the signer knew — is when it stops being
+    /// answerable. The summary and the opaque state ride along as metadata.
+    /// </summary>
+    private static FlowOutcome Ask(string callId, string toolName, CapturedConfirmation captured)
+    {
+        var metadata = new Dictionary<string, JsonElement>
+        {
+            ["adjustment"] = JsonSerializer.SerializeToElement(captured.Adjustment, Json),
+            ["state"] = JsonSerializer.SerializeToElement(captured.State, Json),
+            ["tool"] = JsonSerializer.SerializeToElement(toolName, Json),
+        };
+
+        return new FlowOutcome.AskUser(new AGUIInterrupt
+        {
+            Id = captured.Adjustment.AdjustmentId,
+            Message = captured.Question,
+            Reason = "approval_required",
+            ToolCallId = callId,
+            ExpiresAt = captured.ExpiresAt?.ToString("O"),
+            ResponseSchema = captured.AnswerSchema,
+            Metadata = JsonSerializer.SerializeToElement(metadata, Json),
+        });
+    }
 
     /// <summary>A proposal in this conversation whose review stopped to ask something.</summary>
     private async Task<OpenReview?> OpenReviewAsync(Principal principal, string conversationId, string accountId, CancellationToken ct)

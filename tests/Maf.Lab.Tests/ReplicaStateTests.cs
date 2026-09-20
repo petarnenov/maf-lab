@@ -124,7 +124,7 @@ public class ReplicaStateTests
 
         // Turn 1 on A, turn 2 on B: B sees A's history.
         var first = await ApiFactory.ChatAsync(clientA, "explain FS-REQUIRED");
-        var conversationId = first[^1].Data.GetProperty("conversationId").GetString();
+        var conversationId = ApiFactory.ThreadOf(first);
         var before = hostB.Chat.Requests.Count;
         await ApiFactory.ChatAsync(clientB, "and what about proration?", conversationId);
         var history = hostB.Chat.Requests[before].Messages.Select(m => m.Text).ToList();

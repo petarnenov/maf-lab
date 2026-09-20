@@ -7,6 +7,33 @@ public static class ArgumentSummary
 {
     private static readonly HashSet<string> FreeText = new(StringComparer.OrdinalIgnoreCase) { "query", "question", "text", "message", "comment", "note", "reason", "justification" };
 
+    /// <summary>
+    /// The same view, taken from a call's arguments as JSON. The protocol renders a tool call's arguments
+    /// before the call is invoked, so this is what the client sees — the identifiers, never the free text.
+    /// </summary>
+    public static string FromJson(string? json)
+    {
+        if (json is not { Length: > 0 })
+        {
+            return "";
+        }
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+            {
+                return "";
+            }
+            var arguments = document.RootElement.EnumerateObject()
+                .ToDictionary(p => p.Name, p => (object?)p.Value.Clone());
+            return From(arguments);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return "";
+        }
+    }
+
     public static string From(IDictionary<string, object?>? arguments)
     {
         if (arguments is null || arguments.Count == 0)

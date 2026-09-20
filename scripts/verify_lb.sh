@@ -86,7 +86,12 @@ for _ in range(8):
 check("8 MCP calls succeed across >= 2 mcp replicas (no affinity)", ok_calls == 8 and len(mcp_instances) >= 2, f"ok={ok_calls} {dict(mcp_instances)}")
 
 # 4.2 SSE through the balancer --------------------------------------------------------------------------
-r = urllib.request.Request(BASE + "/api/chat", data=json.dumps({"message": "What is the procedure when a fee schedule is missing?"}).encode(),
+run_input = {
+    "threadId": None,
+    "runId": "r_verify_lb",
+    "messages": [{"id": "u_verify_lb", "role": "user", "content": "What is the procedure when a fee schedule is missing?"}],
+}
+r = urllib.request.Request(BASE + "/api/chat", data=json.dumps(run_input).encode(),
                            method="POST", headers={"content-type": "application/json", "authorization": f"Bearer {adam}"})
 events, name = [], None
 with urllib.request.urlopen(r, timeout=300) as resp:
@@ -97,10 +102,12 @@ with urllib.request.urlopen(r, timeout=300) as resp:
             events.append((name, time.monotonic()))
 order = [e for e, _ in events]
 dedup = [e for i, e in enumerate(order) if i == 0 or e != order[i - 1]]
-check("SSE order: tool_call_started → tool_call_finished → … → sources → done",
-      "tool_call_started" in order and order.index("tool_call_started") < order.index("tool_call_finished")
-      and order.index("sources") < order.index("done") and order[-1] == "done", " ".join(dedup))
-check("SSE events arrive incrementally (not buffered)", events[-1][1] - events[0][1] > 0.2,
+check("a run starts, calls a tool, answers and finishes, in that order",
+      order[0] == "RUN_STARTED" and order[-1] == "RUN_FINISHED"
+      and order.index("TOOL_CALL_START") < order.index("TOOL_CALL_RESULT")
+      and order.index("TOOL_CALL_RESULT") < order.index("TEXT_MESSAGE_CONTENT")
+      and order.count("RUN_STARTED") == 1 and order.count("RUN_FINISHED") == 1, " ".join(dedup))
+check("the run's events arrive incrementally (not buffered)", events[-1][1] - events[0][1] > 0.2,
       f"first→last {events[-1][1] - events[0][1]:.2f}s over {len(events)} events")
 
 # 4.3 replica failure -----------------------------------------------------------------------------------

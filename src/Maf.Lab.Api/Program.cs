@@ -44,6 +44,10 @@ public partial class Program
         builder.Services.Configure<Agent.FeeAdjustmentOptions>(builder.Configuration.GetSection("FeeAdjustments"));
         builder.Services.AddScoped<Agent.FeeAdjustmentFlow>();
         builder.Services.AddScoped<Agent.ConfirmationService>();
+        builder.Services.AddSingleton<Agent.Streaming.RunRegistry>();
+        builder.Services.Configure<Agent.Streaming.RunStopOptions>(builder.Configuration.GetSection("RunStop"));
+        builder.Services.AddHttpClient("run-stop");
+        builder.Services.AddScoped<Agent.Streaming.RunStopper>();
         builder.Services.AddScoped<ChatTurnRunner>();
         builder.Services.AddSingleton<DatasetWriter>();
         builder.Services.Configure<AdminJobOptions>(builder.Configuration.GetSection("AdminJobs"));

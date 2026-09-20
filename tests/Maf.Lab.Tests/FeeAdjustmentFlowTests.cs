@@ -78,9 +78,10 @@ public class FeeAdjustmentFlowTests
 
         var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by 200");
 
-        var confirmation = events.Single(e => e.Name == "confirmation_required").Data;
-        Assert.Equal("A-1042", confirmation.GetProperty("adjustment").GetProperty("accountId").GetString());
-        Assert.Equal("done", events[^1].Name);
+        var interrupt = ApiFactory.InterruptOf(events);
+        Assert.NotNull(interrupt);
+        Assert.Equal("A-1042", interrupt.Value.GetProperty("metadata").GetProperty("adjustment").GetProperty("accountId").GetString());
+        Assert.Equal("RUN_FINISHED", events[^1].Name);
 
         // The reviewer was not troubled for a small one.
         Assert.DoesNotContain(await AuditAsync(api), a => a.Kind == "a2a.consultation");
@@ -97,7 +98,7 @@ public class FeeAdjustmentFlowTests
 
         var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
 
-        Assert.Contains(events, e => e.Name == "confirmation_required");
+        Assert.NotNull(ApiFactory.InterruptOf(events));
         var audit = await AuditAsync(api);
         Assert.Single(audit, a => a.Kind == "a2a.consultation");
         Assert.Contains(audit, a => a.ToolName == "fee.adjustment.proposed");
@@ -116,7 +117,7 @@ public class FeeAdjustmentFlowTests
         // An increase of 1,200 is over the reviewer's own threshold.
         var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042: increase it");
 
-        Assert.DoesNotContain(events, e => e.Name == "confirmation_required");
+        Assert.Null(ApiFactory.InterruptOf(events));
         Assert.Contains(await AuditAsync(api), a => a.ToolName == "fee.adjustment.reviewed" && a.Outcome == "refused");
         await AssertNothingPendingAsync(api, PendingAdjustmentStatus.Refused);
     }
@@ -130,7 +131,7 @@ public class FeeAdjustmentFlowTests
 
         var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
 
-        Assert.DoesNotContain(events, e => e.Name == "confirmation_required");
+        Assert.Null(ApiFactory.InterruptOf(events));
         Assert.Contains(await AuditAsync(api), a => a.ToolName == "fee.adjustment.reviewed" && a.Outcome == "unreachable");
     }
 
@@ -145,7 +146,7 @@ public class FeeAdjustmentFlowTests
 
         var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
 
-        Assert.DoesNotContain(events, e => e.Name == "confirmation_required");
+        Assert.Null(ApiFactory.InterruptOf(events));
         Assert.Contains(await AuditAsync(api), a => a.ToolName == "fee.adjustment.reviewed" && a.Outcome == "timeout");
     }
 
@@ -160,7 +161,7 @@ public class FeeAdjustmentFlowTests
 
         var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
 
-        Assert.DoesNotContain(events, e => e.Name == "confirmation_required");
+        Assert.Null(ApiFactory.InterruptOf(events));
         Assert.Contains(await AuditAsync(api), a => a.ToolName == "fee.adjustment.reviewed" && a.Outcome == "input-required");
 
         await using var scope = api.Services.CreateAsyncScope();
@@ -182,13 +183,13 @@ public class FeeAdjustmentFlowTests
         var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
 
         var first = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
-        var conversationId = first[^1].Data.GetProperty("conversationId").GetString();
+        var conversationId = ApiFactory.ThreadOf(first);
 
         var second = await ApiFactory.ChatAsync(client,
             "adjust the fee on A-1042 down by a large amount — the client agreed in writing", conversationId);
 
         // The same review reached a verdict, so the advisor is now asked to confirm.
-        Assert.Contains(second, e => e.Name == "confirmation_required");
+        Assert.NotNull(ApiFactory.InterruptOf(second));
         var reviews = (await AuditAsync(api)).Where(a => a.ToolName == "fee.adjustment.reviewed").ToList();
         Assert.Equal(["input-required", "approved"], reviews.Select(r => r.Outcome));
     }
@@ -264,7 +265,7 @@ public class FeeAdjustmentFlowTests
 
         var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
 
-        var trace = events.Where(e => e.Name == "trace").Select(e => e.Data).ToList();
+        var trace = ApiFactory.TracesOf(events).ToList();
         var steps = trace
             .Where(t => t.GetProperty("kind").GetString() == "adjustment")
             .Select(t => t.GetProperty("data").GetProperty("step").GetString())

@@ -131,6 +131,22 @@ embedded in it changes nothing, because nothing reads it for instructions.
 Every step — proposed, reviewed, confirmed, rejected, applied — is in the audit record under `fee.adjustment`,
 naming the person who acted and the account, and never the reason they gave.
 
+## What the browser and the API speak
+
+A turn is a **run of the agent**, streamed as [AG-UI](https://github.com/ag-ui-protocol/ag-ui) — a protocol
+someone else defined, with a stable 1.0 schema and an official .NET SDK. A run starts, the answer streams as a
+text message, each tool call streams as the protocol's four tool events, and the run finishes exactly once. The
+two things AG-UI has no word for — the sources of an answer and the behind-the-scenes trace — travel as custom
+events, which a consumer that does not know them may ignore.
+
+Arguments and results are identifiers and summaries on the wire, never the words a user typed or the documents a
+tool found. The SDK's adapter attaches the whole originating chat update to every event; it is stripped before
+anything leaves, which is the sort of thing worth checking rather than assuming.
+
+A write waiting for a person is the protocol's own **interrupt**: the run pauses carrying what to check, the
+shape of the answer and when the proposal expires. Approving or rejecting is a new run that resumes it. There is
+no separate confirm endpoint, because the protocol already had somewhere to put this.
+
 ## Behind the scenes
 
 `/chat` shows the conversation on the left and a live **behind-the-scenes monitor** on the right: every step of the turn

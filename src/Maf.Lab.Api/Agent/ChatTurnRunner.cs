@@ -1,4 +1,8 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using AGUI.Abstractions;
+using AGUI.Server;
+using Maf.Lab.Api.Agent.Streaming;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -43,9 +47,10 @@ public sealed class ChatTurnRunner(
     private readonly ILogger _logger = loggers.CreateLogger<ChatTurnRunner>();
 
     public async Task<TurnResult> RunAsync(Principal principal, string bearerToken, string conversationId, string message,
-        ChannelWriter<ChatEvent> events, CancellationToken ct)
+        string runId, ChannelWriter<BaseEvent> events, CancellationToken ct)
     {
         var turnId = $"t_{Guid.NewGuid():N}";
+        await events.WriteAsync(new RunStartedEvent { ThreadId = conversationId, RunId = runId }, ct);
         var trace = new TurnTrace(events);
         var state = new TurnState(principal, conversationId, turnId, events, trace);
         var chunker = state.Answer;
@@ -128,22 +133,37 @@ public sealed class ChatTurnRunner(
                 .Build();
 
             var session = await agent.CreateSessionAsync(ct);
-            await foreach (var update in agent.RunStreamingAsync(message, session, cancellationToken: ct))
+
+            // The adapter maps the model's output to the protocol — the part with the fiddly rules about message
+            // ids, ordering and when a text message opens and closes. What it must not carry out is stripped on
+            // the way through, and the run's own beginning and end stay this method's business.
+            var context = new RunAgentInput
             {
-                foreach (var content in update.Contents)
+                ThreadId = conversationId,
+                RunId = runId,
+                ProtocolVersion = AGUIProtocol.Version,
+                Messages = [],
+            }.ToChatRequestContext(AGUIStream.Json, new AGUIStreamOptions());
+
+            var redaction = new RunRedaction(
+                callId => state.Arguments.TryGetValue(callId, out var a) ? a : null,
+                callId => state.Summaries.TryGetValue(callId, out var r) ? r : null);
+
+            await foreach (var e in Observed(agent, session, message, state, tools.Names, answer, chunker, ct)
+                .AsAGUIEventStreamAsync(context, ct))
+            {
+                if (redaction.Apply(e) is { } send)
                 {
-                    switch (content)
-                    {
-                        case TextContent { Text.Length: > 0 } delta:
-                            answer.Append(delta.Text);
-                            chunker.Append(delta.Text);
-                            await events.WriteAsync(new TextDeltaEvent(delta.Text), ct);
-                            break;
-                        case FunctionCallContent call when !tools.Names.Contains(call.Name):
-                            await RecordUnknownToolAsync(state, call, ct);
-                            break;
-                    }
+                    await events.WriteAsync(send, ct);
                 }
+            }
+
+            if (redaction.Failed)
+            {
+                // The adapter turns what the model threw into an event instead of letting it out, so a failure
+                // reaches this method only by being read off the stream. A run that was stopped is not a failure.
+                ct.ThrowIfCancellationRequested();
+                throw new InvalidOperationException("The agent run failed.");
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -163,7 +183,7 @@ public sealed class ChatTurnRunner(
         var sources = state.Sources.DistinctBy(s => (s.DocId, s.SectionPath)).ToList();
         if (sources.Count > 0)
         {
-            await events.WriteAsync(new SourcesEvent(sources), ct);
+            await events.WriteAsync(AGUIStream.Sources(sources), ct);
         }
 
         var text = answer.ToString().Trim();
@@ -187,9 +207,62 @@ public sealed class ChatTurnRunner(
         _logger.LogInformation("chat turn done turn={TurnId} intent={Intent} forced={Forced} tools={ToolCount} sources={SourceCount} signals={Signals} ms={Elapsed}",
             turnId, decision.Intent, forced, state.ToolCalls.Count, sources.Count, string.Join(",", signals), sw.ElapsedMilliseconds);
 
-        await events.WriteAsync(new DoneEvent(conversationId, turnId, error), ct);
+        await events.WriteAsync(Terminal(state, conversationId, runId, error), ct);
         return new TurnResult(conversationId, turnId, decision.Intent, forced, text, state.ToolCalls, sources, signals, error);
     }
+
+    /// <summary>
+    /// The agent's stream, watched on its way to the adapter: the answer is accumulated for persistence and for
+    /// the trace, and a call to a tool that does not exist is recorded here because it never reaches middleware.
+    /// </summary>
+    private async IAsyncEnumerable<ChatResponseUpdate> Observed(
+        AIAgent agent, AgentSession session, string message, TurnState state, IReadOnlySet<string> known,
+        StringBuilder answer, AnswerChunker chunker, [EnumeratorCancellation] CancellationToken ct)
+    {
+        await foreach (var update in agent.RunStreamingAsync(message, session, cancellationToken: ct))
+        {
+            foreach (var content in update.Contents)
+            {
+                switch (content)
+                {
+                    case TextContent { Text.Length: > 0 } delta:
+                        answer.Append(delta.Text);
+                        chunker.Append(delta.Text);
+                        break;
+                    case FunctionCallContent call when !known.Contains(call.Name):
+                        await RecordUnknownToolAsync(state, call, ct);
+                        break;
+                }
+            }
+            // An empty delta is not an answer, and a message opened for one would be a message about nothing.
+            var contents = update.Contents.Where(c => c is not TextContent { Text.Length: 0 }).ToList();
+            if (contents.Count == 0)
+            {
+                continue;
+            }
+            var chat = update.AsChatResponseUpdate();
+            chat.Contents = contents;
+            yield return chat;
+        }
+    }
+
+    /// <summary>
+    /// A run ends once: as an error, as a pause waiting for a person, or as a success. A pause is the protocol's
+    /// own shape for it, so a client that speaks AG-UI needs nothing of ours to understand what is being asked.
+    /// </summary>
+    private static BaseEvent Terminal(TurnState state, string conversationId, string runId, string? error) =>
+        error is not null
+            ? new RunErrorEvent { Message = error, Code = "TurnFailed" }
+            : new RunFinishedEvent
+            {
+                ThreadId = conversationId,
+                RunId = runId,
+                Outcome = state.Interrupt is { } interrupt
+                    ? new RunFinishedInterruptOutcome { Interrupts = [interrupt] }
+                    : new RunFinishedSuccessOutcome(),
+                // The turn this run was, so feedback can name it.
+                Result = JsonSerializer.SerializeToElement(new { turnId = state.TurnId }, AGUIStream.Json),
+            };
 
     /// <summary>Agent function middleware: events before/after execution, audit, data-block wrapping, source capture.</summary>
     private async ValueTask<object?> InvokeToolAsync(TurnState state, FunctionInvocationContext context,
@@ -210,7 +283,7 @@ public sealed class ChatTurnRunner(
         }
 
         state.Answer.Flush();
-        await state.Events.WriteAsync(new ToolCallStartedEvent(callId, name, args), ct);
+        state.Arguments[callId] = args;
         state.Trace.Add(TraceKinds.ToolCall, $"Calling {name} over MCP", new JsonObject
         {
             ["callId"] = callId, ["tool"] = name, ["arguments"] = TraceMapping.Node(context.Arguments),
@@ -231,7 +304,7 @@ public sealed class ChatTurnRunner(
                 ["callId"] = callId, ["tool"] = name, ["isError"] = true, ["latencyMs"] = sw.ElapsedMilliseconds, ["result"] = null,
             }, sw.ElapsedMilliseconds);
             state.ToolCalls.Add(new ToolCallRecord(name, args, "error", 0, [], [], callId, "failed"));
-            await state.Events.WriteAsync(new ToolCallFinishedEvent(callId, name, "failed", 0, true), ct);
+            state.Summaries[callId] = Result(name, "failed", 0, isError: true);
             return ToolDataEnvelope.Wrap(name, "The tool is temporarily unavailable.");
         }
 
@@ -260,7 +333,7 @@ public sealed class ChatTurnRunner(
             ["callId"] = callId, ["tool"] = name, ["arguments"] = args, ["outcome"] = outcome, ["durationMs"] = latency,
         });
         state.ToolCalls.Add(new ToolCallRecord(name, args, outcome, sources.Count, sources.Select(s => s.DocId).Distinct().ToList(), [], callId, summary));
-        await state.Events.WriteAsync(new ToolCallFinishedEvent(callId, name, summary, sources.Count, isError), ct);
+        state.Summaries[callId] = Result(name, summary, sources.Count, isError);
         var envelope = ToolDataEnvelope.Wrap(name, payload);
         state.Trace.Add(TraceKinds.Envelope, $"Data envelope handed to the model ({envelope.Length} chars)", new JsonObject
         {
@@ -268,6 +341,13 @@ public sealed class ChatTurnRunner(
         });
         return envelope;
     }
+
+    /// <summary>
+    /// What a tool call's result says to whoever is watching: which tool, how it went, and how many sources it
+    /// found — never the result itself. A tool result is structured content, so this is one too.
+    /// </summary>
+    private static string Result(string tool, string summary, int sourceCount, bool isError) =>
+        JsonSerializer.Serialize(new { tool, summary, sourceCount, isError }, Json);
 
     /// <summary>Raw MCP result (diagnostics removed) and, when the server sent them, the retrieval diagnostics.</summary>
     private static void TraceToolResult(TurnTrace trace, string callId, string tool, object? result, bool isError, long latencyMs)
@@ -309,18 +389,18 @@ public sealed class ChatTurnRunner(
 
         var summary = $"proposed {captured.Adjustment.Amount:0.##} on {captured.Adjustment.AccountId}";
         state.ToolCalls.Add(new ToolCallRecord(name, $"accountId={captured.Adjustment.AccountId}", "input_required", 0, [], [], callId, summary));
-        await state.Events.WriteAsync(new ToolCallFinishedEvent(callId, name, summary, 0, false), ct);
+        state.Summaries[callId] = Result(name, summary, 0, isError: false);
 
         if (outcome is FlowOutcome.AskUser ask)
         {
-            state.Trace.Add(TraceKinds.Adjustment, $"Waiting for the advisor to confirm {ask.Event.AdjustmentId}", new JsonObject
+            state.Trace.Add(TraceKinds.Adjustment, $"Waiting for the advisor to confirm {ask.Interrupt.Id}", new JsonObject
             {
                 ["callId"] = callId,
                 ["step"] = "awaiting_confirmation",
-                ["adjustmentId"] = ask.Event.AdjustmentId,
-                ["accountId"] = ask.Event.Adjustment.AccountId,
+                ["adjustmentId"] = ask.Interrupt.Id,
+                ["accountId"] = captured.Adjustment.AccountId,
             });
-            await state.Events.WriteAsync(ask.Event, ct);
+            state.Interrupt = ask.Interrupt;
             state.AwaitingConfirmation = true;
             // The model gets nothing more to say this turn: the next word is the advisor's.
             return ToolDataEnvelope.Wrap(name, "Waiting for the advisor to confirm. Nothing has been changed.");
@@ -374,7 +454,8 @@ public sealed class ChatTurnRunner(
     {
         var name = new string(call.Name.Where(c => char.IsLetterOrDigit(c) || c is '_' or '-').Take(64).ToArray());
         state.Answer.Flush();
-        await state.Events.WriteAsync(new ToolCallStartedEvent(call.CallId, name, ""), ct);
+        state.Arguments[call.CallId] = "";
+        state.Summaries[call.CallId] = Result(name, "tool does not exist", 0, isError: true);
         state.Trace.Add(TraceKinds.ToolUnknown, $"Model asked for unknown tool '{name}' — refused", new JsonObject { ["callId"] = call.CallId, ["tool"] = name });
         await audit.RecordAsync(new AuditEntry(state.Principal, state.ConversationId, state.TurnId, name, "", "unknown_tool", 0), ct);
         state.Trace.Add(TraceKinds.Audit, $"Audit: {name} unknown_tool", new JsonObject
@@ -382,7 +463,6 @@ public sealed class ChatTurnRunner(
             ["callId"] = call.CallId, ["tool"] = name, ["arguments"] = "", ["outcome"] = "unknown_tool", ["durationMs"] = 0,
         });
         state.ToolCalls.Add(new ToolCallRecord(name, "", "unknown_tool", 0, [], [], call.CallId, "tool does not exist"));
-        await state.Events.WriteAsync(new ToolCallFinishedEvent(call.CallId, name, "tool does not exist", 0, true), ct);
     }
 
     private async Task MarkRephraseAsync(string conversationId, string message, CancellationToken ct)
@@ -445,14 +525,14 @@ public sealed class ChatTurnRunner(
         await ctx.SaveChangesAsync(ct);
     }
 
-    private sealed class TurnState(Principal principal, string conversationId, string turnId, ChannelWriter<ChatEvent> events, TurnTrace trace)
+    private sealed class TurnState(Principal principal, string conversationId, string turnId, ChannelWriter<BaseEvent> events, TurnTrace trace)
     {
         public TurnTrace Trace { get; } = trace;
         public AnswerChunker Answer { get; } = new(trace);
         public Principal Principal { get; } = principal;
         public string ConversationId { get; } = conversationId;
         public string TurnId { get; } = turnId;
-        public ChannelWriter<ChatEvent> Events { get; } = events;
+        public ChannelWriter<BaseEvent> Events { get; } = events;
         public IReadOnlySet<string> KnownTools { get; set; } = new HashSet<string>();
         public List<ToolCallRecord> ToolCalls { get; } = [];
         public List<SourceRef> Sources { get; } = [];
@@ -466,5 +546,14 @@ public sealed class ChatTurnRunner(
 
         /// <summary>Set when the turn has ended waiting for a person.</summary>
         public bool AwaitingConfirmation { get; set; }
+
+        /// <summary>What the run is waiting on, when it is waiting.</summary>
+        public AGUIInterrupt? Interrupt { get; set; }
+
+        /// <summary>Identifier-only argument summaries by tool-call id, for what reaches the client.</summary>
+        public Dictionary<string, string> Arguments { get; } = [];
+
+        /// <summary>Result summaries by tool-call id, for the same reason.</summary>
+        public Dictionary<string, string> Summaries { get; } = [];
     }
 }
