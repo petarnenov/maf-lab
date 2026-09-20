@@ -1,9 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { Fragment, useState } from 'react';
-import type { EvalReport, EvalReportSummary } from '../api/types';
+import type { EvalReport, EvalReportSummary, MetricComparison } from '../api/types';
 import { useApi, useAuth } from '../auth/useAuth';
 import styles from '../components/Page.module.css';
 import { formatDate, formatMetric } from './format';
+import { MetricTrend } from './MetricTrend';
+import trend from './MetricTrend.module.css';
 
 export function EvalsPage() {
   const { session } = useAuth();
@@ -34,6 +36,7 @@ export function EvalsPage() {
           .
         </p>
       )}
+      {reports.data && reports.data.length > 0 && <MetricTrend reports={reports.data} />}
       {reports.data && reports.data.length > 0 && (
         <table className={styles.table}>
           <thead>
@@ -112,6 +115,7 @@ function ReportDetail({ runId }: { runId: string }) {
       <h2 className={styles.subheading}>
         {r.suite} · {formatDate(r.startedAt)} · <PassFail passed={r.passed} />
       </h2>
+      <Comparisons comparisons={r.comparisons} />
       {Object.keys(r.settings).length > 0 && (
         <p className={styles.mono}>
           {Object.entries(r.settings)
@@ -162,4 +166,49 @@ function ReportDetail({ runId }: { runId: string }) {
       ))}
     </section>
   );
+}
+
+/** What moved against the accepted baseline, in words and figures — never by colour alone. */
+function Comparisons({ comparisons }: { comparisons?: MetricComparison[] | null }) {
+  const moved = (comparisons ?? []).filter((c) => c.status !== 'Noise');
+  if (moved.length === 0) {
+    // Reports written before the gate existed carry none; a run with nothing to say is not an error either.
+    return null;
+  }
+  return (
+    <ul className={trend.comparisons} aria-label="Baseline comparison">
+      {moved.map((c) => (
+        <li
+          key={`${c.variant}/${c.metric}`}
+          className={
+            c.status === 'Regression'
+              ? trend.regression
+              : c.status === 'Improvement'
+                ? trend.improvement
+                : undefined
+          }
+        >
+          {describe(c)}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function describe(c: MetricComparison): string {
+  const from = c.baseline?.toFixed(3) ?? '—';
+  const to = c.value?.toFixed(3) ?? '—';
+  const delta = c.delta === null ? '' : ` (${c.delta >= 0 ? '+' : ''}${c.delta.toFixed(3)})`;
+  switch (c.status) {
+    case 'Regression':
+      return `✗ regression · ${c.variant} ${c.metric}: ${from} → ${to}${delta}`;
+    case 'Improvement':
+      return `↑ improved · ${c.variant} ${c.metric}: ${from} → ${to}${delta}`;
+    case 'New':
+      return `+ new metric · ${c.variant} ${c.metric}: ${to}, no baseline yet`;
+    case 'Missing':
+      return `? missing · ${c.variant} ${c.metric}: baseline ${from}, not produced by this run`;
+    default:
+      return `${c.variant} ${c.metric}: ${from} → ${to}${delta}`;
+  }
 }

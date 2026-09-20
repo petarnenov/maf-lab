@@ -166,6 +166,26 @@ Evals run **on demand**, not on every commit. They are **required** before mergi
 - the **chunking or retrieval configuration** (chunkers, `Indexing:*`, `Retrieval:*`, BM25) → `retrieval`, `generation`
 - **query normalisation** (`Retrieval:NormalizeQueryLanguage`, `Retrieval:CorpusLanguage`, the translation model) → `retrieval`
 
+### Not getting worse
+
+The thresholds answer "is this usable at all"; the **baseline** answers "is this worse than it was".
+`evals/baseline.json` is committed and records the metrics this repository has accepted, per suite and variant.
+Every run compares against it and fails when a metric drops by more than the tolerance, naming what moved:
+
+```
+✗ REGRESSION retrieval/hybrid mrr: 0.9 → 0.647 (-0.253)
+↑ improved retrieval/hybrid recall@5: 0.5 → 0.687 (+0.187)
+· within tolerance retrieval/hybrid recall@5:bg: 0.681 → 0.66 (-0.021)
+make eval-accept        # run the suites and accept their metrics as the new baseline (then commit it)
+```
+
+A run never moves the baseline by itself, and a run below its thresholds is refused rather than blessed. A metric
+the baseline does not mention is reported as *new* and one it mentions but the run did not produce as *missing* —
+both are how a rename silently switches the gate off. The tolerance is `Evals:RegressionTolerance` (0.02) with a
+per-suite override; `retrieval` uses 0.03 because a non-English query is translated by a live model, and
+`recall@5:bg` was measured alternating between 0.660 and 0.681 across four runs while the English metric never
+moved. `/evals` plots any metric across past runs with the baseline marked.
+
 Datasets are JSONL under `evals/`; reports land in `evals/reports/` (JSON for the `/evals` page, Markdown for humans).
 Thresholds are configuration (`src/Maf.Lab.Eval/eval.json` → `Evals:Thresholds`); the command exits non-zero when a
 suite falls below them. Labeled production feedback (UI → `/admin/feedback`) is appended to the datasets, so the next

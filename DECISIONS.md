@@ -461,3 +461,28 @@ referenced web projects' config files never collide.
 - **`(PrincipalId, At)` index** beside `(FirmId, At)`: an investigation starts from a person.
 - **Not solved, and said so:** tamper-evidence is not immutability (needs append-only external storage), and the dev
   token issuer means identity is not provable. Both are in the README rather than implied away.
+
+## 22. Eval regression gate (add-eval-regression-gate, 2026-09-20)
+
+- **A committed baseline, not the last report.** `evals/reports/` is gitignored, so a CI run has no history; and
+  comparing with the newest local report *ratchets downwards* — every run measures against a slightly worse
+  predecessor, so a slow slide never trips anything. `evals/baseline.json` states what "good" currently is where a
+  diff can show it moving.
+- **Accepting is a separate act.** `make eval-accept` runs the suites and writes the baseline; a plain run never
+  touches the file, or the first re-run after a regression would launder it. A run below its thresholds is refused,
+  since accepting it would bless exactly what the floors rejected. The file records the run id it came from.
+- **`new` and `missing` are signals, not noise.** A metric the baseline does not mention, and a baseline metric the
+  run did not produce, are both reported: together they are what a rename looks like, and a renamed metric is how a
+  gate quietly stops gating.
+- **The tolerance is per suite, because the noise is.** Measured over four runs with everything else unchanged:
+  `recall@5:en` was 0.693 every time, while `recall@5:bg` alternated between 0.660 and 0.681 — a 0.021 swing,
+  because a non-English query is translated by a live model and a different translation retrieves different chunks.
+  The default 0.02 sat exactly on that boundary, the worst possible place. `retrieval` now uses 0.03; the others
+  keep 0.02. The number comes from measurement, not from raising it until the gate went green.
+- **Floating point needed slack.** A drop *exactly* at the tolerance must pass, and `1.0 - 0.98` is
+  `0.020000000000000018`; the comparison carries 1e-9 of slack. Found by a test.
+- **The comparison travels in the report**, so `/evals` shows what moved without recomputing it and an old report
+  explains itself. Reports written before the gate carry none and still load.
+- **The trend is drawn from local reports, the gate never is.** The screen plots a metric across whatever runs this
+  machine has, with the baseline marked — 14 runs at the time of writing, showing `recall@5:bg` climbing from 0.188
+  to 0.646 over one day.

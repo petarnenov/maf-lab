@@ -51,6 +51,10 @@ public static class Program
             configuration["Retrieval:CorpusLanguage"] ?? "en");
         var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss");
         var allPassed = true;
+        // The gate compares with what this repository has accepted; thresholds still answer "usable at all".
+        var baseline = await BaselineStore.ReadAsync(root, ct);
+        var accepting = flags.ContainsKey("accept-baseline");
+        var accepted = baseline;
 
         await using var host = await EvalAgentHost.StartAsync(configuration, ct);
         var models = host.Services.GetRequiredService<IOptions<ModelOptions>>().Value;
@@ -79,8 +83,11 @@ public static class Program
                 "injection" => await new InjectionSuite(host).RunAsync(ctx, ct),
                 _ => throw new ArgumentException($"Unknown suite '{name}'."),
             };
-            var report = new EvalReport($"{stamp}-{name}", name, started, DateTimeOffset.UtcNow, settings, variants,
-                variants.All(v => v.Passed));
+            var comparisons = RegressionGate.Compare(baseline.Suites.GetValueOrDefault(name), variants, options.ToleranceFor(name));
+            var regressed = RegressionGate.HasRegression(comparisons);
+            var runId = $"{stamp}-{name}";
+            var report = new EvalReport(runId, name, started, DateTimeOffset.UtcNow, settings, variants,
+                variants.All(v => v.Passed) && !regressed, comparisons);
             var path = await ReportWriter.WriteAsync(root, report, ct);
             allPassed &= report.Passed;
             Console.WriteLine($"   {(report.Passed ? "PASSED" : "FAILED")} → {path}");
@@ -88,6 +95,28 @@ public static class Program
             {
                 Console.WriteLine($"   {v.Name}: {string.Join(", ", v.Metrics.Select(m => $"{m.Key}={m.Value:0.###}"))}{(v.Thresholds.Count > 0 ? (v.Passed ? " ✓" : " ✗") : "")}");
             }
+            foreach (var line in RegressionGate.Describe(comparisons, name))
+            {
+                Console.WriteLine($"   {line}");
+            }
+            if (accepting)
+            {
+                var next = BaselineStore.Accept(accepted, name, variants, runId, DateTimeOffset.UtcNow);
+                if (next is null)
+                {
+                    Console.WriteLine($"   ✗ not accepted: {name} is below its thresholds");
+                }
+                else
+                {
+                    accepted = next;
+                }
+            }
+        }
+        if (accepting && !ReferenceEquals(accepted, baseline))
+        {
+            // Only ever here: a plain run must never move the baseline, or a re-run would launder a regression.
+            var path = await BaselineStore.WriteAsync(root, accepted, ct);
+            Console.WriteLine($"Baseline accepted → {path}");
         }
         return allPassed ? 0 : 1;
     }

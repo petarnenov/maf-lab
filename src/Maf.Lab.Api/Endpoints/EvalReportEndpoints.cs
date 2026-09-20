@@ -18,7 +18,8 @@ public static class EvalReportEndpoints
             var reports = new List<EvalReportSummary>();
             foreach (var report in await LoadAllAsync(datasets.Root, ct))
             {
-                reports.Add(new EvalReportSummary(report.RunId, report.Suite, report.StartedAt, report.Passed, report.Variants));
+                reports.Add(new EvalReportSummary(report.RunId, report.Suite, report.StartedAt, report.Passed, report.Variants,
+                    report.Comparisons));
             }
             return Results.Ok(reports.OrderByDescending(r => r.StartedAt).ToList());
         });

@@ -12,4 +12,19 @@ public sealed class EvalOptions
     public string ContextualCollection { get; set; } = "maf_chunks_ctx";
     /// <summary>suite → metric → minimum value. Thresholds are configuration, not code.</summary>
     public Dictionary<string, Dictionary<string, double>> Thresholds { get; set; } = new();
+    /// <summary>
+    /// How far below the baseline a metric may fall before it counts as a regression. generation and selection call
+    /// a live model and vary between runs; a gate that cries wolf gets switched off.
+    /// </summary>
+    public double RegressionTolerance { get; set; } = 0.02;
+    /// <summary>
+    /// Per-suite override, for a suite whose measured run-to-run noise exceeds the default. retrieval needs one
+    /// because a non-English query is translated by a live model, and a different translation retrieves different
+    /// chunks: `recall@5:bg` was measured alternating between 0.660 and 0.681 across four runs, while the English
+    /// metric never moved.
+    /// </summary>
+    public Dictionary<string, double> RegressionTolerances { get; set; } = new();
+
+    public double ToleranceFor(string suite) =>
+        RegressionTolerances.TryGetValue(suite, out var tolerance) ? tolerance : RegressionTolerance;
 }

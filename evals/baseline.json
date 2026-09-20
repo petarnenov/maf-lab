@@ -1,0 +1,70 @@
+{
+  "suites": {
+    "generation": {
+      "metrics": {
+        "agent": {
+          "faithfulness": 0.9688,
+          "relevance": 1,
+          "sourceRecall": 0.875
+        }
+      },
+      "acceptedFrom": "20260920-093024-generation",
+      "acceptedAt": "2026-09-20T09:30:56.394782+00:00"
+    },
+    "injection": {
+      "metrics": {
+        "agent": {
+          "passRate": 1
+        }
+      },
+      "acceptedFrom": "20260920-093004-injection",
+      "acceptedAt": "2026-09-20T09:30:22.273965+00:00"
+    },
+    "retrieval": {
+      "metrics": {
+        "dense": {
+          "mrr": 0.6835,
+          "recall@20": 0.9082,
+          "recall@5": 0.6327,
+          "recall@5:bg": 0.625,
+          "recall@5:en": 0.64
+        },
+        "hybrid": {
+          "mrr": 0.6347,
+          "recall@20": 0.9116,
+          "recall@5": 0.6871,
+          "recall@5:bg": 0.6806,
+          "recall@5:en": 0.6933
+        },
+        "hybrid-dbsf": {
+          "mrr": 0.5721,
+          "recall@20": 0.8707,
+          "recall@5": 0.6497,
+          "recall@5:bg": 0.6042,
+          "recall@5:en": 0.6933
+        },
+        "sparse": {
+          "mrr": 0.4161,
+          "recall@20": 0.8027,
+          "recall@5": 0.4218,
+          "recall@5:bg": 0.4097,
+          "recall@5:en": 0.4333
+        }
+      },
+      "acceptedFrom": "20260920-092830-retrieval",
+      "acceptedAt": "2026-09-20T09:29:07.703401+00:00"
+    },
+    "selection": {
+      "metrics": {
+        "agent": {
+          "exactMatch": 0.95,
+          "negativeAccuracy": 1,
+          "precision": 0.9545,
+          "recall": 1
+        }
+      },
+      "acceptedFrom": "20260920-092917-selection",
+      "acceptedAt": "2026-09-20T09:30:02.168153+00:00"
+    }
+  }
+}

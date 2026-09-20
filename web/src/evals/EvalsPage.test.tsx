@@ -37,6 +37,75 @@ const report: EvalReport = {
 };
 
 describe('EvalsPage', () => {
+  it('names what moved against the baseline, in words and figures', async () => {
+    const withComparisons: EvalReport = {
+      ...report,
+      comparisons: [
+        {
+          variant: 'hybrid',
+          metric: 'recall_at_5',
+          baseline: 0.9,
+          value: 0.82,
+          delta: -0.08,
+          status: 'Regression',
+        },
+        {
+          variant: 'hybrid',
+          metric: 'mrr',
+          baseline: 0.65,
+          value: 0.71,
+          delta: 0.06,
+          status: 'Improvement',
+        },
+        {
+          variant: 'dense',
+          metric: 'recall_at_5:bg',
+          baseline: null,
+          value: 0.5,
+          delta: null,
+          status: 'New',
+        },
+        {
+          variant: 'dense',
+          metric: 'mrr',
+          baseline: 0.55,
+          value: 0.545,
+          delta: -0.005,
+          status: 'Noise',
+        },
+      ],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url === '/api/evals/reports' ? jsonResponse([summary]) : jsonResponse(withComparisons),
+      ),
+    );
+    renderWithProviders(<EvalsPage />);
+    await userEvent.click(await screen.findByText('retrieval'));
+
+    const list = await screen.findByRole('list', { name: 'Baseline comparison' });
+    expect(list).toHaveTextContent('✗ regression · hybrid recall_at_5: 0.900 → 0.820 (-0.080)');
+    expect(list).toHaveTextContent('↑ improved · hybrid mrr: 0.650 → 0.710 (+0.060)');
+    expect(list).toHaveTextContent('+ new metric · dense recall_at_5:bg: 0.500, no baseline yet');
+    // Noise is not worth a line.
+    expect(list).not.toHaveTextContent('dense mrr');
+  });
+
+  it('shows no comparison for a report written before the gate existed', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url === '/api/evals/reports' ? jsonResponse([summary]) : jsonResponse(report),
+      ),
+    );
+    renderWithProviders(<EvalsPage />);
+    await userEvent.click(await screen.findByText('retrieval'));
+
+    await screen.findByRole('region', { name: 'Report detail' });
+    expect(screen.queryByRole('list', { name: 'Baseline comparison' })).not.toBeInTheDocument();
+  });
+
   it('lists runs with variants and metrics, and shows detail on click', async () => {
     const fetchMock = vi.fn(async (url: string) =>
       url === '/api/evals/reports' ? jsonResponse([summary]) : jsonResponse(report),

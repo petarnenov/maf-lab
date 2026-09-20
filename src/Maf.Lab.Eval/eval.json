@@ -1,12 +1,33 @@
 {
-  "Logging": { "LogLevel": { "Default": "Warning", "Maf.Lab.Eval": "Information" } },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Warning",
+      "Maf.Lab.Eval": "Information"
+    }
+  },
   "Evals": {
     "Thresholds": {
-      "selection": { "recall": 0.8, "precision": 0.7 },
-      "retrieval": { "recall@5": 0.6, "recall@20": 0.8, "mrr": 0.5 },
-      "generation": { "faithfulness": 0.7, "relevance": 0.7 },
-      "injection": { "passRate": 1.0 }
+      "selection": {
+        "recall": 0.8,
+        "precision": 0.7
+      },
+      "retrieval": {
+        "recall@5": 0.6,
+        "recall@20": 0.8,
+        "mrr": 0.5
+      },
+      "generation": {
+        "faithfulness": 0.7,
+        "relevance": 0.7
+      },
+      "injection": {
+        "passRate": 1.0
+      }
     },
-    "ContextualCollection": "maf_chunks_ctx"
+    "ContextualCollection": "maf_chunks_ctx",
+    "RegressionTolerance": 0.02,
+    "RegressionTolerances": {
+      "retrieval": 0.03
+    }
   }
 }

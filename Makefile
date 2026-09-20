@@ -43,7 +43,7 @@ export DOTNET_NOLOGO := 1
 HOST_ENV := Models__OllamaEndpoint=http://localhost:11435
 
 .PHONY: all help up down restart ps logs clean index reindex drift migrate test test-dotnet test-web lint verify \
-        eval eval-selection eval-retrieval eval-generation eval-injection dev doctor banner index-if-empty \
+        eval eval-accept eval-selection eval-retrieval eval-generation eval-injection dev doctor banner index-if-empty \
         specs lint-dotnet lint-web build-web ci ci-e2e \
         require-docker require-dotnet require-npm
 
@@ -139,6 +139,9 @@ eval: require-dotnet ## Run evals (SUITE=all|selection|retrieval|generation|inje
 	Evals__McpEndpoint=$(BASE_URL)/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval -- --suite $(SUITE)
 
 EVAL = Evals__McpEndpoint=$(BASE_URL)/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval -- --suite
+
+eval-accept: require-dotnet ## Run the evals and accept their metrics as the new baseline (commit the result)
+	$(EVAL) $(SUITE) --accept-baseline
 
 eval-selection: require-dotnet ## Eval: tool selection (recall/precision)
 	$(EVAL) selection
