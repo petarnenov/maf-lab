@@ -5,6 +5,7 @@ import { ChatPage } from './chat/ChatPage';
 import { Layout } from './components/Layout';
 import { RequireAdmin } from './components/RequireAdmin';
 import { EvalsPage } from './evals/EvalsPage';
+import { CompliancePage } from './compliance/CompliancePage';
 import { TopologyPage } from './topology/TopologyPage';
 
 export function App() {
@@ -21,6 +22,14 @@ export function App() {
           element={
             <RequireAdmin>
               <IndexAdminPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="admin/compliance"
+          element={
+            <RequireAdmin>
+              <CompliancePage />
             </RequireAdmin>
           }
         />

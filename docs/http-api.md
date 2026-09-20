@@ -113,11 +113,15 @@ secret — the chat provider reports only *whether* its key is configured. The r
 | Method | Path | Query | Response |
 |---|---|---|---|
 | GET | `/api/admin/compliance/verify` | — | `{ intact, checked, unchained, from, to, head, firstBrokenId, reason }` |
+| GET | `/api/admin/compliance/actions` | `from`, `to`, `userId`, `kind`, `limit` (≤200, default 50), `before` | `{ actions, nextCursor }` |
 | GET | `/api/admin/compliance/export` | `from`, `to`, optional `userId` | `{ manifest, conversations, turns, actions }` |
 
 Every audited action carries `hash` = SHA-256 over the previous action's hash and its own stored fields, so a
 changed or removed row breaks the chain; `verify` walks it by row id and names the first row that does not hold.
 `unchained` counts rows written before chaining began — they are reported, never rewritten.
+
+`actions` reads the record newest first, paged by row id: pass the previous page's `nextCursor` as `before` for the
+older ones, until it is null. Reading is never recorded — browsing the log must not grow it.
 
 The export's firm comes from the token; a `firmId` parameter is ignored, and `userId` only narrows (a data subject
 request). Deleted conversations are included, carrying `deletedAt`. The manifest is

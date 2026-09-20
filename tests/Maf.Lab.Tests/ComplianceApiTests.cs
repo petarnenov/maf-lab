@@ -148,6 +148,79 @@ public class ComplianceApiTests
         Assert.NotNull(package.Manifest.AuditChainHead);
     }
 
+    [Fact]
+    public async Task The_record_can_be_browsed_a_page_at_a_time_newest_first()
+    {
+        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var alice = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var first = await ChatAsync(api, adam, "what is the procedure when a fee schedule is missing");
+        await ChatAsync(api, adam, "how do I issue a billing credit?");
+        await adam.DeleteAsync($"/api/conversations/{first}", Ct);
+
+        var all = await GetAsync<ActionPage>(alice, "/api/admin/compliance/actions");
+        Assert.Null(all.NextCursor);
+        Assert.Equal(3, all.Actions.Count);
+        Assert.Equal(all.Actions.Select(a => a.Id).OrderByDescending(id => id), all.Actions.Select(a => a.Id));
+
+        // Paged: every row exactly once, no repeats.
+        var page1 = await GetAsync<ActionPage>(alice, "/api/admin/compliance/actions?limit=2");
+        Assert.Equal(2, page1.Actions.Count);
+        Assert.NotNull(page1.NextCursor);
+        var page2 = await GetAsync<ActionPage>(alice, $"/api/admin/compliance/actions?limit=2&before={page1.NextCursor}");
+        Assert.Single(page2.Actions);
+        Assert.Null(page2.NextCursor);
+        Assert.Equal(all.Actions.Select(a => a.Id), page1.Actions.Concat(page2.Actions).Select(a => a.Id));
+    }
+
+    [Fact]
+    public async Task Browsing_filters_by_person_and_kind_and_says_when_there_is_nothing()
+    {
+        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var olga = api.ClientFor("olga", "firm-a", Role.OPS);
+        var alice = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var conversation = await ChatAsync(api, adam, "what is the procedure when a fee schedule is missing");
+        await adam.DeleteAsync($"/api/conversations/{conversation}", Ct);
+        await ChatAsync(api, olga, "how do I issue a billing credit?");
+
+        var byPerson = await GetAsync<ActionPage>(alice, "/api/admin/compliance/actions?userId=adam");
+        Assert.All(byPerson.Actions, a => Assert.Equal("adam", a.PrincipalId));
+        Assert.Equal(2, byPerson.Actions.Count);
+
+        var byKind = await GetAsync<ActionPage>(alice, $"/api/admin/compliance/actions?userId=adam&kind={AuditKinds.ConversationDelete}");
+        var deletion = Assert.Single(byKind.Actions);
+        Assert.Equal(conversation, deletion.ConversationId);
+
+        var empty = await GetAsync<ActionPage>(alice, "/api/admin/compliance/actions?from=2020-01-01T00:00:00Z&to=2020-01-02T00:00:00Z");
+        Assert.Empty(empty.Actions);
+        Assert.Null(empty.NextCursor);
+    }
+
+    [Fact]
+    public async Task Browsing_stays_in_the_firm_leaves_no_trace_and_needs_an_admin()
+    {
+        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        var bob = api.ClientFor("bob", "firm-b", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var alice = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        await ChatAsync(api, bob, "what is the procedure when a fee schedule is missing");
+        await ChatAsync(api, adam, "what is the procedure when a fee schedule is missing");
+
+        var before = await GetAsync<ChainReport>(alice, "/api/admin/compliance/verify");
+        var page = await GetAsync<ActionPage>(alice, "/api/admin/compliance/actions?firmId=firm-b&userId=bob");
+        var after = await GetAsync<ChainReport>(alice, "/api/admin/compliance/verify");
+
+        Assert.Empty(page.Actions); // bob is another firm's user: nothing, whatever the parameters say
+        Assert.All((await GetAsync<ActionPage>(alice, "/api/admin/compliance/actions")).Actions,
+            a => Assert.NotEqual("bob", a.PrincipalId));
+        // Reading does not grow the record.
+        Assert.Equal(before.Checked, after.Checked);
+        Assert.Equal(before.Head, after.Head);
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await adam.GetAsync("/api/admin/compliance/actions", Ct)).StatusCode);
+    }
+
     /// <summary>The canonical rendering the manifest documents, rebuilt from the package without the producer's code.</summary>
     private static string RecomputedByHand(ExportPackage package)
     {

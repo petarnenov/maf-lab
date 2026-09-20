@@ -8,6 +8,7 @@ const LINKS = [
   { to: '/topology', label: 'Topology' },
   { to: '/admin/index', label: 'Index admin' },
   { to: '/admin/feedback', label: 'Feedback review' },
+  { to: '/admin/compliance', label: 'Compliance' },
 ];
 
 export function Layout() {

@@ -31,6 +31,48 @@ public static class ComplianceEndpoints
             return Results.Ok(AuditChain.Verify(rows));
         });
 
+        // Reading the record is deliberately not recorded: browsing the log must not grow the log.
+        api.MapGet("/actions", async (DateTimeOffset? from, DateTimeOffset? to, string? userId, string? kind,
+            int? limit, long? before, IPrincipalAccessor principals, IDbContextFactory<MafDbContext> db, CancellationToken ct) =>
+        {
+            var firmId = principals.Current.FirmId.Value; // from the token, as the export is
+            var take = Math.Clamp(limit ?? 50, 1, 200);
+            await using var ctx = await db.CreateDbContextAsync(ct);
+
+            var query = ctx.Audit.AsNoTracking().Where(a => a.FirmId == firmId);
+            if (from is { } start)
+            {
+                var at = start.UtcDateTime;
+                query = query.Where(a => a.At >= at);
+            }
+            if (to is { } end)
+            {
+                var at = end.UtcDateTime;
+                query = query.Where(a => a.At <= at);
+            }
+            if (!string.IsNullOrWhiteSpace(userId))
+            {
+                query = query.Where(a => a.PrincipalId == userId);
+            }
+            if (!string.IsNullOrWhiteSpace(kind))
+            {
+                query = query.Where(a => a.Kind == kind);
+            }
+            // Newest first, paged by row id: the same order the chain follows, and it cannot drift with clocks.
+            if (before is { } cursor)
+            {
+                query = query.Where(a => a.Id < cursor);
+            }
+
+            var page = await query.OrderByDescending(a => a.Id).Take(take + 1).ToListAsync(ct);
+            var more = page.Count > take;
+            var actions = page.Take(take)
+                .Select(a => new ExportedAction(a.Id, Utc(a.At), a.PrincipalId, a.Kind, a.ToolName, a.Arguments,
+                    a.Outcome, a.DurationMs, a.ConversationId, a.TurnId, a.Hash))
+                .ToList();
+            return Results.Ok(new ActionPage(actions, more ? actions[^1].Id : null));
+        });
+
         api.MapGet("/export", async (DateTimeOffset? from, DateTimeOffset? to, string? userId,
             IPrincipalAccessor principals, IDbContextFactory<MafDbContext> db, ToolAudit audit, TimeProvider time,
             CancellationToken ct) =>
@@ -156,6 +198,9 @@ public sealed record ExportContent(IReadOnlyList<ExportedConversation> Conversat
 /// <param name="AuditChainHead">The record's head at the moment the package was drawn.</param>
 public sealed record ExportManifest(string FirmId, string? SubjectUserId, DateTimeOffset From, DateTimeOffset To,
     DateTimeOffset GeneratedAt, string By, IReadOnlyDictionary<string, int> Counts, string Sha256, string? AuditChainHead);
+
+/// <param name="NextCursor">Pass as `before` for the next, older page; null when there are no more.</param>
+public sealed record ActionPage(IReadOnlyList<ExportedAction> Actions, long? NextCursor);
 
 public sealed record ExportPackage(ExportManifest Manifest, IReadOnlyList<ExportedConversation> Conversations,
     IReadOnlyList<ExportedTurn> Turns, IReadOnlyList<ExportedAction> Actions);

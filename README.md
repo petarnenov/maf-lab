@@ -183,8 +183,14 @@ Every audited action — a tool call, a conversation deletion, a compliance expo
 record**, carrying identifiers only and never message content. Each row is chained: its digest covers its own fields
 and the previous row's digest, so a changed or removed row can be detected and *named*.
 
+**`/admin/compliance`** (FIRM_ADMIN) shows it: whether the chain is intact — in words, with how many records were
+checked and how many predate it — or, when it is broken, which record broke it and that everything before it is
+unaffected. Below that, the firm's actions newest first, filterable by person, kind and period. The same endpoints
+serve a script:
+
 ```bash
 GET /api/admin/compliance/verify                      # intact? how many checked? where does it break?
+GET /api/admin/compliance/actions?userId=&kind=…      # the record, paged
 GET /api/admin/compliance/export?from=&to=[&userId=]  # the package, with a manifest
 ```
 
