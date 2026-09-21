@@ -96,6 +96,10 @@ export function useChatStream() {
       const conversationId = conversationRef.current;
       if (!conversationId) return;
 
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       const assistantTurnId = nextId('a');
       // Opens a streaming assistant turn so the monitor panel follows the answer run.
       dispatch({ type: 'start_answer', assistantTurnId });
@@ -115,6 +119,7 @@ export function useChatStream() {
             messages: [],
             resume: [{ interruptId: adjustmentId, payload: { approve } }],
           }),
+          signal: controller.signal,
         });
 
         if (!response.ok || !response.body) {
@@ -143,6 +148,7 @@ export function useChatStream() {
         }
         dispatch({ type: 'answered', adjustmentId, outcome: outcomeOf(said, approve) });
       } catch {
+        if (controller.signal.aborted) return;
         dispatch({
           type: 'stream_error',
           message: 'The connection was lost. Try again.',

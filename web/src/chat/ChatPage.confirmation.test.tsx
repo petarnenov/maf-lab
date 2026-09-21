@@ -66,6 +66,28 @@ async function propose(answer: string) {
   return bodies;
 }
 
+function controlledStreamResponse(status = 200) {
+  const encoder = new TextEncoder();
+  let controller!: ReadableStreamDefaultController<Uint8Array>;
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      start(next) {
+        controller = next;
+      },
+    }),
+    { status, headers: { 'Content-Type': 'text/event-stream' } },
+  );
+  return {
+    response,
+    push(...chunks: string[]) {
+      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+    },
+    close() {
+      controller.close();
+    },
+  };
+}
+
 describe('ChatPage reopened with a write waiting', () => {
   const detail = {
     conversationId: 'conv-7',
@@ -179,26 +201,20 @@ describe('ChatPage with a write waiting', () => {
     expect(within(card).getByText(/no longer waiting/)).toBeInTheDocument();
   });
 
-  it('monitor panel stays visible and receives events while the answer streams', async () => {
-    // Use a resume stream that includes a tool call so we can verify events reach the monitor.
-    const bodies: string[] = [];
+  it('monitor panel stays visible and receives streamed tool events while the answer runs', async () => {
+    const resume = controlledStreamResponse();
     let chatCalls = 0;
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (url.startsWith('/api/conversations')) return jsonResponse(emptyHistory);
       if (url.startsWith('/api/turns')) return jsonResponse({ events: [] });
-      bodies.push(init!.body as string);
       chatCalls += 1;
       if (chatCalls === 1) {
         return streamResponse([run.started(), ...run.text('I have put it to you.'), paused()]);
       }
-      // Resume run: includes a tool call so tool-call-card is rendered
-      return streamResponse([
-        run.started(),
-        ...run.toolCall('tc1', 'search_documents'),
-        run.toolResult('tc1', 'Found 2 docs', 'search_documents', 2),
-        ...run.text('Applied. The fee on A-1042 is now adjusted.'),
-        run.done('conv-1', 't2'),
+      expect(JSON.parse(init!.body as string).resume).toEqual([
+        { interruptId: 'adj_1', payload: { approve: true } },
       ]);
+      return resume.response;
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -207,17 +223,40 @@ describe('ChatPage with a write waiting', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
     await screen.findByTestId('confirmation-card');
 
-    // Click Approve — the resume run starts.
     await userEvent.click(screen.getByRole('button', { name: 'Approve' }));
 
-    // Wait for the answer turn's text to appear.
-    await screen.findByText(/Applied\. The fee on A-1042/);
+    const monitor = await screen.findByRole('region', { name: 'Behind the scenes' });
+    expect(within(monitor).getByText(/live/)).toBeInTheDocument();
 
-    // The monitor panel must still be in the DOM (monitorOpen was not changed by the answer flow).
-    // The section has aria-label="Behind the scenes" whether or not events have arrived.
-    expect(screen.getByRole('region', { name: 'Behind the scenes' })).toBeInTheDocument();
+    resume.push(
+      run.started(),
+      run.trace({
+        seq: 1,
+        atMs: 5,
+        kind: 'tool.call',
+        title: 'search_documents',
+        durationMs: null,
+        data: {
+          callId: 'tc1',
+          tool: 'search_documents',
+          arguments: { accountId: 'A-1042' },
+        },
+        truncated: false,
+      }),
+      ...run.toolCall('tc1', 'search_documents'),
+    );
 
-    // The tool call from the answer run must appear in the conversation as a ToolCallCard.
-    expect(screen.getAllByTestId('tool-call-card').length).toBeGreaterThan(0);
+    expect(await screen.findByTestId('tool-call-card')).toBeInTheDocument();
+    expect(await within(monitor).findByTestId('monitor-stats')).toHaveTextContent('1 tool calls');
+    expect(within(monitor).getByText(/live/)).toBeInTheDocument();
+
+    resume.push(
+      run.toolResult('tc1', 'Found 2 docs', 'search_documents', 2),
+      ...run.text('Applied. The fee on A-1042 is now adjusted.'),
+      run.done('conv-1', 't2'),
+    );
+    resume.close();
+
+    expect(await screen.findByText(/Applied\. The fee on A-1042/)).toBeInTheDocument();
   });
 });
