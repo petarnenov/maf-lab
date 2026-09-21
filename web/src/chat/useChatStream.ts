@@ -96,6 +96,9 @@ export function useChatStream() {
       const conversationId = conversationRef.current;
       if (!conversationId) return;
 
+      const assistantTurnId = nextId('a');
+      // Opens a streaming assistant turn so the monitor panel follows the answer run.
+      dispatch({ type: 'start_answer', assistantTurnId });
       dispatch({ type: 'answering', adjustmentId });
 
       try {
@@ -115,16 +118,36 @@ export function useChatStream() {
         });
 
         if (!response.ok || !response.body) {
+          dispatch({
+            type: 'stream_error',
+            message: 'The assistant could not process the answer.',
+            kind: 'unavailable',
+          });
           dispatch({ type: 'answered', adjustmentId, outcome: 'gone' });
           return;
         }
 
+        // Pipe events through the normal reducer pipeline so the monitor receives live trace events.
+        // Also accumulate text deltas to determine the outcome.
         let said = '';
-        await readChatStream(response.body, (event) => {
+        const sawDone = await readChatStream(response.body, (event) => {
+          dispatch({ type: 'event', event });
           if (event.type === 'text_delta') said += event.data.text;
         });
-        dispatch({ type: 'answered', adjustmentId, outcome: outcomeOf(said, approve), said });
+        if (!sawDone) {
+          dispatch({
+            type: 'stream_error',
+            message: 'The answer stopped part-way. Try again.',
+            kind: 'unavailable',
+          });
+        }
+        dispatch({ type: 'answered', adjustmentId, outcome: outcomeOf(said, approve) });
       } catch {
+        dispatch({
+          type: 'stream_error',
+          message: 'The connection was lost. Try again.',
+          kind: 'unavailable',
+        });
         dispatch({ type: 'answered', adjustmentId, outcome: 'gone' });
       }
     },

@@ -83,9 +83,12 @@ export type ChatAction =
       type: 'answered';
       adjustmentId: string;
       outcome: Exclude<ConfirmationState, 'waiting' | 'answering'>;
-      /** What the run said about it, which joins the conversation like any other answer. */
-      said?: string;
-    };
+    }
+  /**
+   * Starts a resume run (Approve / Reject) as a new streaming assistant turn so the monitor panel
+   * follows it, exactly as a normal send does. No user-visible text is added to the transcript.
+   */
+  | { type: 'start_answer'; assistantTurnId: string };
 
 export const initialChatState: ChatState = {
   turns: [],
@@ -149,23 +152,27 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case 'answering':
       return updateConfirmation(state, action.adjustmentId, 'answering');
 
-    case 'answered': {
-      const settled = updateConfirmation(state, action.adjustmentId, action.outcome);
-      if (!action.said) return settled;
+    case 'start_answer':
+      // Adds a streaming assistant turn for the resume run so the monitor panel follows it.
+      // No user turn is added; the run is a resume, not a new message.
       return {
-        ...settled,
+        ...state,
+        streaming: true,
         turns: [
-          ...settled.turns,
+          ...state.turns,
           {
-            id: `answer-${action.adjustmentId}`,
+            id: action.assistantTurnId,
             role: 'assistant',
-            text: action.said,
+            text: '',
             toolCalls: [],
             sources: [],
-            status: 'done',
+            status: 'streaming',
           },
         ],
       };
+
+    case 'answered': {
+      return updateConfirmation(state, action.adjustmentId, action.outcome);
     }
   }
 }

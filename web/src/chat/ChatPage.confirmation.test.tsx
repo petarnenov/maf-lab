@@ -48,6 +48,8 @@ async function propose(answer: string) {
   let chatCalls = 0;
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.startsWith('/api/conversations')) return jsonResponse(emptyHistory);
+    // Trace requests are GET (no body); return empty trace so useTurnTrace does not count as a chat call.
+    if (url.startsWith('/api/turns')) return jsonResponse({ events: [] });
     bodies.push(init!.body as string);
     chatCalls += 1;
     return chatCalls === 1
@@ -174,5 +176,47 @@ describe('ChatPage with a write waiting', () => {
     const card = await screen.findByTestId('confirmation-card');
     expect(card).toHaveAttribute('data-state', 'gone');
     expect(within(card).getByText(/no longer waiting/)).toBeInTheDocument();
+  });
+
+  it('monitor panel stays visible and receives events while the answer streams', async () => {
+    // Use a resume stream that includes a tool call so we can verify events reach the monitor.
+    const bodies: string[] = [];
+    let chatCalls = 0;
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.startsWith('/api/conversations')) return jsonResponse(emptyHistory);
+      if (url.startsWith('/api/turns')) return jsonResponse({ events: [] });
+      bodies.push(init!.body as string);
+      chatCalls += 1;
+      if (chatCalls === 1) {
+        return streamResponse([run.started(), ...run.text('I have put it to you.'), paused()]);
+      }
+      // Resume run: includes a tool call so tool-call-card is rendered
+      return streamResponse([
+        run.started(),
+        ...run.toolCall('tc1', 'search_documents'),
+        run.toolResult('tc1', 'Found 2 docs', 'search_documents', 2),
+        ...run.text('Applied. The fee on A-1042 is now adjusted.'),
+        run.done('conv-1', 't2'),
+      ]);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<ChatPage />);
+    await userEvent.type(screen.getByLabelText('Message'), 'credit 200 off A-1042');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByTestId('confirmation-card');
+
+    // Click Approve — the resume run starts.
+    await userEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+    // Wait for the answer turn's text to appear.
+    await screen.findByText(/Applied\. The fee on A-1042/);
+
+    // The monitor panel must still be in the DOM (monitorOpen was not changed by the answer flow).
+    // The section has aria-label="Behind the scenes" whether or not events have arrived.
+    expect(screen.getByRole('region', { name: 'Behind the scenes' })).toBeInTheDocument();
+
+    // The tool call from the answer run must appear in the conversation as a ToolCallCard.
+    expect(screen.getAllByTestId('tool-call-card').length).toBeGreaterThan(0);
   });
 });
