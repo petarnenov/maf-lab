@@ -707,6 +707,9 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
 - **The web client translates; it does not adopt an SDK.** `toChatEvents` maps protocol frames to the reducer's
   existing actions, so `chatReducer`, the monitor and time travel kept their shape and their tests. The
   protocol's TypeScript packages would be a second dependency for a client that renders six kinds of event.
+- **The web client now uses `@ag-ui/core` as the event vocabulary.** The SDK's `EventType` and event
+  interfaces drive parsing and test fixtures, but `ChatStreamEvent` stays the reducer's internal shape. This
+  keeps the wire typed without changing the UI state model.
 - **A stop only reaches the replica running the turn.** Runs are registered per instance; the balancer spreads
   requests, so a stop sent elsewhere answers 404 rather than pretending. What a browser actually does — abandon
   the stream — always works, because the run's token hangs off the request's own. The in-memory test host does

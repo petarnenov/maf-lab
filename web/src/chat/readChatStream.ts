@@ -1,3 +1,4 @@
+import { type BaseEvent } from '@ag-ui/core';
 import type { ChatStreamEvent } from '../api/types';
 import { toChatEvents } from './chatEvents';
 import { SseParser } from './sseParser';
@@ -17,7 +18,14 @@ export async function readChatStream(
 
   const emit = (frames: ReturnType<SseParser['push']>) => {
     for (const frame of frames) {
-      for (const event of toChatEvents(frame)) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(frame.data);
+      } catch {
+        continue;
+      }
+      if (typeof parsed !== 'object' || parsed === null) continue;
+      for (const event of toChatEvents(parsed as BaseEvent)) {
         if (event.type === 'done') sawDone = true;
         onEvent(event);
       }

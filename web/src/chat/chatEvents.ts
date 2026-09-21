@@ -1,64 +1,73 @@
+import {
+  contentToText,
+  EventType,
+  type BaseEvent,
+  type CustomEvent,
+  type RunErrorEvent,
+  type RunFinishedEvent,
+  type TextMessageContentEvent,
+  type ToolCallArgsEvent,
+  type ToolCallResultEvent,
+  type ToolCallStartEvent,
+} from '@ag-ui/core';
 import type { ChatStreamEvent, ConfirmationRequiredData } from '../api/types';
-import type { SseFrame } from './sseParser';
 
 /** The two names this system adds to the protocol, which carries them as custom events. */
 const SOURCES = 'maf-lab/sources';
 const TRACE = 'maf-lab/trace';
 
 /**
- * Translates AG-UI frames into the events this app renders from.
+ * Translates parsed AG-UI events into the events this app renders from.
  *
  * The protocol is the wire; the reducer's shape is ours. Anything the protocol carries that this screen has no
  * use for — a run starting, a text message opening, a custom event under a name we do not know — yields nothing,
  * which the protocol allows and which keeps an unknown event from breaking the rest of the run.
  */
-export function toChatEvents(frame: SseFrame): ChatStreamEvent[] {
-  let data: Record<string, unknown>;
-  try {
-    const parsed: unknown = JSON.parse(frame.data);
-    if (typeof parsed !== 'object' || parsed === null) return [];
-    data = parsed as Record<string, unknown>;
-  } catch {
-    return [];
-  }
+export function toChatEvents(event: BaseEvent): ChatStreamEvent[] {
+  switch (event.type) {
+    case EventType.TEXT_MESSAGE_CONTENT:
+      return [{ type: 'text_delta', data: { text: (event as TextMessageContentEvent).delta } }];
 
-  switch (frame.event) {
-    case 'TEXT_MESSAGE_CONTENT':
-      return [{ type: 'text_delta', data: { text: String(data.delta ?? '') } }];
-
-    case 'TOOL_CALL_START':
+    case EventType.TOOL_CALL_START: {
+      const typed = event as ToolCallStartEvent;
       return [
         {
           type: 'tool_call_started',
           data: {
-            callId: String(data.toolCallId ?? ''),
-            toolName: String(data.toolCallName ?? ''),
+            callId: typed.toolCallId,
+            toolName: typed.toolCallName,
             argumentSummary: '',
           },
         },
       ];
+    }
 
     // The arguments arrive after the call opens; they are what the card shows, already reduced to identifiers.
-    case 'TOOL_CALL_ARGS':
+    case EventType.TOOL_CALL_ARGS: {
+      const typed = event as ToolCallArgsEvent;
       return [
         {
           type: 'tool_call_started',
           data: {
-            callId: String(data.toolCallId ?? ''),
+            callId: typed.toolCallId,
             toolName: '',
-            argumentSummary: String(data.delta ?? ''),
+            argumentSummary: typed.delta,
           },
         },
       ];
+    }
 
-    case 'TOOL_CALL_RESULT': {
+    case EventType.TOOL_CALL_RESULT: {
       // A tool result is structured content: which tool, how it went, how many sources — never the result itself.
-      const result = parse(String(data.content ?? ''));
+      const typed = event as ToolCallResultEvent;
+      const result = parse(
+        typeof typed.content === 'string' ? typed.content : contentToText(typed.content),
+      );
       return [
         {
           type: 'tool_call_finished',
           data: {
-            callId: String(data.toolCallId ?? ''),
+            callId: typed.toolCallId,
             toolName: String(result.tool ?? ''),
             resultSummary: String(result.summary ?? ''),
             sourceCount: Number(result.sourceCount ?? 0),
@@ -68,20 +77,20 @@ export function toChatEvents(frame: SseFrame): ChatStreamEvent[] {
       ];
     }
 
-    case 'CUSTOM':
-      return custom(data);
+    case EventType.CUSTOM:
+      return custom(event as CustomEvent);
 
-    case 'RUN_FINISHED':
-      return finished(data);
+    case EventType.RUN_FINISHED:
+      return finished(event as RunFinishedEvent);
 
-    case 'RUN_ERROR':
+    case EventType.RUN_ERROR:
       return [
         {
           type: 'done',
           data: {
             conversationId: '',
             turnId: '',
-            error: String(data.message ?? 'The run failed.'),
+            error: (event as RunErrorEvent).message,
           },
         },
       ];
@@ -103,7 +112,7 @@ function parse(content: string): Record<string, unknown> {
   }
 }
 
-function custom(data: Record<string, unknown>): ChatStreamEvent[] {
+function custom(data: CustomEvent): ChatStreamEvent[] {
   const value = data.value as Record<string, unknown> | undefined;
   if (!value) return [];
   switch (data.name) {
@@ -116,7 +125,7 @@ function custom(data: Record<string, unknown>): ChatStreamEvent[] {
   }
 }
 
-function finished(data: Record<string, unknown>): ChatStreamEvent[] {
+function finished(data: RunFinishedEvent): ChatStreamEvent[] {
   const events: ChatStreamEvent[] = [];
   const outcome = data.outcome as Record<string, unknown> | undefined;
   const result = data.result as Record<string, unknown> | undefined;

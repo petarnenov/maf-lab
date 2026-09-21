@@ -1,3 +1,4 @@
+import { EventType } from '@ag-ui/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render } from '@testing-library/react';
 import type { ReactElement } from 'react';
@@ -49,50 +50,51 @@ export function streamResponse(chunks: string[], status = 200): Response {
   return new Response(body, { status, headers: { 'Content-Type': 'text/event-stream' } });
 }
 
-export const sse = (event: string, data: unknown) =>
-  `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+export const sse = (event: EventType, data: Record<string, unknown>) =>
+  `event: ${event}\ndata: ${JSON.stringify({ type: event, ...data })}\n\n`;
 
 /**
  * A run as the protocol streams it. Tests say what happened; this says it in AG-UI, so the shape of the wire
  * lives in one place rather than in every fixture.
  */
 export const run = {
-  started: (threadId = 'conv-1', runId = 'r1') => sse('RUN_STARTED', { threadId, runId }),
+  started: (threadId = 'conv-1', runId = 'r1') => sse(EventType.RUN_STARTED, { threadId, runId }),
 
   text: (text: string, messageId = 'm1') => [
-    sse('TEXT_MESSAGE_START', { messageId, role: 'assistant' }),
-    sse('TEXT_MESSAGE_CONTENT', { messageId, delta: text }),
-    sse('TEXT_MESSAGE_END', { messageId }),
+    sse(EventType.TEXT_MESSAGE_START, { messageId, role: 'assistant' }),
+    sse(EventType.TEXT_MESSAGE_CONTENT, { messageId, delta: text }),
+    sse(EventType.TEXT_MESSAGE_END, { messageId }),
   ],
 
   /** Just the content of a message already open — for tests about chunking. */
   delta: (text: string, messageId = 'm1') =>
-    sse('TEXT_MESSAGE_CONTENT', { messageId, delta: text }),
+    sse(EventType.TEXT_MESSAGE_CONTENT, { messageId, delta: text }),
 
   toolCall: (toolCallId: string, toolCallName: string, args = '') => [
-    sse('TOOL_CALL_START', { toolCallId, toolCallName }),
-    sse('TOOL_CALL_ARGS', { toolCallId, delta: args }),
-    sse('TOOL_CALL_END', { toolCallId }),
+    sse(EventType.TOOL_CALL_START, { toolCallId, toolCallName }),
+    sse(EventType.TOOL_CALL_ARGS, { toolCallId, delta: args }),
+    sse(EventType.TOOL_CALL_END, { toolCallId }),
   ],
 
   toolResult: (toolCallId: string, summary: string, tool = '', sourceCount = 0, isError = false) =>
-    sse('TOOL_CALL_RESULT', {
+    sse(EventType.TOOL_CALL_RESULT, {
       toolCallId,
       messageId: toolCallId,
       content: JSON.stringify({ tool, summary, sourceCount, isError }),
     }),
 
-  sources: (sources: unknown[]) => sse('CUSTOM', { name: 'maf-lab/sources', value: { sources } }),
+  sources: (sources: unknown[]) =>
+    sse(EventType.CUSTOM, { name: 'maf-lab/sources', value: { sources } }),
 
-  trace: (event: unknown) => sse('CUSTOM', { name: 'maf-lab/trace', value: event }),
+  trace: (event: unknown) => sse(EventType.CUSTOM, { name: 'maf-lab/trace', value: event }),
 
   done: (threadId = 'conv-1', turnId = 't1') =>
-    sse('RUN_FINISHED', {
+    sse(EventType.RUN_FINISHED, {
       threadId,
       runId: 'r1',
       outcome: { type: 'success' },
       result: { turnId },
     }),
 
-  error: (message: string) => sse('RUN_ERROR', { message }),
+  error: (message: string) => sse(EventType.RUN_ERROR, { message }),
 };

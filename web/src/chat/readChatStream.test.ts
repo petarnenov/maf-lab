@@ -1,3 +1,4 @@
+import { EventType } from '@ag-ui/core';
 import { describe, expect, it } from 'vitest';
 import type { ChatStreamEvent } from '../api/types';
 import { readChatStream } from './readChatStream';
@@ -32,7 +33,7 @@ describe('readChatStream', () => {
     const sawDone = await readChatStream(
       streamResponse([
         run.started(),
-        sse('STEP_STARTED', { stepName: 'x' }),
+        sse(EventType.STEP_STARTED, { stepName: 'x' }),
         'event: TEXT_MESSAGE_CONTENT\ndata: {oops\n\n',
         run.delta('a'),
       ]).body!,

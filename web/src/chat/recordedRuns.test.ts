@@ -1,3 +1,4 @@
+import { type BaseEvent } from '@ag-ui/core';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -40,7 +41,7 @@ function replay(run: RecordedRun): ChatState {
     text: 'recorded',
   });
   for (const frame of run.frames) {
-    for (const event of toChatEvents({ event: frame.event, data: JSON.stringify(frame.data) })) {
+    for (const event of toChatEvents(frame.data as BaseEvent)) {
       state = chatReducer(state, { type: 'event', event });
     }
   }

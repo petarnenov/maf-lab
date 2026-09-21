@@ -30,6 +30,7 @@ export interface Me {
 }
 
 // ---- Chat / SSE ----
+// The AG-UI SDK shapes the wire; ChatStreamEvent remains the reducer's internal form.
 
 export interface SourceRef {
   docId: string;

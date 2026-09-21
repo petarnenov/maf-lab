@@ -1,3 +1,4 @@
+import { EventType } from '@ag-ui/core';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -21,7 +22,7 @@ const adjustment = {
 
 /** A run that pauses on a proposal, as the server streams it. */
 const paused = () =>
-  sse('RUN_FINISHED', {
+  sse(EventType.RUN_FINISHED, {
     threadId: 'conv-1',
     runId: 'r1',
     result: { turnId: 't1' },

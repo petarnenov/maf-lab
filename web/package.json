@@ -15,6 +15,7 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@ag-ui/core": "1.0.0",
     "@tanstack/react-query": "5.103.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
