@@ -778,3 +778,35 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
   captured by `scripts/capture_ui_events.sh`, each with the state the browser should reach. Writing them by hand
   would have made them agree with the reducer by construction; capturing them makes them agree with the server.
   When the server's events change, these fail — which is when someone should look. Re-capture with that script.
+
+## 29. Two pictures nobody could read (fix-panel-and-diagram, 2026-09-21)
+
+- **The process was skipped, and this section is part of the cost.** Both commits — `a798799` and `0771f35` —
+  were written, tested and pushed without a change proposal, which left the specs describing a system that no
+  longer matched. The change was written afterwards to make them true again. It works, but it is weaker than the
+  usual order: specs written knowing what the code does cannot catch a disagreement with it. The rule holds for
+  a two-line fix to a label as much as for a new capability — a change that alters behaviour a spec describes
+  needs a proposal first.
+- **A state that only exists as an absence cannot hold a third value.** The monitor resolved its selection with
+  `find(selectedKey) ?? latest`, so `null` meant "the newest turn" and there was no value left to mean "closed".
+  The newest turn's button therefore read "Showing behind the scenes" forever and pressing it assigned the state
+  already in effect. The panel being closed is not a property of any turn, so it got a flag of its own rather
+  than a sentinel inside the selection.
+- **Closing is a button's job, not a surface's.** The bubble keeps a click that only shows a turn. A control that
+  closes and a surface that closes are two ways to lose the panel, and the surface is the answer being read.
+- **A straight line between centres is the wrong default for a diagram.** It starts under the source's own title
+  and, where a third box sits between the two, is drawn straight through it — which is why the api's
+  `index admin` line to qdrant was invisible. Edges are clipped to the borders they join, and one that would
+  cross a third box takes a three-segment detour through a clear lane, above the row if possible and below it
+  otherwise, falling back to a straight line rather than growing a pathfinder.
+- **Overlap is refused in the file, not fixed in the renderer.** Nudging boxes apart at render time would make
+  the picture on screen differ from the picture in the file, which the spec forbids. So the test refuses a
+  `topology.drawio` whose boxes overlap, the way it already refuses one whose nodes do not match the report.
+- **No cache directive is a decision, made by the browser.** `Results.File` sends an entity tag and a
+  last-modified date and nothing else, so freshness is guessed from the file's age — days, for a file edited
+  weeks ago. A redrawn diagram kept rendering as the old one. It is served `no-cache`: the entity tag still
+  saves the transfer, it just may not be served without asking. `no-store` would have forbidden keeping it at all.
+- **A recording has to carry its own clock.** Rows in `evals/ui-events.jsonl` hold real timestamps — a proposal's
+  expiry above all — so replaying one against today's clock turned a recording into a failure that said nothing
+  about the code. Each row records when it was captured and the replay sets its clock to that. The alternative,
+  one frozen date for the whole suite, would make every new recording agree with a date unrelated to it.
