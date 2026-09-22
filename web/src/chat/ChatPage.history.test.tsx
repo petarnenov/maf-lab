@@ -289,4 +289,36 @@ describe('ChatPage with history', () => {
     await userEvent.click(within(monitor).getByRole('tab', { name: 'AG-UI' }));
     expect(await within(monitor).findByText(/were not recorded/)).toBeInTheDocument();
   });
+  it('a reopened turn shows the reasoning its trace kept, collapsed, and none when the trace expired', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.startsWith('/api/conversations?')) return jsonResponse(page('conv-7'));
+        if (url === '/api/conversations/conv-7') return jsonResponse(detail);
+        if (url === '/api/turns/t2/trace')
+          return jsonResponse({
+            turnId: 't2',
+            conversationId: 'conv-7',
+            createdAt: '',
+            events: fixtureTrace,
+          });
+        return jsonResponse({}, 404);
+      }),
+    );
+
+    renderChat('/chat/conv-7');
+    const turns = await screen.findAllByTestId('assistant-turn');
+
+    // The latest turn is the one the monitor follows, so its stored trace is loaded.
+    const block = await within(turns[1]).findByTestId('reasoning');
+    const summary = within(block).getByRole('button');
+    expect(summary).toHaveAttribute('aria-expanded', 'false');
+    expect(summary).toHaveTextContent('Thought for 0.2 s');
+
+    await userEvent.click(summary);
+    expect(block).toHaveTextContent('The failure code says FS-REQUIRED');
+
+    // t1's trace expired, so there is nothing to show for it.
+    expect(within(turns[0]).queryByTestId('reasoning')).not.toBeInTheDocument();
+  });
 });

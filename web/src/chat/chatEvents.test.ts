@@ -128,8 +128,28 @@ describe('toChatEvents', () => {
     );
 
     expect(events.map((e) => e.type)).toEqual(['confirmation_required', 'done']);
-    const confirmation = events[0].data as ConfirmationRequiredData;
+    // The union now holds an event that carries no data, so this one is read through its own shape.
+    const confirmation = (events[0] as { data: ConfirmationRequiredData }).data;
     expect(confirmation.adjustment.accountId).toBe('A-1042');
     expect(confirmation.state).toBe('opaque');
+  });
+  it("reads the model's reasoning, and ignores the reasoning events that carry nothing new", () => {
+    expect(
+      toChatEvents(
+        event(EventType.REASONING_MESSAGE_CONTENT, { messageId: 'r1', delta: 'Let me' }),
+      ),
+    ).toEqual([{ type: 'reasoning_delta', data: { text: 'Let me' } }]);
+    expect(toChatEvents(event(EventType.REASONING_END, { messageId: 'r1' }))).toEqual([
+      { type: 'reasoning_end' },
+    ]);
+
+    // The block opens on the first delta and the run's end closes the turn, so these three say nothing to it.
+    expect(toChatEvents(event(EventType.REASONING_START, { messageId: 'r1' }))).toEqual([]);
+    expect(
+      toChatEvents(
+        event(EventType.REASONING_MESSAGE_START, { messageId: 'r1', role: 'reasoning' }),
+      ),
+    ).toEqual([]);
+    expect(toChatEvents(event(EventType.REASONING_MESSAGE_END, { messageId: 'r1' }))).toEqual([]);
   });
 });

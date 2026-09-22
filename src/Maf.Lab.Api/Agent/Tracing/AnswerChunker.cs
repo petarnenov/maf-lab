@@ -5,11 +5,15 @@ using Maf.Lab.Domain.Tracing;
 namespace Maf.Lab.Api.Agent.Tracing;
 
 /// <summary>
-/// Records the streamed answer in the trace as coalesced <c>answer.delta { offset, text }</c> events, so the chat can
-/// be rewound to any step. A chunk is flushed at <see cref="MaxChars"/>, after <see cref="MaxWaitMs"/>, before a tool
-/// call and at the end of the turn. Concatenating the chunks yields the answer exactly.
+/// Records a stream of model text in the trace as coalesced <c>{ offset, text }</c> events, so the chat can be rewound
+/// to any step. A chunk is flushed at <see cref="MaxChars"/>, after <see cref="MaxWaitMs"/>, before a tool call and at
+/// the end of the turn. Concatenating the chunks yields the stream exactly.
+///
+/// One instance per stream: the answer writes <c>answer.delta</c> and the model's reasoning <c>reasoning.delta</c>,
+/// under the same rules and each with its own offsets. Flushing them at the same points keeps the trace's order true
+/// to the turn — reasoning that arrived before a tool call is recorded before it.
 /// </summary>
-public sealed class AnswerChunker(TurnTrace trace)
+public sealed class AnswerChunker(TurnTrace trace, string kind = TraceKinds.AnswerDelta, string label = "Answer")
 {
     public const int MaxChars = 160;
     public const long MaxWaitMs = 150;
@@ -40,7 +44,7 @@ public sealed class AnswerChunker(TurnTrace trace)
         }
         var text = _pending.ToString();
         _pending.Clear();
-        trace.Add(TraceKinds.AnswerDelta, $"Answer +{text.Length} chars", new JsonObject { ["offset"] = _offset, ["text"] = text });
+        trace.Add(kind, $"{label} +{text.Length} chars", new JsonObject { ["offset"] = _offset, ["text"] = text });
         _offset += text.Length;
     }
 }

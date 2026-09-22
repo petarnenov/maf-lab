@@ -24,6 +24,8 @@ public static class TraceKinds
     public const string Retrieval = "retrieval";
     public const string Envelope = "envelope";
     public const string AnswerDelta = "answer.delta";
+    /// <summary>A chunk of what the model reasoned before it answered, recorded the way the answer is.</summary>
+    public const string ReasoningDelta = "reasoning.delta";
     public const string ToolUnknown = "tool.unknown";
     public const string Audit = "audit";
     /// <summary>A step of a write: proposed, reviewed, confirmed, rejected or applied.</summary>

@@ -11,6 +11,10 @@ import {
 export interface ReconstructedTurn {
   /** Answer text as it had streamed by the cursor. */
   text: string;
+  /** What the model had reasoned by the cursor. */
+  reasoning: string;
+  /** How long it spent reasoning over the whole turn, as the trace timed it. */
+  reasoningMs?: number;
   toolCalls: ToolCallView[];
   /** Empty until the `sources` step is reached. */
   sources: SourceRef[];
@@ -42,6 +46,7 @@ export function reconstructTurn(
   const visible = events.slice(0, at);
   const textRecorded = events.some((e) => e.kind === 'answer.delta');
 
+  const thinking = reasoningOf(events, at);
   const text = textRecorded
     ? byKind(visible, 'answer.delta')
         .map((e) => dataOf<AnswerDelta>(e))
@@ -107,7 +112,34 @@ export function reconstructTurn(
       )
     : [];
 
-  return { text, toolCalls, sources, stepLabel: `step ${at} of ${count}`, textRecorded };
+  return {
+    text,
+    reasoning: thinking.text,
+    reasoningMs: thinking.ms,
+    toolCalls,
+    sources,
+    stepLabel: `step ${at} of ${count}`,
+    textRecorded,
+  };
+}
+
+/**
+ * The model's reasoning as of a step, out of a stored trace. `ms` is the span of the recorded chunks, which is how
+ * long the turn was thinking; a live turn measures it as it happens instead.
+ */
+export function reasoningOf(
+  events: TraceEvent[],
+  cursor = events.length,
+): { text: string; ms?: number } {
+  const all = byKind(events, 'reasoning.delta');
+  if (all.length === 0) return { text: '' };
+  const at = Math.min(Math.max(cursor, 0), events.length);
+  const text = byKind(events.slice(0, at), 'reasoning.delta')
+    .map((e) => dataOf<AnswerDelta>(e))
+    .sort((a, b) => (a.offset ?? 0) - (b.offset ?? 0))
+    .map((d) => d.text ?? '')
+    .join('');
+  return { text, ms: all[all.length - 1].atMs - all[0].atMs };
 }
 
 /** Same result summaries the API sends in tool_call_finished. */

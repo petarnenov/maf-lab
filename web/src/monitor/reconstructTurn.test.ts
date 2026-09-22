@@ -59,4 +59,26 @@ describe('reconstructTurn', () => {
     expect(r.textRecorded).toBe(false);
     expect(r.text).toBe('Final answer.');
   });
+  it('rewinds the reasoning, and reports how long the turn spent on it', () => {
+    const first = indexOf('reasoning.delta');
+    expect(reconstructTurn(fixtureTrace, first).reasoning).toBe('');
+    expect(reconstructTurn(fixtureTrace, first + 1).reasoning).toBe(
+      'The failure code says FS-REQUIRED, so ',
+    );
+    // Still reasoning at that step: the answer has not started.
+    expect(reconstructTurn(fixtureTrace, first + 1).text).toBe('');
+
+    const whole = reconstructTurn(fixtureTrace, fixtureTrace.length);
+    expect(whole.reasoning).toBe(
+      'The failure code says FS-REQUIRED, so the account has no fee schedule.',
+    );
+    expect(whole.reasoningMs).toBe(220);
+  });
+
+  it('reports no reasoning for a trace that has none', () => {
+    const withoutReasoning = fixtureTrace.filter((e) => e.kind !== 'reasoning.delta');
+    const turn = reconstructTurn(withoutReasoning, withoutReasoning.length);
+    expect(turn.reasoning).toBe('');
+    expect(turn.reasoningMs).toBeUndefined();
+  });
 });

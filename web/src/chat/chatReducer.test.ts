@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChatStreamEvent, HistoryTurn } from '../api/types';
 import { chatReducer, initialChatState, type AssistantTurn, type ChatState } from './chatReducer';
 
@@ -9,6 +9,8 @@ const apply = (state: ChatState, ...events: ChatStreamEvent[]) =>
   events.reduce((s, event) => chatReducer(s, { type: 'event', event }), state);
 
 const assistant = (state: ChatState) => state.turns.at(-1) as AssistantTurn;
+
+afterEach(() => vi.useRealTimers());
 
 const started: ChatStreamEvent = {
   type: 'tool_call_started',
@@ -326,5 +328,47 @@ describe('a write waiting for a person', () => {
 
     expect(card(state).confirmationState).toBe('waiting');
     expect(card(state).confirmation?.question).toContain('A-1042');
+  });
+  it('collects the reasoning of every stretch and times all of it', () => {
+    vi.useFakeTimers();
+    let state = send();
+    state = apply(state, { type: 'reasoning_delta', data: { text: 'Let me look ' } });
+    vi.advanceTimersByTime(1200);
+    state = apply(state, { type: 'reasoning_delta', data: { text: 'that up.' } });
+    state = apply(state, { type: 'reasoning_end' });
+
+    expect(assistant(state).reasoning).toBe('Let me look that up.');
+    expect(assistant(state).reasoningMs).toBe(1200);
+    // Nobody has touched the block, so it is still the answer's to close.
+    expect(assistant(state).reasoningOpen).toBeUndefined();
+
+    // A second stretch after a tool call adds to the same reasoning and the same total.
+    state = apply(state, started, finished);
+    state = apply(state, { type: 'reasoning_delta', data: { text: ' Now I know.' } });
+    vi.advanceTimersByTime(800);
+    state = apply(state, { type: 'text_delta', data: { text: 'Assign it.' } });
+
+    expect(assistant(state).reasoning).toBe('Let me look that up. Now I know.');
+    expect(assistant(state).reasoningMs).toBe(2000);
+    expect(assistant(state).text).toBe('Assign it.');
+    expect(assistant(state).reasoningOpen).toBeUndefined();
+  });
+
+  it("keeps a person's choice about the block for the rest of the turn", () => {
+    let state = send();
+    state = apply(state, { type: 'reasoning_delta', data: { text: 'Thinking.' } });
+    state = apply(state, { type: 'text_delta', data: { text: 'Answer.' } });
+
+    state = chatReducer(state, { type: 'toggle_reasoning', turnId: 'a1', open: true });
+    state = apply(state, { type: 'text_delta', data: { text: ' More.' } });
+
+    expect(assistant(state).reasoningOpen).toBe(true);
+    expect(assistant(state).text).toBe('Answer. More.');
+  });
+
+  it('leaves a turn that did not reason without any reasoning', () => {
+    const state = apply(send(), { type: 'text_delta', data: { text: 'Straight to it.' } });
+    expect(assistant(state).reasoning).toBe('');
+    expect(assistant(state).reasoningMs).toBeUndefined();
   });
 });

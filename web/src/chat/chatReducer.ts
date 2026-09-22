@@ -27,6 +27,14 @@ export interface AssistantTurn {
   id: string;
   role: 'assistant';
   text: string;
+  /** What the model thought on its way to the answer, as it streamed. Empty when it did not reason. */
+  reasoning: string;
+  /** How long the model spent reasoning, summed over every stretch of it. */
+  reasoningMs?: number;
+  /** Set only when a person opens or closes the block; their choice then wins for the rest of the turn. */
+  reasoningOpen?: boolean;
+  /** When the current stretch of reasoning started, while one is running. */
+  reasoningSince?: number;
   toolCalls: ToolCallView[];
   sources: SourceRef[];
   status: 'streaming' | 'done' | 'error';
@@ -78,6 +86,8 @@ export type ChatAction =
   | { type: 'reset' }
   | { type: 'hydrate'; conversationId: string; turns: HistoryTurn[] }
   | { type: 'pending'; confirmation: ConfirmationRequiredData; expired: boolean }
+  /** A person opened or closed a turn's reasoning; from then on the block is theirs, not the answer's. */
+  | { type: 'toggle_reasoning'; turnId: string; open: boolean }
   | { type: 'answering'; adjustmentId: string }
   | {
       type: 'answered';
@@ -109,6 +119,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
             id: action.assistantTurnId,
             role: 'assistant',
             text: '',
+            reasoning: '',
             toolCalls: [],
             sources: [],
             status: 'streaming',
@@ -149,6 +160,16 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         confirmationState: action.expired ? 'expired' : 'waiting',
       }));
 
+    case 'toggle_reasoning':
+      return {
+        ...state,
+        turns: state.turns.map((turn) =>
+          turn.role === 'assistant' && turn.id === action.turnId
+            ? { ...turn, reasoningOpen: action.open }
+            : turn,
+        ),
+      };
+
     case 'answering':
       return updateConfirmation(state, action.adjustmentId, 'answering');
 
@@ -164,6 +185,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
             id: action.assistantTurnId,
             role: 'assistant',
             text: '',
+            reasoning: '',
             toolCalls: [],
             sources: [],
             status: 'streaming',
@@ -221,6 +243,8 @@ export function hydrateTurn(turn: HistoryTurn): Turn[] {
       id: `ha-${turn.turnId}`,
       role: 'assistant',
       text: turn.answer,
+      // A restored turn's reasoning lives in its stored trace, not in the conversation history.
+      reasoning: '',
       turnId: turn.turnId,
       status: 'done',
       restored: true,
@@ -248,8 +272,23 @@ export function hydrateTurn(turn: HistoryTurn): Turn[] {
 
 function applyEvent(state: ChatState, event: ChatStreamEvent): ChatState {
   switch (event.type) {
+    // The answer's first text is what closes the reasoning block, and stops a clock still running.
     case 'text_delta':
-      return updateActiveTurn(state, (turn) => ({ ...turn, text: turn.text + event.data.text }));
+      return updateActiveTurn(state, (turn) => ({
+        ...turn,
+        ...stopThinking(turn),
+        text: turn.text + event.data.text,
+      }));
+
+    case 'reasoning_delta':
+      return updateActiveTurn(state, (turn) => ({
+        ...turn,
+        reasoning: turn.reasoning + event.data.text,
+        reasoningSince: turn.reasoningSince ?? Date.now(),
+      }));
+
+    case 'reasoning_end':
+      return updateActiveTurn(state, (turn) => ({ ...turn, ...stopThinking(turn) }));
 
     case 'tool_call_started':
       return updateActiveTurn(state, (turn) => {
@@ -340,6 +379,15 @@ function applyEvent(state: ChatState, event: ChatStreamEvent): ChatState {
       return { ...next, streaming: false, conversationId: event.data.conversationId };
     }
   }
+}
+
+/** Closes the stretch of reasoning that is running, adding what it took to the turn's total. */
+function stopThinking(turn: AssistantTurn): Partial<AssistantTurn> {
+  if (turn.reasoningSince === undefined) return {};
+  return {
+    reasoningMs: (turn.reasoningMs ?? 0) + (Date.now() - turn.reasoningSince),
+    reasoningSince: undefined,
+  };
 }
 
 function activeTurn(state: ChatState): AssistantTurn | undefined {

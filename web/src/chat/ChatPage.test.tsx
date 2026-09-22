@@ -289,4 +289,108 @@ describe('ChatPage', () => {
     renderWithProviders(<ChatPage />, { session: null });
     expect(screen.getByText(/Pick a dev persona/)).toBeInTheDocument();
   });
+  it('shows the reasoning while the model thinks, then collapses it when the answer starts', async () => {
+    const stream = controlled();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.startsWith('/api/conversations')
+          ? jsonResponse(emptyHistory)
+          : url.startsWith('/api/turns')
+            ? jsonResponse({ events: [] })
+            : stream.response,
+      ),
+    );
+
+    renderWithProviders(<ChatPage />);
+    await userEvent.type(screen.getByLabelText('Message'), 'What if a fee schedule is missing?');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    stream.push(run.started(), ...run.reasoning('The run failed ', 'on a missing schedule.'));
+    const block = await screen.findByTestId('reasoning');
+    expect(within(block).getByRole('button')).toHaveAttribute('aria-expanded', 'true');
+    expect(block).toHaveTextContent('The run failed on a missing schedule.');
+    expect(within(block).getByRole('button')).toHaveTextContent('Thinking…');
+
+    stream.push(...run.text('Assign the schedule.'));
+    expect(await screen.findByText('Assign the schedule.')).toBeInTheDocument();
+    // The answer arrived, so the block closed itself and says how long the model thought.
+    expect(within(block).getByRole('button')).toHaveAttribute('aria-expanded', 'false');
+    expect(within(block).getByRole('button')).toHaveTextContent(/Thought for \d+\.\d s/);
+    expect(block).not.toHaveTextContent('on a missing schedule.');
+
+    stream.push(run.done('conv-1', 't1'));
+  });
+
+  it('keeps the reasoning open once a person opens it, and shows none for a turn without any', async () => {
+    const stream = controlled();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.startsWith('/api/conversations')
+          ? jsonResponse(emptyHistory)
+          : url.startsWith('/api/turns')
+            ? jsonResponse({ events: [] })
+            : stream.response,
+      ),
+    );
+
+    renderWithProviders(<ChatPage />);
+    await userEvent.type(screen.getByLabelText('Message'), 'What if a fee schedule is missing?');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    stream.push(run.started(), ...run.reasoning('Thinking it over.'), run.delta('Assign it.'));
+    const block = await screen.findByTestId('reasoning');
+    await screen.findByText('Assign it.');
+    expect(within(block).getByRole('button')).toHaveAttribute('aria-expanded', 'false');
+
+    await userEvent.click(within(block).getByRole('button'));
+    expect(within(block).getByRole('button')).toHaveAttribute('aria-expanded', 'true');
+
+    // More of the answer must not take the block back.
+    stream.push(run.delta(' Then re-run.'));
+    expect(await screen.findByText('Assign it. Then re-run.')).toBeInTheDocument();
+    expect(within(block).getByRole('button')).toHaveAttribute('aria-expanded', 'true');
+
+    stream.push(run.done('conv-1', 't1'));
+  });
+
+  it('shows no reasoning block for a turn whose model did not reason', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.startsWith('/api/conversations')
+          ? jsonResponse(emptyHistory)
+          : url.startsWith('/api/turns')
+            ? jsonResponse({ events: [] })
+            : streamResponse([run.started(), ...run.text('Straight to it.'), run.done()]),
+      ),
+    );
+
+    renderWithProviders(<ChatPage />);
+    await userEvent.type(screen.getByLabelText('Message'), 'hello');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await screen.findByText('Straight to it.');
+    expect(screen.queryByTestId('reasoning')).not.toBeInTheDocument();
+  });
 });
+
+/** A response whose frames the test pushes one at a time, as the server would. */
+function controlled() {
+  const encoder = new TextEncoder();
+  let controller!: ReadableStreamDefaultController<Uint8Array>;
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      start(next) {
+        controller = next;
+      },
+    }),
+    { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+  );
+  return {
+    response,
+    push: (...frames: string[]) => frames.forEach((f) => controller.enqueue(encoder.encode(f))),
+    close: () => controller.close(),
+  };
+}

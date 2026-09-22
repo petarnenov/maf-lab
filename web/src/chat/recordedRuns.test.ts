@@ -15,6 +15,8 @@ interface RecordedRun {
   frames: { event: string; data: unknown }[];
   expect: {
     answer: string;
+    /** What the model thought on its way to it; empty when it did not reason. */
+    reasoning: string;
     toolCalls: string[];
     sources: number;
     traceSteps: number;
@@ -85,6 +87,7 @@ describe('runs recorded from the running stack', () => {
       const turn = assistant(state);
 
       expect(turn.text).toBe(run.expect.answer);
+      expect(turn.reasoning).toBe(run.expect.reasoning);
       expect(turn.toolCalls.map((c) => c.toolName)).toEqual(run.expect.toolCalls);
       expect(turn.sources).toHaveLength(run.expect.sources);
       expect(turn.status).toBe('done');

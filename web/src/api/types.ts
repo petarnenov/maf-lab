@@ -118,6 +118,9 @@ export type ChatStreamEvent =
   | { type: 'tool_call_started'; data: ToolCallStartedData }
   | { type: 'tool_call_finished'; data: ToolCallFinishedData }
   | { type: 'sources'; data: { sources: SourceRef[] } }
+  | { type: 'reasoning_delta'; data: { text: string } }
+  /** The model stopped reasoning. It does not close the block — the answer's first text does. */
+  | { type: 'reasoning_end' }
   | { type: 'trace'; data: TraceEvent }
   | { type: 'agui_frame'; data: AguiFrame }
   | { type: 'confirmation_required'; data: ConfirmationRequiredData }

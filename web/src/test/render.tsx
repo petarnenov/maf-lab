@@ -66,6 +66,15 @@ export const run = {
     sse(EventType.TEXT_MESSAGE_END, { messageId }),
   ],
 
+  /** What the model thought before it answered, as the protocol carries it. */
+  reasoning: (...parts: string[]) => [
+    sse(EventType.REASONING_START, { messageId: 'r1' }),
+    sse(EventType.REASONING_MESSAGE_START, { messageId: 'r1', role: 'reasoning' }),
+    ...parts.map((delta) => sse(EventType.REASONING_MESSAGE_CONTENT, { messageId: 'r1', delta })),
+    sse(EventType.REASONING_MESSAGE_END, { messageId: 'r1' }),
+    sse(EventType.REASONING_END, { messageId: 'r1' }),
+  ],
+
   /** Just the content of a message already open — for tests about chunking. */
   delta: (text: string, messageId = 'm1') =>
     sse(EventType.TEXT_MESSAGE_CONTENT, { messageId, delta: text }),

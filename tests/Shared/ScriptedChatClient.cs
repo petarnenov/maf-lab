@@ -42,6 +42,11 @@ public sealed class ScriptedChatClient(Func<IReadOnlyList<ChatMessage>, ChatOpti
     public static ChatResponseUpdate[] Text(string text) =>
         text.Split(' ').Select((w, i) => new ChatResponseUpdate(ChatRole.Assistant, (i == 0 ? "" : " ") + w)).ToArray();
 
+    /// <summary>What a reasoning model streams before it answers, one update per word.</summary>
+    public static ChatResponseUpdate[] Thinking(string text) =>
+        text.Split(' ').Select((w, i) => new ChatResponseUpdate(ChatRole.Assistant,
+            (IList<AIContent>)[new TextReasoningContent((i == 0 ? "" : " ") + w)])).ToArray();
+
     public static ChatResponseUpdate[] Call(string tool, Dictionary<string, object?> args, string? callId = null) =>
         [new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent(callId ?? $"call_{tool}_{Guid.NewGuid():N}"[..20], tool, args)])];
 

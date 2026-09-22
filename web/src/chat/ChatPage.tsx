@@ -6,7 +6,7 @@ import { useAuth } from '../auth/useAuth';
 import { useConversation, useUserKey } from '../history/historyApi';
 import { HistorySidebar } from '../history/HistorySidebar';
 import { MonitorPanel } from '../monitor/MonitorPanel';
-import { reconstructTurn, type ReconstructedTurn } from '../monitor/reconstructTurn';
+import { reasoningOf, reconstructTurn, type ReconstructedTurn } from '../monitor/reconstructTurn';
 import { useTimeTravel } from '../monitor/useTimeTravel';
 import { framesFor, traceFor } from '../monitor/traceReducer';
 import { useTurnTrace } from '../monitor/useTurnTrace';
@@ -26,7 +26,7 @@ export function ChatPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const userKey = useUserKey();
-  const { state, send, reset, hydrate, answer, loadPending } = useChatStream();
+  const { state, send, reset, hydrate, answer, loadPending, toggleReasoning } = useChatStream();
   const [draft, setDraft] = useState('');
   /** Assistant turn the monitor shows; null = follow the latest turn. */
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -130,6 +130,8 @@ export function ChatPage() {
   // "None" means "not recorded" only once the server has answered and said so.
   const framesRecorded =
     liveFrames.length > 0 || isStreaming || !stored.isFetched || stored.data?.aguiFrames != null;
+  // A turn that streamed in this session carries its own reasoning; a restored one reads it from its trace.
+  const storedReasoning = reasoningOf(events);
   // Shared with the monitor: rewinding the trace also rewinds the selected answer in the chat.
   const timeTravel = useTimeTravel(events, selected?.id);
   const rewound: ReconstructedTurn | null =
@@ -246,6 +248,8 @@ export function ChatPage() {
                     conversationId={state.conversationId}
                     selected={monitorOpen && turn.id === selected?.id}
                     rewound={monitorOpen && turn.id === selected?.id ? rewound : null}
+                    storedReasoning={turn.id === selected?.id ? storedReasoning : undefined}
+                    onToggleReasoning={(open) => toggleReasoning(turn.id, open)}
                     onReturnToNow={() => timeTravel.dispatch({ type: 'goLive' })}
                     onShow={() => {
                       setSelectedKey(turn.id === latest?.id ? null : turn.id);
@@ -315,6 +319,8 @@ function AssistantBubble({
   turn,
   conversationId,
   selected,
+  storedReasoning,
+  onToggleReasoning,
   rewound,
   onReturnToNow,
   onShow,
@@ -324,6 +330,9 @@ function AssistantBubble({
   turn: AssistantTurn;
   conversationId?: string;
   selected: boolean;
+  /** The reasoning out of this turn's stored trace, for a turn that did not stream in this session. */
+  storedReasoning?: { text: string; ms?: number };
+  onToggleReasoning: (open: boolean) => void;
   /** Set when time travel shows this turn at an earlier step. */
   rewound: ReconstructedTurn | null;
   onReturnToNow: () => void;
@@ -336,6 +345,12 @@ function AssistantBubble({
   const toolCalls = rewound ? rewound.toolCalls : turn.toolCalls;
   const text = rewound ? rewound.text : turn.text;
   const sources = rewound ? rewound.sources : turn.sources;
+  // What the turn itself streamed wins; a restored turn has only what its trace kept.
+  const reasoning = rewound
+    ? { text: rewound.reasoning, ms: rewound.reasoningMs }
+    : turn.reasoning
+      ? { text: turn.reasoning, ms: turn.reasoningMs }
+      : (storedReasoning ?? { text: '' });
   return (
     <div
       className={`${styles.bubble} ${styles.assistant} ${selected ? styles.selected : ''}`}
@@ -370,6 +385,17 @@ function AssistantBubble({
             Return to now
           </button>
         </div>
+      )}
+      {reasoning.text && (
+        <ReasoningBlock
+          text={reasoning.text}
+          ms={reasoning.ms}
+          // Until the answer starts the model is still working, whatever a stretch of reasoning has just done.
+          thinking={text === ''}
+          // The answer's first text closes the block; until someone says otherwise, that is what decides it.
+          open={turn.reasoningOpen ?? text === ''}
+          onToggle={onToggleReasoning}
+        />
       )}
       {toolCalls.map((call) => (
         <ToolCallCard key={call.callId} call={call} />
@@ -406,6 +432,43 @@ function AssistantBubble({
           initialSent={turn.feedbackKinds}
         />
       )}
+    </div>
+  );
+}
+
+/** What the model thought on its way to the answer, set apart from what it said. */
+function ReasoningBlock({
+  text,
+  ms,
+  thinking,
+  open,
+  onToggle,
+}: {
+  text: string;
+  ms?: number;
+  thinking: boolean;
+  open: boolean;
+  onToggle: (open: boolean) => void;
+}) {
+  const label = thinking
+    ? 'Thinking…'
+    : ms === undefined
+      ? 'Thought'
+      : `Thought for ${(ms / 1000).toFixed(1)} s`;
+  return (
+    <div className={styles.reasoning} data-testid="reasoning">
+      <button
+        type="button"
+        className={styles.reasoningSummary}
+        aria-expanded={open}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle(!open);
+        }}
+      >
+        <span aria-hidden="true">{open ? '▾' : '▸'}</span> {label}
+      </button>
+      {open && <div className={styles.reasoningText}>{text}</div>}
     </div>
   );
 }

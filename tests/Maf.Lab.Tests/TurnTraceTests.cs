@@ -241,4 +241,58 @@ public class TurnTraceTests
         Assert.True(await check.TurnTraces.AnyAsync(t => t.TurnId == turnId, Ct));
         Assert.Equal(HttpStatusCode.NotFound, (await adam.GetAsync("/api/turns/t_old/trace", Ct)).StatusCode);
     }
+    /// <summary>A model that thinks aloud: it reasons, calls a tool, reasons again, then answers.</summary>
+    private static ScriptedChatClient ReasoningModel(string first, string second, string answer) =>
+        new((messages, _, _) => ScriptedChatClient.HasResult(messages, "get_billing_run_status")
+            ? [.. ScriptedChatClient.Thinking(second), .. ScriptedChatClient.Text(answer)]
+            : [.. ScriptedChatClient.Thinking(first),
+               .. ScriptedChatClient.Call("get_billing_run_status", new() { ["runId"] = "4417" })]);
+
+    [Fact]
+    public async Task Reasoning_is_traced_as_ordered_chunks_that_rebuild_what_the_model_thought()
+    {
+        const string first = "THOUGHT-MARKER I should look the run up. ";
+        const string second = "THOUGHT-MARKER it failed on a fee schedule.";
+        using var api = new ApiFactory(ReasoningModel(first, second, "ANSWER-R."));
+        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        // A data question: nothing forces retrieval, so the model itself decides to call a tool between its thoughts.
+        var events = await ApiFactory.ChatAsync(adam, "status of run 4417");
+        var trace = Trace(events);
+
+        var chunks = trace.Where(t => t.Kind == TraceKinds.ReasoningDelta).ToList();
+        Assert.NotEmpty(chunks);
+
+        // Contiguous offsets from 0, concatenating to everything the model reasoned.
+        var offset = 0;
+        foreach (var chunk in chunks)
+        {
+            Assert.Equal(offset, chunk.Data.GetProperty("offset").GetInt32());
+            offset += chunk.Data.GetProperty("text").GetString()!.Length;
+        }
+        Assert.Equal(first + second, string.Concat(chunks.Select(c => c.Data.GetProperty("text").GetString())));
+
+        // Each stretch is recorded where it happened: the first before the tool call, the second after its result.
+        var kinds = trace.Select(t => t.Kind).ToList();
+        Assert.True(kinds.IndexOf(TraceKinds.ReasoningDelta) < kinds.IndexOf(TraceKinds.ToolCall));
+        Assert.True(kinds.LastIndexOf(TraceKinds.ReasoningDelta) > kinds.IndexOf(TraceKinds.ToolResult));
+        Assert.True(kinds.LastIndexOf(TraceKinds.ReasoningDelta) < kinds.LastIndexOf(TraceKinds.ModelResponse),
+            "all reasoning is recorded before the model response that followed it");
+
+        // It reaches the client as the protocol's reasoning events, and never a log.
+        Assert.Contains("REASONING_MESSAGE_CONTENT", events.Select(e => e.Name));
+        Assert.DoesNotContain(api.Logs.Messages, m => m.Contains("THOUGHT-MARKER"));
+    }
+
+    [Fact]
+    public async Task A_model_that_does_not_reason_leaves_no_reasoning_in_the_trace()
+    {
+        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR),
+            "what is the procedure when a fee schedule is missing");
+        var trace = Trace(events);
+
+        Assert.DoesNotContain(trace, t => t.Kind == TraceKinds.ReasoningDelta);
+        Assert.DoesNotContain("REASONING_MESSAGE_CONTENT", events.Select(e => e.Name));
+        Assert.Contains(trace, t => t.Kind == TraceKinds.AnswerDelta);
+    }
 }

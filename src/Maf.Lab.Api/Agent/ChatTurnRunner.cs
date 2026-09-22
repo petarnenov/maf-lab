@@ -60,6 +60,7 @@ public sealed class ChatTurnRunner(
         var trace = new TurnTrace(events);
         var state = new TurnState(principal, conversationId, turnId, events, trace);
         var chunker = state.Answer;
+        var reasoning = state.Reasoning;
         var decision = IntentDecision.FromRules(Intent.Other);
         trace.Add(TraceKinds.TurnStart, $"Turn started on {InstanceIdentity.Name}", new JsonObject
         {
@@ -112,7 +113,11 @@ public sealed class ChatTurnRunner(
                 }).ToArray()),
             });
 
-            IChatClient chatClient = new TracingChatClient(models.CreateChatClient(), trace, chunker.Flush);
+            IChatClient chatClient = new TracingChatClient(models.CreateChatClient(), trace, () =>
+            {
+                reasoning.Flush();
+                chunker.Flush();
+            });
             if (options.Value.EmulateRequiredToolMode)
             {
                 chatClient = new RequiredToolModeChatClient(chatClient, call => trace.Add(TraceKinds.ToolForced,
@@ -155,7 +160,7 @@ public sealed class ChatTurnRunner(
                 callId => state.Arguments.TryGetValue(callId, out var a) ? a : null,
                 callId => state.Summaries.TryGetValue(callId, out var r) ? r : null);
 
-            await foreach (var e in Observed(agent, session, message, state, tools.Names, answer, chunker, ct)
+            await foreach (var e in Observed(agent, session, message, state, tools.Names, answer, chunker, reasoning, ct)
                 .AsAGUIEventStreamAsync(context, ct))
             {
                 if (redaction.Apply(e) is { } send)
@@ -183,6 +188,7 @@ public sealed class ChatTurnRunner(
         }
         finally
         {
+            reasoning.Flush();
             chunker.Flush();
         }
 
@@ -227,7 +233,8 @@ public sealed class ChatTurnRunner(
     /// </summary>
     private async IAsyncEnumerable<ChatResponseUpdate> Observed(
         AIAgent agent, AgentSession session, string message, TurnState state, IReadOnlySet<string> known,
-        StringBuilder answer, AnswerChunker chunker, [EnumeratorCancellation] CancellationToken ct)
+        StringBuilder answer, AnswerChunker chunker, AnswerChunker reasoning,
+        [EnumeratorCancellation] CancellationToken ct)
     {
         await foreach (var update in agent.RunStreamingAsync(message, session, cancellationToken: ct))
         {
@@ -238,6 +245,10 @@ public sealed class ChatTurnRunner(
                     case TextContent { Text.Length: > 0 } delta:
                         answer.Append(delta.Text);
                         chunker.Append(delta.Text);
+                        break;
+                    // The adapter turns this into the protocol's reasoning events; the trace keeps its own copy.
+                    case TextReasoningContent { Text.Length: > 0 } thought:
+                        reasoning.Append(thought.Text);
                         break;
                     case FunctionCallContent call when !known.Contains(call.Name):
                         await RecordUnknownToolAsync(state, call, ct);
@@ -293,6 +304,7 @@ public sealed class ChatTurnRunner(
         }
 
         state.Answer.Flush();
+        state.Reasoning.Flush();
         state.Arguments[callId] = args;
         state.Trace.Add(TraceKinds.ToolCall, $"Calling {name} over MCP", new JsonObject
         {
@@ -465,6 +477,7 @@ public sealed class ChatTurnRunner(
     {
         var name = new string(call.Name.Where(c => char.IsLetterOrDigit(c) || c is '_' or '-').Take(64).ToArray());
         state.Answer.Flush();
+        state.Reasoning.Flush();
         state.Arguments[call.CallId] = "";
         state.Summaries[call.CallId] = Result(name, "tool does not exist", 0, isError: true);
         state.Trace.Add(TraceKinds.ToolUnknown, $"Model asked for unknown tool '{name}' — refused", new JsonObject { ["callId"] = call.CallId, ["tool"] = name });
@@ -540,6 +553,9 @@ public sealed class ChatTurnRunner(
     {
         public TurnTrace Trace { get; } = trace;
         public AnswerChunker Answer { get; } = new(trace);
+
+        /// <summary>What the model thought on its way to the answer, chunked into the trace the same way.</summary>
+        public AnswerChunker Reasoning { get; } = new(trace, TraceKinds.ReasoningDelta, "Reasoning");
         public Principal Principal { get; } = principal;
         public string ConversationId { get; } = conversationId;
         public string TurnId { get; } = turnId;

@@ -47,6 +47,7 @@ def run(access, message, thread=None):
 def expected(frames):
     """What the browser should end up showing, read off the frames themselves."""
     answer = "".join(f["data"].get("delta", "") for f in frames if f["event"] == "TEXT_MESSAGE_CONTENT")
+    reasoning = "".join(f["data"].get("delta", "") for f in frames if f["event"] == "REASONING_MESSAGE_CONTENT")
     tools = [f["data"].get("toolCallName") for f in frames if f["event"] == "TOOL_CALL_START"]
     sources, trace, pending = 0, 0, None
     for frame in frames:
@@ -59,7 +60,9 @@ def expected(frames):
             interrupts = (frame["data"].get("outcome") or {}).get("interrupts") or []
             if interrupts:
                 pending = {"id": interrupts[0].get("id"), "reason": interrupts[0].get("reason")}
-    return {"answer": answer, "toolCalls": tools, "sources": sources, "traceSteps": trace, "pending": pending}
+    # Every frame gets a row in the monitor's AG-UI view, and the reasoning its own block in the chat.
+    return {"answer": answer, "reasoning": reasoning, "toolCalls": tools, "sources": sources,
+            "traceSteps": trace, "aguiFrames": len(frames), "pending": pending}
 
 adam = token("adam", "firm-a", "ADVISOR")
 rows = []
@@ -76,7 +79,8 @@ for name, what, message in [
     frames = run(adam, message)
     rows.append({"id": name, "what": what, "capturedAt": at, "frames": frames, "expect": expected(frames)})
     print(f"{name}: {len(frames)} frames, {len(rows[-1]['expect']['toolCalls'])} tool call(s), "
-          f"{rows[-1]['expect']['sources']} source(s), pending={rows[-1]['expect']['pending'] is not None}")
+          f"{rows[-1]['expect']['sources']} source(s), {len(rows[-1]['expect']['reasoning'])} reasoning chars, "
+          f"pending={rows[-1]['expect']['pending'] is not None}")
 
 with open(OUT, "w", encoding="utf-8") as out:
     for row in rows:

@@ -191,6 +191,14 @@ export const fixtureTrace: TraceEvent[] = [
       },
     ],
   }),
+  ev(300, 'reasoning.delta', 'Reasoning +38 chars', {
+    offset: 0,
+    text: 'The failure code says FS-REQUIRED, so ',
+  }),
+  ev(520, 'reasoning.delta', 'Reasoning +34 chars', {
+    offset: 37,
+    text: 'the account has no fee schedule.',
+  }),
   ev(600, 'answer.delta', 'Answer +32 chars', {
     offset: 0,
     text: 'Assign the missing fee schedule ',

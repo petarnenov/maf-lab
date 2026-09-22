@@ -19,6 +19,7 @@ characters and a trace at 1 MB; `truncated: true` marks a capped event. JSON is 
 | `tool.call` | `{ callId, tool, arguments }` — full arguments |
 | `tool.result` | `{ callId, tool, isError, latencyMs, mcpInstance, result }` — raw MCP CallToolResult (structuredContent, content, isError) without diagnostics |
 | `retrieval` | `{ callId, instance, tenantScope: [tenantId], settings: { mode, fusion, denseVector, limit, prefetchLimit, rerank }, query: { text, original, translated, translationMs, translationNote, terms: [{ term, idf }], denseModel, denseDims }, dense: [Candidate], sparse: [Candidate], fused: [Candidate], rerank: [chunkId] \| null, timings: { embedMs, sparseEncodeMs, qdrantMs, rerankMs } }` |
+| `reasoning.delta` | `{ offset, text }` — what the model thought on its way to the answer, coalesced by the same rules as `answer.delta` and with its own offsets. A model that reasons in several stretches has each recorded where it happened, so reasoning that came before a tool call is recorded before it. Absent for a model that does not reason |
 | `answer.delta` | `{ offset, text }` — the streamed answer, coalesced (≤160 chars or 150 ms per chunk, flushed before tool calls and at the end); offsets are contiguous from 0 and the texts concatenate to the full answer |
 | `envelope` | `{ callId, tool, text }` — the exact `<tool_data>` string the model received |
 | `tool.unknown` | `{ callId, tool }` — the model asked for a tool that does not exist |
@@ -37,8 +38,8 @@ translation into the corpus language, and `query.original` is what the user aske
 `translationNote` explains a query searched as written despite needing translation (timeout, failure, unusable answer).
 
 Typical order for a procedural question: `turn.start → intent → prompt → history → tool.forced → tool.call →
-tool.result → retrieval → audit → envelope → model.request → answer.delta… → model.response → memory → sources → signals →
-turn.end`.
+tool.result → retrieval → audit → envelope → model.request → reasoning.delta… → answer.delta… → model.response →
+memory → sources → signals → turn.end`.
 The trace is stored before `done` is sent, so the stored copy is readable as soon as the stream ends.
 
 ## AG-UI frames

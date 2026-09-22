@@ -166,6 +166,11 @@ export function useChatStream() {
     [token],
   );
 
+  /** A person opening or closing a turn's reasoning; from then on the block is theirs, not the answer's. */
+  const toggleReasoning = useCallback((turnId: string, open: boolean) => {
+    dispatch({ type: 'toggle_reasoning', turnId, open });
+  }, []);
+
   const hydrate = useCallback((detail: ConversationDetail) => {
     abortRef.current?.abort();
     conversationRef.current = detail.conversationId;
@@ -202,7 +207,7 @@ export function useChatStream() {
     [token],
   );
 
-  return { state, send, reset, hydrate, answer, loadPending };
+  return { state, send, reset, hydrate, answer, loadPending, toggleReasoning };
 }
 
 /** What the run said, read as what became of the proposal. The words are the server's own. */

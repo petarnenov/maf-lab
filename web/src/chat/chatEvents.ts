@@ -3,6 +3,7 @@ import {
   EventType,
   type BaseEvent,
   type CustomEvent,
+  type ReasoningMessageContentEvent,
   type RunErrorEvent,
   type RunFinishedEvent,
   type TextMessageContentEvent,
@@ -76,6 +77,19 @@ export function toChatEvents(event: BaseEvent): ChatStreamEvent[] {
         },
       ];
     }
+
+    // What the model thought on its way to the answer. The block opens on the first delta, so the message's own
+    // start and end carry nothing this screen needs; `REASONING_END` is what stops the thinking clock.
+    case EventType.REASONING_MESSAGE_CONTENT:
+      return [
+        {
+          type: 'reasoning_delta',
+          data: { text: (event as ReasoningMessageContentEvent).delta },
+        },
+      ];
+
+    case EventType.REASONING_END:
+      return [{ type: 'reasoning_end' }];
 
     case EventType.CUSTOM:
       return custom(event as CustomEvent);
