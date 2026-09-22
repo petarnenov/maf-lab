@@ -56,9 +56,14 @@ public class AgentUnitTests
     {
         Assert.Contains(TurnSignal.NoToolOnHowWhy, TurnSignals.Compute(Intent.Procedural, 0, false, 100, 0, 800));
         Assert.DoesNotContain(TurnSignal.NoToolOnHowWhy, TurnSignals.Compute(Intent.Data, 0, false, 100, 0, 800));
+        // Searched and ended with nothing to cite: the turn a reviewer should see.
         Assert.Contains(TurnSignal.ZeroRetrievalResults, TurnSignals.Compute(Intent.Procedural, 1, true, 100, 0, 800));
+        // Searched and ended with sources — whatever any one search returned on the way there.
+        Assert.DoesNotContain(TurnSignal.ZeroRetrievalResults, TurnSignals.Compute(Intent.Procedural, 2, true, 100, 5, 800));
+        // Never searched: nothing to say about retrieval that did not happen.
+        Assert.DoesNotContain(TurnSignal.ZeroRetrievalResults, TurnSignals.Compute(Intent.Other, 0, false, 100, 0, 800));
         Assert.Contains(TurnSignal.LongAnswerWithoutSources, TurnSignals.Compute(Intent.Other, 0, false, 900, 0, 800));
-        Assert.Empty(TurnSignals.Compute(Intent.Procedural, 1, false, 900, 3, 800));
+        Assert.Empty(TurnSignals.Compute(Intent.Procedural, 1, true, 900, 3, 800));
     }
 
     [Fact]

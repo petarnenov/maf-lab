@@ -209,7 +209,7 @@ public sealed class ChatTurnRunner(
         }
 
         var text = answer.ToString().Trim();
-        var signals = TurnSignals.Compute(decision.Intent, state.ToolCalls.Count, state.ZeroResults, text.Length, sources.Count, options.Value.LongAnswerChars);
+        var signals = TurnSignals.Compute(decision.Intent, state.ToolCalls.Count, state.Searched, text.Length, sources.Count, options.Value.LongAnswerChars);
         trace.Add(TraceKinds.Sources, $"{sources.Count} source(s)", new JsonObject
         {
             ["sources"] = new JsonArray(sources.Select(x => (JsonNode)new JsonObject { ["docId"] = x.DocId, ["sectionPath"] = x.SectionPath }).ToArray()),
@@ -364,9 +364,11 @@ public sealed class ChatTurnRunner(
         TraceToolResult(state.Trace, callId, name, result, isError, latency);
         var (summary, sources) = Summarise(name, structured, isError);
         state.Sources.AddRange(sources);
-        if (name == "search_documents" && !isError && sources.Count == 0)
+        if (name == "search_documents" && !isError)
         {
-            state.ZeroResults = true;
+            // Whether this call found anything is not the question: a turn that searches again and succeeds has
+            // nothing wrong with it. What matters is that the turn asked the documentation at all.
+            state.Searched = true;
         }
 
         var outcome = isError ? "error" : "ok";
@@ -591,7 +593,7 @@ public sealed class ChatTurnRunner(
         public IReadOnlySet<string> KnownTools { get; set; } = new HashSet<string>();
         public List<ToolCallRecord> ToolCalls { get; } = [];
         public List<SourceRef> Sources { get; } = [];
-        public bool ZeroResults { get; set; }
+        public bool Searched { get; set; }
 
         /// <summary>The user's words this turn, which is what a reviewer's question gets answered with.</summary>
         public string UserMessage { get; set; } = "";

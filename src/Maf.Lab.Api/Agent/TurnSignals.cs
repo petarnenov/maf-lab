@@ -6,14 +6,18 @@ namespace Maf.Lab.Api.Agent;
 /// <summary>Production signals that route a turn into the review queue.</summary>
 public static class TurnSignals
 {
-    public static List<string> Compute(Intent intent, int toolCalls, bool zeroResults, int answerChars, int sourceCount, int longAnswerChars)
+    /// <param name="searched">The turn called search_documents at least once, whatever any one call returned.</param>
+    /// <param name="sourceCount">Sources the whole turn ended with. Only search_documents contributes any.</param>
+    public static List<string> Compute(Intent intent, int toolCalls, bool searched, int answerChars, int sourceCount, int longAnswerChars)
     {
         var signals = new List<string>();
         if (IntentClassifier.IsHowWhy(intent) && toolCalls == 0)
         {
             signals.Add(TurnSignal.NoToolOnHowWhy);
         }
-        if (zeroResults)
+        // The turn asked the documentation and came away with nothing to cite. A turn whose first search was
+        // empty and whose second was not is not this: it answered, and there is nothing for a reviewer to label.
+        if (searched && sourceCount == 0)
         {
             signals.Add(TurnSignal.ZeroRetrievalResults);
         }
