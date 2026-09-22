@@ -26,6 +26,11 @@ public partial class Program
         // What this service emits about itself. Nothing is exported unless an OTLP endpoint is configured.
         builder.AddLabTelemetry("maf-lab-api");
 
+        // The one place every replica reads. A replica that cannot see it answers some requests correctly and
+        // loses others, so it does not start at all.
+        builder.AddSharedState();
+        builder.RequireSharedState<Maf.Lab.Domain.SharedState.IRunStateStore>();
+
         builder.Services.AddMafIndexing(builder.Configuration);
         builder.Services.AddDevJwtAuthentication(builder.Configuration);
         builder.Services.AddA2APartnerAuthentication(builder.Configuration);
@@ -82,6 +87,10 @@ public partial class Program
         builder.Services.AddSingleton<global::A2A.IA2ARequestHandler, A2ARequestHandlerWithExtras>();
         builder.Services.Configure<Agent.Tracing.TracingOptions>(builder.Configuration.GetSection(Agent.Tracing.TracingOptions.Section));
         builder.Services.AddSingleton<Agent.Tracing.TraceRetentionService>();
+        builder.Services.Configure<Storage.MessageRetentionOptions>(
+            builder.Configuration.GetSection(Storage.MessageRetentionOptions.Section));
+        builder.Services.AddSingleton<Storage.MessageRetentionService>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<Storage.MessageRetentionService>());
         builder.Services.AddHostedService(sp => sp.GetRequiredService<Agent.Tracing.TraceRetentionService>());
 
         var app = builder.Build();

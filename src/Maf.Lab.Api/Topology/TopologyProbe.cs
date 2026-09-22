@@ -54,6 +54,7 @@ public sealed class TopologyProbe(
     QdrantClient qdrantClient,
     IHttpClientFactory http,
     IMemoryCache cache,
+    Maf.Lab.Hosting.SharedStateHealth shared,
     TimeProvider time,
     IServiceResolver resolver,
     ILoggerFactory loggers)
@@ -79,6 +80,10 @@ public sealed class TopologyProbe(
         new("otel-collector", "jaeger", "traces"),
         new("api", "prometheus", "query"),
         new("lb", "jaeger", "/jaeger"),
+        // The one place every replica reads: conversations' neighbours in flight, run state, tasks, webhooks.
+        new("api", "redis", "shared state"),
+        new("mcp", "redis", "idempotency"),
+        new("compliance", "redis", "tasks"),
     ];
 
     private readonly ILogger _logger = loggers.CreateLogger<TopologyProbe>();
@@ -87,7 +92,7 @@ public sealed class TopologyProbe(
     public static IReadOnlyList<string> NodeIds { get; } =
     [
         "lb", "web", "api", "mcp", "compliance", "qdrant", "ollama-embeddings", "chat-provider",
-        "otel-collector", "prometheus", "jaeger",
+        "otel-collector", "prometheus", "jaeger", "redis",
     ];
 
     public async Task<TopologyReport> GetAsync(string bearerToken, CancellationToken ct)
@@ -123,12 +128,26 @@ public sealed class TopologyProbe(
         var collector = Http("otel-collector", "otel collector", o.CollectorHealthUrl, timeout, ct);
         var metrics = Http("prometheus", "prometheus", o.PrometheusHealthUrl, timeout, ct);
         var traces = Http("jaeger", "jaeger", o.JaegerHealthUrl, timeout, ct);
+        var shared = SharedStateAsync(ct);
 
-        var probed = await Task.WhenAll(lb, web, api, mcp, compliance, store, embeddings, collector, metrics, traces);
+        var probed = await Task.WhenAll(lb, web, api, mcp, compliance, store, embeddings, collector, metrics, traces, shared);
         var byId = probed.Append(ChatProvider()).ToDictionary(n => n.Id);
         var ordered = NodeIds.Select(id => byId[id]).ToList();
 
         return new TopologyReport(time.GetUtcNow(), o.CacheSeconds, discovery, InstanceIdentity.Name, ordered, Edges);
+    }
+
+    /// <summary>
+    /// The shared store, asked the way the api asks it: this replica's own connection. A store that answers here
+    /// is a store this replica can serve from, which is the only question the report is about.
+    /// </summary>
+    private async Task<TopologyNode> SharedStateAsync(CancellationToken ct)
+    {
+        var facts = new Dictionary<string, string> { ["role"] = "shared state" };
+        var (ok, reason) = await shared.CheckAsync(ct);
+        return ok
+            ? new TopologyNode("redis", "redis", NodeHealth.Healthy, [], facts, null)
+            : new TopologyNode("redis", "redis", NodeHealth.Unreachable, [], facts, reason);
     }
 
     /// <summary>The paid remote chat endpoint is deliberately not contacted; configuration is the whole answer.</summary>

@@ -80,11 +80,19 @@ public sealed class FakeToolSource : IToolSource
     /// <summary>Adjustments this fake has applied, keyed by the state they were proposed with.</summary>
     public Dictionary<string, decimal> Applied { get; } = [];
 
+    /// <summary>The idempotency keys confirmations arrived with, so a test can see the caller's own reached here.</summary>
+    public List<string> IdempotencyKeys { get; } = [];
+
     /// <summary>The server half of a confirmation: the state decides, an answer is needed, and it applies once.</summary>
     private Task<ModelContextProtocol.Protocol.CallToolResult> ConfirmAsync(
-        string tool, IReadOnlyDictionary<string, object?> arguments, string state, bool approve, CancellationToken ct)
+        string tool, IReadOnlyDictionary<string, object?> arguments, string state, bool approve,
+        string? idempotencyKey, CancellationToken ct)
     {
         Invocations.Add($"{tool}:confirm");
+        if (idempotencyKey is { Length: > 0 })
+        {
+            IdempotencyKeys.Add(idempotencyKey);
+        }
         var accountId = arguments.TryGetValue("accountId", out var a) ? a?.ToString() ?? "" : "";
         var amount = arguments.TryGetValue("amount", out var m) && m is decimal d ? d : 0m;
 

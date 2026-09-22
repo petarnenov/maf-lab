@@ -21,6 +21,11 @@ public partial class Program
         // What this service emits about itself. Nothing is exported unless an OTLP endpoint is configured.
         builder.AddLabTelemetry("maf-lab-mcp-retrieval");
 
+        // The one place every replica reads. A replica that cannot see it answers some requests correctly and
+        // loses others, so it does not start at all.
+        builder.AddSharedState();
+        builder.RequireSharedState<Maf.Lab.Domain.SharedState.IIdempotencyStore>();
+
         builder.Services.AddMafRetrievalCore(builder.Configuration);
         builder.Services.AddDevJwtAuthentication(builder.Configuration);
         // The writable store belongs to this server alone, so it is registered here and not in the shared core.

@@ -19,6 +19,9 @@ public sealed class ComplianceFactory : IAsyncDisposable
 {
     private WebApplication? app;
 
+    /// <summary>The running host, for a test that needs to look at what this replica can see.</summary>
+    public WebApplication App => app ?? throw new InvalidOperationException("call ListenAsync first");
+
     /// <summary>0 never asks for a justification, 1 always does.</summary>
     public double AskRate { get; init; }
 
@@ -33,6 +36,10 @@ public sealed class ComplianceFactory : IAsyncDisposable
     public CapturingLoggerProvider Logs { get; } = new();
 
     /// <summary>The address it is listening on, started on first use.</summary>
+    /// <summary>The stores this reviewer runs against, shared by every host a test starts over them.</summary>
+    public global::A2A.ITaskStore Tasks { get; init; } = new global::A2A.InMemoryTaskStore();
+    public Maf.Lab.A2A.IPushConfigStore PushConfigs { get; init; } = new FakePushConfigStore();
+
     public async Task<string> ListenAsync()
     {
         if (app is not null)
@@ -59,6 +66,10 @@ public sealed class ComplianceFactory : IAsyncDisposable
             });
             builder.Logging.ClearProviders();
             builder.Logging.AddProvider(Logs).SetMinimumLevel(LogLevel.Information);
+            // A store, not a particular one: the reviewer requires that its tasks are not in its own memory,
+            // and these tests are about the reviewer rather than about Redis.
+            builder.Services.AddSingleton<global::A2A.ITaskStore>(Tasks);
+            builder.Services.AddSingleton<Maf.Lab.A2A.IPushConfigStore>(PushConfigs);
         });
         await app.StartAsync();
 

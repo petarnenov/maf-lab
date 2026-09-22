@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
+    <PackageReference Include="StackExchange.Redis" />
     <PackageReference Include="A2A" />
   </ItemGroup>
   <ItemGroup>

@@ -2,6 +2,7 @@ using A2A;
 using Maf.Lab.A2A;
 using Maf.Lab.ComplianceAgent;
 using Maf.Lab.Hosting;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
 namespace Maf.Lab.ComplianceAgent;
@@ -22,6 +23,9 @@ public partial class Program
         // What this service emits about itself. Nothing is exported unless an OTLP endpoint is configured.
         builder.AddLabTelemetry("maf-lab-compliance");
 
+        // Two replicas of this agent serve one caller's task, so nothing of it may live in either one's memory.
+        builder.AddSharedState();
+
         builder.Services.Configure<Maf.Lab.Domain.Configuration.AuthOptions>(
             builder.Configuration.GetSection(Maf.Lab.Domain.Configuration.AuthOptions.Section));
         builder.Services.Configure<ReviewOptions>(builder.Configuration.GetSection(ReviewOptions.Section));
@@ -31,8 +35,11 @@ public partial class Program
         builder.Services.AddSingleton(TimeProvider.System);
 
         builder.Services.AddSingleton(ComplianceAgentCard.Descriptor);
-        builder.Services.AddSingleton<ITaskStore, InMemoryTaskStore>();
-        builder.Services.AddSingleton<IPushConfigStore, InMemoryPushConfigStore>();
+        // Two replicas serve one caller's review, so neither may be the only one that knows about it. Added with
+        // TryAdd so a host that brought its own store — a test over one it can read — keeps it.
+        builder.Services.TryAddSingleton<ITaskStore, RedisTaskStore>();
+        builder.Services.TryAddSingleton<IPushConfigStore, RedisPushConfigStore>();
+        builder.RequireSharedState<ITaskStore>();
         builder.Services.AddSingleton<IAgentHandler, ReviewAgentHandler>();
         builder.Services.AddSingleton<ChannelEventNotifier>();
         builder.Services.AddSingleton<A2AServer>();

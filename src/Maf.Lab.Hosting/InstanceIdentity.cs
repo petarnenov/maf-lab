@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+
 namespace Maf.Lab.Hosting;
 
 /// <summary>
@@ -21,9 +23,24 @@ public static class InstanceIdentity
             return next(context);
         });
 
+    /// <summary>
+    /// Health is what this replica can actually serve. A replica that cannot reach the shared state answers some
+    /// requests correctly and loses others, so it says it is not healthy and the balancer routes around it.
+    /// </summary>
     public static IEndpointRouteBuilder MapInstanceHealth(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/health", () => Results.Ok(new { status = "ok", instance = Name })).AllowAnonymous();
+        // Resolved from the request rather than taken as a parameter, which a minimal API would read as a body.
+        app.MapGet("/health", async (HttpContext http, CancellationToken ct) =>
+        {
+            if (http.RequestServices.GetService<SharedStateHealth>() is not { } shared)
+            {
+                return Results.Ok(new { status = "ok", instance = Name });
+            }
+            var (ok, reason) = await shared.CheckAsync(ct);
+            return ok
+                ? Results.Ok(new { status = "ok", instance = Name })
+                : Results.Json(new { status = "degraded", instance = Name, reason }, statusCode: 503);
+        }).AllowAnonymous();
         return app;
     }
 }

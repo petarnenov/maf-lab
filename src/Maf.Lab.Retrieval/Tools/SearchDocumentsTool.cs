@@ -85,6 +85,20 @@ public sealed class SearchDocumentsTool(DocumentSearchService search, IPrincipal
         context?.Params?.Meta is { } meta && meta.TryGetPropertyValue(TraceFlag, out var flag) && flag is not null
         && flag.GetValueKind() == System.Text.Json.JsonValueKind.True;
 
+    /// <summary>
+    /// The same result as <see cref="Structured{T}"/>, from JSON already serialized — so an answer replayed under
+    /// an idempotency key is byte for byte the answer the first call gave.
+    /// </summary>
+    internal static CallToolResult Raw(string json)
+    {
+        var element = JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+        return new CallToolResult
+        {
+            StructuredContent = element,
+            Content = [new TextContentBlock { Text = element.GetRawText() }],
+        };
+    }
+
     internal static CallToolResult Structured<T>(T value)
     {
         var element = JsonSerializer.SerializeToElement(value, McpJson.Options);

@@ -46,6 +46,9 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
     public IReadOnlyDictionary<string, string?> ExtraSettings { get; init; } = new Dictionary<string, string?>();
     /// <summary>Extra service overrides for one test (applied after the standard ones).</summary>
     public Action<IServiceCollection>? ConfigureTestServices { get; set; }
+    /// <summary>The shared stores this host runs against, so a test can read what a run left in them.</summary>
+    public FakeRunStateStore Runs { get; } = new();
+    public FakeIdempotencyStore Idempotency { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -70,6 +73,12 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
             s.AddSingleton<IToolSource>(Tools);
             s.RemoveAll<IChatClientFactory>();
             s.AddSingleton<IChatClientFactory>(new FixedChatClientFactory(Chat, IntentModelName, Intent));
+            // A store, not a particular one: the service requires that there is one, and these tests are not
+            // about Redis. The store's own behaviour is proved against a real Redis in the integration tests.
+            s.RemoveAll<Maf.Lab.Domain.SharedState.IRunStateStore>();
+            s.AddSingleton<Maf.Lab.Domain.SharedState.IRunStateStore>(Runs);
+            s.RemoveAll<Maf.Lab.Domain.SharedState.IIdempotencyStore>();
+            s.AddSingleton<Maf.Lab.Domain.SharedState.IIdempotencyStore>(Idempotency);
             ConfigureTestServices?.Invoke(s);
         });
     }

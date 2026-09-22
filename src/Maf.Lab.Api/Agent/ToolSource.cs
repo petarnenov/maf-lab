@@ -18,8 +18,13 @@ public interface IToolSource
 /// Calls a tool outside the agent's loop, carrying a person's answer to a question the server asked: the
 /// state says what was proposed, and the answer says whether to do it.
 /// </summary>
+/// <param name="idempotencyKey">
+/// The caller's own, so a confirmation sent again after a stream was interrupted is answered rather than applied
+/// twice. Null when the caller did not give one.
+/// </param>
 public delegate Task<ModelContextProtocol.Protocol.CallToolResult> ConfirmedCall(
-    string tool, IReadOnlyDictionary<string, object?> arguments, string state, bool approve, CancellationToken ct);
+    string tool, IReadOnlyDictionary<string, object?> arguments, string state, bool approve,
+    string? idempotencyKey, CancellationToken ct);
 
 public sealed class ToolSet(IReadOnlyList<AITool> tools, IAsyncDisposable? owner, ConfirmedCall? confirm = null) : IAsyncDisposable
 {
@@ -66,12 +71,20 @@ public sealed class McpToolSource(IOptions<AgentOptions> options, ILoggerFactory
         var traced = options.Value.TraceRetrieval
             ? tools.Select(t => t.WithMeta(new System.Text.Json.Nodes.JsonObject { [TraceMeta.Flag] = true })).Cast<AITool>().ToList()
             : tools.Cast<AITool>().ToList();
-        return new ToolSet(traced, client, (tool, arguments, state, approve, token) =>
+        return new ToolSet(traced, client, (tool, arguments, state, approve, idempotencyKey, token) =>
             client.CallToolAsync(new ModelContextProtocol.Protocol.CallToolRequestParams
             {
                 Name = tool,
                 Arguments = arguments.ToDictionary(a => a.Key, a => System.Text.Json.JsonSerializer.SerializeToElement(a.Value)),
                 RequestState = state,
+                // The caller's key rides in the request's metadata: a tool argument would be a thing the model
+                // could invent, and this belongs to whoever is retrying.
+                Meta = idempotencyKey is { Length: > 0 }
+                    ? new System.Text.Json.Nodes.JsonObject
+                    {
+                        [Maf.Lab.Domain.Billing.FeeAdjustmentTool.IdempotencyMetaKey] = idempotencyKey,
+                    }
+                    : null,
                 InputResponses = new Dictionary<string, ModelContextProtocol.Protocol.InputResponse>
                 {
                     [Maf.Lab.Domain.Billing.FeeAdjustmentTool.ConfirmationKey] =

@@ -31,6 +31,8 @@ x-app-env: &app-env
   Compliance__ClientSecret: ${COMPLIANCE_CLIENT_SECRET:-assistant-dev-secret}
   # Where the signals go. Unset it and the services export nothing, which is what the tests do.
   Telemetry__Endpoint: ${TELEMETRY_ENDPOINT:-http://otel-collector:4317}
+  # The one place every replica reads. A service that needs it does not start without it.
+  SharedState__ConnectionString: ${REDIS_CONNECTION:-redis:6379}
 
 services:
   qdrant:
@@ -91,6 +93,8 @@ services:
         condition: service_healthy
       ollama-init:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
 
   compliance:
     build:
@@ -108,6 +112,9 @@ services:
       A2A__RequiredScope: a2a.compliance.review
       A2A__Partners__maf-lab-assistant__Secret: ${COMPLIANCE_CLIENT_SECRET:-assistant-dev-secret}
       A2A__Partners__maf-lab-assistant__Scopes__0: a2a.compliance.review
+    depends_on:
+      redis:
+        condition: service_healthy
 
   api:
     build:
@@ -143,6 +150,8 @@ services:
     depends_on:
       mcp-retrieval:
         condition: service_healthy
+      redis:
+        condition: service_healthy
 
   web:
     build:
@@ -152,6 +161,18 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+
+  # The shared state store: conversations, run state, tasks, webhooks and idempotency keys.
+  redis:
+    image: redis:8.8.3-alpine
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
 
   # Everything the lab emits arrives here; where it goes from here is this file's business, not the services'.
   otel-collector:
@@ -218,6 +239,8 @@ services:
         condition: service_healthy
       otel-collector:
         condition: service_started
+      redis:
+        condition: service_healthy
 
 volumes:
   qdrant-data:
@@ -225,3 +248,4 @@ volumes:
   api-data:
   retrieval-data:
   prometheus-data:
+  redis-data:

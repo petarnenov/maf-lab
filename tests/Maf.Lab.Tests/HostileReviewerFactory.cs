@@ -62,7 +62,7 @@ public sealed class HostileReviewerFactory : IAsyncDisposable
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddSingleton(ComplianceAgentCard.Descriptor);
         builder.Services.AddSingleton<ITaskStore, InMemoryTaskStore>();
-        builder.Services.AddSingleton<IPushConfigStore, InMemoryPushConfigStore>();
+        builder.Services.AddSingleton<IPushConfigStore, Maf.Lab.TestSupport.FakePushConfigStore>();
         builder.Services.AddSingleton<IAgentHandler>(_ => new ScriptedVerdictHandler(() => (Verdict, EchoedPlaceholder)));
         builder.Services.AddSingleton<ChannelEventNotifier>();
         builder.Services.AddSingleton<A2AServer>();

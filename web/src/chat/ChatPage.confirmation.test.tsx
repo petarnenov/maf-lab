@@ -176,7 +176,7 @@ describe('ChatPage with a write waiting', () => {
 
     expect(await screen.findByText(/Applied\. The fee on A-1042/)).toBeInTheDocument();
     expect(JSON.parse(bodies.at(-1)!).resume).toEqual([
-      { interruptId: 'adj_1', payload: { approve: true } },
+      { interruptId: 'adj_1', payload: { approve: true, idempotencyKey: 'adj_1:approve' } },
     ]);
     expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
   });
@@ -187,7 +187,11 @@ describe('ChatPage with a write waiting', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Reject' }));
 
     expect(await screen.findByText(/Nothing was applied/)).toBeInTheDocument();
-    expect(JSON.parse(bodies.at(-1)!).resume[0].payload).toEqual({ approve: false });
+    // The refusal carries its own key too: a retry of "no" must not become a "yes" the second time.
+    expect(JSON.parse(bodies.at(-1)!).resume[0].payload).toEqual({
+      approve: false,
+      idempotencyKey: 'adj_1:decline',
+    });
   });
 
   it('says so when the proposal is no longer waiting', async () => {
@@ -212,7 +216,7 @@ describe('ChatPage with a write waiting', () => {
         return streamResponse([run.started(), ...run.text('I have put it to you.'), paused()]);
       }
       expect(JSON.parse(init!.body as string).resume).toEqual([
-        { interruptId: 'adj_1', payload: { approve: true } },
+        { interruptId: 'adj_1', payload: { approve: true, idempotencyKey: 'adj_1:approve' } },
       ]);
       return resume.response;
     });

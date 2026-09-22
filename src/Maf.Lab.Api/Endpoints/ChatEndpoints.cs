@@ -4,6 +4,7 @@ using AGUI.Abstractions;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Streaming;
 using Maf.Lab.Domain.Chat;
+using Maf.Lab.Domain.SharedState;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Retrieval.Auth;
 
@@ -30,7 +31,7 @@ public static class ChatEndpoints
         // a previous run stopped for, which is how a write gets its approval.
         api.MapPost("/chat", async (RunAgentInput input, HttpContext http, IPrincipalAccessor principals,
             ConversationService conversations, ChatTurnRunner runner, ConfirmationService confirmations,
-            RunRegistry runs, RunFrameStore frames, CancellationToken ct) =>
+            RunRegistry runs, RunFrameStore frames, IRunStateStore runStates, CancellationToken ct) =>
         {
             var principal = principals.Current;
             var message = LastUserMessage(input);
@@ -54,7 +55,22 @@ public static class ChatEndpoints
             var token = http.Request.Headers.Authorization.ToString()["Bearer ".Length..].Trim();
 
             return TypedResults.ServerSentEvents(
-                Stream(runner, confirmations, runs, frames, principal, token, conversationId, runId, message?.Trim() ?? "", resume, ct));
+                Stream(runner, confirmations, runs, frames, runStates, principal, token, conversationId, runId,
+                    message?.Trim() ?? "", resume, ct));
+        });
+
+        // Coming back to a run: the tab was closed, or the stream dropped, and the client wants to know where the
+        // turn stands. Any replica can answer, because the state is not any one replica's.
+        api.MapGet("/chat/{runId}", async (string runId, IPrincipalAccessor principals, IRunStateStore runStates,
+            CancellationToken ct) =>
+        {
+            var principal = principals.Current;
+            var state = await runStates.GetAsync(runId, ct);
+            // A run of someone else's thread is not found, exactly as that thread is not found. A run nobody
+            // kept any more is not found either, rather than an empty run that never happened.
+            return state is null || state.UserId != principal.UserId || state.FirmId != principal.FirmId.Value
+                ? Results.NotFound()
+                : Results.Ok(state);
         });
 
         // Stopping a run this caller started, wherever it is running. Abandoning the stream does the same thing
@@ -75,11 +91,16 @@ public static class ChatEndpoints
 
     private static async IAsyncEnumerable<SseItem<object>> Stream(
         ChatTurnRunner runner, ConfirmationService confirmations, RunRegistry runs, RunFrameStore store,
-        Principal principal, string token, string conversationId, string runId, string message, AGUIResume? resume,
+        IRunStateStore runStates, Principal principal, string token, string conversationId, string runId,
+        string message, AGUIResume? resume,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         // Every event of this run passes here on its way out, the cancellation path's terminal event included.
         var frames = new RunFrameRecorder();
+        // And the same loop keeps the run's snapshot where every replica can read it, so a client that closed
+        // its tab can be told where the turn stands by whichever replica it comes back to.
+        var state = new RunStateTracker(runStates, principal, conversationId, runId, TimeProvider.System);
+        await state.SaveAsync(CancellationToken.None);
         var channel = Channel.CreateUnbounded<BaseEvent>(new UnboundedChannelOptions { SingleReader = true });
         using var registration = runs.Start(runId, ct);
 
@@ -117,11 +138,17 @@ public static class ChatEndpoints
             await foreach (var ev in channel.Reader.ReadAllAsync(ct))
             {
                 frames.Add(ev);
+                if (state.Observe(ev))
+                {
+                    await state.SaveAsync(CancellationToken.None);
+                }
                 yield return new SseItem<object>(ev, AGUIStream.FrameName(ev));
             }
         }
         finally
         {
+            // What the client saw last, whether the run ended or the client walked away from it.
+            await state.SaveAsync(CancellationToken.None);
             // What the client actually received, stored under the turn the run recorded. A run that recorded no
             // turn — an answer to a confirmation, or one the client walked away from — has nowhere to put them.
             // Not the request's token: the frames are worth keeping even when it has just been cancelled.

@@ -33,6 +33,8 @@
     <PackageVersion Include="Markdig" Version="1.3.2" />
     <!-- Transitive security pins -->
     <PackageVersion Include="Microsoft.Bcl.Memory" Version="10.0.12" />
+    <!-- The shared state store: the one place every replica reads (see DECISIONS.md). -->
+    <PackageVersion Include="StackExchange.Redis" Version="3.3.0" />
     <!-- Telemetry: the SDK, the OTLP exporter and the instrumentation for what the lab does not write itself.
          The agent and model instrumentation comes from Microsoft.Agents.AI / Microsoft.Extensions.AI above. -->
     <PackageVersion Include="OpenTelemetry" Version="1.19.1" />

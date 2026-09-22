@@ -4,6 +4,8 @@ using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 
+using Maf.Lab.TestSupport;
+
 namespace Maf.Lab.Tests;
 
 public class InstanceIdentityTests
@@ -30,7 +32,8 @@ public class InstanceIdentityTests
     [Fact]
     public async Task Mcp_server_responses_carry_the_instance_header()
     {
-        await using var server = new WebApplicationFactory<Maf.Lab.Retrieval.Program>();
+        await using var server = new WebApplicationFactory<Maf.Lab.Retrieval.Program>()
+            .WithWebHostBuilder(b => b.WithFakeSharedState());
         var response = await server.CreateClient().GetAsync("/health", Ct);
 
         Assert.Equal(Environment.MachineName, response.Headers.GetValues(InstanceIdentity.Header).Single());

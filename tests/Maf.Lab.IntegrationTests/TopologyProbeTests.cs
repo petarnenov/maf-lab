@@ -27,6 +27,7 @@ public class TopologyProbeTests(QdrantFixture qdrant)
             client,
             new StubHttpClientFactory(),
             new MemoryCache(new MemoryCacheOptions()),
+            new Maf.Lab.Hosting.SharedStateHealth(new ServiceCollection().BuildServiceProvider()),
             TimeProvider.System,
             new NoServiceResolver(),
             NullLoggerFactory.Instance);

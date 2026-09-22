@@ -11,6 +11,12 @@ public static class FeeAdjustmentTool
     /// <summary>The key of the one input the tool asks for.</summary>
     public const string ConfirmationKey = "confirmation";
 
+    /// <summary>
+    /// Where a caller's own idempotency key travels: in the request's metadata rather than in an argument, so a
+    /// model never invents one and the key belongs to whoever is retrying.
+    /// </summary>
+    public const string IdempotencyMetaKey = "maf-lab/idempotencyKey";
+
     /// <summary>The summary a person checks, carried in the question's _meta.</summary>
     public const string SummaryKey = "maf-lab/adjustment";
 

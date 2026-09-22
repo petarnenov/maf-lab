@@ -27,6 +27,7 @@ public sealed class FeeAdjustmentTools(
     FeeAdjustmentLedger ledger,
     ProposalSigner signer,
     IPrincipalAccessor principals,
+    Maf.Lab.Domain.SharedState.IIdempotencyStore idempotency,
     TimeProvider time,
     ILogger<FeeAdjustmentTools> logger)
 {
@@ -58,7 +59,7 @@ public sealed class FeeAdjustmentTools(
         try
         {
             return context?.Params?.RequestState is { Length: > 0 } state
-                ? Confirmed(state, context)
+                ? Confirmed(state, context).GetAwaiter().GetResult()
                 : Proposed(accountId, amount, reason);
         }
         catch (InputRequiredException)
@@ -145,7 +146,7 @@ public sealed class FeeAdjustmentTools(
     }
 
     /// <summary>Second call: the state says what was proposed, and only an accepted answer applies it.</summary>
-    private CallToolResult Confirmed(string state, RequestContext<CallToolRequestParams> context)
+    private async Task<CallToolResult> Confirmed(string state, RequestContext<CallToolRequestParams> context)
     {
         var principal = principals.Current;
 
@@ -185,6 +186,25 @@ public sealed class FeeAdjustmentTools(
             return ToolErrors.Error($"Account '{proposal.AccountId}' was not found. Check the account id.");
         }
 
+        // The caller's own key, when it sent one. The ledger already refuses to apply the same adjustment
+        // twice; this answers a call whose answer never arrived, which is a different promise.
+        var key = IdempotencyKeyOf(context);
+        var digest = Digest(proposal.AdjustmentId, approved: true);
+        if (key is not null)
+        {
+            var (outcome, recorded) = await idempotency.CheckAsync(principal.FirmId.Value, key, digest, CancellationToken.None);
+            if (outcome == Maf.Lab.Domain.SharedState.IdempotencyOutcome.Replay && recorded is not null)
+            {
+                return SearchDocumentsTool.Raw(recorded.Answer);
+            }
+            if (outcome == Maf.Lab.Domain.SharedState.IdempotencyOutcome.Conflict)
+            {
+                // A key already used for something else is a mistake, not a retry. Answering it with the first
+                // answer would be answering a question nobody asked.
+                return ToolErrors.Error("That idempotency key was used for a different request. Use a new one.");
+            }
+        }
+
         var applied = ledger.Apply(
             principal,
             proposal.AdjustmentId,
@@ -194,13 +214,32 @@ public sealed class FeeAdjustmentTools(
             proposal.Currency,
             time.GetUtcNow());
 
-        return SearchDocumentsTool.Structured(new FeeAdjustmentOutcome(
+        var answer = System.Text.Json.JsonSerializer.Serialize(new FeeAdjustmentOutcome(
             applied.AlreadyApplied ? "already_applied" : "applied",
             applied,
             applied.AlreadyApplied
                 ? $"That adjustment was already applied; the fee on {applied.AccountId} is {Amount(applied.CurrentFee, applied.Currency)}."
-                : $"Applied. The fee on {applied.AccountId} is now {Amount(applied.CurrentFee, applied.Currency)}."));
+                : $"Applied. The fee on {applied.AccountId} is now {Amount(applied.CurrentFee, applied.Currency)}."),
+            McpJson.Options);
+
+        if (key is not null)
+        {
+            await idempotency.RecordAsync(principal.FirmId.Value, key, digest, answer, CancellationToken.None);
+        }
+        return SearchDocumentsTool.Raw(answer);
     }
+
+    /// <summary>The caller's key, from the request's metadata. Never an argument: a model must not invent one.</summary>
+    private static string? IdempotencyKeyOf(RequestContext<CallToolRequestParams> context) =>
+        context.Params?.Meta is { } meta
+        && meta.TryGetPropertyValue(FeeAdjustmentTool.IdempotencyMetaKey, out var value)
+            ? value?.GetValue<string>()
+            : null;
+
+    /// <summary>What the call was, so a key reused for something else is caught rather than answered wrongly.</summary>
+    private static string Digest(string adjustmentId, bool approved) =>
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes($"{adjustmentId}|{approved}")));
 
     /// <summary>
     /// True when a person accepted, false when they declined, null when nobody was asked — a dismissed or

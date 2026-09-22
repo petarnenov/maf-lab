@@ -98,6 +98,10 @@ export function useChatStream() {
       const conversationId = conversationRef.current;
       if (!conversationId) return;
 
+      // The same answer to the same proposal is the same attempt, however many times the stream drops on the
+      // way. The key says so; the server then replays its first answer rather than applying anything twice.
+      const idempotencyKey = keyFor(adjustmentId, approve);
+
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
@@ -119,7 +123,7 @@ export function useChatStream() {
             threadId: conversationId,
             runId: nextId('r'),
             messages: [],
-            resume: [{ interruptId: adjustmentId, payload: { approve } }],
+            resume: [{ interruptId: adjustmentId, payload: { approve, idempotencyKey } }],
           }),
           signal: controller.signal,
         });
@@ -208,6 +212,14 @@ export function useChatStream() {
   );
 
   return { state, send, reset, hydrate, answer, loadPending, toggleReasoning };
+}
+
+/**
+ * A caller's idempotency key for one answer to one proposal. It is derived rather than random, so a retry of the
+ * same answer carries the same key — which is the whole point of having one.
+ */
+function keyFor(adjustmentId: string, approve: boolean): string {
+  return `${adjustmentId}:${approve ? 'approve' : 'decline'}`;
 }
 
 /** What the run said, read as what became of the proposal. The words are the server's own. */

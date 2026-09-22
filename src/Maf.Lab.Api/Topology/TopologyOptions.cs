@@ -26,4 +26,7 @@ public sealed class TopologyOptions
     public string CollectorHealthUrl { get; set; } = "http://otel-collector:8889/metrics";
     public string PrometheusHealthUrl { get; set; } = "http://prometheus:9090/-/healthy";
     public string JaegerHealthUrl { get; set; } = "http://jaeger:16686/jaeger/";
+
+    /// <summary>The shared state store. Probed by asking the api itself, which is the thing that needs it.</summary>
+    public string SharedStateName { get; set; } = "redis";
 }

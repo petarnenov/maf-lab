@@ -39,7 +39,8 @@ public sealed class ConfirmationService(
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     public async Task<ConfirmationOutcome> AnswerAsync(
-        Principal principal, string bearerToken, string conversationId, string adjustmentId, bool approve, CancellationToken ct)
+        Principal principal, string bearerToken, string conversationId, string adjustmentId, bool approve,
+        string? idempotencyKey, CancellationToken ct)
     {
         await using var context = await db.CreateDbContextAsync(ct);
         var row = await context.PendingAdjustments.FirstOrDefaultAsync(p => p.Id == adjustmentId, ct);
@@ -90,6 +91,7 @@ public sealed class ConfirmationService(
                 },
                 row.State,
                 approve: true,
+                idempotencyKey,
                 ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -121,10 +123,12 @@ public sealed class ConfirmationService(
         Principal principal, string bearerToken, string conversationId, string runId, AGUIResume resume,
         ChannelWriter<BaseEvent> events, CancellationToken ct)
     {
+        var idempotencyKey = IdempotencyKeyOf(resume);
         await events.WriteAsync(new RunStartedEvent { ThreadId = conversationId, RunId = runId }, ct);
 
         var approve = Approved(resume);
-        var outcome = await AnswerAsync(principal, bearerToken, conversationId, resume.InterruptId ?? "", approve, ct);
+        var outcome = await AnswerAsync(principal, bearerToken, conversationId, resume.InterruptId ?? "", approve,
+            idempotencyKey, ct);
 
         var messageId = $"m_{Guid.NewGuid():N}";
         var text = outcome switch
@@ -145,6 +149,16 @@ public sealed class ConfirmationService(
             Outcome = new RunFinishedSuccessOutcome(),
         }, ct);
     }
+
+    /// <summary>
+    /// The caller's own idempotency key, when it sent one. It is the client's way of saying "this is the same
+    /// attempt", which is what makes sending an interrupted call again safe.
+    /// </summary>
+    private static string? IdempotencyKeyOf(AGUIResume resume) =>
+        resume.Payload is JsonElement { ValueKind: JsonValueKind.Object } payload
+        && payload.TryGetProperty("idempotencyKey", out var key) && key.ValueKind == JsonValueKind.String
+            ? key.GetString()
+            : null;
 
     /// <summary>An answer is an approval only when it says so. Anything else leaves the fee where it is.</summary>
     private static bool Approved(AGUIResume resume)

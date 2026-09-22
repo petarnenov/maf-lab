@@ -144,6 +144,20 @@ conversation id returns `404`.
 `RunFrame` = `{ seq, atMs, type, name?, bytes, traceSeq?, payload?, truncated }` — see
 [trace-events.md](trace-events.md).
 
+## Runs
+
+| Method | Path | Response |
+|---|---|---|
+| GET | `/api/chat/{runId}` | `RunState` — where the run stands, answerable by any replica. The run's own thread decides who may read it; another principal's run, and one whose state is no longer kept, are both `404`. |
+
+`RunState` = `{ runId, conversationId, userId, firmId, answer, toolCalls, outcome, awaitingId, turnId, error,
+startedAt, updatedAt }`; `outcome` is `running`, `answered`, `awaiting_person`, `failed` or `cancelled`. It is a
+snapshot, not a replay — see [shared-state.md](shared-state.md).
+
+A confirmation may carry the caller's own idempotency key:
+`resume: [{ interruptId, payload: { approve, idempotencyKey } }]`. A repeat under that key is answered with the
+first answer; a different request under it is refused.
+
 ## Telemetry
 
 | Method | Path | Response |

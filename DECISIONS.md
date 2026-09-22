@@ -19,6 +19,7 @@ Pinned versions and the architectural decisions of maf-lab. **If a version moves
 | OpenTelemetry Collector | `otel/opentelemetry-collector-contrib:0.161.0` | `compose/docker-compose.yml` |
 | Prometheus | `prom/prometheus:v3.14.0` | `compose/docker-compose.yml` |
 | Jaeger | `jaegertracing/all-in-one:1.76.0` | `compose/docker-compose.yml` |
+| Redis | `redis:8.8.3-alpine` | `compose/docker-compose.yml` |
 
 ### Models (Ollama)
 
@@ -50,6 +51,7 @@ Pinned versions and the architectural decisions of maf-lab. **If a version moves
 | Microsoft.AspNetCore.Mvc.Testing | 10.0.12 |
 | Testcontainers.Qdrant | 4.15.0 |
 | Mono.Cecil | 0.11.6 |
+| StackExchange.Redis | 3.3.0 |
 | OpenTelemetry / .Extensions.Hosting / .Exporter.OpenTelemetryProtocol | 1.19.1 |
 | OpenTelemetry.Instrumentation.AspNetCore / .Http | 1.19.0 |
 | OpenTelemetry.Instrumentation.EntityFrameworkCore | 1.19.0-beta.1 |
@@ -848,3 +850,41 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
 - **The probe's own latency was not a measurement worth keeping.** The topology page showed the round trip of a
   request nobody made. Real latency comes from the traffic the service actually serves, so the probe stopped
   timing itself.
+
+## 31. The shared state store (add-shared-state-store, 2026-09-22)
+
+- **Stateless means the state is in one place, not that there is none.** Most of this system already believed
+  that: conversations, the api's A2A tasks and webhooks, and the applied ledger were in a SQLite file the
+  replicas share, and a cursor and a proposal's `state` were self-describing rather than keys into memory. What
+  was not: a run's state (`RunRegistry` is per-replica), the compliance reviewer's tasks and webhooks (two
+  replicas, both in memory), and an idempotency key the *caller* owns.
+- **StackExchange.Redis 3.3.0, `redis:8.8.3-alpine`.** One multiplexer per process, built where the other
+  cross-cutting wiring lives.
+- **An interface per kind of state, not one key-value interface.** `IConversationStore`, `IRunStateStore`,
+  `IIdempotencyStore` beside the A2A SDK's `ITaskStore` and this repo's `IPushConfigStore`. A Postgres
+  implementation is then a sibling class rather than an edit to every caller — which is the whole point of doing
+  Redis first and Postgres after.
+- **Refusing to start is a feature.** A replica that cannot reach the store would answer some requests correctly
+  and lose others. It does not begin serving, and while running it reports itself unhealthy so the balancer
+  routes around it — which is quieter than a file that silently disagrees between hosts.
+- **The ledger's UNIQUE index stays.** It is the guarantee about the money. The idempotency key is the guarantee
+  about the *call*: it replays the answer a caller never received, and refuses a different request under a key
+  already used.
+- **Conversations stayed in SQLite.** The plan moved them; the implementation showed why not. The conversation
+  list is one query over the turns — it filters to conversations that have them, searches their text, counts them
+  and takes the first question for a title — and the turns do not move, because they are the review queue's and
+  the evals' record. Splitting the header from the body would have turned one query into a cross-store join and
+  kept the same message text in two places. They were already shared; what they were missing is a retention.
+- **Two implementations of `ITaskStore`, on purpose.** The assistant keeps its tasks in SQLite because
+  `/admin/a2a` reads them in one query with the audit rows, and the audit chain does not move; the reviewer keeps
+  its in Redis because it has neither a page that queries them nor a database of its own, and two of its replicas
+  serve one caller's task. The rule is the same for both — nothing of a task lives in a replica's memory — and
+  only the place differs. Splitting the assistant's tasks from the audit now would also be work the Postgres
+  change would have to undo, since that is where the joinable set is meant to end up together.
+- **A port that accepts is not a replica that can serve.** The container healthchecks opened a TCP connection to
+  8080 and called that healthy, so `/health` could return 503 for a store it could not reach and nothing would
+  read it. They now make the request and require a 200, which is what puts a replica out of the pool and what
+  brings it back when the store answers — with no restart.
+- **Redis is not an audit store and this change does not pretend it is.** Turns, traces, the audit chain,
+  feedback, labels and the applied ledger stay in SQLite, and auditability of the state itself is what the
+  Postgres change is for.

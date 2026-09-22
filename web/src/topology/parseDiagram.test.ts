@@ -21,6 +21,7 @@ describe('parseDiagram', () => {
       'otel-collector',
       'prometheus',
       'qdrant',
+      'redis',
       'web',
     ]);
     const api = diagram.nodes.find((n) => n.id === 'api')!;

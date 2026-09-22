@@ -207,6 +207,7 @@ public sealed class McpServerTests(CorpusIndexFixture corpus) : IAsyncDisposable
         {
             b.UseEnvironment("Development");
             b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(values));
+            b.WithFakeSharedState();
             b.ConfigureTestServices(s =>
             {
                 s.RemoveAll<IDenseEncoder>();
@@ -259,6 +260,7 @@ public sealed class McpDiagnosticsTests(CorpusIndexFixture corpus)
         await using var factory = new WebApplicationFactory<Maf.Lab.Retrieval.Program>().WithWebHostBuilder(b =>
         {
             b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(values));
+            b.WithFakeSharedState();
             b.ConfigureTestServices(s =>
             {
                 s.RemoveAll<IDenseEncoder>();

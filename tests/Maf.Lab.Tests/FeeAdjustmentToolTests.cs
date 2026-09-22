@@ -10,6 +10,8 @@ using ModelContextProtocol.Server;
 // Both libraries have a Role; the caller's role is the one this file means.
 using Role = Maf.Lab.Domain.Tenancy.Role;
 
+using Maf.Lab.TestSupport;
+
 namespace Maf.Lab.Tests;
 
 /// <summary>
@@ -32,8 +34,11 @@ public class FeeAdjustmentToolTests : IDisposable
 
     private ProposalSigner Signer() => new("a-test-signing-key-that-is-long-enough", _time);
 
+    /// <summary>The keys this tool has answered under, so a test can send the same call again.</summary>
+    private readonly FakeIdempotencyStore _idempotency = new();
+
     private FeeAdjustmentTools Tools(Principal principal) => new(
-        Fees(), Ledger(), Signer(), new FixedPrincipalAccessor(principal), _time,
+        Fees(), Ledger(), Signer(), new FixedPrincipalAccessor(principal), _idempotency, _time,
         NullLogger<FeeAdjustmentTools>.Instance);
 
     public void Dispose()
@@ -49,13 +54,41 @@ public class FeeAdjustmentToolTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
+
+    [Fact]
+    public void A_confirmation_sent_again_under_one_key_is_answered_and_not_applied_twice()
+    {
+        var state = Propose(Adam).Result.RequestState!;
+
+        var first = Tools(Adam).Propose("A-1042", -200m, "confirmed", Context(state, true, idempotencyKey: "k-1"));
+        var again = Tools(Adam).Propose("A-1042", -200m, "confirmed", Context(state, true, idempotencyKey: "k-1"));
+
+        // Byte for byte the first answer: the caller never learns its call was a repeat, which is the point.
+        Assert.Equal(Text(first), Text(again));
+        Assert.Contains("\"status\":\"applied\"", Text(first));
+        Assert.DoesNotContain("already_applied", Text(again));
+    }
+
+    [Fact]
+    public void A_key_already_used_for_a_different_call_is_refused()
+    {
+        var first = Propose(Adam).Result.RequestState!;
+        Tools(Adam).Propose("A-1042", -200m, "confirmed", Context(first, true, idempotencyKey: "k-2"));
+
+        var other = Propose(Adam, amount: -50m).Result.RequestState!;
+        var refused = Tools(Adam).Propose("A-1042", -50m, "confirmed", Context(other, true, amount: -50m, idempotencyKey: "k-2"));
+
+        Assert.True(refused.IsError);
+        Assert.Contains("different request", Text(refused));
+    }
+
     // ---- helpers -------------------------------------------------------------------------------------
 
     /// <summary>A first call, which never returns: it asks for input.</summary>
     private InputRequiredException Propose(Principal who, string account = "A-1042", decimal amount = -200m, string reason = "client moved to the flat schedule") =>
         Assert.Throws<InputRequiredException>(() => Tools(who).Propose(account, amount, reason, Context(null, null)));
 
-    private static RequestContext<CallToolRequestParams> Context(string? state, bool? approved, string account = "A-1042", decimal amount = -200m, string? action = null)
+    private static RequestContext<CallToolRequestParams> Context(string? state, bool? approved, string account = "A-1042", decimal amount = -200m, string? action = null, string? idempotencyKey = null)
     {
         var parameters = new CallToolRequestParams
         {
@@ -82,6 +115,14 @@ public class FeeAdjustmentToolTests : IDisposable
             };
         }
 #pragma warning disable MCPEXP002 // A server the tool never calls; the context only carries the parameters.
+        if (idempotencyKey is not null)
+        {
+            // Where a caller's own key travels: the request's metadata, never an argument a model could invent.
+            parameters.Meta = new System.Text.Json.Nodes.JsonObject
+            {
+                [Maf.Lab.Domain.Billing.FeeAdjustmentTool.IdempotencyMetaKey] = idempotencyKey,
+            };
+        }
         return new RequestContext<CallToolRequestParams>(
             new FakeMcpServer(),
             new JsonRpcRequest { Method = "tools/call" },
