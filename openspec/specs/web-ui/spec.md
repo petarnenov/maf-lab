@@ -136,6 +136,11 @@ The monitor SHALL present the turn trace as:
 
 Every event's raw data SHALL be expandable.
 
+The retrieval view SHALL list every query term the search reported, including a term the indexed corpus has never
+seen. For such a term it SHALL say that the term is outside the vocabulary and cannot match on BM25, in place of a
+weight, and SHALL NOT render a weight the diagnostics did not give. The view SHALL do this for a turn in which
+every term is outside the vocabulary as readily as for one in which none is.
+
 The AG-UI view SHALL list the frames as one flat, ordered row each, never coalescing repeated types, showing the
 frame's position in the run, the milliseconds since the run started, the protocol event type, the custom event's
 name when it has one, and its size, with the payload expandable on the row. It SHALL include the frames the rest
@@ -153,6 +158,10 @@ has none rather than showing an empty list.
 #### Scenario: Retrieval internals visible
 - **WHEN** a turn's search_documents call completes
 - **THEN** the retrieval view lists the dense, sparse and fused candidates with chunk ids and scores for that call
+
+#### Scenario: A query term the corpus has never seen
+- **WHEN** a user opens the retrieval view for a turn whose question contained a term outside the indexed vocabulary
+- **THEN** the view lists that term, says it cannot match on BM25 instead of showing a weight, and renders the rest of the search normally
 
 #### Scenario: Live timeline
 - **WHEN** a turn is streaming
@@ -231,6 +240,32 @@ With the cursor before the first step, no frame SHALL be shown as reached.
 #### Scenario: Before the first step
 - **WHEN** the cursor is before the first step
 - **THEN** the AG-UI view dims every frame and highlights none
+
+### Requirement: A failing monitor view stays inside that view
+A defect while rendering one monitor view SHALL NOT remove the screen around it. The conversation, its answers and
+the controls for sending the next message SHALL remain on screen and usable, and the monitor's other views SHALL
+remain selectable and SHALL render.
+
+In place of the failing view the monitor SHALL say that this view could not be shown and name the view. It SHALL
+NOT put anything internal on the page — no exception type, message, stack frame, hostname or query text — and that
+SHALL be asserted against what is rendered. The failure SHALL be recoverable without reloading the page: selecting
+another view and returning SHALL attempt the view again.
+
+#### Scenario: One view fails
+- **WHEN** rendering one monitor view throws
+- **THEN** that view is replaced by a message naming it, and the chat around the monitor stays on screen and usable
+
+#### Scenario: The other views are unaffected
+- **WHEN** one monitor view has failed
+- **THEN** the remaining views can still be selected and render their content
+
+#### Scenario: Nothing internal is rendered
+- **WHEN** a monitor view has failed
+- **THEN** the rendered output contains no exception type, message, stack frame, hostname or query text
+
+#### Scenario: Recovering without a reload
+- **WHEN** a user leaves the failed view and comes back to it
+- **THEN** the view is rendered again rather than staying failed for the rest of the session
 
 ### Requirement: Chat as of a step
 When the cursor of the selected turn is before its last step, the chat pane SHALL show that turn as it was at the
