@@ -21,4 +21,9 @@ public sealed class TopologyOptions
     public double CacheSeconds { get; set; } = 5;
     /// <summary>The drawn diagram; empty falls back to walking up from the content root to docs/topology.drawio.</summary>
     public string DiagramPath { get; set; } = "";
+
+    /// <summary>Where the signals are collected, and where they are kept. Probed like any other service.</summary>
+    public string CollectorHealthUrl { get; set; } = "http://otel-collector:8889/metrics";
+    public string PrometheusHealthUrl { get; set; } = "http://prometheus:9090/-/healthy";
+    public string JaegerHealthUrl { get; set; } = "http://jaeger:16686/jaeger/";
 }

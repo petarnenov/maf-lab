@@ -46,6 +46,7 @@ public sealed class ChatTurnRunner(
     FeeAdjustmentFlow adjustments,
     IDbContextFactory<MafDbContext> db,
     IOptions<AgentOptions> options,
+    IOptions<Telemetry.TelemetryQueryOptions> telemetry,
     TimeProvider time,
     ILoggerFactory loggers)
 {
@@ -57,6 +58,7 @@ public sealed class ChatTurnRunner(
     {
         var turnId = $"t_{Guid.NewGuid():N}";
         await events.WriteAsync(new RunStartedEvent { ThreadId = conversationId, RunId = runId }, ct);
+        var traceId = Activity.Current?.TraceId.ToHexString();
         var trace = new TurnTrace(events);
         var state = new TurnState(principal, conversationId, turnId, events, trace);
         var chunker = state.Answer;
@@ -68,12 +70,16 @@ public sealed class ChatTurnRunner(
             ["turnId"] = turnId,
             ["principal"] = new JsonObject { ["userId"] = principal.UserId, ["firmId"] = principal.FirmId.Value, ["role"] = principal.Role.ToString() },
             ["apiInstance"] = InstanceIdentity.Name,
+            // Where this turn's spans are, so a person reading it can open the whole trace.
+            ["traceId"] = traceId,
+            ["traceUrl"] = telemetry.Value.TraceUrlFor(traceId),
             ["question"] = message,
         });
         var forced = false;
         string? error = null;
         var answer = new StringBuilder();
         var sw = Stopwatch.StartNew();
+        LabTelemetry.Instruments.Turns.Add(1, new KeyValuePair<string, object?>("outcome", "started"));
 
         try
         {
@@ -113,7 +119,10 @@ public sealed class ChatTurnRunner(
                 }).ToArray()),
             });
 
-            IChatClient chatClient = new TracingChatClient(models.CreateChatClient(), trace, () =>
+            // The GenAI span and its duration and token metrics belong to the provider call itself, so the
+            // framework's instrumentation sits innermost — below the trace, which is this system's own record.
+            // Sensitive data is never enabled: prompts and completions must not leave the process.
+            IChatClient chatClient = new TracingChatClient(new OpenTelemetryChatClient(models.CreateChatClient()), trace, () =>
             {
                 reasoning.Flush();
                 chunker.Flush();
@@ -141,6 +150,7 @@ public sealed class ChatTurnRunner(
                     loggers)
                 .AsBuilder()
                 .Use((agent, context, next, token) => InvokeToolAsync(state, context, next, token))
+                .UseOpenTelemetry()
                 .Build();
 
             var session = await agent.CreateSessionAsync(ct);
@@ -206,6 +216,12 @@ public sealed class ChatTurnRunner(
         });
         trace.Add(TraceKinds.Signals, signals.Count == 0 ? "No review signals" : $"Signals: {string.Join(", ", signals)}",
             new JsonObject { ["signals"] = new JsonArray(signals.Select(x => (JsonNode)JsonValue.Create(x)!).ToArray()) });
+        // How the turn ended, as one number an operator can aggregate. A pause is not a failure.
+        var outcome = error is not null ? "failed" : state.AwaitingConfirmation ? "awaiting_person" : "answered";
+        LabTelemetry.Instruments.Turns.Add(1, new KeyValuePair<string, object?>("outcome", outcome));
+        LabTelemetry.Instruments.TurnDuration.Record(sw.Elapsed.TotalMilliseconds,
+            new KeyValuePair<string, object?>("outcome", outcome),
+            new KeyValuePair<string, object?>("intent", decision.Intent.ToString()));
         trace.Add(TraceKinds.TurnEnd, $"Turn finished in {sw.ElapsedMilliseconds} ms{(error is null ? "" : " with an error")}", new JsonObject
         {
             ["durationMs"] = sw.ElapsedMilliseconds,
@@ -313,6 +329,11 @@ public sealed class ChatTurnRunner(
 
         var sw = Stopwatch.StartNew();
         object? result;
+        // The call out to MCP: no library writes this span, and without it a slow turn cannot be split between
+        // the model and the tools. The tool's name travels; its arguments do not.
+        using var span = LabTelemetry.Source.StartActivity("tool.call");
+        span?.SetTag("tool.name", name);
+        span?.SetTag("tool.call_id", callId);
         try
         {
             result = await next(context, ct);
@@ -350,6 +371,10 @@ public sealed class ChatTurnRunner(
 
         var outcome = isError ? "error" : "ok";
         await audit.RecordAsync(new AuditEntry(state.Principal, state.ConversationId, state.TurnId, name, args, outcome, latency), ct);
+        // Counted where the audit row is written, so the two can never disagree about what happened.
+        LabTelemetry.Instruments.ToolCalls.Add(1,
+            new KeyValuePair<string, object?>("tool.name", name),
+            new KeyValuePair<string, object?>("outcome", outcome));
         state.Trace.Add(TraceKinds.Audit, $"Audit: {name} {outcome}", new JsonObject
         {
             ["callId"] = callId, ["tool"] = name, ["arguments"] = args, ["outcome"] = outcome, ["durationMs"] = latency,
@@ -482,6 +507,9 @@ public sealed class ChatTurnRunner(
         state.Summaries[call.CallId] = Result(name, "tool does not exist", 0, isError: true);
         state.Trace.Add(TraceKinds.ToolUnknown, $"Model asked for unknown tool '{name}' — refused", new JsonObject { ["callId"] = call.CallId, ["tool"] = name });
         await audit.RecordAsync(new AuditEntry(state.Principal, state.ConversationId, state.TurnId, name, "", "unknown_tool", 0), ct);
+        LabTelemetry.Instruments.ToolCalls.Add(1,
+            new KeyValuePair<string, object?>("tool.name", name),
+            new KeyValuePair<string, object?>("outcome", "unknown_tool"));
         state.Trace.Add(TraceKinds.Audit, $"Audit: {name} unknown_tool", new JsonObject
         {
             ["callId"] = call.CallId, ["tool"] = name, ["arguments"] = "", ["outcome"] = "unknown_tool", ["durationMs"] = 0,

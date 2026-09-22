@@ -18,6 +18,9 @@ public partial class Program
         builder.Configuration.AddJsonFile("retrieval.json", optional: true).AddEnvironmentVariables();
         configure?.Invoke(builder);
 
+        // What this service emits about itself. Nothing is exported unless an OTLP endpoint is configured.
+        builder.AddLabTelemetry("maf-lab-mcp-retrieval");
+
         builder.Services.AddMafRetrievalCore(builder.Configuration);
         builder.Services.AddDevJwtAuthentication(builder.Configuration);
         // The writable store belongs to this server alone, so it is registered here and not in the shared core.

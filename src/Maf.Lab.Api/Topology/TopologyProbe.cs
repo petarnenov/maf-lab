@@ -71,13 +71,24 @@ public sealed class TopologyProbe(
         new("api", "qdrant", "index admin"),
         new("mcp", "qdrant", "gRPC"),
         new("mcp", "ollama-embeddings", "embed"),
+        // Where everything the lab emits about itself goes, and where it is kept.
+        new("api", "otel-collector", "OTLP"),
+        new("mcp", "otel-collector", "OTLP"),
+        new("compliance", "otel-collector", "OTLP"),
+        new("otel-collector", "prometheus", "metrics"),
+        new("otel-collector", "jaeger", "traces"),
+        new("api", "prometheus", "query"),
+        new("lb", "jaeger", "/jaeger"),
     ];
 
     private readonly ILogger _logger = loggers.CreateLogger<TopologyProbe>();
 
     /// <summary>Node ids the report always contains; the drawn diagram must hold exactly these.</summary>
     public static IReadOnlyList<string> NodeIds { get; } =
-        ["lb", "web", "api", "mcp", "compliance", "qdrant", "ollama-embeddings", "chat-provider"];
+    [
+        "lb", "web", "api", "mcp", "compliance", "qdrant", "ollama-embeddings", "chat-provider",
+        "otel-collector", "prometheus", "jaeger",
+    ];
 
     public async Task<TopologyReport> GetAsync(string bearerToken, CancellationToken ct)
     {
@@ -109,8 +120,11 @@ public sealed class TopologyProbe(
         var compliance = ComplianceAsync(complianceAddresses, timeout, ct);
         var store = QdrantAsync(timeout, ct);
         var embeddings = EmbeddingsAsync(timeout, ct);
+        var collector = Http("otel-collector", "otel collector", o.CollectorHealthUrl, timeout, ct);
+        var metrics = Http("prometheus", "prometheus", o.PrometheusHealthUrl, timeout, ct);
+        var traces = Http("jaeger", "jaeger", o.JaegerHealthUrl, timeout, ct);
 
-        var probed = await Task.WhenAll(lb, web, api, mcp, compliance, store, embeddings);
+        var probed = await Task.WhenAll(lb, web, api, mcp, compliance, store, embeddings, collector, metrics, traces);
         var byId = probed.Append(ChatProvider()).ToDictionary(n => n.Id);
         var ordered = NodeIds.Select(id => byId[id]).ToList();
 
@@ -193,7 +207,6 @@ public sealed class TopologyProbe(
         var replicas = ReplicasAsync("mcp", "mcp-retrieval", addresses, timeout, ct);
         var toolNames = Array.Empty<string>();
         string? toolError = null;
-        var sw = Stopwatch.StartNew();
         try
         {
             using var cts = Linked(timeout, ct);
@@ -217,12 +230,11 @@ public sealed class TopologyProbe(
             : anyReplicaHealthy ? NodeHealth.Degraded
             : NodeHealth.Unreachable;
         var reason = toolError is not null ? $"tools/list failed: {toolError}" : node.Reason;
-        return node with { Health = health, Facts = facts, Reason = reason, LatencyMs = sw.Elapsed.TotalMilliseconds };
+        return node with { Health = health, Facts = facts, Reason = reason };
     }
 
     private async Task<TopologyNode> QdrantAsync(TimeSpan timeout, CancellationToken ct)
     {
-        var sw = Stopwatch.StartNew();
         var facts = new Dictionary<string, string> { ["collection"] = qdrant.Value.Collection, ["host"] = $"{qdrant.Value.Host}:{qdrant.Value.GrpcPort}" };
         try
         {
@@ -232,16 +244,16 @@ public sealed class TopologyProbe(
             {
                 facts["chunks"] = "0";
                 return new TopologyNode("qdrant", "qdrant", NodeHealth.Degraded, [], facts,
-                    $"collection {qdrant.Value.Collection} does not exist; index the corpus", sw.Elapsed.TotalMilliseconds);
+                    $"collection {qdrant.Value.Collection} does not exist; index the corpus");
             }
             var info = await qdrantClient.GetCollectionInfoAsync(qdrant.Value.Collection, cts.Token);
             facts["chunks"] = info.PointsCount.ToString();
             facts["status"] = info.Status.ToString();
-            return new TopologyNode("qdrant", "qdrant", NodeHealth.Healthy, [], facts, null, sw.Elapsed.TotalMilliseconds);
+            return new TopologyNode("qdrant", "qdrant", NodeHealth.Healthy, [], facts, null);
         }
         catch (Exception ex)
         {
-            return new TopologyNode("qdrant", "qdrant", NodeHealth.Unreachable, [], facts, Describe(ex, timeout), sw.Elapsed.TotalMilliseconds);
+            return new TopologyNode("qdrant", "qdrant", NodeHealth.Unreachable, [], facts, Describe(ex, timeout));
         }
     }
 
@@ -253,7 +265,6 @@ public sealed class TopologyProbe(
             ["endpoint"] = models.Value.OllamaEndpoint,
             ["models"] = string.Join(", ", wanted),
         };
-        var sw = Stopwatch.StartNew();
         try
         {
             using var cts = Linked(timeout, ct);
@@ -268,30 +279,29 @@ public sealed class TopologyProbe(
             facts["pulled"] = pulled.Count.ToString();
             return missing.Count > 0
                 ? new TopologyNode("ollama-embeddings", "ollama (embeddings)", NodeHealth.Degraded, [], facts,
-                    $"not pulled: {string.Join(", ", missing)}", sw.Elapsed.TotalMilliseconds)
-                : new TopologyNode("ollama-embeddings", "ollama (embeddings)", NodeHealth.Healthy, [], facts, null, sw.Elapsed.TotalMilliseconds);
+                    $"not pulled: {string.Join(", ", missing)}")
+                : new TopologyNode("ollama-embeddings", "ollama (embeddings)", NodeHealth.Healthy, [], facts, null);
         }
         catch (Exception ex)
         {
             return new TopologyNode("ollama-embeddings", "ollama (embeddings)", NodeHealth.Unreachable, [], facts,
-                Describe(ex, timeout), sw.Elapsed.TotalMilliseconds);
+                Describe(ex, timeout));
         }
     }
 
     private async Task<TopologyNode> Http(string id, string name, string url, TimeSpan timeout, CancellationToken ct)
     {
         var facts = new Dictionary<string, string> { ["url"] = url };
-        var sw = Stopwatch.StartNew();
         try
         {
             using var cts = Linked(timeout, ct);
             using var response = await Client().GetAsync(url, cts.Token);
             response.EnsureSuccessStatusCode();
-            return new TopologyNode(id, name, NodeHealth.Healthy, [], facts, null, sw.Elapsed.TotalMilliseconds);
+            return new TopologyNode(id, name, NodeHealth.Healthy, [], facts, null);
         }
         catch (Exception ex)
         {
-            return new TopologyNode(id, name, NodeHealth.Unreachable, [], facts, Describe(ex, timeout), sw.Elapsed.TotalMilliseconds);
+            return new TopologyNode(id, name, NodeHealth.Unreachable, [], facts, Describe(ex, timeout));
         }
     }
 

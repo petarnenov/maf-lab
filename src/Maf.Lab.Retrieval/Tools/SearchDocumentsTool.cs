@@ -8,6 +8,8 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
+using Maf.Lab.Hosting;
+
 namespace Maf.Lab.Retrieval.Tools;
 
 [JsonConverter(typeof(JsonStringEnumConverter<DocSourceType>))]
@@ -49,6 +51,9 @@ public sealed class SearchDocumentsTool(DocumentSearchService search, IPrincipal
         {
             return ToolErrors.Error("query is required: pass a natural-language phrase describing what to look up.");
         }
+        // The server's side of the call the api just made: one span, naming the tool and never the query.
+        using var span = LabTelemetry.Source.StartActivity("mcp.tool");
+        span?.SetTag("tool.name", Name);
         try
         {
             var types = sourceTypes?.Select(t => t.ToString()).Distinct().ToList();

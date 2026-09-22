@@ -46,7 +46,6 @@ public class TopologyProbeTests(QdrantFixture qdrant)
         Assert.Equal(collection, node.Facts["collection"]);
         Assert.Equal("0", node.Facts["chunks"]);
         Assert.Null(node.Reason);
-        Assert.NotNull(node.LatencyMs);
     }
 
     [Fact]

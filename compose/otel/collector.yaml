@@ -1,0 +1,51 @@
+# What every service in the lab sends its traces, metrics and logs to, and where they go from here.
+# The services know only this address: which backend keeps what is decided here, not in their configuration.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        # The browser exports over HTTP, from a page served by the load balancer.
+        endpoint: 0.0.0.0:4318
+        cors:
+          allowed_origins:
+            - http://localhost:7171
+            - http://127.0.0.1:7171
+
+processors:
+  batch:
+    timeout: 2s
+  # A lab, not a fleet: nothing is dropped, but the collector must not grow without bound either.
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 256
+    spike_limit_mib: 64
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    # The instance the number came from is a label, not a lost detail.
+    resource_to_telemetry_conversion:
+      enabled: true
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/jaeger]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [debug]

@@ -29,6 +29,8 @@ x-app-env: &app-env
   Compliance__BaseUrl: ${COMPLIANCE_BASE_URL:-http://lb/compliance}
   Compliance__ClientId: maf-lab-assistant
   Compliance__ClientSecret: ${COMPLIANCE_CLIENT_SECRET:-assistant-dev-secret}
+  # Where the signals go. Unset it and the services export nothing, which is what the tests do.
+  Telemetry__Endpoint: ${TELEMETRY_ENDPOINT:-http://otel-collector:4317}
 
 services:
   qdrant:
@@ -121,6 +123,10 @@ services:
       Evals__Root: /evals
       # The drawn topology, served to the web app by the api (the web image is built from web/ only).
       Topology__DiagramPath: /docs/topology.drawio
+      # The telemetry screen's numbers are read from here, by the api, never by the browser.
+      Telemetry__PrometheusUrl: ${PROMETHEUS_URL:-http://prometheus:9090}
+      Telemetry__JaegerUrl: ${JAEGER_URL:-http://localhost:7171/jaeger}
+      Telemetry__TraceUrlTemplate: ${TRACE_URL_TEMPLATE:-http://localhost:7171/jaeger/trace/{traceId}}
     deploy:
       replicas: 2
     # A push webhook points at whatever the caller registered, and the A2A conformance probe registers one on the
@@ -147,6 +153,45 @@ services:
       timeout: 3s
       retries: 20
 
+  # Everything the lab emits arrives here; where it goes from here is this file's business, not the services'.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.161.0
+    command: ["--config=/etc/otel/collector.yaml"]
+    volumes:
+      - ./otel/collector.yaml:/etc/otel/collector.yaml:ro
+    # The image is distroless: no shell, so nothing here can run a health command. The api probes it over HTTP
+    # for the topology report, which is where its state is actually reported.
+    depends_on:
+      jaeger:
+        condition: service_started
+
+  prometheus:
+    image: prom/prometheus:v3.14.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    volumes:
+      - ./otel/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9090/-/healthy >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.76.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+      # Served under /jaeger through the balancer, so its own links have to agree.
+      QUERY_BASE_PATH: /jaeger
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:16686/jaeger/ >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
   lb:
     image: nginx:1.30.5-alpine
     ports:
@@ -167,9 +212,16 @@ services:
         condition: service_healthy
       web:
         condition: service_healthy
+      prometheus:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
 
 volumes:
   qdrant-data:
   ollama-models:
   api-data:
   retrieval-data:
+  prometheus-data:

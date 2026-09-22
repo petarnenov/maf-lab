@@ -28,8 +28,7 @@ public sealed record TopologyNode(
     NodeHealth Health,
     IReadOnlyList<TopologyInstance> Instances,
     IReadOnlyDictionary<string, string> Facts,
-    string? Reason = null,
-    double? LatencyMs = null);
+    string? Reason = null);
 
 /// <param name="Label">What flows along the edge, e.g. "chat" or "gRPC".</param>
 public sealed record TopologyEdge(string From, string To, string? Label = null);

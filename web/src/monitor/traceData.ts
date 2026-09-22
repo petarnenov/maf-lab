@@ -32,6 +32,9 @@ export interface TurnStartData {
   principal?: { userId?: string; firmId?: string; role?: string };
   apiInstance?: string;
   question?: string;
+  /** The trace this turn's spans are in, and where to open it. Absent without a trace store. */
+  traceId?: string;
+  traceUrl?: string;
 }
 
 export interface IntentData {

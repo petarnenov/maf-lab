@@ -33,6 +33,15 @@
     <PackageVersion Include="Markdig" Version="1.3.2" />
     <!-- Transitive security pins -->
     <PackageVersion Include="Microsoft.Bcl.Memory" Version="10.0.12" />
+    <!-- Telemetry: the SDK, the OTLP exporter and the instrumentation for what the lab does not write itself.
+         The agent and model instrumentation comes from Microsoft.Agents.AI / Microsoft.Extensions.AI above. -->
+    <PackageVersion Include="OpenTelemetry" Version="1.19.1" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.19.1" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.19.1" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.19.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.19.0" />
+    <!-- The only EF Core instrumentation there is; it has never left beta (see DECISIONS.md). -->
+    <PackageVersion Include="OpenTelemetry.Instrumentation.EntityFrameworkCore" Version="1.19.0-beta.1" />
     <!-- Tests -->
     <PackageVersion Include="xunit.v3" Version="4.0.1" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />

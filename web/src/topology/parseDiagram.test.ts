@@ -14,9 +14,12 @@ describe('parseDiagram', () => {
       'api',
       'chat-provider',
       'compliance',
+      'jaeger',
       'lb',
       'mcp',
       'ollama-embeddings',
+      'otel-collector',
+      'prometheus',
       'qdrant',
       'web',
     ]);

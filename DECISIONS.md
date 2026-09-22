@@ -16,6 +16,9 @@ Pinned versions and the architectural decisions of maf-lab. **If a version moves
 | Ollama | `ollama/ollama:0.34.2` | `compose/docker-compose.yml` |
 | Node (build) | `node:24.21.0-alpine` (local dev: Node 24.11.0) | `web/Dockerfile` |
 | nginx (web runtime and load balancer) | `nginx:1.30.5-alpine` | `web/Dockerfile`, `compose/docker-compose.yml` (`lb`) |
+| OpenTelemetry Collector | `otel/opentelemetry-collector-contrib:0.161.0` | `compose/docker-compose.yml` |
+| Prometheus | `prom/prometheus:v3.14.0` | `compose/docker-compose.yml` |
+| Jaeger | `jaegertracing/all-in-one:1.76.0` | `compose/docker-compose.yml` |
 
 ### Models (Ollama)
 
@@ -47,6 +50,9 @@ Pinned versions and the architectural decisions of maf-lab. **If a version moves
 | Microsoft.AspNetCore.Mvc.Testing | 10.0.12 |
 | Testcontainers.Qdrant | 4.15.0 |
 | Mono.Cecil | 0.11.6 |
+| OpenTelemetry / .Extensions.Hosting / .Exporter.OpenTelemetryProtocol | 1.19.1 |
+| OpenTelemetry.Instrumentation.AspNetCore / .Http | 1.19.0 |
+| OpenTelemetry.Instrumentation.EntityFrameworkCore | 1.19.0-beta.1 |
 
 `CentralPackageTransitivePinningEnabled` is on, so transitive pins in `Directory.Packages.props` apply.
 
@@ -55,10 +61,15 @@ Pinned versions and the architectural decisions of maf-lab. **If a version moves
 react / react-dom 19.3.0 · react-router 8.4.0 · @tanstack/react-query 5.103.1 · vite 8.3.0 · @vitejs/plugin-react 6.1.1 ·
 vitest 5.0.1 · jsdom 29.1.1 · @testing-library/react 16.3.3 · @testing-library/dom 10.4.2 · @testing-library/jest-dom 7.0.1 ·
 @testing-library/user-event 14.6.7 · typescript 6.0.3 · eslint 10.11.0 · @eslint/js 10.0.1 · typescript-eslint 8.70.0 ·
-eslint-plugin-react-hooks 7.1.1 · eslint-plugin-react-refresh 0.5.7 · globals 17.12.0 · prettier 3.9.8 · @types/react(-dom) 19.3.0 · @types/node 24.13.6
+eslint-plugin-react-hooks 7.1.1 · eslint-plugin-react-refresh 0.5.7 · globals 17.12.0 · prettier 3.9.8 · @types/react(-dom) 19.3.0 · @types/node 24.13.6 ·
+@opentelemetry/api 1.9.1 · @opentelemetry/sdk-trace-web 2.11.0 · @opentelemetry/resources 2.11.0 ·
+@opentelemetry/semantic-conventions 1.43.0 · @opentelemetry/exporter-trace-otlp-http, -instrumentation, -instrumentation-fetch 0.222.0
 
 - **TypeScript 6.0.3, not 7.x**: typescript-eslint 8.70 supports `<6.1`.
 - **jsdom 29.1.1, not 30.x**: jsdom 30 requires Node ≥ 24.15; the dev machine runs 24.11.
+- **The OpenTelemetry browser packages split at 0.x and 2.x**: the SDK and the semantic conventions are stable,
+  the exporters and instrumentations are not, and they version separately. Both lines are pinned exactly, as
+  everything here is.
 
 ## 2. Multitenancy mode
 
@@ -813,3 +824,27 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
   expiry above all — so replaying one against today's clock turned a recording into a failure that said nothing
   about the code. Each row records when it was captured and the replay sets its clock to that. The alternative,
   one frozen date for the whole suite, would make every new recording agree with a date unrelated to it.
+
+## 30. OpenTelemetry (add-opentelemetry, 2026-09-22)
+
+- **The framework's instrumentation, not a copy of it.** `Microsoft.Extensions.AI` ships `OpenTelemetryChatClient`
+  and `Microsoft.Agents.AI` ships `OpenTelemetryAgent`, both under the GenAI semantic conventions and both already
+  in this repository's package list. Every model call and agent run is instrumented by adding `UseOpenTelemetry()`
+  to a builder that already exists. What is written by hand is only what no library covers: the MCP tool call, the
+  Qdrant query and the sparse encode.
+- **Sensitive data is never enabled.** The GenAI instrumentation can record prompts and completions, and this
+  system must not: message content lives in its own store with its own retention, and telemetry leaves the
+  process. The switch is never set, and a test runs a turn with markers in the question, the answer, the reasoning
+  and a document and refuses any that reaches an exported signal.
+- **The EF Core instrumentation is beta, and there is no other.**
+  `OpenTelemetry.Instrumentation.EntityFrameworkCore` has never shipped stable; the alternatives are a beta package
+  or no database spans at all. The spec asks for database access to be instrumented, so the beta is pinned like
+  everything else and moves with a note, as every version here does.
+- **A collector in the middle.** Services speak OTLP to one collector; it exports metrics to Prometheus and traces
+  to Jaeger. Exporting straight to each backend would put the backend's identity into every service's
+  configuration and give up the one place to batch, retry and drop.
+- **Off when nothing is listening.** With no OTLP endpoint configured the wiring adds no exporter, so the tests and
+  `make dev` neither export nor wait for a collector that is not there.
+- **The probe's own latency was not a measurement worth keeping.** The topology page showed the round trip of a
+  request nobody made. Real latency comes from the traffic the service actually serves, so the probe stopped
+  timing itself.

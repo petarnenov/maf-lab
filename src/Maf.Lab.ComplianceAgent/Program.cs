@@ -19,6 +19,9 @@ public partial class Program
         var builder = WebApplication.CreateBuilder(args);
         configure?.Invoke(builder);
 
+        // What this service emits about itself. Nothing is exported unless an OTLP endpoint is configured.
+        builder.AddLabTelemetry("maf-lab-compliance");
+
         builder.Services.Configure<Maf.Lab.Domain.Configuration.AuthOptions>(
             builder.Configuration.GetSection(Maf.Lab.Domain.Configuration.AuthOptions.Section));
         builder.Services.Configure<ReviewOptions>(builder.Configuration.GetSection(ReviewOptions.Section));

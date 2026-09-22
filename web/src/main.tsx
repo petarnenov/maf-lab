@@ -4,7 +4,11 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router';
 import { App } from './App';
 import { AuthProvider } from './auth/AuthProvider';
+import { startBrowserTracing } from './telemetry/browserTracing';
 import './index.css';
+
+// Before anything fetches, so a chat run's request carries the trace it started.
+startBrowserTracing();
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },

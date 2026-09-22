@@ -93,6 +93,11 @@ export function MonitorPanel({
             <span className={styles.chip}>{byKind(visible, 'tool.call').length} tool calls</span>
             <span className={styles.chip}>{byKind(visible, 'retrieval').length} searches</span>
             {start.apiInstance && <span className={styles.chip}>api: {start.apiInstance}</span>}
+            {start.traceUrl && (
+              <a className={styles.chip} href={start.traceUrl} target="_blank" rel="noreferrer">
+                open trace
+              </a>
+            )}
             {mcp.map((m) => (
               <span key={m} className={styles.chip}>
                 mcp: {m}

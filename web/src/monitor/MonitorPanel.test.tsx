@@ -179,4 +179,29 @@ describe('MonitorPanel', () => {
     await userEvent.click(tab('AG-UI'));
     expect(screen.getByText(/were not recorded/)).toBeInTheDocument();
   });
+  it("offers the turn's trace where the spans are kept", async () => {
+    const withTrace = fixtureTrace.map((e) =>
+      e.kind === 'turn.start'
+        ? {
+            ...e,
+            data: {
+              ...(e.data as object),
+              traceId: 'abc123',
+              traceUrl: 'http://localhost:7171/jaeger/trace/abc123',
+            },
+          }
+        : e,
+    );
+    render(<MonitorPanel events={withTrace} />);
+
+    expect(screen.getByRole('link', { name: 'open trace' })).toHaveAttribute(
+      'href',
+      'http://localhost:7171/jaeger/trace/abc123',
+    );
+  });
+
+  it('offers no trace link for a turn recorded without one', () => {
+    render(<MonitorPanel events={fixtureTrace} />);
+    expect(screen.queryByRole('link', { name: 'open trace' })).not.toBeInTheDocument();
+  });
 });

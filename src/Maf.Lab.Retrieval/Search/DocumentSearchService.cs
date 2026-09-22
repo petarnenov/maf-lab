@@ -10,6 +10,8 @@ using Maf.Lab.Retrieval.Store;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using Maf.Lab.Hosting;
+
 namespace Maf.Lab.Retrieval.Search;
 
 /// <summary>Per-call overrides used by the eval harness to compare retrieval configurations.</summary>
@@ -79,11 +81,19 @@ public sealed partial class DocumentSearchService(
         // either of them sees it. A query already in that language is returned untouched.
         var translation = await translator.ToCorpusLanguageAsync(query, ct);
         var searchedQuery = translation.Searched;
-        var denseVector = settings.Mode == RetrievalModes.Sparse ? null : await dense.EmbedQueryAsync(settings.DenseVector, searchedQuery, ct);
+        // The stages no library instruments get a span each, so a slow search says which half was slow.
+        var denseVector = settings.Mode == RetrievalModes.Sparse
+            ? null
+            : await LabTelemetry.InSpanAsync("retrieval.embed",
+                () => dense.EmbedQueryAsync(settings.DenseVector, searchedQuery, ct),
+                ("retrieval.dense_vector", settings.DenseVector));
         var embedMs = clock.ElapsedMilliseconds;
         clock.Restart();
         var model = await bm25.LoadAsync(ct);
-        var sparseVector = settings.Mode == RetrievalModes.Dense ? null : Bm25Encoder.EncodeQuery(model, searchedQuery);
+        var sparseVector = settings.Mode == RetrievalModes.Dense
+            ? null
+            : await LabTelemetry.InSpanAsync("retrieval.sparse_encode",
+                () => Task.FromResult(Bm25Encoder.EncodeQuery(model, searchedQuery)));
         var sparseMs = clock.ElapsedMilliseconds;
 
         var request = new SearchRequest
@@ -98,7 +108,9 @@ public sealed partial class DocumentSearchService(
             PrefetchLimit = Math.Max(_options.MinPrefetch, k * _options.PrefetchMultiplier),
         };
         clock.Restart();
-        var candidates = await search.QueryAsync(principal, request, ct);
+        var candidates = await LabTelemetry.InSpanAsync("retrieval.query",
+            () => search.QueryAsync(principal, request, ct),
+            ("retrieval.mode", settings.Mode), ("retrieval.fusion", settings.Fusion));
         var qdrantMs = clock.ElapsedMilliseconds;
 
         IReadOnlyList<ScoredChunk> ranked = candidates;
@@ -106,8 +118,18 @@ public sealed partial class DocumentSearchService(
         if (settings.Rerank)
         {
             clock.Restart();
-            ranked = await reranker.RerankAsync(searchedQuery, candidates, ct);
+            ranked = await LabTelemetry.InSpanAsync("retrieval.rerank",
+                () => reranker.RerankAsync(searchedQuery, candidates, ct));
             rerankMs = clock.ElapsedMilliseconds;
+        }
+
+        // The same stages the trace shows per turn, as numbers an operator can aggregate over many.
+        LabTelemetry.Instruments.RetrievalStage.Record(embedMs, new KeyValuePair<string, object?>("stage", "embed"));
+        LabTelemetry.Instruments.RetrievalStage.Record(sparseMs, new KeyValuePair<string, object?>("stage", "sparse_encode"));
+        LabTelemetry.Instruments.RetrievalStage.Record(qdrantMs, new KeyValuePair<string, object?>("stage", "query"));
+        if (settings.Rerank)
+        {
+            LabTelemetry.Instruments.RetrievalStage.Record(rerankMs, new KeyValuePair<string, object?>("stage", "rerank"));
         }
 
         if (diagnostics is not null)

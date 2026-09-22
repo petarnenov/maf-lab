@@ -1,0 +1,85 @@
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.traceLink {
+  font-size: 0.85rem;
+}
+
+.panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.panel {
+  border: 1px solid var(--border, #e4e7ec);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--surface, #fff);
+}
+
+.title {
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.period {
+  color: var(--muted, #667085);
+  font-size: 0.75rem;
+  margin-bottom: 8px;
+}
+
+.noData {
+  color: var(--muted, #667085);
+  font-size: 0.85rem;
+  font-style: italic;
+  margin: 8px 0 0;
+}
+
+.rows {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.rows td {
+  padding: 3px 0;
+  vertical-align: middle;
+}
+
+.label {
+  white-space: nowrap;
+  padding-right: 8px;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bar {
+  width: 100%;
+}
+
+.bar span {
+  display: block;
+  height: 10px;
+  min-width: 2px;
+  border-radius: 3px;
+  background: #2f5bd3;
+  opacity: 0.8;
+}
+
+.value {
+  white-space: nowrap;
+  padding-left: 8px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.unit {
+  color: var(--muted, #667085);
+  font-size: 0.72rem;
+}

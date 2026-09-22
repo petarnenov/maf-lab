@@ -7,6 +7,7 @@ import { Layout } from './components/Layout';
 import { RequireAdmin } from './components/RequireAdmin';
 import { EvalsPage } from './evals/EvalsPage';
 import { CompliancePage } from './compliance/CompliancePage';
+import { TelemetryPage } from './telemetry/TelemetryPage';
 import { TopologyPage } from './topology/TopologyPage';
 
 export function App() {
@@ -18,6 +19,7 @@ export function App() {
         <Route path="chat/:conversationId?" element={<ChatPage />} />
         <Route path="evals" element={<EvalsPage />} />
         <Route path="topology" element={<TopologyPage />} />
+        <Route path="telemetry" element={<TelemetryPage />} />
         <Route
           path="admin/index"
           element={

@@ -23,6 +23,9 @@ public partial class Program
         var builder = WebApplication.CreateBuilder(args);
         configure?.Invoke(builder);
 
+        // What this service emits about itself. Nothing is exported unless an OTLP endpoint is configured.
+        builder.AddLabTelemetry("maf-lab-api");
+
         builder.Services.AddMafIndexing(builder.Configuration);
         builder.Services.AddDevJwtAuthentication(builder.Configuration);
         builder.Services.AddA2APartnerAuthentication(builder.Configuration);
@@ -58,6 +61,9 @@ public partial class Program
         builder.Services.AddHttpClient("topology");
         builder.Services.AddSingleton<Topology.IServiceResolver, Topology.DnsServiceResolver>();
         builder.Services.AddSingleton<Topology.TopologyProbe>();
+        builder.Services.Configure<Telemetry.TelemetryQueryOptions>(
+            builder.Configuration.GetSection(Telemetry.TelemetryQueryOptions.Section));
+        builder.Services.AddSingleton<Telemetry.TelemetryQueries>();
         builder.Services.AddSingleton(A2A.BillingAgentCard.Descriptor);
         builder.Services.Configure<A2A.ComplianceOptions>(builder.Configuration.GetSection(A2A.ComplianceOptions.Section));
         builder.Services.AddHttpClient("a2a-consult");
@@ -100,6 +106,7 @@ public partial class Program
         app.MapAdminIndex();
         app.MapEvalReports();
         app.MapTraces();
+        app.MapTelemetry();
         app.MapHistory();
         app.MapTopology();
         app.MapCompliance();

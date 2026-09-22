@@ -130,9 +130,6 @@ function NodeDetail({
       <h2 className={styles.sideHeading}>{node.name}</h2>
       <p>
         {mark.symbol} {mark.label}
-        {node.latencyMs != null && (
-          <span className={page.muted}> · {Math.round(node.latencyMs)} ms</span>
-        )}
       </p>
       {node.reason && (
         // A reason is an explanation, not necessarily a fault: "not probed" is how the paid chat endpoint is meant

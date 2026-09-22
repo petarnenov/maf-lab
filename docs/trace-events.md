@@ -9,7 +9,7 @@ characters and a trace at 1 MB; `truncated: true` marks a capped event. JSON is 
 
 | kind | data |
 |---|---|
-| `turn.start` | `{ conversationId, turnId, principal: { userId, firmId, role }, apiInstance, question }` |
+| `turn.start` | `{ conversationId, turnId, principal: { userId, firmId, role }, apiInstance, question, traceId, traceUrl }` — `traceId` is the OpenTelemetry trace this turn's spans are in and `traceUrl` opens it; both are null where no trace store is configured |
 | `intent` | `{ intent, forcedRetrieval, forcedTool, stage, model, rawAnswer, durationMs, reason }` — intent ∈ Procedural, Mixed, Data, ChitChat, Other; `stage` ∈ rules, model (the rules are English, a model classifies what they do not recognise); `model`, `rawAnswer` and `durationMs` are null for the rules stage; `reason` explains a model stage that produced nothing usable (timeout, failure, unknown label) |
 | `history` | `{ budgetTokens, usedTokens, included: [{ role, text, tokens }], excludedCount }` |
 | `prompt` | `{ version, systemPrompt, toolMode, tools: [{ name, description, inputSchema }] }` |

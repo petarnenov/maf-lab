@@ -16,7 +16,6 @@ const node = (id: string, overrides: Partial<TopologyNode> = {}): TopologyNode =
   instances: [],
   facts: {},
   reason: null,
-  latencyMs: 3,
   ...overrides,
 });
 
