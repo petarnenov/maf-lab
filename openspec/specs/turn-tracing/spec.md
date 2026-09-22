@@ -20,6 +20,9 @@ For every chat turn the system SHALL record an ordered trace of timestamped even
 - any tool call issued on the model's behalf to force retrieval;
 - every tool call: full arguments, raw MCP result, error flag, latency and serving MCP replica;
 - the exact data envelope the model received;
+- the model's reasoning as ordered chunks (`reasoning.delta`, each with its character offset), coalesced from the
+  reasoning the model streamed; concatenating them yields exactly what it reasoned. A model that reasons in
+  several stretches across a turn SHALL have each recorded in the order it arrived;
 - the streamed answer text as ordered chunks (`answer.delta`, each with its character offset). Chunks are coalesced
   from the model's text deltas, and concatenating them yields exactly the answer sent to the client;
 - audit rows written, sources, production signals, memory rows stored, and turn end with total duration and any error.
@@ -39,6 +42,19 @@ For every chat turn the system SHALL record an ordered trace of timestamped even
 #### Scenario: Answer reconstructable from the trace
 - **WHEN** a turn streams an answer
 - **THEN** the `answer.delta` events have contiguous offsets starting at 0, and their texts concatenated equal the full answer
+
+#### Scenario: Reasoning reconstructable from the trace
+- **WHEN** a turn's model reasons before it answers
+- **THEN** the `reasoning.delta` events have contiguous offsets starting at 0, their texts concatenated equal
+  everything the model reasoned, and they are recorded before the model response that followed them
+
+#### Scenario: A turn whose model does not reason
+- **WHEN** a model answers without reasoning
+- **THEN** the trace holds no `reasoning.delta` event and the rest of the trace is unchanged
+
+#### Scenario: Reasoning stays out of the logs
+- **WHEN** a turn's model reasons
+- **THEN** no log line contains any of that reasoning
 
 ### Requirement: Live streaming of the trace
 Trace events SHALL be streamed to the requesting client while the turn runs, interleaved with the run's other
