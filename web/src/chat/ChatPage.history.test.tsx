@@ -4,7 +4,7 @@ import { Route, Routes, useLocation } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import type { ConversationDetail, ConversationPage } from '../api/types';
 import { useAuth } from '../auth/useAuth';
-import { fixtureTrace } from '../monitor/fixtures';
+import { fixtureFrames, fixtureTrace } from '../monitor/fixtures';
 import {
   jsonResponse,
   makeSession,
@@ -237,5 +237,56 @@ describe('ChatPage with history', () => {
     expect(screen.queryByRole('button', { name: /^Title adam-1/ })).not.toBeInTheDocument();
     expect(screen.queryAllByTestId('assistant-turn')).toHaveLength(0);
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/chat$/);
+  });
+  it('a reopened turn shows the AG-UI frames stored with its trace, and says when there are none', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.startsWith('/api/conversations?')) return jsonResponse(page('conv-7'));
+      if (url === '/api/conversations/conv-7') return jsonResponse(detail);
+      if (url === '/api/turns/t2/trace')
+        return jsonResponse({
+          turnId: 't2',
+          conversationId: 'conv-7',
+          createdAt: '',
+          events: fixtureTrace,
+          aguiFrames: fixtureFrames,
+        });
+      return jsonResponse({}, 404);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderChat('/chat/conv-7');
+    const monitor = screen.getByRole('region', { name: 'Behind the scenes' });
+    await within(monitor).findByText(`${fixtureTrace.length} events`);
+
+    await userEvent.click(within(monitor).getByRole('tab', { name: 'AG-UI' }));
+    const rows = within(
+      await within(monitor).findByRole('list', { name: 'AG-UI frames' }),
+    ).getAllByRole('listitem');
+    expect(rows).toHaveLength(fixtureFrames.length);
+    expect(rows[0]).toHaveAttribute('data-type', 'RUN_STARTED');
+  });
+
+  it('a stored turn whose frames were never recorded says so', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.startsWith('/api/conversations?')) return jsonResponse(page('conv-7'));
+      if (url === '/api/conversations/conv-7') return jsonResponse(detail);
+      if (url === '/api/turns/t2/trace')
+        return jsonResponse({
+          turnId: 't2',
+          conversationId: 'conv-7',
+          createdAt: '',
+          events: fixtureTrace,
+          aguiFrames: null,
+        });
+      return jsonResponse({}, 404);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderChat('/chat/conv-7');
+    const monitor = screen.getByRole('region', { name: 'Behind the scenes' });
+    await within(monitor).findByText(`${fixtureTrace.length} events`);
+
+    await userEvent.click(within(monitor).getByRole('tab', { name: 'AG-UI' }));
+    expect(await within(monitor).findByText(/were not recorded/)).toBeInTheDocument();
   });
 });

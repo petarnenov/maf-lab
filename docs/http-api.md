@@ -139,7 +139,10 @@ conversation id returns `404`.
 
 | Method | Path | Response |
 |---|---|---|
-| GET | `/api/turns/{turnId}/trace` | `{ turnId, conversationId, createdAt, events: TraceEvent[] }` — the turn's owner, or a FIRM_ADMIN of the same firm for turns in the review queue; otherwise `404`. Kept for `Tracing:RetentionDays` (7). |
+| GET | `/api/turns/{turnId}/trace` | `{ turnId, conversationId, createdAt, events: TraceEvent[], aguiFrames: RunFrame[] \| null }` — the turn's owner, or a FIRM_ADMIN of the same firm for turns in the review queue; otherwise `404`. Kept for `Tracing:RetentionDays` (7). `aguiFrames` is the run's own events as they crossed the wire, and is `null` for a turn answered before they were kept. |
+
+`RunFrame` = `{ seq, atMs, type, name?, bytes, traceSeq?, payload?, truncated }` — see
+[trace-events.md](trace-events.md).
 
 ## Feedback
 

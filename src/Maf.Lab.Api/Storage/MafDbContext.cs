@@ -207,6 +207,9 @@ public sealed class TurnTraceRow
     public required string FirmId { get; set; }
     public DateTime CreatedAt { get; set; }
     public required string Json { get; set; }
+
+    /// <summary>The run's AG-UI frames, added once its stream ended. Null for turns recorded before they were kept.</summary>
+    public string? AguiJson { get; set; }
 }
 
 /// <summary>An A2A task, whole, so any replica can answer for it. The SDK's own store is per-process.</summary>

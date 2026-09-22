@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import type { TraceEvent } from '../api/types';
+import type { AguiFrame, TraceEvent } from '../api/types';
 import { JsonView } from './JsonView';
 import styles from './MonitorPanel.module.css';
 import { TimeTravelBar } from './TimeTravelBar';
 import { timeTravelKeyHandler } from './timeTravelKeys';
 import { useTimeTravel, type TimeTravel } from './useTimeTravel';
-import { McpTab, ModelTab, PromptTab, RetrievalTab, TimelineTab } from './MonitorTabs';
+import { AguiTab, McpTab, ModelTab, PromptTab, RetrievalTab, TimelineTab } from './MonitorTabs';
 import {
   byKind,
   dataOf,
@@ -22,12 +22,17 @@ const TABS = [
   { id: 'retrieval', label: 'Retrieval' },
   { id: 'mcp', label: 'MCP' },
   { id: 'prompt', label: 'Prompt & memory' },
+  { id: 'agui', label: 'AG-UI' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
 
 export interface MonitorPanelProps {
   events: TraceEvent[];
+  /** The run's AG-UI frames, in the order it wrote them. */
+  frames?: AguiFrame[];
+  /** False for a turn whose frames were never recorded, which the AG-UI view says rather than showing nothing. */
+  framesRecorded?: boolean;
   /** True while the turn is still streaming. */
   live?: boolean;
   loading?: boolean;
@@ -42,6 +47,8 @@ export interface MonitorPanelProps {
 /** "Behind the scenes" view of one chat turn, built from its trace events. */
 export function MonitorPanel({
   events,
+  frames = [],
+  framesRecorded = true,
   live,
   loading,
   error,
@@ -57,6 +64,7 @@ export function MonitorPanel({
   const visible = events.slice(0, cursor);
   const current = cursor > 0 ? events[cursor - 1] : undefined;
   const start = dataOf<TurnStartData>(firstOf(visible, 'turn.start'));
+  const reached = framesReached(events, frames, cursor);
   const mcp = mcpInstances(visible);
 
   return (
@@ -124,7 +132,7 @@ export function MonitorPanel({
           <p className={styles.error} role="alert">
             {error}
           </p>
-        ) : events.length === 0 ? (
+        ) : events.length === 0 && !(tab === 'agui' && frames.length > 0) ? (
           <p className={styles.empty}>
             {loading ? 'Loading trace…' : 'Ask a question to see what happens behind the scenes.'}
           </p>
@@ -140,12 +148,30 @@ export function MonitorPanel({
           <RetrievalTab events={visible} />
         ) : tab === 'mcp' ? (
           <McpTab events={visible} apiInstance={start.apiInstance} />
-        ) : (
+        ) : tab === 'prompt' ? (
           <PromptTab events={visible} />
+        ) : (
+          <AguiTab frames={frames} reached={reached} recorded={framesRecorded} />
         )}
       </div>
     </section>
   );
+}
+
+/**
+ * How far the cursor has got through the frames. A trace frame carries its trace event's sequence number, so the
+ * cursor's step names the frame that delivered it; with the cursor at the end the whole run is reached, and before
+ * the first step none of it is.
+ */
+function framesReached(events: TraceEvent[], frames: AguiFrame[], cursor: number): number {
+  if (frames.length === 0 || cursor <= 0) return 0;
+  if (cursor >= events.length) return frames[frames.length - 1].seq;
+  const traceSeq = events[cursor - 1].seq;
+  let reached = 0;
+  for (const frame of frames) {
+    if (frame.traceSeq !== undefined && frame.traceSeq <= traceSeq) reached = frame.seq;
+  }
+  return reached;
 }
 
 /** What the step under the cursor added. */

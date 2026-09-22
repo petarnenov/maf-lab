@@ -30,7 +30,7 @@ public static class ChatEndpoints
         // a previous run stopped for, which is how a write gets its approval.
         api.MapPost("/chat", async (RunAgentInput input, HttpContext http, IPrincipalAccessor principals,
             ConversationService conversations, ChatTurnRunner runner, ConfirmationService confirmations,
-            RunRegistry runs, CancellationToken ct) =>
+            RunRegistry runs, RunFrameStore frames, CancellationToken ct) =>
         {
             var principal = principals.Current;
             var message = LastUserMessage(input);
@@ -54,7 +54,7 @@ public static class ChatEndpoints
             var token = http.Request.Headers.Authorization.ToString()["Bearer ".Length..].Trim();
 
             return TypedResults.ServerSentEvents(
-                Stream(runner, confirmations, runs, principal, token, conversationId, runId, message?.Trim() ?? "", resume, ct));
+                Stream(runner, confirmations, runs, frames, principal, token, conversationId, runId, message?.Trim() ?? "", resume, ct));
         });
 
         // Stopping a run this caller started, wherever it is running. Abandoning the stream does the same thing
@@ -74,10 +74,12 @@ public static class ChatEndpoints
         input.Messages?.OfType<AGUIUserMessage>().LastOrDefault() is { } last ? last.Content.ToString() : null;
 
     private static async IAsyncEnumerable<SseItem<object>> Stream(
-        ChatTurnRunner runner, ConfirmationService confirmations, RunRegistry runs, Principal principal, string token,
-        string conversationId, string runId, string message, AGUIResume? resume,
+        ChatTurnRunner runner, ConfirmationService confirmations, RunRegistry runs, RunFrameStore store,
+        Principal principal, string token, string conversationId, string runId, string message, AGUIResume? resume,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
+        // Every event of this run passes here on its way out, the cancellation path's terminal event included.
+        var frames = new RunFrameRecorder();
         var channel = Channel.CreateUnbounded<BaseEvent>(new UnboundedChannelOptions { SingleReader = true });
         using var registration = runs.Start(runId, ct);
 
@@ -110,9 +112,20 @@ public static class ChatEndpoints
             }
         }, registration.Token);
 
-        await foreach (var ev in channel.Reader.ReadAllAsync(ct))
+        try
         {
-            yield return new SseItem<object>(ev, AGUIStream.FrameName(ev));
+            await foreach (var ev in channel.Reader.ReadAllAsync(ct))
+            {
+                frames.Add(ev);
+                yield return new SseItem<object>(ev, AGUIStream.FrameName(ev));
+            }
+        }
+        finally
+        {
+            // What the client actually received, stored under the turn the run recorded. A run that recorded no
+            // turn — an answer to a confirmation, or one the client walked away from — has nowhere to put them.
+            // Not the request's token: the frames are worth keeping even when it has just been cancelled.
+            await store.SaveAsync(frames.TurnId, frames.Frames, CancellationToken.None);
         }
 
         try

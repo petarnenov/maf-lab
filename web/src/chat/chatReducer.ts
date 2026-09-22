@@ -312,6 +312,20 @@ function applyEvent(state: ChatState, event: ChatStreamEvent): ChatState {
       };
     }
 
+    // A frame belongs to the turn whose run wrote it; the terminal frame is recorded before `done` closes the turn.
+    case 'agui_frame': {
+      const active = activeTurn(state);
+      if (!active) return state;
+      return {
+        ...state,
+        traces: traceReducer(state.traces, {
+          type: 'appendFrame',
+          key: active.id,
+          frame: event.data,
+        }),
+      };
+    }
+
     case 'done': {
       const active = activeTurn(state);
       const traces = active

@@ -3,9 +3,9 @@
 Every chat turn produces an ordered list of `TraceEvent`s: `{ seq, atMs, kind, title, durationMs?, data, truncated }`.
 They are streamed live as an AG-UI custom event named `maf-lab/trace`, whose `value` is one TraceEvent (see
 [http-api.md](http-api.md)), and stored with the turn:
-`GET /api/turns/{turnId}/trace` → `{ turnId, conversationId, createdAt, events: TraceEvent[] }` (owner, or a FIRM_ADMIN
-of the same firm for turns in the review queue; otherwise 404). Text fields are capped at 20,000 characters and a
-trace at 1 MB; `truncated: true` marks a capped event. JSON is camelCase.
+`GET /api/turns/{turnId}/trace` → `{ turnId, conversationId, createdAt, events: TraceEvent[], aguiFrames }` (owner, or
+a FIRM_ADMIN of the same firm for turns in the review queue; otherwise 404). Text fields are capped at 20,000
+characters and a trace at 1 MB; `truncated: true` marks a capped event. JSON is camelCase.
 
 | kind | data |
 |---|---|
@@ -40,3 +40,31 @@ Typical order for a procedural question: `turn.start → intent → prompt → h
 tool.result → retrieval → audit → envelope → model.request → answer.delta… → model.response → memory → sources → signals →
 turn.end`.
 The trace is stored before `done` is sent, so the stored copy is readable as soon as the stream ends.
+
+## AG-UI frames
+
+The trace says what the system did; the frames say what it put on the wire. Every event of a run is recorded as it
+goes out — including the ones a client may ignore (`RUN_STARTED`, `TEXT_MESSAGE_START`/`END`, `TOOL_CALL_END`, a
+custom event under an unknown name) and the terminal event — and stored with the turn the run recorded:
+
+`RunFrame` = `{ seq, atMs, type, name?, bytes, traceSeq?, payload?, truncated }`
+
+| field | meaning |
+|---|---|
+| `seq` | position in the run, from 1 |
+| `atMs` | milliseconds since the run's first frame |
+| `type` | the protocol event type, e.g. `TEXT_MESSAGE_CONTENT` |
+| `name` | a custom event's name, e.g. `maf-lab/trace` |
+| `bytes` | the frame's size on the wire |
+| `traceSeq` | for a `maf-lab/trace` frame, the `seq` of the TraceEvent it carried |
+| `payload` | the event itself; absent for a trace frame and for a frame past the cap |
+| `truncated` | true when the run's 256 KB cap left the frame without its payload |
+
+A trace frame is kept by reference: its TraceEvent is already in `events`, and a second copy would double what the
+turn holds. The frames ride on the turn's trace row, so they are read by whoever may read the trace and deleted when
+it is. A run that records no turn — an answer to a confirmation, or one the client walked away from — has nowhere to
+put them, and `aguiFrames` is `null` for a turn whose frames were never recorded.
+
+The web client records the same frames itself as it reads the stream, so a turn on screen shows what actually
+arrived (a frame whose JSON did not parse included, as `unparsed`) and a reopened turn shows the stored copy. Both
+are listed, one row each, in the monitor's **AG-UI** view.

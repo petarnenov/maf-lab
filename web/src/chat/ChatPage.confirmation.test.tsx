@@ -258,5 +258,23 @@ describe('ChatPage with a write waiting', () => {
     resume.close();
 
     expect(await screen.findByText(/Applied\. The fee on A-1042/)).toBeInTheDocument();
+
+    // The answer is a run of its own, and its frames reach the monitor like any other run's.
+    await userEvent.click(within(monitor).getByRole('tab', { name: 'AG-UI' }));
+    const frames = within(
+      await within(monitor).findByRole('list', { name: 'AG-UI frames' }),
+    ).getAllByRole('listitem');
+    expect(frames.map((f) => f.getAttribute('data-type'))).toEqual([
+      'RUN_STARTED',
+      'CUSTOM',
+      'TOOL_CALL_START',
+      'TOOL_CALL_ARGS',
+      'TOOL_CALL_END',
+      'TOOL_CALL_RESULT',
+      'TEXT_MESSAGE_START',
+      'TEXT_MESSAGE_CONTENT',
+      'TEXT_MESSAGE_END',
+      'RUN_FINISHED',
+    ]);
   });
 });

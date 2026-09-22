@@ -45,6 +45,7 @@ public partial class Program
         builder.Services.AddScoped<Agent.FeeAdjustmentFlow>();
         builder.Services.AddScoped<Agent.ConfirmationService>();
         builder.Services.AddSingleton<Agent.Streaming.RunRegistry>();
+        builder.Services.AddSingleton<Agent.Streaming.RunFrameStore>();
         builder.Services.Configure<Agent.Streaming.RunStopOptions>(builder.Configuration.GetSection("RunStop"));
         builder.Services.AddHttpClient("run-stop");
         builder.Services.AddScoped<Agent.Streaming.RunStopper>();

@@ -8,7 +8,7 @@ import { HistorySidebar } from '../history/HistorySidebar';
 import { MonitorPanel } from '../monitor/MonitorPanel';
 import { reconstructTurn, type ReconstructedTurn } from '../monitor/reconstructTurn';
 import { useTimeTravel } from '../monitor/useTimeTravel';
-import { traceFor } from '../monitor/traceReducer';
+import { framesFor, traceFor } from '../monitor/traceReducer';
 import { useTurnTrace } from '../monitor/useTurnTrace';
 import type { AssistantTurn } from './chatReducer';
 import styles from './ChatPage.module.css';
@@ -112,17 +112,24 @@ export function ChatPage() {
   }, [latestFinishedTurnId, queryClient]);
   const selected = assistantTurns.find((t) => t.id === selectedKey) ?? latest;
   const liveEvents = selected ? traceFor(state.traces, selected.id) : [];
+  const liveFrames = selected ? framesFor(state.traces, selected.id) : [];
   const isStreaming = selected?.status === 'streaming';
   const traceExpired = selected?.traceAvailable === false;
   // Finished turns load their stored trace; live events show instantly meanwhile.
   const stored = useTurnTrace(selected?.turnId, {
     enabled: !isStreaming && !traceExpired,
     placeholder: liveEvents,
+    placeholderFrames: liveFrames,
   });
   const events =
     isStreaming || !selected?.turnId || traceExpired
       ? liveEvents
       : (stored.data?.events ?? liveEvents);
+  // The client's own copy is what actually arrived, malformed frames included, so it wins while this session has it.
+  const frames = liveFrames.length > 0 ? liveFrames : (stored.data?.aguiFrames ?? []);
+  // "None" means "not recorded" only once the server has answered and said so.
+  const framesRecorded =
+    liveFrames.length > 0 || isStreaming || !stored.isFetched || stored.data?.aguiFrames != null;
   // Shared with the monitor: rewinding the trace also rewinds the selected answer in the chat.
   const timeTravel = useTimeTravel(events, selected?.id);
   const rewound: ReconstructedTurn | null =
@@ -285,6 +292,8 @@ export function ChatPage() {
         <aside className={styles.monitorPane}>
           <MonitorPanel
             events={events}
+            frames={frames}
+            framesRecorded={framesRecorded}
             live={isStreaming}
             timeTravel={timeTravel}
             loading={!traceExpired && stored.isFetching && events.length === 0}

@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
-import { fixtureTrace } from './fixtures';
+import { fixtureFrames, fixtureTrace } from './fixtures';
 import { MonitorPanel } from './MonitorPanel';
 
 const tab = (name: string) => screen.getByRole('tab', { name });
@@ -143,5 +143,40 @@ describe('MonitorPanel', () => {
   it('shows an error instead of the views', () => {
     render(<MonitorPanel events={[]} error="Could not load the trace." />);
     expect(screen.getByRole('alert')).toHaveTextContent('Could not load the trace.');
+  });
+  it('agui tab lists every frame of the run, one row each, with no coalescing', async () => {
+    render(<MonitorPanel events={fixtureTrace} frames={fixtureFrames} />);
+    await userEvent.click(tab('AG-UI'));
+    const rows = within(screen.getByRole('list', { name: 'AG-UI frames' })).getAllByRole(
+      'listitem',
+    );
+
+    expect(rows).toHaveLength(fixtureFrames.length);
+    expect(rows[0]).toHaveAttribute('data-type', 'RUN_STARTED');
+    expect(rows[rows.length - 1]).toHaveAttribute('data-type', 'RUN_FINISHED');
+    // The two text deltas stay two rows; nothing about the wire is summarised away.
+    expect(rows.filter((r) => r.getAttribute('data-type') === 'TEXT_MESSAGE_CONTENT')).toHaveLength(
+      2,
+    );
+    expect(rows[1]).toHaveTextContent('maf-lab/trace');
+  });
+
+  it('agui tab expands a frame and points a trace frame at the other views', async () => {
+    render(<MonitorPanel events={fixtureTrace} frames={fixtureFrames} />);
+    await userEvent.click(tab('AG-UI'));
+    const list = screen.getByRole('list', { name: 'AG-UI frames' });
+    const rows = within(list).getAllByRole('listitem');
+
+    await userEvent.click(rows[0]);
+    expect(within(rows[0]).getByTestId('json-view')).toHaveTextContent('threadId');
+
+    await userEvent.click(rows[1]);
+    expect(rows[1]).toHaveTextContent(`Carried trace event #${fixtureTrace[0].seq}`);
+  });
+
+  it('agui tab says when a turn has no frames recorded', async () => {
+    render(<MonitorPanel events={fixtureTrace} frames={[]} framesRecorded={false} />);
+    await userEvent.click(tab('AG-UI'));
+    expect(screen.getByText(/were not recorded/)).toBeInTheDocument();
   });
 });

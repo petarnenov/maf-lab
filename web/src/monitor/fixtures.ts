@@ -1,4 +1,4 @@
-import type { TraceEvent } from '../api/types';
+import type { AguiFrame, TraceEvent } from '../api/types';
 
 let seq = 0;
 const ev = (
@@ -235,3 +235,30 @@ export const fixtureTrace: TraceEvent[] = [
     sourceCount: 1,
   }),
 ];
+
+/**
+ * The same turn seen from the wire: the run opening, a trace frame per step of `fixtureTrace`, the answer's text
+ * frames and the terminal frame. A trace frame carries only the step's sequence number, as the reader records it.
+ */
+export const fixtureFrames: AguiFrame[] = (() => {
+  const frames: AguiFrame[] = [];
+  const push = (frame: Omit<AguiFrame, 'seq' | 'atMs'>) =>
+    frames.push({ seq: frames.length + 1, atMs: frames.length * 10, ...frame });
+
+  push({ type: 'RUN_STARTED', bytes: 74, payload: { threadId: 'c1', runId: 'r1' } });
+  for (const e of fixtureTrace) {
+    push({ type: 'CUSTOM', name: 'maf-lab/trace', bytes: 220, traceSeq: e.seq });
+    if (e.kind === 'prompt') {
+      push({ type: 'TEXT_MESSAGE_START', bytes: 88, payload: { messageId: 'm1' } });
+      push({ type: 'TEXT_MESSAGE_CONTENT', bytes: 96, payload: { messageId: 'm1', delta: 'As' } });
+      push({
+        type: 'TEXT_MESSAGE_CONTENT',
+        bytes: 99,
+        payload: { messageId: 'm1', delta: 'sign' },
+      });
+      push({ type: 'TEXT_MESSAGE_END', bytes: 84, payload: { messageId: 'm1' } });
+    }
+  }
+  push({ type: 'RUN_FINISHED', bytes: 120, payload: { result: { turnId: 't1' } } });
+  return frames;
+})();

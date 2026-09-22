@@ -91,12 +91,35 @@ export interface DoneData {
   error?: string | null;
 }
 
+/**
+ * One event as it crossed the AG-UI wire, kept so the monitor can show what the rest of the screen drops.
+ * `seq` counts frames of the run from 1 and `atMs` is measured from its first frame. A trace frame carries
+ * `traceSeq` and no `payload`: the trace event itself is what the monitor's other tabs already render.
+ * `unparsed` holds the raw text of a frame whose JSON could not be read.
+ */
+export interface AguiFrame {
+  seq: number;
+  atMs: number;
+  /** The protocol event type; the SSE frame's own name when the payload could not be read. */
+  type: string;
+  /** A custom event's name. */
+  name?: string;
+  bytes: number;
+  /** The sequence number of the trace event a `maf-lab/trace` frame carried. */
+  traceSeq?: number;
+  payload?: unknown;
+  unparsed?: string;
+  /** Set by the server when the run's size cap left this frame without its payload. */
+  truncated?: boolean;
+}
+
 export type ChatStreamEvent =
   | { type: 'text_delta'; data: { text: string } }
   | { type: 'tool_call_started'; data: ToolCallStartedData }
   | { type: 'tool_call_finished'; data: ToolCallFinishedData }
   | { type: 'sources'; data: { sources: SourceRef[] } }
   | { type: 'trace'; data: TraceEvent }
+  | { type: 'agui_frame'; data: AguiFrame }
   | { type: 'confirmation_required'; data: ConfirmationRequiredData }
   | { type: 'done'; data: DoneData };
 
@@ -138,6 +161,8 @@ export interface TurnTraceDocument {
   conversationId: string;
   createdAt: string;
   events: TraceEvent[];
+  /** The run's frames, or null for a turn answered before they were kept. */
+  aguiFrames?: AguiFrame[] | null;
 }
 
 export interface ChatRequest {

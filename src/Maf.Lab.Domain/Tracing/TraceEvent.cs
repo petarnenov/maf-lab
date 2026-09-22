@@ -34,5 +34,9 @@ public static class TraceKinds
     public const string TurnEnd = "turn.end";
 }
 
-/// <summary>Stored trace of one turn (GET /api/turns/{turnId}/trace).</summary>
-public sealed record TurnTraceDocument(string TurnId, string ConversationId, DateTimeOffset CreatedAt, IReadOnlyList<TraceEvent> Events);
+/// <summary>
+/// Stored trace of one turn (GET /api/turns/{turnId}/trace), with the AG-UI frames of the run that produced it.
+/// <c>AguiFrames</c> is null for a turn whose frames were never recorded, which is not the same as a run with none.
+/// </summary>
+public sealed record TurnTraceDocument(string TurnId, string ConversationId, DateTimeOffset CreatedAt,
+    IReadOnlyList<TraceEvent> Events, IReadOnlyList<RunFrame>? AguiFrames = null);

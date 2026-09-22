@@ -147,6 +147,29 @@
   font-size: 0.7rem;
 }
 
+/* AG-UI frames: the timeline's row, with the bar's column split into a name and a size. */
+.frameRow {
+  grid-template-columns: 28px 64px 170px 1fr auto;
+}
+
+.frameName {
+  font-size: 0.72rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.frameBytes {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.7rem;
+  padding-right: 2px;
+}
+
+.frameBad {
+  color: var(--danger);
+}
+
 /* cards */
 .card {
   border: 1px solid var(--border);

@@ -1,9 +1,9 @@
-import { type BaseEvent } from '@ag-ui/core';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { toChatEvents } from './chatEvents';
-import { traceFor } from '../monitor/traceReducer';
+import { framesFor, traceFor } from '../monitor/traceReducer';
+import { readChatStream } from './readChatStream';
+import { streamResponse } from '../test/render';
 import { chatReducer, initialChatState, type AssistantTurn, type ChatState } from './chatReducer';
 
 /** One run captured from the stack by `scripts/capture_ui_events.sh`. */
@@ -18,6 +18,8 @@ interface RecordedRun {
     toolCalls: string[];
     sources: number;
     traceSteps: number;
+    /** Every frame the run wrote gets a row in the AG-UI view; none are merged away. */
+    aguiFrames: number;
     pending: { id: string; reason: string } | null;
   };
 }
@@ -30,8 +32,8 @@ const runs: RecordedRun[] = readFileSync(
   .filter((line) => line.trim().length > 0)
   .map((line) => JSON.parse(line) as RecordedRun);
 
-/** Replays a recorded run the way useChatStream does: frame → events → reducer, at the time it was recorded. */
-function replay(run: RecordedRun): ChatState {
+/** Replays a recorded run the way useChatStream does: wire → frames → events → reducer, at the time it happened. */
+async function replay(run: RecordedRun): Promise<ChatState> {
   // A proposal's expiry is a real moment; a recording replayed on today's clock would always be past it.
   vi.setSystemTime(new Date(run.capturedAt));
   let state = chatReducer(initialChatState, {
@@ -40,11 +42,18 @@ function replay(run: RecordedRun): ChatState {
     assistantTurnId: 'a1',
     text: 'recorded',
   });
-  for (const frame of run.frames) {
-    for (const event of toChatEvents(frame.data as BaseEvent)) {
+  const body = run.frames
+    .map((f) => `event: ${f.event}\ndata: ${JSON.stringify(f.data)}\n\n`)
+    .join('');
+  await readChatStream(
+    streamResponse([body]).body!,
+    (event) => {
       state = chatReducer(state, { type: 'event', event });
-    }
-  }
+    },
+    (frame) => {
+      state = chatReducer(state, { type: 'event', event: { type: 'agui_frame', data: frame } });
+    },
+  );
   return state;
 }
 
@@ -71,8 +80,8 @@ describe('runs recorded from the running stack', () => {
 
   it.each(runs.map((run) => [run.id, run] as const))(
     '%s reaches the state it recorded',
-    (_id, run) => {
-      const state = replay(run);
+    async (_id, run) => {
+      const state = await replay(run);
       const turn = assistant(state);
 
       expect(turn.text).toBe(run.expect.answer);
@@ -92,11 +101,16 @@ describe('runs recorded from the running stack', () => {
 
       // The monitor saw the same run the chat did.
       expect(traceFor(state.traces, 'a1')).toHaveLength(run.expect.traceSteps);
+      // And every frame that crossed the wire, including the ones the chat itself makes no use of.
+      expect(framesFor(state.traces, 'a1')).toHaveLength(run.expect.aguiFrames);
+      expect(framesFor(state.traces, 'a1').map((f) => f.seq)).toEqual(
+        run.frames.map((_, i) => i + 1),
+      );
     },
   );
 
-  it('shows no message content in a tool card', () => {
-    const state = replay(runs.find((r) => r.id === 'tool-call-with-sources')!);
+  it('shows no message content in a tool card', async () => {
+    const state = await replay(runs.find((r) => r.id === 'tool-call-with-sources')!);
     for (const call of assistant(state).toolCalls) {
       expect(call.resultSummary ?? '').not.toContain('{');
       expect(call.argumentSummary).not.toContain('fee schedule is missing');

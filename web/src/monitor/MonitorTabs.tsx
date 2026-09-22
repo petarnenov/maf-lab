@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
-import type { TraceEvent } from '../api/types';
+import type { AguiFrame, TraceEvent } from '../api/types';
 import { JsonView } from './JsonView';
 import styles from './MonitorPanel.module.css';
 import { kindColor } from './kindColors';
@@ -466,4 +466,100 @@ export function PromptTab({ events }: { events: TraceEvent[] }) {
       </section>
     </div>
   );
+}
+
+// ---- AG-UI ---------------------------------------------------------------------------------------------------------
+
+/**
+ * Every event of the run as it crossed the wire, one row each — the types the rest of the screen maps to nothing
+ * included. `reached` is how far the time-travel cursor has got: the frame at it is the current one, later frames
+ * are dimmed.
+ */
+export function AguiTab({
+  frames,
+  reached = frames.length > 0 ? frames[frames.length - 1].seq : 0,
+  recorded = true,
+}: {
+  frames: AguiFrame[];
+  /** Sequence number of the last frame the cursor has reached; 0 means none. */
+  reached?: number;
+  /** False when this turn ran before frames were kept, so "none" means "not recorded", not "an empty run". */
+  recorded?: boolean;
+}) {
+  const [open, setOpen] = useState<number | null>(null);
+  if (frames.length === 0) {
+    return (
+      <p className={styles.empty}>
+        {recorded
+          ? 'No frames yet.'
+          : 'The AG-UI frames of this turn were not recorded. Only turns answered since they were kept have them.'}
+      </p>
+    );
+  }
+  return (
+    <div role="list" aria-label="AG-UI frames">
+      {frames.map((f) => {
+        const future = f.seq > reached;
+        const isCurrent = f.seq === reached;
+        const isOpen = open === f.seq;
+        return (
+          <div
+            key={f.seq}
+            role="listitem"
+            className={`${styles.row} ${styles.frameRow} ${future ? styles.future : ''} ${
+              isCurrent ? styles.current : ''
+            }`}
+            data-type={f.type}
+            data-future={future}
+            aria-current={isCurrent ? 'step' : undefined}
+            onClick={() => setOpen(isOpen ? null : f.seq)}
+          >
+            <span className={styles.seq}>#{f.seq}</span>
+            <span className={styles.at}>+{formatMs(f.atMs)}</span>
+            <span className={styles.kind} style={{ background: frameColor(f) }} title={f.type}>
+              {f.type}
+            </span>
+            <span className={styles.frameName}>
+              {f.name}
+              {f.traceSeq !== undefined && (
+                <span className={styles.muted}> → trace #{f.traceSeq}</span>
+              )}
+              {f.unparsed !== undefined && (
+                <span className={styles.frameBad}> unreadable payload</span>
+              )}
+              {f.truncated && <span className={styles.frameBad}> payload dropped by the cap</span>}
+            </span>
+            <span className={styles.frameBytes}>{f.bytes} B</span>
+            {isOpen && (
+              <div className={styles.details} onClick={(ev) => ev.stopPropagation()}>
+                {f.unparsed !== undefined ? (
+                  <pre className={styles.pre}>{f.unparsed}</pre>
+                ) : f.truncated ? (
+                  <div className={styles.truncated}>Truncated by the size cap.</div>
+                ) : f.traceSeq !== undefined ? (
+                  <div className={styles.summary}>
+                    Carried trace event #{f.traceSeq} — the other tabs show it.
+                  </div>
+                ) : f.payload === undefined || f.payload === null ? (
+                  <div className={styles.summary}>No payload was kept for this frame.</div>
+                ) : (
+                  <JsonView value={f.payload} expandDepth={2} />
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The protocol's families, coloured the way the timeline colours trace kinds. */
+function frameColor(frame: AguiFrame): string {
+  if (frame.unparsed !== undefined) return '#b42318';
+  if (frame.type.startsWith('RUN_')) return '#5d6673';
+  if (frame.type.startsWith('TEXT_MESSAGE')) return '#2f5bd3';
+  if (frame.type.startsWith('TOOL_CALL')) return '#8e44ad';
+  if (frame.type.startsWith('STEP_')) return '#8a6d3b';
+  return '#0e7490';
 }

@@ -58,8 +58,10 @@ export function useChatStream() {
           return;
         }
 
-        const sawDone = await readChatStream(response.body, (event) =>
-          dispatch({ type: 'event', event }),
+        const sawDone = await readChatStream(
+          response.body,
+          (event) => dispatch({ type: 'event', event }),
+          (frame) => dispatch({ type: 'event', event: { type: 'agui_frame', data: frame } }),
         );
         if (!sawDone) {
           dispatch({
@@ -135,10 +137,14 @@ export function useChatStream() {
         // Pipe events through the normal reducer pipeline so the monitor receives live trace events.
         // Also accumulate text deltas to determine the outcome.
         let said = '';
-        const sawDone = await readChatStream(response.body, (event) => {
-          dispatch({ type: 'event', event });
-          if (event.type === 'text_delta') said += event.data.text;
-        });
+        const sawDone = await readChatStream(
+          response.body,
+          (event) => {
+            dispatch({ type: 'event', event });
+            if (event.type === 'text_delta') said += event.data.text;
+          },
+          (frame) => dispatch({ type: 'event', event: { type: 'agui_frame', data: frame } }),
+        );
         if (!sawDone) {
           dispatch({
             type: 'stream_error',

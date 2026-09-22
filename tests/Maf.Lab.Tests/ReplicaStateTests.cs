@@ -109,6 +109,73 @@ public class ReplicaStateTests
     }
 
     [Fact]
+    public async Task Initializer_adds_a_new_column_to_a_table_an_old_database_already_has()
+    {
+        var path = Path.Combine(Directory.CreateTempSubdirectory("maf-db-col-").FullName, "maf.db");
+        var factory = Factory(path);
+        await using (var ctx = await factory.CreateDbContextAsync(Ct))
+        {
+            // An "old" database: TurnTraces exists, but without the column the AG-UI frames go in.
+            foreach (var statement in DatabaseInitializer.Statements(ctx.Database.GenerateCreateScript()))
+            {
+                await ctx.Database.ExecuteSqlRawAsync(WithoutAguiColumn(statement), Ct);
+            }
+            Assert.DoesNotContain("AguiJson", await ColumnsAsync(ctx, "TurnTraces"));
+        }
+
+        await using (var ctx = await factory.CreateDbContextAsync(Ct))
+        {
+            await DatabaseInitializer.InitializeAsync(ctx, Ct);
+            ctx.TurnTraces.Add(new TurnTraceRow
+            {
+                TurnId = "t_1",
+                ConversationId = "c",
+                UserId = "adam",
+                FirmId = "firm-a",
+                CreatedAt = DateTime.UtcNow,
+                Json = "[]",
+                AguiJson = "[{\"seq\":1}]",
+            });
+            await ctx.SaveChangesAsync(Ct);
+        }
+
+        await using var check = await factory.CreateDbContextAsync(Ct);
+        Assert.Contains("AguiJson", await ColumnsAsync(check, "TurnTraces"));
+        Assert.Equal("[{\"seq\":1}]", (await check.TurnTraces.SingleAsync(t => t.TurnId == "t_1", Ct)).AguiJson);
+    }
+
+    /// <summary>The same CREATE TABLE as the model's, minus the column this test is about.</summary>
+    private static string WithoutAguiColumn(string statement)
+    {
+        if (!statement.Contains("AguiJson", StringComparison.Ordinal))
+        {
+            return statement;
+        }
+        var lines = statement.Split('\n').Where(l => !l.Contains("AguiJson", StringComparison.Ordinal)).ToList();
+        // It was the last column, so the one before it is left with a trailing comma the table cannot have.
+        for (var i = lines.Count - 1; i >= 0; i--)
+        {
+            var trimmed = lines[i].TrimEnd('\r', ' ');
+            if (trimmed.EndsWith(',')) { lines[i] = trimmed[..^1]; break; }
+        }
+        return string.Join('\n', lines);
+    }
+
+    private static async Task<List<string>> ColumnsAsync(MafDbContext ctx, string table)
+    {
+        await ctx.Database.OpenConnectionAsync(Ct);
+        await using var command = ctx.Database.GetDbConnection().CreateCommand();
+        command.CommandText = $"PRAGMA table_info(\"{table}\")";
+        await using var reader = await command.ExecuteReaderAsync(Ct);
+        var names = new List<string>();
+        while (await reader.ReadAsync(Ct))
+        {
+            names.Add(reader.GetString(1));
+        }
+        return names;
+    }
+
+    [Fact]
     public async Task Two_api_hosts_on_one_database_write_concurrently_and_continue_each_others_conversations()
     {
         var dir = Directory.CreateTempSubdirectory("maf-replicas-").FullName;

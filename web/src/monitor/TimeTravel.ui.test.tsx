@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
-import { fixtureTrace } from './fixtures';
+import { fixtureFrames, fixtureTrace } from './fixtures';
 import { MonitorPanel } from './MonitorPanel';
 
 const panel = () => screen.getByRole('region', { name: 'Behind the scenes' });
@@ -85,5 +85,26 @@ describe('time travel in the monitor', () => {
     expect(screen.getByText('Playing')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Pause' }));
     expect(screen.getByText('Paused')).toBeInTheDocument();
+  });
+  it('the AG-UI frames follow the cursor too', async () => {
+    render(<MonitorPanel events={fixtureTrace} frames={fixtureFrames} resetKey="t1" />);
+    await userEvent.click(screen.getByRole('tab', { name: 'AG-UI' }));
+    panel().focus();
+    const rows = () =>
+      within(screen.getByRole('list', { name: 'AG-UI frames' })).getAllByRole('listitem');
+    const dimmed = () => rows().filter((r) => r.getAttribute('data-future') === 'true');
+
+    // At the end of the turn the whole run has been reached.
+    expect(dimmed()).toHaveLength(0);
+
+    // Before the first step nothing is reached, and no frame is the current one.
+    await userEvent.keyboard('{Home}');
+    expect(dimmed()).toHaveLength(fixtureFrames.length);
+    expect(rows().filter((r) => r.getAttribute('aria-current') === 'step')).toHaveLength(0);
+
+    // One step in: the frame that carried it is the current one, and the rest are still ahead.
+    await userEvent.keyboard('{ArrowRight}');
+    expect(dimmed()).toHaveLength(fixtureFrames.length - 2);
+    expect(rows()[1]).toHaveAttribute('aria-current', 'step');
   });
 });
