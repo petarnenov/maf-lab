@@ -102,6 +102,15 @@ that baseline and SHALL fail when a metric has dropped by more than a configured
 variant, the metric, the baseline value, the new value and the size of the drop. A metric at or above its baseline,
 or within the tolerance, SHALL NOT fail the run.
 
+The tolerance a metric is compared against SHALL be that metric's. Configuration SHALL be able to set one for a
+named metric of a named suite, and SHALL fall back to the suite's and then to the default for any metric that has
+none. A tolerance SHALL be derived from that metric's measured run-to-run spread and SHALL be recorded with what
+it was measured from; a tolerance chosen to make a particular run pass has no basis to be reviewed against later.
+
+A metric that does not move between identical runs SHALL NOT inherit a tolerance widened for a different metric.
+Noise is a property of how a metric is produced — a live translation, a model judging prose — and not of the suite
+that reports it, so a suite-wide number is either too loose for its stable metrics or too tight for its noisy ones.
+
 A metric the baseline does not mention SHALL be reported as new rather than ignored, so that adding a metric cannot
 quietly escape the comparison. A baseline that mentions a metric the run did not produce SHALL be reported as
 missing.
@@ -121,6 +130,18 @@ what moved without recomputing it.
 #### Scenario: Noise within the tolerance passes
 - **WHEN** a metric is below its baseline by no more than the tolerance
 - **THEN** the run passes and the comparison still reports the difference
+
+#### Scenario: A metric with its own tolerance
+- **WHEN** a metric has a tolerance configured for it and drops by less than that but more than its suite's
+- **THEN** the run passes
+
+#### Scenario: A stable metric beside a noisy one
+- **WHEN** a metric with no tolerance of its own drops by more than the default, in a suite whose tolerance was widened for another metric
+- **THEN** the run fails
+
+#### Scenario: Nothing configured for a metric
+- **WHEN** a metric has no tolerance of its own
+- **THEN** its suite's tolerance applies, and the default where the suite has none
 
 #### Scenario: An improvement never fails
 - **WHEN** a metric is above its baseline
