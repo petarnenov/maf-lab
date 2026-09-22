@@ -383,3 +383,20 @@
   font-style: italic;
   color: var(--muted, #667085);
 }
+
+/* A query term with no IDF: a fact about the corpus, not a failure — muted, not red. */
+.unweighted {
+  color: var(--muted);
+  font-style: italic;
+  font-variant-numeric: normal;
+  white-space: nowrap;
+}
+
+/* A candidate the relevance floor kept out of the answer: shown, but plainly not part of it. */
+.dropped {
+  opacity: 0.55;
+}
+
+.dropped td {
+  font-style: italic;
+}

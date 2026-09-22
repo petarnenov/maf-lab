@@ -18,6 +18,12 @@ public sealed record SearchRequest
     public IReadOnlyList<string>? SourceTypes { get; init; }
     public required int Limit { get; init; }
     public int PrefetchLimit { get; init; }
+    /// <summary>
+    /// Lowest score a candidate may have on each branch and still count. Null leaves that branch unfiltered.
+    /// Never applied to a fused score: RRF expresses rank and how many candidates were fused, not closeness.
+    /// </summary>
+    public float? DenseFloor { get; init; }
+    public float? SparseFloor { get; init; }
 }
 
 /// <summary>
@@ -42,10 +48,10 @@ public sealed class TenantScopedSearch(QdrantClient client, IOptions<QdrantOptio
         {
             RetrievalModes.Dense when denseQuery is not null =>
                 await client.QueryAsync(_collection, query: denseQuery, usingVector: request.DenseVector, filter: filter,
-                    limit: (ulong)request.Limit, payloadSelector: true, cancellationToken: ct),
+                    limit: (ulong)request.Limit, scoreThreshold: request.DenseFloor, payloadSelector: true, cancellationToken: ct),
             RetrievalModes.Sparse when sparseQuery is not null =>
                 await client.QueryAsync(_collection, query: sparseQuery, usingVector: ChunkSchema.SparseVector, filter: filter,
-                    limit: (ulong)request.Limit, payloadSelector: true, cancellationToken: ct),
+                    limit: (ulong)request.Limit, scoreThreshold: request.SparseFloor, payloadSelector: true, cancellationToken: ct),
             RetrievalModes.Hybrid => await HybridAsync(denseQuery, sparseQuery, request, filter, prefetchLimit, ct),
             _ => [],
         };
@@ -56,24 +62,53 @@ public sealed class TenantScopedSearch(QdrantClient client, IOptions<QdrantOptio
     private async Task<IReadOnlyList<ScoredPoint>> HybridAsync(
         Query? denseQuery, Query? sparseQuery, SearchRequest request, Filter filter, ulong prefetchLimit, CancellationToken ct)
     {
-        var prefetch = new List<PrefetchQuery>();
-        if (denseQuery is not null)
-        {
-            prefetch.Add(new PrefetchQuery { Query = denseQuery, Using = request.DenseVector, Filter = filter, Limit = prefetchLimit });
-        }
-        if (sparseQuery is not null)
-        {
-            prefetch.Add(new PrefetchQuery { Query = sparseQuery, Using = ChunkSchema.SparseVector, Filter = filter, Limit = prefetchLimit });
-        }
-        if (prefetch.Count == 0)
+        var plan = HybridPlan(denseQuery, sparseQuery, request, filter, prefetchLimit);
+        if (plan.Prefetch.Count == 0)
         {
             return [];
         }
-
-        var fusion = request.Fusion == FusionModes.Dbsf ? Qdrant.Client.Grpc.Fusion.Dbsf : Qdrant.Client.Grpc.Fusion.Rrf;
-        return await client.QueryAsync(_collection, query: fusion, prefetch: prefetch, filter: filter,
-            limit: (ulong)request.Limit, payloadSelector: true, cancellationToken: ct);
+        return await client.QueryAsync(_collection, query: plan.Fusion, prefetch: plan.Prefetch, filter: filter,
+            limit: (ulong)request.Limit, scoreThreshold: plan.FusedFloor, payloadSelector: true, cancellationToken: ct);
     }
+
+    /// <summary>
+    /// What a hybrid search asks the store for. Separated from the call so the invariant that matters can be
+    /// asserted: the floors ride on the branches, and <see cref="HybridPlan.FusedFloor"/> is always null.
+    /// </summary>
+    internal sealed record Plan(IReadOnlyList<PrefetchQuery> Prefetch, Fusion Fusion, float? FusedFloor);
+
+    internal static Plan HybridPlan(Query? denseQuery, Query? sparseQuery, SearchRequest request, Filter filter, ulong prefetchLimit)
+    {
+        var prefetch = new List<PrefetchQuery>();
+        if (denseQuery is not null)
+        {
+            prefetch.Add(Branch(denseQuery, request.DenseVector, filter, prefetchLimit, request.DenseFloor));
+        }
+        if (sparseQuery is not null)
+        {
+            prefetch.Add(Branch(sparseQuery, ChunkSchema.SparseVector, filter, prefetchLimit, request.SparseFloor));
+        }
+        var fusion = request.Fusion == FusionModes.Dbsf ? Fusion.Dbsf : Fusion.Rrf;
+        // Null, always. An RRF score is a function of rank and of how many candidates were fused, so it says
+        // nothing about closeness to the query and there is no floor that could mean anything against it.
+        return new Plan(prefetch, fusion, null);
+    }
+
+    /// <summary>One candidate branch, carrying its own floor so a candidate too far from the query never fuses.</summary>
+    private static PrefetchQuery Branch(Query query, string vector, Filter filter, ulong limit, float? floor)
+    {
+        var branch = new PrefetchQuery { Query = query, Using = vector, Filter = filter, Limit = limit };
+        if (floor is { } threshold)
+        {
+            branch.ScoreThreshold = threshold;
+        }
+        return branch;
+    }
+
+    /// <summary>The store's query for a dense vector, exposed so a test can build the same plan the search does.</summary>
+    internal static Query DenseQuery(float[] dense) => Query(dense);
+
+    internal static Query SparseQuery(SparseVectorData sparse) => Query(sparse);
 
     private static Query Query(float[] dense) => new() { Nearest = new VectorInput { Dense = new DenseVector { Data = { dense } } } };
 

@@ -15,7 +15,10 @@ using Maf.Lab.Hosting;
 namespace Maf.Lab.Retrieval.Search;
 
 /// <summary>Per-call overrides used by the eval harness to compare retrieval configurations.</summary>
-public sealed record SearchSettings(string Mode, string Fusion, string DenseVector, bool Rerank);
+/// <param name="DenseFloor">Lowest dense score a candidate may have and still count. Null leaves the branch unfiltered.</param>
+/// <param name="SparseFloor">The same for the sparse branch. Dense and sparse are different scales, so never one value.</param>
+public sealed record SearchSettings(string Mode, string Fusion, string DenseVector, bool Rerank,
+    float? DenseFloor = null, float? SparseFloor = null);
 
 public sealed record SearchOutcome(SearchDocumentsResult Result, IReadOnlyList<ScoredChunk> Chunks);
 
@@ -31,7 +34,8 @@ public sealed partial class DocumentSearchService(
     public const int MaxResultsCap = 10;
     private readonly RetrievalOptions _options = options.Value;
 
-    public SearchSettings DefaultSettings => new(_options.Mode, _options.Fusion, _options.DenseVector, _options.RerankEnabled);
+    public SearchSettings DefaultSettings => new(_options.Mode, _options.Fusion, _options.DenseVector, _options.RerankEnabled,
+        _options.DenseFloor, _options.SparseFloor);
 
     public async Task<SearchOutcome> SearchAsync(
         Principal principal, string query, IReadOnlyList<string>? sourceTypes, int? maxResults, SearchSettings? settings, CancellationToken ct,
@@ -106,6 +110,8 @@ public sealed partial class DocumentSearchService(
             SourceTypes = sourceTypes,
             Limit = k,
             PrefetchLimit = Math.Max(_options.MinPrefetch, k * _options.PrefetchMultiplier),
+            DenseFloor = settings.DenseFloor,
+            SparseFloor = settings.SparseFloor,
         };
         clock.Restart();
         var candidates = await LabTelemetry.InSpanAsync("retrieval.query",
@@ -144,6 +150,8 @@ public sealed partial class DocumentSearchService(
             diagnostics.Settings["candidateLimit"] = k;
             diagnostics.Settings["prefetchLimit"] = request.PrefetchLimit;
             diagnostics.Settings["rerank"] = settings.Rerank;
+            diagnostics.Settings["denseFloor"] = settings.DenseFloor;
+            diagnostics.Settings["sparseFloor"] = settings.SparseFloor;
             diagnostics.Settings["sourceTypes"] = sourceTypes is null ? null : new System.Text.Json.Nodes.JsonArray(sourceTypes.Select(t => (System.Text.Json.Nodes.JsonNode)System.Text.Json.Nodes.JsonValue.Create(t)!).ToArray());
             diagnostics.Query["text"] = searchedQuery;
             diagnostics.Query["original"] = translation.Original;
@@ -165,25 +173,34 @@ public sealed partial class DocumentSearchService(
             long branchMs = 0;
             if (_options.TraceBranches && settings.Mode == RetrievalModes.Hybrid)
             {
-                // Per-branch lists go through the same tenant-scoped query path.
+                // Per-branch lists go through the same tenant-scoped query path, but without the floors: the
+                // operator needs to see the near misses the answer was denied, not the same list the model got.
                 clock.Restart();
+                var unfiltered = request with { DenseFloor = null, SparseFloor = null };
                 if (denseVector is not null)
                 {
-                    diagnostics.Dense = SearchDiagnostics.Candidates(await search.QueryAsync(principal, request with { Mode = RetrievalModes.Dense }, ct));
+                    diagnostics.Dense = SearchDiagnostics.Candidates(
+                        await search.QueryAsync(principal, unfiltered with { Mode = RetrievalModes.Dense }, ct), settings.DenseFloor);
                 }
                 if (sparseVector is { IsEmpty: false })
                 {
-                    diagnostics.Sparse = SearchDiagnostics.Candidates(await search.QueryAsync(principal, request with { Mode = RetrievalModes.Sparse }, ct));
+                    diagnostics.Sparse = SearchDiagnostics.Candidates(
+                        await search.QueryAsync(principal, unfiltered with { Mode = RetrievalModes.Sparse }, ct), settings.SparseFloor);
                 }
                 branchMs = clock.ElapsedMilliseconds;
             }
             else if (settings.Mode == RetrievalModes.Dense)
             {
-                diagnostics.Dense = SearchDiagnostics.Candidates(candidates);
+                // `candidates` already cleared the floor, so re-query without it or the near misses are invisible.
+                diagnostics.Dense = settings.DenseFloor is null
+                    ? SearchDiagnostics.Candidates(candidates)
+                    : SearchDiagnostics.Candidates(await search.QueryAsync(principal, request with { DenseFloor = null }, ct), settings.DenseFloor);
             }
             else if (settings.Mode == RetrievalModes.Sparse)
             {
-                diagnostics.Sparse = SearchDiagnostics.Candidates(candidates);
+                diagnostics.Sparse = settings.SparseFloor is null
+                    ? SearchDiagnostics.Candidates(candidates)
+                    : SearchDiagnostics.Candidates(await search.QueryAsync(principal, request with { SparseFloor = null }, ct), settings.SparseFloor);
             }
             diagnostics.Timings["embedMs"] = embedMs;
             diagnostics.Timings["sparseEncodeMs"] = sparseMs;

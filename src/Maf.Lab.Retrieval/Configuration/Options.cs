@@ -76,6 +76,21 @@ public sealed class RetrievalOptions
     public string DenseVector { get; set; } = "dense_v1";
     public int PrefetchMultiplier { get; set; } = 5;
     public int MinPrefetch { get; set; } = 50;
+    /// <summary>
+    /// Lowest dense score a candidate may have and still reach fusion. Null means no floor, which is what the
+    /// system did before floors existed. Dense and sparse are different scales and never share a value.
+    /// 0.65 came from a sweep of 0.45–0.70 against the retrieval eval: every metric at or above the accepted
+    /// baseline, and half the off-domain questions correctly retrieving nothing instead of none of them.
+    /// </summary>
+    public float? DenseFloor { get; set; } = 0.65f;
+    /// <summary>
+    /// Lowest BM25 score a sparse candidate may have and still reach fusion. Null: deliberately no floor.
+    /// A sweep of 1–20 found that the value which silences the remaining off-domain questions (9) costs
+    /// Bulgarian recall@5 0.042, well outside the 0.02 regression tolerance, because BM25 scales with term
+    /// rarity and query length rather than with closeness to the query. There is no value that buys the silence
+    /// without the loss, so this branch keeps no floor until something other than a raw BM25 score can judge it.
+    /// </summary>
+    public float? SparseFloor { get; set; }
     public bool RerankEnabled { get; set; }
     public int RerankCandidates { get; set; } = 20;
     public int SnippetMaxChars { get; set; } = 700;

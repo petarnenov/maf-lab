@@ -1,8 +1,34 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
-import { fixtureFrames, fixtureTrace } from './fixtures';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  fixtureFrames,
+  fixtureTrace,
+  fixtureTraceAllDropped,
+  fixtureTraceAllOutOfVocabulary,
+  fixtureTraceNothingFound,
+  fixtureTraceOutOfVocabulary,
+} from './fixtures';
 import { MonitorPanel } from './MonitorPanel';
+
+const FAILURE_DETAIL = 'connection to qdrant-host:6333 refused';
+
+/**
+ * Lets a test make one view throw during render, standing in for the next defect in a tab. Null for every other
+ * test in this file, so they render the real views.
+ */
+const { failing } = vi.hoisted(() => ({ failing: { view: null as 'retrieval' | null } }));
+
+vi.mock('./MonitorTabs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./MonitorTabs')>();
+  return {
+    ...actual,
+    RetrievalTab: (props: Parameters<typeof actual.RetrievalTab>[0]) => {
+      if (failing.view === 'retrieval') throw new Error(FAILURE_DETAIL);
+      return <actual.RetrievalTab {...props} />;
+    },
+  };
+});
 
 const tab = (name: string) => screen.getByRole('tab', { name });
 
@@ -77,6 +103,96 @@ describe('MonitorPanel', () => {
       ).not.toBeNull();
     }
     expect(search).toHaveTextContent('qdrant 12 ms');
+  });
+
+  it('retrieval tab shows a term the corpus has never seen instead of a weight', async () => {
+    render(<MonitorPanel events={fixtureTraceOutOfVocabulary} />);
+    await userEvent.click(tab('Retrieval'));
+
+    const search = screen.getByRole('region', { name: 'Search' });
+    const terms = within(search).getByRole('table', { name: 'Query terms' });
+    const rows = within(terms).getAllByRole('row').slice(1); // drop the header row
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent('what');
+    expect(rows[0]).toHaveTextContent('0.300');
+    expect(rows[1]).toHaveTextContent('jwe');
+    expect(rows[1]).toHaveTextContent('not in index');
+    // No weight was reported for it, and none is invented — 0.000 would read as a term in every document.
+    expect(rows[1]).not.toHaveTextContent('0.000');
+    expect(search).toHaveTextContent('it cannot match on BM25');
+
+    // The rest of the search still renders.
+    expect(within(search).getByRole('table', { name: 'Fused candidates' })).toHaveTextContent(
+      'billing-overview.txt',
+    );
+    expect(search).toHaveTextContent('qdrant 12 ms');
+  });
+
+  it('retrieval tab renders a query whose every term is out of vocabulary', async () => {
+    render(<MonitorPanel events={fixtureTraceAllOutOfVocabulary} />);
+    await userEvent.click(tab('Retrieval'));
+
+    const search = screen.getByRole('region', { name: 'Search' });
+    const terms = within(search).getByRole('table', { name: 'Query terms' });
+    const rows = within(terms).getAllByRole('row').slice(1);
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row).toHaveTextContent('not in index');
+    }
+    expect(search).toHaveTextContent('it cannot match on BM25');
+    expect(search).toHaveTextContent('embed 29 ms');
+  });
+
+  it('retrieval tab says nothing about the vocabulary when every term has a weight', async () => {
+    render(<MonitorPanel events={fixtureTrace} />);
+    await userEvent.click(tab('Retrieval'));
+
+    const search = screen.getByRole('region', { name: 'Search' });
+    expect(search).not.toHaveTextContent('not in index');
+    expect(search).not.toHaveTextContent('cannot match on BM25');
+  });
+
+  it('retrieval tab states the floor applied to each branch', async () => {
+    render(<MonitorPanel events={fixtureTrace} />);
+    await userEvent.click(tab('Retrieval'));
+
+    const search = screen.getByRole('region', { name: 'Search' });
+    expect(search).toHaveTextContent('dense floor 0.65');
+    // Null is a real setting, not a missing one: that branch keeps every candidate.
+    expect(search).toHaveTextContent('bm25 floor off');
+  });
+
+  it('retrieval tab shows the near misses a floor kept out of the answer', async () => {
+    render(<MonitorPanel events={fixtureTraceAllDropped} />);
+    await userEvent.click(tab('Retrieval'));
+
+    const search = screen.getByRole('region', { name: 'Search' });
+    const dense = within(search).getByRole('table', { name: 'Dense candidates' });
+    // Shown, not hidden — and marked, so they cannot be mistaken for results.
+    expect(dense).toHaveTextContent('billing-overview.txt');
+    expect(dense).toHaveTextContent('0.471');
+    expect(within(dense).getAllByText('below floor')).toHaveLength(2);
+    expect(search).toHaveTextContent(
+      'returned nothing: 2 of 2 candidate(s) fell below their branch floor',
+    );
+  });
+
+  it('retrieval tab tells a search that found nothing from one whose candidates were dropped', async () => {
+    render(<MonitorPanel events={fixtureTraceNothingFound} />);
+    await userEvent.click(tab('Retrieval'));
+
+    const search = screen.getByRole('region', { name: 'Search' });
+    expect(search).toHaveTextContent('found no candidates at all');
+    expect(search).not.toHaveTextContent('fell below their branch floor');
+  });
+
+  it('retrieval tab says nothing about dropping when a search returned results', async () => {
+    render(<MonitorPanel events={fixtureTrace} />);
+    await userEvent.click(tab('Retrieval'));
+
+    const search = screen.getByRole('region', { name: 'Search' });
+    expect(search).not.toHaveTextContent('below floor');
+    expect(search).not.toHaveTextContent('returned nothing');
   });
 
   it('retrieval tab shows what was searched when the query was translated', async () => {
@@ -203,5 +319,66 @@ describe('MonitorPanel', () => {
   it('offers no trace link for a turn recorded without one', () => {
     render(<MonitorPanel events={fixtureTrace} />);
     expect(screen.queryByRole('link', { name: 'open trace' })).not.toBeInTheDocument();
+  });
+
+  describe('when one view fails to render', () => {
+    beforeEach(() => {
+      failing.view = 'retrieval';
+      // React logs the caught error, and so does the boundary. Neither belongs in test output.
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      failing.view = null;
+      vi.restoreAllMocks();
+    });
+
+    it('keeps the failure inside that view', async () => {
+      render(<MonitorPanel events={fixtureTrace} />);
+      await userEvent.click(tab('Retrieval'));
+
+      expect(screen.getByRole('alert')).toHaveTextContent('The Retrieval view could not be shown');
+      // Everything outside the view survives: the user can still read the turn and navigate away.
+      expect(screen.getByTestId('monitor-stats')).toHaveTextContent('1 model calls');
+      expect(screen.getByRole('heading', { name: /Behind the scenes/ })).toBeInTheDocument();
+      for (const name of ['Timeline', 'Model', 'Retrieval', 'MCP', 'Prompt & memory', 'AG-UI']) {
+        expect(tab(name)).toBeInTheDocument();
+      }
+    });
+
+    it('renders nothing internal from the error', async () => {
+      const { container } = render(<MonitorPanel events={fixtureTrace} />);
+      await userEvent.click(tab('Retrieval'));
+
+      expect(container.textContent).not.toContain(FAILURE_DETAIL);
+      expect(container.textContent).not.toContain('qdrant-host');
+      expect(container.textContent).not.toContain('Error');
+    });
+
+    it('leaves the other views working', async () => {
+      render(<MonitorPanel events={fixtureTrace} />);
+      await userEvent.click(tab('Retrieval'));
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+
+      await userEvent.click(tab('Model'));
+      expect(screen.getByRole('region', { name: 'Model call 1' })).toHaveTextContent(
+        'gpt-oss:120b',
+      );
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('attempts the view again on the way back, without a reload', async () => {
+      render(<MonitorPanel events={fixtureTrace} />);
+      await userEvent.click(tab('Retrieval'));
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+
+      await userEvent.click(tab('Model'));
+      // Whatever made it fail is gone; coming back must render it rather than stay failed.
+      failing.view = null;
+      await userEvent.click(tab('Retrieval'));
+
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(screen.getByRole('region', { name: 'Search' })).toHaveTextContent('fusion: rrf');
+    });
   });
 });

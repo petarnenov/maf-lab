@@ -47,3 +47,9 @@
 {"id": "r-22-bg", "query": "кога се прилага таксата за ребалансиране на домакинство", "relevantChunkIds": ["firm-c/docs/contoso-household-rebalancing-fee.md#when-the-fee-applies-qualifying-requests", "firm-c/docs/contoso-household-rebalancing-fee.md#household-rebalancing-fee-policy-overview"], "firmId": "firm-c", "language": "bg"}
 {"id": "r-23-bg", "query": "как работи тримесечното таксуване в аванс в Contoso", "relevantChunkIds": ["firm-c/docs/contoso-quarterly-advance-billing.md#quarterly-in-advance-billing-at-contoso-advisors-billing-cal"], "firmId": "firm-c", "language": "bg"}
 {"id": "r-24-bg", "query": "каква е минималната годишна такса за малки домакинства", "relevantChunkIds": ["firm-c/docs/contoso-minimum-fee.md#minimum-fee-and-small-households-minimum-annual-fee"], "firmId": "firm-c", "language": "bg"}
+{"id": "of-01", "query": "What is JWE?", "relevantChunkIds": [], "firmId": "firm-a", "offDomain": true, "source": "trace c_3ed9519cbeb44f37a13281fe8493b8f5"}
+{"id": "of-01-bg", "query": "Какво е JWE?", "relevantChunkIds": [], "firmId": "firm-a", "language": "bg", "offDomain": true, "source": "trace c_3ed9519cbeb44f37a13281fe8493b8f5"}
+{"id": "of-02", "query": "I want you to explain JWE as if to a 6-year-old!", "relevantChunkIds": [], "firmId": "firm-a", "offDomain": true, "source": "trace c_3ed9519cbeb44f37a13281fe8493b8f5"}
+{"id": "of-03", "query": "why doesn't it autocomplete", "relevantChunkIds": [], "firmId": "firm-a", "offDomain": true, "source": "trace: a question about the UI, not about documentation"}
+{"id": "of-04", "query": "why didn't you answer in Bulgarian as I asked you", "relevantChunkIds": [], "firmId": "firm-a", "offDomain": true, "source": "trace: a question about the assistant itself"}
+{"id": "of-05", "query": "where is the history side bar in the UI", "relevantChunkIds": [], "firmId": "firm-a", "offDomain": true, "source": "trace: asked seven ways, never answerable from this corpus"}

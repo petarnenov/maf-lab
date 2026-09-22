@@ -10,6 +10,8 @@ export interface Candidate {
   tenantId: string;
   sectionPath: string;
   score: number;
+  /** True for a candidate the relevance floor kept out of the answer. Diagnostics list it anyway. */
+  belowFloor?: boolean;
 }
 
 export interface MessageContent {
@@ -109,6 +111,9 @@ export interface RetrievalData {
     limit?: number;
     prefetchLimit?: number;
     rerank?: boolean;
+    /** Lowest score a candidate may have on each branch and still count. Null means that branch has no floor. */
+    denseFloor?: number | null;
+    sparseFloor?: number | null;
   };
   query?: {
     /** The text actually embedded and encoded. */
@@ -118,7 +123,8 @@ export interface RetrievalData {
     translated?: boolean;
     translationMs?: number | null;
     translationNote?: string | null;
-    terms?: { term: string; idf: number }[];
+    /** A term the indexed corpus has never seen has no IDF weight and cannot match on BM25. */
+    terms?: { term: string; idf: number | null; inVocabulary: boolean }[];
     denseModel?: string;
     denseDims?: number;
   };

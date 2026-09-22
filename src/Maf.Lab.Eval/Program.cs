@@ -126,7 +126,7 @@ public static class Program
         RetrievalOptions retrieval, SuiteContext ctx, Dictionary<string, string> flags, Dictionary<string, string> settings, CancellationToken ct)
     {
         var search = host.Services.GetRequiredService<DocumentSearchService>();
-        var variants = RetrievalSuite.DefaultVariants(search, retrieval.DenseVector, flags.ContainsKey("rerank")).ToList();
+        var variants = RetrievalSuite.DefaultVariants(search, retrieval.DenseVector, flags.ContainsKey("rerank"), retrieval.DenseFloor, retrieval.SparseFloor).ToList();
         ServiceProvider? contextual = null;
         if (flags.ContainsKey("contextual"))
         {

@@ -4,8 +4,12 @@ namespace Maf.Lab.Eval.Datasets;
 
 public sealed record SelectionCase(string Id, string Question, IReadOnlyList<string> ExpectedTools, string Category, string FirmId, string? Source);
 /// <param name="Language">Language of the query; null means the corpus language, so old datasets keep working.</param>
+/// <param name="OffDomain">
+/// A question this corpus cannot answer, for which the right retrieval is none at all. Such a case declares no
+/// relevant chunks; the marker is what stops an unlabelled row being read as one.
+/// </param>
 public sealed record RetrievalCase(string Id, string Query, IReadOnlyList<string> RelevantChunkIds, string FirmId, string? Source,
-    string? Language = null);
+    string? Language = null, bool OffDomain = false);
 public sealed record GenerationCase(string Id, string Question, string ReferenceAnswer, IReadOnlyList<string> ExpectedDocIds, string FirmId, string? Source);
 /// <param name="Question">What the advisor asks, which must make the assistant propose the adjustment.</param>
 /// <param name="AccountId">The account the proposal must be about.</param>
@@ -49,8 +53,18 @@ public static class DatasetLoader
             Opt(e, "source")));
 
     public static IReadOnlyList<RetrievalCase> Retrieval(string root) => Load(root, "retrieval.jsonl", (e, where) =>
-        new RetrievalCase(Str(e, "id", where), Str(e, "query", where), Strings(e, "relevantChunkIds", where), Firm(e, where), Opt(e, "source"),
-            Opt(e, "language")));
+    {
+        // Only a row that says it is off-domain may have no relevant chunks. Without the marker an empty list is
+        // indistinguishable from a row somebody forgot to label, and would quietly score as a perfect silence.
+        var offDomain = Bool(e, "offDomain");
+        var relevant = Strings(e, "relevantChunkIds", where, allowEmpty: offDomain);
+        if (offDomain && relevant.Count > 0)
+        {
+            throw new InvalidDataException($"{where}: an off-domain case must not declare relevant chunks.");
+        }
+        return new RetrievalCase(Str(e, "id", where), Str(e, "query", where), relevant, Firm(e, where), Opt(e, "source"),
+            Opt(e, "language"), offDomain);
+    });
 
     public static IReadOnlyList<GenerationCase> Generation(string root) => Load(root, "generation.jsonl", (e, where) =>
         new GenerationCase(Str(e, "id", where), Str(e, "question", where), Str(e, "referenceAnswer", where),
@@ -104,6 +118,8 @@ public static class DatasetLoader
             : throw new InvalidDataException($"{where}: '{name}' must be a number.");
 
     private static string? Opt(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
+    private static bool Bool(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
 
     private static string Firm(JsonElement e, string where)
     {

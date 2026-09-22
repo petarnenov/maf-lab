@@ -18,7 +18,12 @@ public sealed class SearchDiagnostics
     public JsonArray? Rerank { get; set; }
     public JsonObject Timings { get; } = [];
 
-    public static JsonArray Candidates(IEnumerable<ScoredChunk> chunks) =>
+    /// <summary>
+    /// A branch's candidates for the monitor. <paramref name="floor"/> marks which of them the relevance floor
+    /// would drop — the branch lists are gathered unfiltered on purpose, because "found candidates, none close
+    /// enough" and "found nothing at all" have different causes and a filtered list cannot tell them apart.
+    /// </summary>
+    public static JsonArray Candidates(IEnumerable<ScoredChunk> chunks, float? floor = null) =>
         new(chunks.Select((c, i) => (JsonNode)new JsonObject
         {
             ["rank"] = i + 1,
@@ -27,6 +32,7 @@ public sealed class SearchDiagnostics
             ["tenantId"] = c.Chunk.TenantId,
             ["sectionPath"] = c.Chunk.SectionPath,
             ["score"] = Math.Round(c.Score, 5),
+            ["belowFloor"] = floor is { } f && c.Score < f,
         }).ToArray());
 
     public JsonObject ToJson(string instance) => new()

@@ -220,6 +220,7 @@ export function RetrievalTab({ events }: { events: TraceEvent[] }) {
       {searches.map((e) => {
         const d = dataOf<RetrievalData>(e);
         const s = d.settings ?? {};
+        const terms = d.query?.terms ?? [];
         return (
           <section key={e.seq} className={styles.card} aria-label="Search">
             <h3 className={styles.cardTitle}>
@@ -235,6 +236,9 @@ export function RetrievalTab({ events }: { events: TraceEvent[] }) {
                 limit {s.limit} · prefetch {s.prefetchLimit}
               </span>
               <span className={styles.chip}>rerank: {s.rerank ? 'on' : 'off'}</span>
+              {/* The floors are per branch: dense cosine and BM25 are different scales. */}
+              <span className={styles.chip}>dense floor {floorLabel(s.denseFloor)}</span>
+              <span className={styles.chip}>bm25 floor {floorLabel(s.sparseFloor)}</span>
             </div>
             <div className={styles.sub}>Query</div>
             {d.query?.translated && (
@@ -259,19 +263,34 @@ export function RetrievalTab({ events }: { events: TraceEvent[] }) {
                 </tr>
               </thead>
               <tbody>
-                {(d.query?.terms ?? []).map((t) => (
+                {terms.map((t) => (
                   <tr key={t.term}>
                     <td className={styles.mono}>{t.term}</td>
-                    <td className={styles.num}>{t.idf.toFixed(3)}</td>
+                    {/* A term the corpus has never seen has no weight to show — saying so is the diagnosis. */}
+                    <td className={styles.num}>
+                      {t.idf === null ? (
+                        <span className={styles.unweighted}>
+                          {t.inVocabulary ? 'no weight' : 'not in index'}
+                        </span>
+                      ) : (
+                        t.idf.toFixed(3)
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            {terms.some((t) => !t.inVocabulary) && (
+              <div className={styles.muted}>
+                “not in index”: the corpus has never seen this term, so it cannot match on BM25.
+              </div>
+            )}
             <div className={styles.lists}>
               <RankedList title="Dense" items={d.dense} />
               <RankedList title="Sparse (BM25)" items={d.sparse} />
               <RankedList title="Fused" items={d.fused} />
             </div>
+            {(d.fused ?? []).length === 0 && <NothingReturned data={d} />}
             {d.rerank && d.rerank.length > 0 && (
               <>
                 <div className={styles.sub}>Rerank order</div>
@@ -308,14 +327,42 @@ function shortSection(sectionPath: string): string {
   return sectionPath.split(' > ').slice(-2).join(' › ');
 }
 
+/** A floor as the settings chip shows it. Null is a real setting: that branch keeps every candidate. */
+function floorLabel(floor: number | null | undefined): string {
+  return floor === null || floor === undefined ? 'off' : floor.toFixed(2);
+}
+
+/**
+ * Why the search came back empty. "Found candidates, none close enough" and "found nothing at all" have
+ * different causes — a floor set too high, against a corpus missing the document — and the answer looks the
+ * same either way, so the difference has to be said here or it is lost.
+ */
+function NothingReturned({ data }: { data: RetrievalData }) {
+  const found = [...(data.dense ?? []), ...(data.sparse ?? [])];
+  const dropped = found.filter((c) => c.belowFloor);
+  return (
+    <p className={styles.empty}>
+      {found.length === 0
+        ? 'This search returned nothing, and found no candidates at all.'
+        : `This search returned nothing: ${dropped.length} of ${found.length} candidate(s) fell below their branch floor.`}
+    </p>
+  );
+}
+
 function RankedList({ title, items }: { title: string; items?: Candidate[] }) {
+  // The extra column only exists when there is something to say in it; these lists sit three abreast.
+  const anyDropped = (items ?? []).some((c) => c.belowFloor);
   return (
     <div>
       <div className={styles.sub}>{title}</div>
       <table className={styles.table} aria-label={`${title} candidates`}>
         <tbody>
           {(items ?? []).map((c) => (
-            <tr key={`${c.rank}-${c.chunkId}`}>
+            // A dropped candidate is shown, not hidden: the near misses are what say whether the floor is wrong.
+            <tr
+              key={`${c.rank}-${c.chunkId}`}
+              className={c.belowFloor ? styles.dropped : undefined}
+            >
               <td className={styles.num}>{c.rank}</td>
               <td className={styles.candidate} title={`${c.chunkId}\n${c.sectionPath}`}>
                 <span className={styles.candidateDoc}>{shortDoc(c.docId)}</span>
@@ -323,6 +370,11 @@ function RankedList({ title, items }: { title: string; items?: Candidate[] }) {
               </td>
               <td>{c.tenantId}</td>
               <td className={styles.num}>{c.score.toFixed(3)}</td>
+              {anyDropped && (
+                <td className={styles.num}>
+                  {c.belowFloor && <span className={styles.unweighted}>below floor</span>}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

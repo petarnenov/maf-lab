@@ -104,14 +104,16 @@ export const fixtureTrace: TraceEvent[] = [
       limit: 20,
       prefetchLimit: 100,
       rerank: false,
+      denseFloor: 0.65,
+      sparseFloor: null,
     },
     query: {
       text: 'What is the procedure when a fee schedule is missing?',
       terms: [
-        { term: 'procedure', idf: 1.2 },
-        { term: 'fee', idf: 0.4 },
-        { term: 'schedule', idf: 0.5 },
-        { term: 'missing', idf: 2.1 },
+        { term: 'procedure', idf: 1.2, inVocabulary: true },
+        { term: 'fee', idf: 0.4, inVocabulary: true },
+        { term: 'schedule', idf: 0.5, inVocabulary: true },
+        { term: 'missing', idf: 2.1, inVocabulary: true },
       ],
       denseModel: 'nomic-embed-text',
       denseDims: 768,
@@ -270,3 +272,162 @@ export const fixtureFrames: AguiFrame[] = (() => {
   push({ type: 'RUN_FINISHED', bytes: 120, payload: { result: { turnId: 't1' } } });
   return frames;
 })();
+
+/**
+ * A turn whose question carried a term the indexed corpus has never seen — the shape that used to crash the
+ * Retrieval tab. Modelled on the reported trace for "What is JWE?", where `jwe` is absent from the BM25
+ * vocabulary and the diagnostics report it with no IDF weight.
+ */
+export const fixtureTraceOutOfVocabulary: TraceEvent[] = [
+  ev(0, 'turn.start', 'Turn started', {
+    conversationId: 'c_oov',
+    turnId: 't_oov',
+    principal: { userId: 'adam', firmId: 'firm-a', role: 'ADVISOR' },
+    question: 'What is JWE?',
+  }),
+  ev(118, 'retrieval', 'Hybrid search (rrf)', {
+    callId: 'forced_oov',
+    instance: 'mcp-replica-1',
+    tenantScope: ['firm-a', 'shared'],
+    settings: {
+      mode: 'hybrid',
+      fusion: 'rrf',
+      denseVector: 'dense_v1',
+      limit: 20,
+      prefetchLimit: 100,
+      rerank: false,
+    },
+    query: {
+      text: 'What is JWE?',
+      terms: [
+        { term: 'what', idf: 0.3, inVocabulary: true },
+        { term: 'jwe', idf: null, inVocabulary: false },
+      ],
+      denseModel: 'nomic-embed-text',
+      denseDims: 768,
+    },
+    dense: [candidate(1, 'shared/docs/billing-overview.txt#intro', 'shared', 0.41)],
+    sparse: [],
+    fused: [candidate(1, 'shared/docs/billing-overview.txt#intro', 'shared', 0.41)],
+    timings: { embedMs: 31, sparseEncodeMs: 1, qdrantMs: 12 },
+  }),
+];
+
+/** The same, with nothing in the question the corpus knows: every term is unweighted. */
+export const fixtureTraceAllOutOfVocabulary: TraceEvent[] = [
+  ev(0, 'turn.start', 'Turn started', {
+    conversationId: 'c_oov_all',
+    turnId: 't_oov_all',
+    principal: { userId: 'adam', firmId: 'firm-a', role: 'ADVISOR' },
+    question: 'JWE JWS?',
+  }),
+  ev(104, 'retrieval', 'Hybrid search (rrf)', {
+    callId: 'forced_oov_all',
+    instance: 'mcp-replica-1',
+    tenantScope: ['firm-a', 'shared'],
+    settings: {
+      mode: 'hybrid',
+      fusion: 'rrf',
+      denseVector: 'dense_v1',
+      limit: 20,
+      prefetchLimit: 100,
+      rerank: false,
+    },
+    query: {
+      text: 'JWE JWS?',
+      terms: [
+        { term: 'jwe', idf: null, inVocabulary: false },
+        { term: 'jws', idf: null, inVocabulary: false },
+      ],
+      denseModel: 'nomic-embed-text',
+      denseDims: 768,
+    },
+    dense: [],
+    sparse: [],
+    fused: [],
+    timings: { embedMs: 29, sparseEncodeMs: 1, qdrantMs: 9 },
+  }),
+];
+
+/**
+ * A search that found candidates and returned none of them: every one fell below its branch floor. The
+ * diagnostics keep the near misses on purpose — they are what say whether the floor is wrong or the corpus is
+ * missing a document.
+ */
+export const fixtureTraceAllDropped: TraceEvent[] = [
+  ev(0, 'turn.start', 'Turn started', {
+    conversationId: 'c_dropped',
+    turnId: 't_dropped',
+    principal: { userId: 'adam', firmId: 'firm-a', role: 'ADVISOR' },
+    question: 'What is JWE?',
+  }),
+  ev(112, 'retrieval', 'Hybrid search (rrf)', {
+    callId: 'forced_dropped',
+    instance: 'mcp-replica-1',
+    tenantScope: ['firm-a', 'shared'],
+    settings: {
+      mode: 'hybrid',
+      fusion: 'rrf',
+      denseVector: 'dense_v1',
+      limit: 5,
+      prefetchLimit: 100,
+      rerank: false,
+      denseFloor: 0.65,
+      sparseFloor: null,
+    },
+    query: {
+      text: 'What is JWE?',
+      terms: [{ term: 'jwe', idf: null, inVocabulary: false }],
+      denseModel: 'nomic-embed-text',
+      denseDims: 768,
+    },
+    dense: [
+      {
+        ...candidate(1, 'shared/docs/billing-overview.txt#intro', 'shared', 0.471),
+        belowFloor: true,
+      },
+      {
+        ...candidate(2, 'firm-a/docs/invoice-dispatch.txt#step-3', 'firm-a', 0.467),
+        belowFloor: true,
+      },
+    ],
+    sparse: [],
+    fused: [],
+    timings: { embedMs: 30, sparseEncodeMs: 1, qdrantMs: 11 },
+  }),
+];
+
+/** A search that found nothing at all — no candidate reached a floor, because there were none. */
+export const fixtureTraceNothingFound: TraceEvent[] = [
+  ev(0, 'turn.start', 'Turn started', {
+    conversationId: 'c_empty',
+    turnId: 't_empty',
+    principal: { userId: 'adam', firmId: 'firm-a', role: 'ADVISOR' },
+    question: 'What is JWE?',
+  }),
+  ev(98, 'retrieval', 'Hybrid search (rrf)', {
+    callId: 'forced_empty',
+    instance: 'mcp-replica-1',
+    tenantScope: ['firm-a', 'shared'],
+    settings: {
+      mode: 'hybrid',
+      fusion: 'rrf',
+      denseVector: 'dense_v1',
+      limit: 5,
+      prefetchLimit: 100,
+      rerank: false,
+      denseFloor: 0.65,
+      sparseFloor: null,
+    },
+    query: {
+      text: 'What is JWE?',
+      terms: [{ term: 'jwe', idf: null, inVocabulary: false }],
+      denseModel: 'nomic-embed-text',
+      denseDims: 768,
+    },
+    dense: [],
+    sparse: [],
+    fused: [],
+    timings: { embedMs: 28, sparseEncodeMs: 1, qdrantMs: 8 },
+  }),
+];

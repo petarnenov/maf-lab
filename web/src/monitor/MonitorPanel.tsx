@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { AguiFrame, TraceEvent } from '../api/types';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { JsonView } from './JsonView';
 import styles from './MonitorPanel.module.css';
 import { TimeTravelBar } from './TimeTravelBar';
@@ -132,32 +133,35 @@ export function MonitorPanel({
           </button>
         ))}
       </nav>
+      {/* Keyed by tab: switching views remounts the boundary, which clears a failed view without a reload. */}
       <div className={styles.body} role="tabpanel">
-        {error ? (
-          <p className={styles.error} role="alert">
-            {error}
-          </p>
-        ) : events.length === 0 && !(tab === 'agui' && frames.length > 0) ? (
-          <p className={styles.empty}>
-            {loading ? 'Loading trace…' : 'Ask a question to see what happens behind the scenes.'}
-          </p>
-        ) : tab === 'timeline' ? (
-          <TimelineTab
-            events={events}
-            cursor={cursor}
-            onSeek={(step) => tt.dispatch({ type: 'seek', cursor: step })}
-          />
-        ) : tab === 'model' ? (
-          <ModelTab events={visible} />
-        ) : tab === 'retrieval' ? (
-          <RetrievalTab events={visible} />
-        ) : tab === 'mcp' ? (
-          <McpTab events={visible} apiInstance={start.apiInstance} />
-        ) : tab === 'prompt' ? (
-          <PromptTab events={visible} />
-        ) : (
-          <AguiTab frames={frames} reached={reached} recorded={framesRecorded} />
-        )}
+        <ErrorBoundary key={tab} area={`The ${TABS.find((t) => t.id === tab)?.label} view`}>
+          {error ? (
+            <p className={styles.error} role="alert">
+              {error}
+            </p>
+          ) : events.length === 0 && !(tab === 'agui' && frames.length > 0) ? (
+            <p className={styles.empty}>
+              {loading ? 'Loading trace…' : 'Ask a question to see what happens behind the scenes.'}
+            </p>
+          ) : tab === 'timeline' ? (
+            <TimelineTab
+              events={events}
+              cursor={cursor}
+              onSeek={(step) => tt.dispatch({ type: 'seek', cursor: step })}
+            />
+          ) : tab === 'model' ? (
+            <ModelTab events={visible} />
+          ) : tab === 'retrieval' ? (
+            <RetrievalTab events={visible} />
+          ) : tab === 'mcp' ? (
+            <McpTab events={visible} apiInstance={start.apiInstance} />
+          ) : tab === 'prompt' ? (
+            <PromptTab events={visible} />
+          ) : (
+            <AguiTab frames={frames} reached={reached} recorded={framesRecorded} />
+          )}
+        </ErrorBoundary>
       </div>
     </section>
   );
