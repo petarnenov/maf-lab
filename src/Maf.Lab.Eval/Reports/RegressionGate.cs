@@ -9,7 +9,16 @@ namespace Maf.Lab.Eval.Reports;
 /// </summary>
 public static class RegressionGate
 {
-    public static IReadOnlyList<MetricComparison> Compare(SuiteBaseline? baseline, IReadOnlyList<EvalVariantResult> variants, double tolerance)
+    /// <summary>One tolerance for every metric. For a caller that genuinely has one; production resolves per metric.</summary>
+    public static IReadOnlyList<MetricComparison> Compare(SuiteBaseline? baseline, IReadOnlyList<EvalVariantResult> variants, double tolerance) =>
+        Compare(baseline, variants, _ => tolerance);
+
+    /// <summary>
+    /// <paramref name="toleranceFor"/> is asked per metric name, because noise is a property of how a metric is
+    /// produced. A metric that does not move must not inherit the width another metric needed.
+    /// </summary>
+    public static IReadOnlyList<MetricComparison> Compare(SuiteBaseline? baseline, IReadOnlyList<EvalVariantResult> variants,
+        Func<string, double> toleranceFor)
     {
         var comparisons = new List<MetricComparison>();
         foreach (var variant in variants)
@@ -24,6 +33,7 @@ public static class RegressionGate
                     continue;
                 }
                 var delta = value - previous;
+                var tolerance = toleranceFor(metric);
                 // A drop *exactly* at the tolerance must pass, and binary floating point does not agree that
                 // 1.0 - 0.98 is 0.02, so the comparison carries a hair of slack.
                 var status = delta >= 0 ? MetricStatus.Improvement

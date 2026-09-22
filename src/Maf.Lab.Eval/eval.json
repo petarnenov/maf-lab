@@ -29,8 +29,25 @@
     },
     "ContextualCollection": "maf_chunks_ctx",
     "RegressionTolerance": 0.02,
-    "RegressionTolerances": {
-      "retrieval": 0.03
-    }
+    "RegressionTolerances": [
+      {
+        "Suite": "retrieval",
+        "Tolerance": 0.025,
+        "Metric": "recall@5:bg",
+        "Measured": "0.6806-0.7014 over 5 consecutive runs (range 0.0208); a non-English query is translated by a live model and a different wording retrieves different chunks. recall@5:en does not move at all."
+      },
+      {
+        "Suite": "retrieval",
+        "Tolerance": 0.025,
+        "Metric": "recall@20",
+        "Measured": "0.9218-0.9422 over 5 consecutive runs (range 0.0204), from the same translation variance reaching further down the ranking."
+      },
+      {
+        "Suite": "generation",
+        "Tolerance": 0.035,
+        "Metric": "relevance",
+        "Measured": "0.9688-1.0000 over 5 consecutive runs (range 0.0312); an LLM judge scoring prose."
+      }
+    ]
   }
 }

@@ -169,7 +169,7 @@ public class RegressionGateTests
         Assert.Equal(0.005, configured.RegressionTolerance);
 
         // A suite whose measured noise exceeds the default gets its own, and the others keep it.
-        var perSuite = new EvalOptions { RegressionTolerance = 0.02, RegressionTolerances = { ["retrieval"] = 0.03 } };
+        var perSuite = new EvalOptions { RegressionTolerance = 0.02, RegressionTolerances = { new("retrieval", 0.03) } };
         Assert.Equal(0.03, perSuite.ToleranceFor("retrieval"));
         Assert.Equal(0.02, perSuite.ToleranceFor("selection"));
 
@@ -178,6 +178,72 @@ public class RegressionGateTests
         var run = new[] { Variant("hybrid", ("recall@5", 0.68)) };
         Assert.Equal(MetricStatus.Noise, RegressionGate.Compare(baseline, run, 0.02)[0].Status);
         Assert.Equal(MetricStatus.Regression, RegressionGate.Compare(baseline, run, 0.005)[0].Status);
+    }
+
+    [Fact]
+    public void A_metrics_own_tolerance_wins_over_its_suites_and_the_default()
+    {
+        var options = new EvalOptions
+        {
+            RegressionTolerance = 0.02,
+            RegressionTolerances =
+            {
+                new("retrieval", 0.03),
+                // Metric names carry '@' and ':'. As a value rather than a key, that is not a problem.
+                new("retrieval", 0.05, "recall@5:bg"),
+                new("generation", 0.10, "faithfulness"),
+            },
+        };
+
+        Assert.Equal(0.05, options.ToleranceFor("retrieval", "recall@5:bg"));
+        // No entry of its own: it falls back to the suite's, not to the noisy neighbour's.
+        Assert.Equal(0.03, options.ToleranceFor("retrieval", "recall@5:en"));
+        // Neither metric nor suite configured: the default.
+        Assert.Equal(0.02, options.ToleranceFor("selection", "recall"));
+        // A metric configured in a suite that has no entry of its own still resolves.
+        Assert.Equal(0.10, options.ToleranceFor("generation", "faithfulness"));
+        Assert.Equal(0.02, options.ToleranceFor("generation", "sourceRecall"));
+    }
+
+    [Fact]
+    public void A_noisy_metric_and_a_stable_one_are_judged_apart_in_the_same_comparison()
+    {
+        // The case this exists for: recall@5:bg swings because a live model translates the query, while
+        // recall@5:en has not moved across any run measured. One number cannot be right for both.
+        var options = new EvalOptions
+        {
+            RegressionTolerance = 0.02,
+            RegressionTolerances = { new("retrieval", 0.05, "recall@5:bg") },
+        };
+        var baseline = Baseline("hybrid", ("recall@5:bg", 0.70), ("recall@5:en", 0.70));
+        var run = new[] { Variant("hybrid", ("recall@5:bg", 0.66), ("recall@5:en", 0.66)) };
+
+        var comparisons = RegressionGate.Compare(baseline, run, metric => options.ToleranceFor("retrieval", metric));
+
+        // The same 0.04 drop, in the same comparison, judged two different ways.
+        Assert.Equal(MetricStatus.Noise, Of(comparisons, "recall@5:bg").Status);
+        Assert.Equal(MetricStatus.Regression, Of(comparisons, "recall@5:en").Status);
+        Assert.True(RegressionGate.HasRegression(comparisons));
+    }
+
+    [Fact]
+    public void Configuration_can_name_a_metric_as_well_as_a_suite()
+    {
+        var configured = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Evals:RegressionTolerances:0:Suite"] = "retrieval",
+                ["Evals:RegressionTolerances:0:Tolerance"] = "0.03",
+                ["Evals:RegressionTolerances:1:Suite"] = "retrieval",
+                ["Evals:RegressionTolerances:1:Metric"] = "recall@5:bg",
+                ["Evals:RegressionTolerances:1:Tolerance"] = "0.05",
+            })
+            .Build()
+            .GetSection(EvalOptions.Section)
+            .Get<EvalOptions>()!;
+
+        Assert.Equal(0.05, configured.ToleranceFor("retrieval", "recall@5:bg"));
+        Assert.Equal(0.03, configured.ToleranceFor("retrieval", "recall@5:en"));
     }
 
     [Fact]

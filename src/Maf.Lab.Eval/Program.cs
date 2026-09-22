@@ -84,7 +84,7 @@ public static class Program
                 "confirmation" => await new ConfirmationSuite(host).RunAsync(ctx, ct),
                 _ => throw new ArgumentException($"Unknown suite '{name}'."),
             };
-            var comparisons = RegressionGate.Compare(baseline.Suites.GetValueOrDefault(name), variants, options.ToleranceFor(name));
+            var comparisons = RegressionGate.Compare(baseline.Suites.GetValueOrDefault(name), variants, metric => options.ToleranceFor(name, metric));
             var regressed = RegressionGate.HasRegression(comparisons);
             var runId = $"{stamp}-{name}";
             var report = new EvalReport(runId, name, started, DateTimeOffset.UtcNow, settings, variants,
