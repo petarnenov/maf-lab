@@ -45,7 +45,7 @@ HOST_ENV := Models__OllamaEndpoint=http://localhost:11435
 
 .PHONY: all help up down restart ps logs clean index reindex drift migrate test test-dotnet test-web lint verify \
         eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-a2a dev doctor banner index-if-empty \
-        specs lint-dotnet lint-web build-web ci ci-e2e \
+        specs lint-dotnet lint-web build-web ci ci-e2e setup \
         require-docker require-dotnet require-npm
 
 all: require-docker up index-if-empty banner ## Start everything: build, run, wait for health, index if empty (default)
@@ -56,7 +56,7 @@ help: ## List the targets
 
 # ── lifecycle ────────────────────────────────────────────────────────────────────────────────────────────────────
 up: require-docker ## Build and start the stack (replicas via API_REPLICAS/MCP_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy
-	@if [ "$(CI_MODE)" != "1" ] && [ -z "$$OLLAMA_API_KEY" ]; then echo "⚠ OLLAMA_API_KEY is not set: the stack starts, but chat (Ollama Cloud) will fail. See 'make doctor'."; fi
+	@if [ "$(CI_MODE)" != "1" ] && [ -z "$$OLLAMA_API_KEY" ]; then echo "⚠ OLLAMA_API_KEY is not set: the stack starts, but chat (Ollama Cloud) will fail. Run 'make setup'."; fi
 	@# compose itself waits for the balancer's dependencies to be healthy; if that fails, show which service and why.
 	$(COMPOSE) up -d --build --remove-orphans --scale api=$(API_REPLICAS) --scale mcp-retrieval=$(MCP_REPLICAS) \
 	  --scale compliance=$(COMPLIANCE_REPLICAS) \
@@ -172,11 +172,14 @@ dev: require-docker require-dotnet require-npm ## Run mcp/api/web locally withou
 doctor: ## Check prerequisites (Docker, .NET SDK, Node/npm, make, OLLAMA_API_KEY)
 	@DOTNET=$(DOTNET) NPM=$(NPM) scripts/doctor.sh
 
+setup: ## Install what 'make doctor' reports missing (.NET SDK unattended; prints the rest)
+	@DOTNET=$(DOTNET) NPM=$(NPM) scripts/setup.sh
+
 require-docker:
-	@command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 || { echo "✗ Docker with the compose plugin is required (see 'make doctor')."; exit 1; }
+	@command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 || { echo "✗ Docker with the compose plugin is required (see 'make doctor'; 'make setup' installs what it can)."; exit 1; }
 
 require-dotnet:
-	@command -v $(DOTNET) >/dev/null 2>&1 || test -x $(DOTNET) || { echo "✗ The .NET SDK is required (global.json pins $$(python3 -c 'import json;print(json.load(open("global.json"))["sdk"]["version"])')). See 'make doctor'."; exit 1; }
+	@command -v $(DOTNET) >/dev/null 2>&1 || test -x $(DOTNET) || { echo "✗ The .NET SDK is required (global.json pins $$(python3 -c 'import json;print(json.load(open("global.json"))["sdk"]["version"])')). Run 'make setup'."; exit 1; }
 
 require-npm:
-	@command -v $(NPM) >/dev/null 2>&1 || { echo "✗ Node.js/npm is required (see 'make doctor')."; exit 1; }
+	@command -v $(NPM) >/dev/null 2>&1 || { echo "✗ Node.js/npm is required (see 'make doctor'; 'make setup' installs what it can)."; exit 1; }

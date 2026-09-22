@@ -35,6 +35,7 @@ the report but not in the drawing fails the test suite.
 ## Quick start
 
 ```bash
+make setup                 # install what's missing (.NET SDK at the version global.json pins, into ~/.dotnet)
 export OLLAMA_API_KEY=…    # chat runs on Ollama Cloud (gpt-oss:120b); the key is only read from the environment
 make                       # doctor-lite → build → start → wait until healthy → index if empty → http://localhost:7171
 make help                  # every target
@@ -50,6 +51,7 @@ make help                  # every target
 | `make eval` / `eval-selection` / … | Evals against the stack's MCP (`SUITE=all`) |
 | `make dev` | Run mcp/api/web locally without Docker (infra stays in compose); Ctrl-C stops |
 | `make doctor` | Check Docker, .NET SDK, Node, make, `OLLAMA_API_KEY` (value never printed) |
+| `make setup` | Install what `doctor` reports missing. Only the unattended, per-user part runs: the .NET SDK `global.json` pins, into `~/.dotnet`. Docker (admin rights), Node (your version manager) and the API key (a secret) are printed as commands, never executed |
 | `make clean` | Remove the stack **with volumes** and build outputs (asks; `FORCE=1` to skip) |
 
 ## Chat history
