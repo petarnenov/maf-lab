@@ -28,7 +28,19 @@ Pinned versions and the architectural decisions of maf-lab. **If a version moves
 | Dense embedding `dense_v1` | `nomic-embed-text` (768-d) | `search_document:` / `search_query:` prefixes |
 | Dense embedding `dense_v2` | `all-minilm` (384-d) | migration target |
 | Chat / agent / judge / rerank / contextual | **`gpt-oss:120b` on Ollama Cloud** (`https://ollama.com`) | key from env `OLLAMA_API_KEY`; thinking disabled (see §9) |
+| Intent classification | **`gemma4:31b` on Ollama Cloud** | `Agent:IntentModel`; chosen, not inherited — see below. Empty falls back to the chat model |
 | Local chat fallback | `qwen3:4b` | `Models__ChatEndpoint=http://localhost:11434 Models__ChatModel=qwen3:4b` |
+
+The classifier asks for one word, and a reasoning model spends its budget thinking before it says it. Measured
+over 137 stored turns, the model stage ran on half of them — every Bulgarian question, because the fast rules are
+English regexes — at a median of 1053 ms, while only 26% of its answers changed what the turn did. Swept against
+`make eval SUITE=selection` with latency read from each run's traces: `gemma4:31b` median **479 ms** vs
+`gpt-oss:120b` **1049 ms** over the same runs, selection quality no worse (its worst run scored 0.958 exactMatch
+against the incumbent's worst 0.917). `nemotron-3-nano:30b` was faster than the incumbent but scored 0.917 in
+every run and was rejected on quality. On this account's free tier fifteen of the endpoint's twenty models are
+unavailable, and of the five that answer, `gpt-oss:20b` (4.3 s), `nemotron-3-super` (2.3 s) and
+`nemotron-3-ultra` (11 s) are all slower than the model in place — on a hosted endpoint latency follows how a
+model is served, not its size.
 
 ### NuGet (central package management, `Directory.Packages.props`)
 

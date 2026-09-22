@@ -12,6 +12,8 @@ x-app-env: &app-env
   Models__Provider: ${MODELS_PROVIDER:-ollama}
   Models__OllamaEndpoint: http://ollama:11434
   Models__ChatModel: ${CHAT_MODEL:-gpt-oss:120b}
+  # The classifier is a separate choice from the answering model: it needs one word, not reasoning.
+  Agent__IntentModel: ${INTENT_MODEL:-gemma4:31b}
   # Chat runs on Ollama Cloud; the key is passed through from the host environment, never written to a file.
   Models__ChatEndpoint: ${CHAT_ENDPOINT:-https://ollama.com}
   OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}

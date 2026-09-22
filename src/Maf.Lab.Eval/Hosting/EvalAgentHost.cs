@@ -25,11 +25,14 @@ public sealed class EvalAgentHost : IAsyncDisposable
     private readonly WebApplication? _retrieval;
     private readonly string _workDir;
 
-    private EvalAgentHost(ServiceProvider services, WebApplication? retrieval, string workDir)
+    private readonly bool _keepWorkDir;
+
+    private EvalAgentHost(ServiceProvider services, WebApplication? retrieval, string workDir, bool keepWorkDir = false)
     {
         Services = services;
         _retrieval = retrieval;
         _workDir = workDir;
+        _keepWorkDir = keepWorkDir;
     }
 
     public ServiceProvider Services { get; }
@@ -53,6 +56,10 @@ public sealed class EvalAgentHost : IAsyncDisposable
         }
 
         var workDir = Directory.CreateTempSubdirectory("maf-eval-").FullName;
+        if (options.KeepWorkDir)
+        {
+            Console.WriteLine($"   work dir kept → {workDir}");
+        }
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddConfiguration(configuration.GetSection("Logging")).AddSimpleConsole(o => o.SingleLine = true));
         services.AddSingleton(configuration);
@@ -84,7 +91,7 @@ public sealed class EvalAgentHost : IAsyncDisposable
         {
             await DatabaseInitializer.InitializeAsync(db, ct);
         }
-        return new EvalAgentHost(provider, retrieval, workDir);
+        return new EvalAgentHost(provider, retrieval, workDir, options.KeepWorkDir);
     }
 
     public static Principal EvalPrincipal(string firmId) => new($"eval-{firmId}", TenantId.Firm(firmId), Role.ADVISOR, []);
@@ -110,6 +117,10 @@ public sealed class EvalAgentHost : IAsyncDisposable
         {
             await _retrieval.StopAsync();
             await _retrieval.DisposeAsync();
+        }
+        if (_keepWorkDir)
+        {
+            return;
         }
         try
         {

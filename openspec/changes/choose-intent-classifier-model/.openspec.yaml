@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-09-22
+# Configuration and measurement only: the chat-agent spec already permits any
+# classification model and describes the two-stage design unchanged.
+skip_specs: true

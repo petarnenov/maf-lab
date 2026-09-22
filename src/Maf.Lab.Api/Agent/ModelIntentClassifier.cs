@@ -52,8 +52,10 @@ public sealed class ModelIntentClassifier(IChatClientFactory models, IOptions<Ag
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(timeout);
             var chatOptions = models.BaseChatOptions();
-            // One word is the whole answer, but a reasoning model spends its budget thinking first (gpt-oss:120b
-            // needs ~60 tokens for this prompt and ignores think=false), and a truncated answer reads as garbage.
+            // A ceiling, not a cost: the configured classifier (gemma4:31b) answers this prompt in 4 tokens and
+            // never reaches it. It stays high because a reasoning model would — gpt-oss:120b needs ~60 tokens
+            // here and ignores think=false — and an empty IntentModel still falls back to the chat model, which
+            // may be one. Lowering it would save nothing measurable and truncate that fallback into garbage.
             chatOptions.MaxOutputTokens = 512;
             var call = Client().GetResponseAsync(
                 [

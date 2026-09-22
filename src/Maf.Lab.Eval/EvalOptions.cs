@@ -25,6 +25,13 @@ public sealed class EvalOptions
     /// </summary>
     public Dictionary<string, double> RegressionTolerances { get; set; } = new();
 
+    /// <summary>
+    /// Keeps the run's work directory instead of deleting it, and prints where it is. Its `eval.db` holds the
+    /// turn traces the run produced, which is the only way to read what a run cost per stage after the fact.
+    /// Off for an ordinary run: a kept directory is a temp directory nobody cleans up.
+    /// </summary>
+    public bool KeepWorkDir { get; set; }
+
     public double ToleranceFor(string suite) =>
         RegressionTolerances.TryGetValue(suite, out var tolerance) ? tolerance : RegressionTolerance;
 }

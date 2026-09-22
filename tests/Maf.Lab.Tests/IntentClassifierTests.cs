@@ -46,6 +46,8 @@ public class IntentClassifierTests
     [InlineData("колко документа има нашата фирма", "data", Intent.Data, false)]
     [InlineData("Здравей", "ChitChat", Intent.ChitChat, false)]
     [InlineData("защо се провали рън 4417", "MIXED.", Intent.Mixed, true)]
+    // Exactly what the configured classifier returns: the bare word, no reasoning, no punctuation, no newline.
+    [InlineData("Каква е процедурата при липсваща фий схема?", "PROCEDURAL", Intent.Procedural, true)]
     public async Task Model_classifies_questions_the_rules_do_not_recognise(string question, string answer, Intent expected, bool forces)
     {
         var (classifier, model) = Build(_ => ScriptedChatClient.Text(answer));
