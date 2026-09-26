@@ -5,10 +5,8 @@
 ### Requirement: Complete turn trace
 For every chat turn the system SHALL record an ordered trace of timestamped events. The trace MUST cover:
 - turn start: principal, conversation, turn id, api replica, question;
-- intent classification: the intent, whether retrieval was forced, which stage decided it (rules, decision judge or
-  model) and, when a model or judge was asked, its raw answer and how long the classification took; when a decision
-  judge was asked, its confidence and the probability it gave each intent, and, when it was not accepted, why the
-  chat model classifier decided instead;
+- intent classification: the intent, whether retrieval was forced, the judge's raw answer, its confidence, the
+  probability it gave each intent, how long the classification took, and, when no intent was accepted, why;
 - the history window: included messages with roles, text and token counts, the token budget, and how many older
   messages were left out;
 - the system prompt version and full text, and each offered tool with its description and input schema;
@@ -27,19 +25,15 @@ For every chat turn the system SHALL record an ordered trace of timestamped even
 
 #### Scenario: Procedural turn trace
 - **WHEN** a user asks "What is the procedure when a fee schedule is missing?"
-- **THEN** the trace contains, in order: turn start, intent (procedural, forced, decided by the rules), history, prompt and tools, the forced search call, the MCP result with retrieval diagnostics, the envelope, at least one model call with its response, sources, signals, and turn end
+- **THEN** the trace contains, in order: turn start, intent (procedural, forced, with the judge's confidence), history, prompt and tools, the forced search call, the MCP result with retrieval diagnostics, the envelope, at least one model call with its response, sources, signals, and turn end
 
 #### Scenario: Intent decided by the model
-- **WHEN** the rules recognise nothing and a model classifies the question
-- **THEN** the intent event names the model stage, its duration and the raw answer it returned
+- **WHEN** the decision judge classifies the question with enough confidence
+- **THEN** the intent event records its duration, raw answer, confidence and the probability it gave each intent
 
-#### Scenario: Intent decided by a decision judge
-- **WHEN** the rules recognise nothing and a configured decision judge classifies the question with enough confidence
-- **THEN** the intent event names the judge stage, its duration, its confidence and the probability it gave each intent
-
-#### Scenario: Decision judge not accepted
-- **WHEN** a configured decision judge answers below the confidence threshold, fails, or times out
-- **THEN** the intent event names the model stage as the one that decided, and records the judge's outcome and why it was not accepted
+#### Scenario: Intent not accepted
+- **WHEN** the decision judge answers below the confidence threshold, fails, or times out
+- **THEN** the intent event records no recognised intent and why the judge's answer was not accepted
 
 #### Scenario: Unknown tool attempt
 - **WHEN** the model calls a tool that does not exist

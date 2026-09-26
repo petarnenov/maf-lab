@@ -2,37 +2,35 @@
 
 ## Why
 
-The second stage of intent classification asks a chat model for one word. It is the only model call in a turn
-whose whole output is a pick from five known labels, yet it pays a chat model's price for it: `gemma4:31b` costs
-a median 479 ms (DECISIONS.md), and every Bulgarian question reaches it because the rules are English. It also
-cannot say how sure it is — a guess and a certainty arrive as the same word.
+Intent is decided by two mechanisms that disagree about what a question is. English regexes in
+`IntentClassifier` decide first; everything they miss — every Bulgarian question, every paraphrase without their
+keywords — goes to a chat model (`gemma4:31b`, median 479 ms per DECISIONS.md) asked for one word. The regexes are a
+second source of truth that must be kept in step with the model's prompt, they only speak English, and neither stage
+can say how sure it is.
 
-TypeSafe's Jev (public since 2026-09-15) is built for exactly this shape: a question with a fixed answer space,
-answered with a label, a probability for every option and a confidence, and never anything outside the schema.
-Published figures put a three-question call at ~300 ms. This change tries it in the one place it fits best, behind
-configuration, and keeps it only if the evals say so.
+TypeSafe's Jev (public since 2026-09-15) is built for exactly this: a question with a fixed answer space, answered
+with a label, a probability for every option and a confidence, never anything outside the schema, at a published
+~300 ms. One judge that classifies by meaning replaces both stages.
 
 ## What Changes
 
-- A new, optional judge for the model stage of intent classification: a **Choice** question over the five intents
-  (Procedural, Mixed, Data, ChitChat, Other), sent to Jev.
-- **Confidence becomes part of acceptance.** A Jev answer counts only when its confidence reaches a configured
-  threshold. Below it, the answer is discarded exactly like an unrecognised one today.
-- **Fallback to the current classifier.** When Jev is not configured, fails, times out or is not confident enough,
-  the existing chat-model classifier decides, within the **same** overall timeout — the turn never waits longer
-  than it does today.
-- **Off by default.** The provider is chosen by configuration (`Agent:IntentProvider`, `model` | `jev`); `model`
-  stays the default, so CI, `make`, and any environment without a Jev key behave exactly as now. Choosing `jev`
-  without a key refuses to start rather than silently falling back forever.
-- **Only the question leaves the system.** The request to Jev carries the question text and the fixed label
-  descriptions — never the firm, the principal, history, or retrieved content.
-- **Trace records the judge.** The intent event names which judge decided (rules, Jev, or model), and Jev's
-  confidence and per-label probabilities when it was asked.
-- **Evals that actually reach the stage.** `evals/selection.jsonl` has 24 cases, all English, so the rules decide
-  every one and the model stage is never measured. The change adds non-English and rule-miss cases so that
-  `make eval SUITE=selection` exercises it, and records a baseline for both providers.
-- Jev is adopted only if, on that dataset, it holds recall, precision, exactMatch and negativeAccuracy at the
-  model provider's values and is faster. If it does not, the result is recorded and the default stays `model`.
+- **BREAKING — the rules stage is removed.** The English regexes no longer classify anything. Every question, in any
+  language, is classified by Jev with one **Choice** question over the five intents (Procedural, Mixed, Data,
+  ChitChat, Other).
+- **BREAKING — the chat-model classifier is removed.** No `gemma4:31b` call, no `Agent:IntentModel`, no prompt
+  parsing. There is no fallback classifier.
+- **Confidence becomes part of acceptance.** An answer counts only at or above a configured threshold. Below it — and
+  on failure, timeout or an unknown label — the turn has no recognised intent and nothing is forced, which is
+  today's failure behaviour. The model can still call `search_documents` on its own.
+- **BREAKING — a Jev key is required.** The stack refuses to start without `TYPESAFE_API_KEY`, as it needs
+  `OLLAMA_API_KEY` today. CI runs against a Jev-shaped stub, so it stays key-free.
+- **Only the question leaves the system.** The request carries the question text and the fixed intent descriptions,
+  never the firm, principal, history or retrieved content.
+- **Trace records the judge.** The intent event carries the raw answer, confidence, per-intent probabilities and,
+  when nothing was accepted, why.
+- **Evals that measure the classifier.** `evals/selection.jsonl` (24 English cases) gains Bulgarian and paraphrased
+  cases, and the selection and injection suites are re-baselined under Jev. The results are recorded; a regression
+  is reported for a decision, not reverted automatically.
 
 ## Capabilities
 
@@ -42,25 +40,25 @@ None.
 
 ### Modified Capabilities
 
-- `chat-agent`: "Conditional forced retrieval" — the model stage may be answered by a judge that reports
-  confidence; a low-confidence answer is treated as unrecognised; a failed or unsure first judge falls back to the
-  chat-model classifier within the same timeout; only the question text may be sent to an external judge.
-- `turn-tracing`: "Complete turn trace" — the intent event names which judge decided and, for a judge that reports
-  it, its confidence and per-intent probabilities.
+- `chat-agent`: "Conditional forced retrieval" — one confidence-gated decision judge replaces the rules and model
+  stages; failure or low confidence forces nothing; only the question text reaches the judge; missing credentials
+  refuse start.
+- `turn-tracing`: "Complete turn trace" — the intent event records the judge's answer, confidence, probabilities and
+  rejection reason instead of a rules/model stage.
 
 ## Impact
 
-- `src/Maf.Lab.Api/Agent/` — `ModelIntentClassifier` split into a stage runner and judges; a Jev judge with its
-  own typed `HttpClient`; `AgentOptions` gains provider, threshold and Jev settings; `IntentDecision` gains
-  confidence.
-- `src/Maf.Lab.Api/Program.cs`, `src/Maf.Lab.Eval/Hosting/EvalAgentHost.cs` — registration by provider.
-- `compose/docker-compose.yml` — `INTENT_PROVIDER`, `TYPESAFE_API_KEY` (empty by default).
-- `compose/ollama-stub/server.py` — a Jev-shaped endpoint so `make ci-e2e` can exercise the `jev` provider without
-  a key.
-- `evals/selection.jsonl`, `evals/baseline.json` — new cases; baseline re-accepted.
-- `web/` — the behind-the-scenes intent row shows the judge and confidence.
-- `DECISIONS.md` — the provider choice, the threshold, and the numbers behind them.
-- **New external service**: TypeSafe API (question text only). No new NuGet package — a thin typed client over
-  `HttpClient`, since only community .NET SDKs exist.
-- Requires access to the TypeSafe Console (API key). The request/response shape is taken from secondary sources
-  and must be confirmed against the official API reference before the client is written (tasks 1.x).
+- `src/Maf.Lab.Api/Agent/IntentClassifier.cs` — regexes and `Classify` deleted; `ForcesRetrieval`/`IsHowWhy` kept.
+- `src/Maf.Lab.Api/Agent/ModelIntentClassifier.cs` — deleted, replaced by `JevIntentClassifier` and `JevClient`.
+- `src/Maf.Lab.Api/Agent/AgentOptions.cs` — `IntentModel` removed; `IntentMinConfidence` and `Jev:*` added.
+- `src/Maf.Lab.Api/Agent/ChatTurnRunner.cs`, `IntentDecision` — new trace fields; `IntentStage` removed.
+- `src/Maf.Lab.Api/Program.cs`, `src/Maf.Lab.Eval/Hosting/EvalAgentHost.cs` — registration.
+- `tests/` — `IntentClassifierTests` rewritten; `ApiFactory` and every test that relied on the rules classifying an
+  English question use a scripted judge instead.
+- `compose/docker-compose.yml` — `TYPESAFE_API_KEY` required, `INTENT_MODEL` removed.
+- `compose/ollama-stub/server.py` — the classifier-marker branch replaced by a Jev-shaped endpoint.
+- `Makefile` (`doctor`), README — the new required key.
+- `web/src/monitor/` — intent row shows confidence instead of stage.
+- `evals/selection.jsonl`, `evals/baseline.json`, `DECISIONS.md` (supersedes §18 and the intent-model entry).
+- **New external service**: TypeSafe API, now on every turn. No new NuGet package.
+- Requires TypeSafe Console access; the wire format must be confirmed against the official reference first.
