@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import type { EvalReportSummary } from '../api/types';
 import page from '../components/Page.module.css';
 import styles from './MetricTrend.module.css';
 import { formatDate } from './format';
+import { groupLabel, groupSeries } from './seriesGroups';
 
 type Point = { runId: string; at: string; value: number };
 
@@ -16,8 +17,11 @@ const PAD = 8;
  */
 export function MetricTrend({ reports }: { reports: EvalReportSummary[] }) {
   const options = useMemo(() => series(reports), [reports]);
+  const groups = useMemo(() => groupSeries(options.map((o) => o.key)), [options]);
+  // Kept by id, so a refetch that adds or reorders series leaves the choice alone.
   const [key, setKey] = useState<string | null>(null);
   const chosen = options.find((o) => o.key === key) ?? options[0];
+  const groupId = useId();
 
   if (options.length === 0) {
     return null;
@@ -27,16 +31,24 @@ export function MetricTrend({ reports }: { reports: EvalReportSummary[] }) {
     <section className={styles.panel} aria-label="Metric trend">
       <div className={styles.header}>
         <h2 className={styles.heading}>Trend</h2>
+        <span id={groupId} className={styles.group}>
+          {groupLabel(chosen.key)}
+        </span>
         <select
           aria-label="Metric"
+          aria-describedby={groupId}
           value={chosen.key}
           onChange={(event) => setKey(event.target.value)}
           className={styles.picker}
         >
-          {options.map((o) => (
-            <option key={o.key} value={o.key}>
-              {o.label}
-            </option>
+          {groups.map((group) => (
+            <optgroup key={group.key} label={group.label}>
+              {group.options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
       </div>
@@ -119,7 +131,10 @@ function Chart({
   );
 }
 
-/** One series per suite, variant and metric, oldest first; the baseline comes from the newest comparison. */
+/**
+ * One series per suite, variant and metric, oldest first; the baseline comes from the newest comparison. The first
+ * series (the one shown before anything is chosen) is the one with the most history; the picker orders them itself.
+ */
 function series(reports: EvalReportSummary[]) {
   const byKey = new Map<string, { label: string; points: Point[]; baseline: number | null }>();
   const ordered = [...reports].sort((a, b) => a.startedAt.localeCompare(b.startedAt));
