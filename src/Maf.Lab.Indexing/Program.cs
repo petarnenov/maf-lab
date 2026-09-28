@@ -12,7 +12,7 @@ namespace Maf.Lab.Indexing;
 
 /// <summary>
 /// dotnet run --project src/Maf.Lab.Indexing [-- command] [--tenants firm-a,shared] [--force] [--contextual on|off]
-/// Commands: index (default) | drift | status | migrate --to dense_v2 [--batch 64] | chunks [--doc text] [--match text]
+/// Commands: index (default) | drift | status | migrate --to <vector> [--batch 64] | rebuild --yes | chunks [--doc text] [--match text]
 /// </summary>
 public static class Program
 {
@@ -88,6 +88,25 @@ public static class Program
                     }
                     return 0;
                 }
+                case "rebuild":
+                {
+                    // The one way to provision a new dense vector: Qdrant cannot add one to an existing collection.
+                    var bootstrapper = services.GetRequiredService<CollectionBootstrapper>();
+                    var current = await bootstrapper.DescribeChunkCollectionAsync(cts.Token);
+                    Console.WriteLine(current is { } c
+                        ? $"Rebuild discards collection '{c.Collection}' ({c.Points} points) and re-indexes the corpus with every configured dense vector."
+                        : "No chunk collection yet; rebuild creates it and indexes the corpus.");
+                    if (!flags.ContainsKey("yes"))
+                    {
+                        Console.Error.WriteLine("Nothing deleted. Re-run with --yes (make rebuild-index FORCE=1) to go ahead.");
+                        return 1;
+                    }
+                    await bootstrapper.DeleteChunkCollectionAsync(cts.Token);
+                    var summary = await services.GetRequiredService<IndexingPipeline>().RunAsync(
+                        new IndexRequest { Tenants = tenants, Force = true }, cts.Token);
+                    Console.WriteLine(JsonSerializer.Serialize(summary, Pretty));
+                    return 0;
+                }
                 case "migrate":
                 {
                     var target = flags.GetValueOrDefault("to") ?? throw new ArgumentException("migrate requires --to <denseVectorName>");
@@ -98,7 +117,7 @@ public static class Program
                     return 0;
                 }
                 default:
-                    Console.Error.WriteLine($"Unknown command '{command}'. Use index | drift | status | migrate.");
+                    Console.Error.WriteLine($"Unknown command '{command}'. Use index | drift | status | migrate | rebuild.");
                     return 2;
             }
         }

@@ -70,7 +70,7 @@ services:
         condition: service_healthy
     environment:
       OLLAMA_HOST: http://ollama:11434
-      MODELS: ${OLLAMA_PULL_MODELS:-nomic-embed-text all-minilm}
+      MODELS: ${OLLAMA_PULL_MODELS:-embeddinggemma}
     volumes:
       - ./pull-models.sh:/pull-models.sh:ro
     entrypoint: ["/bin/sh", "/pull-models.sh"]

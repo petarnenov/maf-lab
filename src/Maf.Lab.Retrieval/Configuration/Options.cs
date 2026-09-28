@@ -37,21 +37,24 @@ public sealed class ModelOptions
     public bool DisableThinking { get; set; } = true;
     public string? RerankModel { get; set; }
 
-    /// <summary>Dense embedding profiles keyed by Qdrant named-vector name.</summary>
+    /// <summary>
+    /// Dense embedding profiles keyed by Qdrant named-vector name. One, by decision (adopt-multilingual-embedding): the
+    /// multilingual model that won the bake-off against bge-m3 on worst-language hybrid recall. To change or roll back
+    /// the model, replace this profile (with its own calibrated floor), select it, and `make rebuild-index FORCE=1` —
+    /// Qdrant cannot add a named vector to an existing collection.
+    /// </summary>
     public Dictionary<string, EmbeddingProfile> Embeddings { get; set; } = new()
     {
-        ["dense_v1"] = new EmbeddingProfile
+        ["dense_v3"] = new EmbeddingProfile
         {
-            Model = "nomic-embed-text",
+            Model = "embeddinggemma",
             Dimensions = 768,
-            DocumentPrefix = "search_document: ",
-            QueryPrefix = "search_query: ",
-        },
-        // Provisioned from the start so migration only fills vectors (Qdrant cannot add a named vector to an existing collection).
-        ["dense_v2"] = new EmbeddingProfile
-        {
-            Model = "all-minilm",
-            Dimensions = 384,
+            DocumentPrefix = "title: none | text: ",
+            QueryPrefix = "task: search result | query: ",
+            // From a sweep of 0.20–0.24 against the retrieval eval: 0.22 silences 2 of 6 off-domain questions (none
+            // without a floor) with recall@5 up in every language and recall@20 down 0.012, inside the suite's noise.
+            // nomic-embed-text's floor was 0.65; this model scores the same closeness far lower.
+            DenseFloor = 0.22f,
         },
     };
 }
@@ -62,6 +65,13 @@ public sealed class EmbeddingProfile
     public int Dimensions { get; set; }
     public string DocumentPrefix { get; set; } = "";
     public string QueryPrefix { get; set; } = "";
+    /// <summary>
+    /// Lowest dense score a candidate may have and still reach fusion, for this model. It belongs here and not to
+    /// retrieval as a whole: models place the same closeness at different scores (nomic's answerable questions score
+    /// a median 0.59, embeddinggemma's 0.50), so a floor calibrated for one silences or admits everything under another.
+    /// Null means this model has no floor.
+    /// </summary>
+    public float? DenseFloor { get; set; }
 }
 
 public sealed class RetrievalOptions
@@ -73,16 +83,21 @@ public sealed class RetrievalOptions
     /// <summary>rrf | dbsf.</summary>
     public string Fusion { get; set; } = FusionModes.Rrf;
     /// <summary>Named dense vector used by queries.</summary>
-    public string DenseVector { get; set; } = "dense_v1";
+    public string DenseVector { get; set; } = "dense_v3";
     public int PrefetchMultiplier { get; set; } = 5;
     public int MinPrefetch { get; set; } = 50;
     /// <summary>
-    /// Lowest dense score a candidate may have and still reach fusion. Null means no floor, which is what the
-    /// system did before floors existed. Dense and sparse are different scales and never share a value.
-    /// 0.65 came from a sweep of 0.45–0.70 against the retrieval eval: every metric at or above the accepted
-    /// baseline, and half the off-domain questions correctly retrieving nothing instead of none of them.
+    /// Overrides the selected embedding's own dense floor (<see cref="EmbeddingProfile.DenseFloor"/>). Null — the
+    /// default — uses the floor calibrated for whichever dense vector is selected, so switching the vector switches
+    /// the floor. Dense and sparse are different scales and never share a value.
     /// </summary>
-    public float? DenseFloor { get; set; } = 0.65f;
+    public float? DenseFloor { get; set; }
+    /// <summary>False switches the dense floor off altogether: the nearest candidates, whatever their scores.</summary>
+    public bool DenseFloorEnabled { get; set; } = true;
+
+    /// <summary>The dense floor that applies to <paramref name="denseVector"/>: the override, else that embedding's own.</summary>
+    public float? DenseFloorFor(ModelOptions models, string denseVector) =>
+        !DenseFloorEnabled ? null : DenseFloor ?? models.Embeddings.GetValueOrDefault(denseVector)?.DenseFloor;
     /// <summary>
     /// Lowest BM25 score a sparse candidate may have and still reach fusion. Null: deliberately no floor.
     /// A sweep of 1–20 found that the value which silences the remaining off-domain questions (9) costs

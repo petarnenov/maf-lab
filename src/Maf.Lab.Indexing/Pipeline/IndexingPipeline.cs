@@ -29,6 +29,7 @@ public sealed class IndexingPipeline(
     IDenseEncoder dense,
     ContextualEnricherFactory enrichers,
     IOptions<IndexingOptions> options,
+    IOptions<Retrieval.Configuration.ModelOptions> models,
     ILogger<IndexingPipeline> logger)
 {
     private readonly IndexingOptions _options = options.Value;
@@ -49,6 +50,9 @@ public sealed class IndexingPipeline(
         var contextual = request.Contextual ?? _options.ContextualRetrieval;
         var enricher = enrichers.Create(contextual);
         var modelVersion = dense.ModelVersion(_options.DenseVector);
+        // Every configured dense vector is written on every chunk, so no write can drop the vector a rollback needs.
+        // The bootstrapper has already refused to start if the collection lacks one of them.
+        var vectorModels = models.Value.Embeddings.Keys.ToDictionary(v => v, dense.ModelVersion, StringComparer.Ordinal);
 
         int indexed = 0, unchanged = 0, written = 0;
         long deleted = 0;
@@ -60,13 +64,14 @@ public sealed class IndexingPipeline(
             foreach (var doc in docs)
             {
                 if (!request.Force && existing.TryGetValue(doc.DocId, out var current)
-                    && current.ContentHash == doc.ContentHash && current.UpdatedAt == doc.UpdatedAt && current.ModelVersion == modelVersion)
+                    && current.ContentHash == doc.ContentHash && current.UpdatedAt == doc.UpdatedAt && current.ModelVersion == modelVersion
+                    && vectorModels.All(v => current.DenseModelVersions?.GetValueOrDefault(v.Key) == v.Value))
                 {
                     unchanged++;
                     continue;
                 }
 
-                var writes = await EncodeAsync(prepared[doc.DocId], model, enricher, modelVersion, ct);
+                var writes = await EncodeAsync(prepared[doc.DocId], model, enricher, modelVersion, vectorModels, ct);
                 var (w, d) = await store.ReplaceDocumentAsync(tenant, doc.DocId, writes, ct);
                 written += w;
                 deleted += d;
@@ -91,7 +96,8 @@ public sealed class IndexingPipeline(
     }
 
     private async Task<List<ChunkWrite>> EncodeAsync(
-        IReadOnlyList<PreparedChunk> chunks, Bm25Model model, IContextualEnricher enricher, string modelVersion, CancellationToken ct)
+        IReadOnlyList<PreparedChunk> chunks, Bm25Model model, IContextualEnricher enricher, string modelVersion,
+        IReadOnlyDictionary<string, string> vectorModels, CancellationToken ct)
     {
         var contexts = new string?[chunks.Count];
         for (var i = 0; i < chunks.Count; i++)
@@ -102,7 +108,12 @@ public sealed class IndexingPipeline(
         var writes = new List<ChunkWrite>(chunks.Count);
         foreach (var batch in chunks.Select((c, i) => (Chunk: c, Context: contexts[i])).Chunk(_options.EmbeddingBatchSize))
         {
-            var vectors = await dense.EmbedDocumentsAsync(_options.DenseVector, batch.Select(b => b.Chunk.DenseText(b.Context)).ToList(), ct);
+            var texts = batch.Select(b => b.Chunk.DenseText(b.Context)).ToList();
+            var vectors = new Dictionary<string, IReadOnlyList<float[]>>(StringComparer.Ordinal);
+            foreach (var name in vectorModels.Keys)
+            {
+                vectors[name] = await dense.EmbedDocumentsAsync(name, texts, ct);
+            }
             for (var i = 0; i < batch.Length; i++)
             {
                 var (chunk, context) = batch[i];
@@ -117,11 +128,13 @@ public sealed class IndexingPipeline(
                     Symbol = chunk.Symbol,
                     UpdatedAt = chunk.Document.UpdatedAt,
                     ModelVersion = modelVersion,
+                    DenseModelVersions = vectorModels,
                     Text = chunk.Text,
                     Context = context,
                     ContentHash = chunk.Document.ContentHash,
                 };
-                writes.Add(new ChunkWrite(record, _options.DenseVector, vectors[i], Bm25Encoder.EncodeDocument(model, chunk.SparseText)));
+                writes.Add(new ChunkWrite(record, vectors.ToDictionary(v => v.Key, v => v.Value[i], StringComparer.Ordinal),
+                    Bm25Encoder.EncodeDocument(model, chunk.SparseText)));
             }
         }
         return writes;

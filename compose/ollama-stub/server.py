@@ -13,7 +13,7 @@ import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-DIMENSIONS = {"nomic-embed-text": 768, "all-minilm": 384}
+DIMENSIONS = {"embeddinggemma": 768}
 STOPWORDS = set("a an and are as at be by for from how i in is it of on or the to what when where which who why with".split())
 TOKEN = re.compile(r"[a-z0-9]+")
 
@@ -48,6 +48,7 @@ INTENT_WORDS = {
 }
 RUN_REFERENCE = re.compile(r"\b(run|рън)\s*#?\s*\d{3,}")
 JEV_OPTIONS = ("procedural", "mixed", "data", "chitchat", "other")
+OFF_DOMAIN_WORDS = ("cook", "recipe", "carbonara", "passport", "weather", "баница", "паспорт")
 
 
 def classify(question: str) -> str:
@@ -69,9 +70,16 @@ def systemone(body: dict) -> dict:
     state = body.get("state") or {}
     question = state.get("user_question", "") if isinstance(state, dict) else str(state)
     choice = classify(question)
-    answers = {qid: {"type": "choice", "choice": choice, "confidence": 1.0,
-                     "probabilities": {o: 1.0 if o == choice else 0.0 for o in JEV_OPTIONS}}
-               for qid in (body.get("questions") or {})}
+    # The domain Noul: a few words that are plainly not fee billing, enough for a check that such a question is not
+    # forced. Everything else is in the domain.
+    in_domain = 0.0 if any(w in question.lower() for w in OFF_DOMAIN_WORDS) else 1.0
+    answers = {}
+    for qid, q in (body.get("questions") or {}).items():
+        if (q or {}).get("type") == "noul":
+            answers[qid] = {"type": "noul", "noul": in_domain}
+        else:
+            answers[qid] = {"type": "choice", "choice": choice, "confidence": 1.0,
+                            "probabilities": {o: 1.0 if o == choice else 0.0 for o in JEV_OPTIONS}}
     return {"model": "jev-stub", "answers": answers, "usage": {"input_tokens": 0, "output_tokens": 0}}
 
 

@@ -21,6 +21,13 @@ public sealed class JevOptions
     /// <summary>Below this confidence the choice is not acted on and the turn forces nothing. TypeSafe's starting floor.</summary>
     public double MinConfidence { get; set; } = 0.5;
 
+    /// <summary>
+    /// A procedural or mixed intent is acted on only when Jev's probability that the question is about the documented
+    /// domain reaches this. Measured on 101 labelled questions: off-domain ≤ 0.07, in-domain ≥ 0.37 bar one
+    /// transliteration; 0.2 sits in that gap, nearer the side whose error is cheaper. 0 disables the gate.
+    /// </summary>
+    public double MinInDomain { get; set; } = 0.2;
+
     /// <summary>Budget for one classification; 0 disables classification and every turn forces nothing.</summary>
     public double TimeoutSeconds { get; set; } = 2;
 }

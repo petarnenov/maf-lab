@@ -9,7 +9,8 @@ using static Qdrant.Client.Grpc.Conditions;
 
 namespace Maf.Lab.Retrieval.Store;
 
-public sealed record ChunkWrite(ChunkRecord Chunk, string DenseVector, float[] Dense, SparseVectorData Sparse);
+/// <param name="Dense">Every dense vector of the chunk, by vector name — all of them, so no write drops one.</param>
+public sealed record ChunkWrite(ChunkRecord Chunk, IReadOnlyDictionary<string, float[]> Dense, SparseVectorData Sparse);
 
 public sealed record MigrationCandidate(Guid PointId, string Text, string? Context, string SectionPath);
 
@@ -22,8 +23,9 @@ public sealed class TenantScopedMaintenance(QdrantClient client, IOptions<Qdrant
     private readonly string _collection = options.Value.Collection;
 
     /// <summary>
-    /// Replaces a document's chunks: upserts the new points, then deletes every other point of that doc_id.
-    /// Upsert-then-delete leaves no window in which the document is missing from search.
+    /// Replaces a document's chunks: deletes every point of that doc_id, then upserts the new version's points, so no
+    /// point of an old version can survive the replacement. For the moment between the two steps the document is
+    /// absent from search; if the process stops there, the next indexing run finds it missing and writes it again.
     /// </summary>
     public async Task<(int Written, long Deleted)> ReplaceDocumentAsync(TenantId tenant, string docId, IReadOnlyList<ChunkWrite> writes, CancellationToken ct)
     {
@@ -32,24 +34,10 @@ public sealed class TenantScopedMaintenance(QdrantClient client, IOptions<Qdrant
             throw new InvalidOperationException("Chunk tenant or doc_id does not match the document being replaced.");
         }
 
-        if (writes.Count > 0)
+        var deleted = await DeleteDocumentAsync(tenant, docId, ct);
+        foreach (var batch in writes.Select(ToPoint).Chunk(64))
         {
-            var points = writes.Select(ToPoint).ToList();
-            foreach (var batch in points.Chunk(64))
-            {
-                await client.UpsertAsync(_collection, batch, wait: true, cancellationToken: ct);
-            }
-        }
-
-        var stale = DocFilter(tenant, docId);
-        if (writes.Count > 0)
-        {
-            stale.MustNot.Add(HasId(writes.Select(w => w.Chunk.PointId).ToList()));
-        }
-        var deleted = (long)await client.CountAsync(_collection, stale, exact: true, cancellationToken: ct);
-        if (deleted > 0)
-        {
-            await client.DeleteAsync(_collection, stale, wait: true, cancellationToken: ct);
+            await client.UpsertAsync(_collection, batch, wait: true, cancellationToken: ct);
         }
         return (writes.Count, deleted);
     }
@@ -74,7 +62,8 @@ public sealed class TenantScopedMaintenance(QdrantClient client, IOptions<Qdrant
             var chunk = PayloadMapper.FromPayload(point.Payload);
             docs[chunk.DocId] = docs.TryGetValue(chunk.DocId, out var d)
                 ? d with { Chunks = d.Chunks + 1, UpdatedAt = chunk.UpdatedAt > d.UpdatedAt ? chunk.UpdatedAt : d.UpdatedAt }
-                : new IndexedDocument(chunk.DocId, chunk.SourcePath, chunk.UpdatedAt, chunk.ContentHash, chunk.ModelVersion, 1);
+                : new IndexedDocument(chunk.DocId, chunk.SourcePath, chunk.UpdatedAt, chunk.ContentHash, chunk.ModelVersion, 1,
+                    chunk.DenseModelVersions);
         }
         return docs.Values.OrderBy(d => d.DocId, StringComparer.Ordinal).ToList();
     }
@@ -110,11 +99,11 @@ public sealed class TenantScopedMaintenance(QdrantClient client, IOptions<Qdrant
     public async Task<long> CountAsync(TenantId tenant, CancellationToken ct) =>
         (long)await client.CountAsync(_collection, TenantFilter.For(tenant), exact: true, cancellationToken: ct);
 
-    /// <summary>Next batch of the tenant's points whose model_version is not yet <paramref name="targetModelVersion"/>.</summary>
-    public async Task<IReadOnlyList<MigrationCandidate>> NextMigrationBatchAsync(TenantId tenant, string targetModelVersion, uint batchSize, CancellationToken ct)
+    /// <summary>Next batch of the tenant's points whose <paramref name="denseVector"/> is not yet from <paramref name="targetModelVersion"/>.</summary>
+    public async Task<IReadOnlyList<MigrationCandidate>> NextMigrationBatchAsync(TenantId tenant, string denseVector, string targetModelVersion, uint batchSize, CancellationToken ct)
     {
         var filter = TenantFilter.For(tenant);
-        filter.MustNot.Add(MatchKeyword(ChunkSchema.ModelVersion, targetModelVersion));
+        filter.MustNot.Add(MatchKeyword(ChunkSchema.ModelVersionOf(denseVector), targetModelVersion));
         var page = await client.ScrollAsync(_collection, filter, batchSize, payloadSelector: true, vectorsSelector: false, cancellationToken: ct);
         return page.Result.Select(p =>
         {
@@ -124,18 +113,20 @@ public sealed class TenantScopedMaintenance(QdrantClient client, IOptions<Qdrant
     }
 
     /// <summary>
-    /// Conditional update: the new vector is written only to points of this tenant that are still on an old
-    /// model version, so re-running after a crash never double-applies. model_version is set afterwards;
-    /// a crash between the two steps just re-embeds those points on the next run.
+    /// Conditional update: the new vector is written only to points of this tenant whose vector is still from an old
+    /// model, so re-running after a crash never double-applies. That vector's model version is set afterwards — and
+    /// only that one, so the other vectors' records stay true; <c>model_version</c> moves only when
+    /// <paramref name="isIndexingVector"/>. A crash between the two steps just re-embeds those points next run.
     /// </summary>
-    public async Task ApplyMigrationBatchAsync(TenantId tenant, string denseVector, string targetModelVersion, IReadOnlyList<(Guid PointId, float[] Vector)> vectors, CancellationToken ct)
+    public async Task ApplyMigrationBatchAsync(TenantId tenant, string denseVector, string targetModelVersion, bool isIndexingVector,
+        IReadOnlyList<(Guid PointId, float[] Vector)> vectors, CancellationToken ct)
     {
         if (vectors.Count == 0)
         {
             return;
         }
         var condition = TenantFilter.For(tenant);
-        condition.MustNot.Add(MatchKeyword(ChunkSchema.ModelVersion, targetModelVersion));
+        condition.MustNot.Add(MatchKeyword(ChunkSchema.ModelVersionOf(denseVector), targetModelVersion));
 
         var pointVectors = vectors.Select(v => new PointVectors
         {
@@ -146,7 +137,12 @@ public sealed class TenantScopedMaintenance(QdrantClient client, IOptions<Qdrant
 
         var scoped = TenantFilter.For(tenant);
         scoped.Must.Add(HasId(vectors.Select(v => v.PointId).ToList()));
-        await client.SetPayloadAsync(_collection, new Dictionary<string, Value> { [ChunkSchema.ModelVersion] = targetModelVersion }, scoped, wait: true, cancellationToken: ct);
+        var versions = new Dictionary<string, Value> { [ChunkSchema.ModelVersionOf(denseVector)] = targetModelVersion };
+        if (isIndexingVector)
+        {
+            versions[ChunkSchema.ModelVersion] = targetModelVersion;
+        }
+        await client.SetPayloadAsync(_collection, versions, scoped, wait: true, cancellationToken: ct);
     }
 
     private async IAsyncEnumerable<RetrievedPoint> ScrollAsync(Filter filter, bool withVectors, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
@@ -175,7 +171,10 @@ public sealed class TenantScopedMaintenance(QdrantClient client, IOptions<Qdrant
     {
         var point = new PointStruct { Id = new PointId { Uuid = w.Chunk.PointId.ToString() } };
         var named = new NamedVectors();
-        named.Vectors[w.DenseVector] = new Vector { Dense = new DenseVector { Data = { w.Dense } } };
+        foreach (var (name, vector) in w.Dense)
+        {
+            named.Vectors[name] = new Vector { Dense = new DenseVector { Data = { vector } } };
+        }
         if (!w.Sparse.IsEmpty)
         {
             named.Vectors[ChunkSchema.SparseVector] = new Vector { Sparse = new Qdrant.Client.Grpc.SparseVector { Indices = { w.Sparse.Indices }, Values = { w.Sparse.Values } } };

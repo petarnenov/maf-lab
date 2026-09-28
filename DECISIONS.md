@@ -25,8 +25,7 @@ Pinned versions and the architectural decisions of maf-lab. **If a version moves
 
 | Role | Model | Notes |
 |---|---|---|
-| Dense embedding `dense_v1` | `nomic-embed-text` (768-d) | `search_document:` / `search_query:` prefixes |
-| Dense embedding `dense_v2` | `all-minilm` (384-d) | migration target |
+| Dense embedding `dense_v3` | **`embeddinggemma`** (768-d, multilingual) | the only embedding; prefixes `title: none \| text: ` / `task: search result \| query: `; dense floor 0.22 — see §33. Gemma Terms of Use |
 | Chat / agent / judge / rerank / contextual | **`gpt-oss:120b` on Ollama Cloud** (`https://ollama.com`) | key from env `OLLAMA_API_KEY`; thinking disabled (see §9) |
 | Intent classification | **TypeSafe Jev `jev-1.13.0`** (`https://api.typesafe.ai/v1/systemone`) | the only classifier; key from env `JEV_MAF_LAB`, sent only as the bearer header — see §32 |
 | Local chat fallback | `qwen3:4b` | `Models__ChatEndpoint=http://localhost:11434 Models__ChatModel=qwen3:4b` |
@@ -149,9 +148,12 @@ failure it degrades to the fused order and logs only the error type. Its input i
 - Tenant comes from the first path segment; anything else (e.g. `data/unowned/…`) is rejected and reported, never
   defaulted to `shared`. Tenants to (re)index are the tenant **folders** present in the layout, so a tenant whose last
   document was removed still gets its stale chunks deleted.
-- **Re-index = upsert new points, then delete every other point of that `doc_id`.** This deviates from the proposal's
-  wording ("delete before upsert") on purpose: upsert-then-delete never leaves a window where the document is missing
-  from search, and the outcome — exactly one version of each chunk — is the same (tested).
+- **Re-index = delete every point of that `doc_id`, then upsert the new version's points** (owner's decision,
+  2026-09-28, in adopt-multilingual-embedding). This is what the `document-indexing` spec always said ("remove all of
+  its previous chunks before storing the new ones"); the code used to do the reverse — upsert, then delete the rest —
+  so a document was never absent from search. Accepted trade-off: for the moment between the two steps the document
+  is missing from search, and a crash there leaves it missing until the next `make index`, which finds it absent and
+  writes it again. `chunks_deleted` in the index summary now counts every old point of a re-indexed document.
 - Unchanged documents (same content hash, `updated_at` and `model_version`) are skipped.
 
 ## 6. Embedding-model migration
@@ -165,7 +167,10 @@ failure it degrades to the fused order and logs only the error type. Its input i
   `model_version`. A crash between the two steps just re-embeds those points next run. Restartable and idempotent
   (tested by killing after two batches and re-running: no duplicates, queries succeed throughout).
 - `Retrieval:DenseVector` selects the queried vector; `Indexing:DenseVector` the one new documents are written with.
-  Switch both after a migration; rollback = switch back to `dense_v1`.
+- *Revised by §33:* indexing now writes **every** configured dense vector and records its model per vector
+  (`model_version__<vector>`), because a single `model_version` let the first edit of a document silently drop its
+  other vectors. A new vector is provisioned by `make rebuild-index FORCE=1`, which re-creates the collection with
+  exactly the configured vectors; production configures one.
 
 ## 7. MCP server vs spec 2026-07-28
 
@@ -444,7 +449,8 @@ referenced web projects' config files never collide.
   would fix the dense half without a per-query model call, and `dense_v2` is provisioned for exactly that
   experiment. It was rejected as the primary fix because BM25 would still tokenise Cyrillic terms that appear in no
   chunk, so hybrid search would collapse to dense-only for precisely the questions that need help. Translation
-  fixes both halves. The experiment stays open: the eval now reports recall per language, so pointing `dense_v2` at
+  fixes both halves. *Answered by §33: a multilingual model now serves the dense half, and translation stays for BM25.*
+  The experiment stays open: the eval now reports recall per language, so pointing `dense_v2` at
   a multilingual model is a measurement rather than an argument.
 - **In the retrieval server, not in the agent.** `DocumentSearchService.RankAsync` is the one place every caller
   passes through — the agent's forced call, a model-chosen call, the eval harness, a raw MCP client. A system-prompt
@@ -948,4 +954,59 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
 - **CI stays secret-free.** `compose/ollama-stub` answers `POST /v1/systemone` from keyword sets (and 401s without a
   bearer token); `docker-compose.ci.yml` points `Jev__Endpoint` at it with a placeholder key. Unit tests use
   `FakeJev`, an `HttpMessageHandler` with the same shape. The on-demand evals workflow takes `JEV_MAF_LAB` as a secret.
+- **Domain gate (gate-intent-by-domain, 2026-09-28).** "Procedurata kak edna vaba da izqden edin slon e: ???" came back
+  `procedural` 0.93, forced a search, found nothing and was flagged `zero_retrieval_results`. Jev was right about the
+  form; nobody asked it about the domain. The same request now carries a second, atomic question — a Noul "is
+  `user_question` about something in `domain`?", with the billing domain described once in its structured
+  instructions — and code forces only when the intent is procedural/mixed **and** `in_domain ≥ Jev:MinInDomain` (0.2).
+  A gated turn becomes `Other` with reason `outside the domain (0.xx)`; keeping it Procedural would have raised
+  `no_tool_on_how_why` instead. Data, chitchat and other intents are never gated.
+  - Measured on 101 labelled questions in English, Bulgarian and Latin-script Bulgarian (71 design, 30 held out):
+    current classifier 67–68/101 with 33–34 false forces; with the gate **100/101, 0 false forces, held-out 30/30**.
+    Off-domain questions score ≤ 0.07, in-domain ≥ 0.37 except "Kak se izdava kredit po smetka za taksi?" (0.09 —
+    Latin "taksi" reads as "taxi"), which fails open: not forced, the model may still search.
+  - Rejected: the domain folded into the Choice's option descriptions (69/71, one false force — two judgments in one
+    answer again); a Noul "does answering need the documentation?" (misses definitions such as "what is AUM?"); a
+    language note with a glossary ("taksi means fees…") — it fixed one design case and lifted an electricity-bill
+    question in the held-out set to the threshold. The note kept is neutral: it names no words.
+  - Measured by a new suite, `make eval-intent` (`evals/intent.jsonl`), which calls only the classifier: accuracy 0.99,
+    unforcedWhenShouldNot 1.0, forcedWhenShould 0.979, identical over two runs, baseline accepted. Selection (4 runs),
+    generation and injection pass against their existing baselines. Latency unchanged: 265–315 ms warm.
+
+## 33. One multilingual embedding (adopt-multilingual-embedding, 2026-09-28)
+
+- **Why.** `nomic-embed-text` is English; Bulgarian worked only through query translation, and the translator fires
+  only on non-Latin letters, so Bulgarian written in Latin letters reached an English model as noise. With the 24
+  Latin-script twins added to `evals/retrieval.jsonl`, the production hybrid scored recall@5 **0.208** on them (dense
+  alone: 0 — every such query fell under nomic's 0.65 floor).
+- **Measured offline first** (dense only, untranslated, tenant-scoped — it reproduced the live eval's dense EN 0.640
+  for nomic): recall@5 EN / BG / BG-Latin — nomic 0.640 / 0.188 / 0.208; **embeddinggemma 0.793 / 0.722 / 0.597**;
+  **bge-m3 0.700 / 0.722 / 0.681**; nomic-embed-text-v2-moe 0.733 / 0.653 / 0.535; qwen3-embedding:0.6b 0.733 / 0.604 /
+  0.417. The two leaders went to a bake-off.
+- **The floor belongs to the embedding.** Scores are on different scales per model (answerable median: nomic 0.59,
+  embeddinggemma 0.50), so `EmbeddingProfile.DenseFloor` replaced the global number; `Retrieval:DenseFloor` is now an
+  override and `Retrieval:DenseFloorEnabled=false` switches it off. Swept with the real eval: embeddinggemma **0.22**
+  (recall@5 0.703→0.710, off-domain silence 0→0.33, recall@20 −0.012), bge-m3 0.40 (recall@5 unchanged, recall@20
+  +0.012, MRR −0.010) — each drop inside the suite's noise.
+- **Bake-off**, hybrid, production settings, three runs each at its floor (identical across runs but for recall@20
+  and MRR ±0.007):
+
+  | | recall@5 | EN | BG | BG-Latin | recall@20 | MRR |
+  |---|---|---|---|---|---|---|
+  | **embeddinggemma** | **0.703** | **0.733** | **0.757** | 0.618 | 0.865–0.872 | **0.626–0.633** |
+  | bge-m3 | 0.685 | 0.693 | 0.743 | 0.618 | **0.920–0.927** | 0.612–0.613 |
+
+  The rule fixed before the numbers: higher worst-language recall@5 wins, within 0.02 the smaller, faster model. The
+  worst language tied at 0.618, so **embeddinggemma** — which also leads in English and Bulgarian, is half bge-m3's size
+  (622 MB) and half its query latency (44 vs 86 ms). Hybrid BG-Latin is 0.618 for both although bge-m3's
+  dense branch alone reaches 0.681: BM25 still sees untranslated Latin-script terms, and fusion pulls both models toward
+  the same results. Translating Latin-script Bulgarian for the BM25 half is the follow-up.
+- **One embedding, by the owner's decision.** `nomic-embed-text`, `all-minilm` and bge-m3 are removed from the profiles,
+  the collection and `OLLAMA_PULL_MODELS`. Rollback: put the previous profile back with its floor (nomic: 0.65), select
+  it, `make rebuild-index FORCE=1` (about ten minutes per model on this corpus).
+- **Indexing writes every configured vector, versioned per vector** (§6 revised) — the design first kept `dense_v1`
+  filled for rollback and the code could not keep it. `make rebuild-index FORCE=1` is the explicit, announced way to
+  provision or remove a vector; the bootstrapper refuses a collection that lacks one and deletes nothing.
+- **Re-indexing a changed document deletes its points first** (§5 revised).
+- **Cost measured:** the four-model bake-off rebuild took 74 minutes; production rebuilds with one model.
 

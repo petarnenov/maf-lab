@@ -23,7 +23,7 @@ COMPLIANCE_REPLICAS ?= 2
 CHAT_MODEL    ?= gpt-oss:120b
 SUITE         ?= all
 WAIT_TIMEOUT  ?= 300
-TO            ?= dense_v2
+TO            ?= dense_v3
 FORCE         ?= 0
 OPENSPEC_VERSION ?= 1.13.1
 # Reuse models a host Ollama already pulled, when there is one; set OLLAMA_MODELS_DIR= to use the compose volume.
@@ -103,7 +103,10 @@ reindex: require-dotnet ## Re-embed every document (--force)
 drift: require-dotnet ## Report stale documents (source newer than index)
 	$(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- drift
 
-migrate: require-dotnet ## Fill the second dense vector with the new embedding model (TO=dense_v2)
+rebuild-index: require-dotnet ## Re-create the collection with every configured dense vector and re-index (asks unless FORCE=1)
+	$(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- rebuild $(if $(filter 1,$(FORCE)),--yes,)
+
+migrate: require-dotnet ## Fill a provisioned dense vector with its configured model (TO=dense_v3)
 	$(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- migrate --to $(TO)
 
 # ── quality ──────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -160,6 +163,9 @@ eval-injection: require-dotnet ## Eval: prompt-injection pass rate
 
 eval-confirmation: require-dotnet ## Eval: does the summary a person approves say what would happen
 	$(EVAL) confirmation
+
+eval-intent: require-dotnet ## Eval: intent classifier alone — would each question force search_documents? (needs JEV_MAF_LAB)
+	$(EVAL) intent
 
 eval-a2a: require-dotnet ## Conformance: an outside client drives the agents through evals/a2a-conformance.jsonl
 	@# Not $(EVAL): this one is deliberately not run by the harness, which links against the service. See DECISIONS.md.

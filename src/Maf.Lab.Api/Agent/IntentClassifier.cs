@@ -16,8 +16,9 @@ public enum Intent
 /// <summary>
 /// What the classifier concluded. <paramref name="Choice"/>, <paramref name="Probabilities"/> and
 /// <paramref name="Confidence"/> are Jev's answer as given, kept even when it was not acted on; <paramref name="Reason"/>
-/// says why the turn proceeded with no recognised intent (low confidence, timeout, rejection, no key) and is null when
-/// the answer was used.
+/// says why the turn proceeded with no recognised intent (low confidence, outside the domain, timeout, rejection, no key)
+/// and is null when the answer was used. <paramref name="InDomain"/> is Jev's probability that the question is about
+/// the documented domain.
 /// </summary>
 public readonly record struct IntentDecision(
     Intent Intent,
@@ -26,7 +27,8 @@ public readonly record struct IntentDecision(
     double? Confidence = null,
     string? Model = null,
     double? DurationMs = null,
-    string? Reason = null);
+    string? Reason = null,
+    double? InDomain = null);
 
 /// <summary>Classifies the question of a turn before the first model call, in any language.</summary>
 public interface IIntentClassifier

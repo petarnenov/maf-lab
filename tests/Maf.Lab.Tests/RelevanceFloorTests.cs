@@ -23,7 +23,7 @@ public class RelevanceFloorTests
             {
                 Dense = Dense,
                 Sparse = Sparse,
-                DenseVector = "dense_v1",
+                DenseVector = "dense_v3",
                 Mode = mode,
                 Limit = 5,
                 DenseFloor = denseFloor,
@@ -79,7 +79,7 @@ public class RelevanceFloorTests
             TenantScopedSearch.DenseQuery(Dense), TenantScopedSearch.SparseQuery(Sparse),
             new SearchRequest
             {
-                Dense = Dense, Sparse = Sparse, DenseVector = "dense_v1",
+                Dense = Dense, Sparse = Sparse, DenseVector = "dense_v3",
                 Fusion = FusionModes.Dbsf, Limit = 5, DenseFloor = 0.55f, SparseFloor = 2.5f,
             },
             new Filter(), 100).Fusion);
@@ -88,14 +88,31 @@ public class RelevanceFloorTests
     [Fact]
     public void Default_settings_take_the_floors_from_configuration()
     {
-        var settings = new SearchSettings(RetrievalModes.Hybrid, FusionModes.Rrf, "dense_v1", false, 0.55f, 2.5f);
+        var settings = new SearchSettings(RetrievalModes.Hybrid, FusionModes.Rrf, "dense_v3", false, 0.55f, 2.5f);
 
         Assert.Equal(0.55f, settings.DenseFloor);
         Assert.Equal(2.5f, settings.SparseFloor);
         // Explicit settings never inherit a floor; only DefaultSettings reads configuration.
-        Assert.Null(new SearchSettings(RetrievalModes.Hybrid, FusionModes.Rrf, "dense_v1", false).DenseFloor);
-        // The calibrated defaults: a dense floor the eval earned, and no sparse floor, because none qualified.
-        Assert.Equal(0.65f, new RetrievalOptions().DenseFloor);
+        Assert.Null(new SearchSettings(RetrievalModes.Hybrid, FusionModes.Rrf, "dense_v3", false).DenseFloor);
+        // The calibrated defaults: a dense floor the eval earned for embeddinggemma, and no sparse floor, because none qualified.
+        Assert.Equal(0.22f, new RetrievalOptions().DenseFloorFor(new ModelOptions(), "dense_v3"));
         Assert.Null(new RetrievalOptions().SparseFloor);
+    }
+
+    [Fact]
+    public void The_dense_floor_follows_the_selected_embedding()
+    {
+        var models = new ModelOptions();
+        models.Embeddings["dense_other"] = new EmbeddingProfile { Model = "other", Dimensions = 8, DenseFloor = 0.25f };
+        models.Embeddings["dense_none"] = new EmbeddingProfile { Model = "none", Dimensions = 8 };
+        var retrieval = new RetrievalOptions();
+
+        Assert.Equal(0.22f, retrieval.DenseFloorFor(models, "dense_v3"));
+        Assert.Equal(0.25f, retrieval.DenseFloorFor(models, "dense_other"));
+        Assert.Null(retrieval.DenseFloorFor(models, "dense_none"));
+        // An explicit override wins over every embedding's own.
+        Assert.Equal(0.4f, new RetrievalOptions { DenseFloor = 0.4f }.DenseFloorFor(models, "dense_other"));
+        // Switched off is off, whatever the embedding says.
+        Assert.Null(new RetrievalOptions { DenseFloorEnabled = false }.DenseFloorFor(models, "dense_v3"));
     }
 }

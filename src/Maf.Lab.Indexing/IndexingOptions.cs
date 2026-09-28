@@ -9,7 +9,7 @@ public sealed class IndexingOptions
     /// <summary>Contextual retrieval: prepend an LLM-generated situating sentence before dense embedding.</summary>
     public bool ContextualRetrieval { get; set; }
     /// <summary>Named dense vector the indexer writes; model_version is that vector's model.</summary>
-    public string DenseVector { get; set; } = "dense_v1";
+    public string DenseVector { get; set; } = "dense_v3";
     public int MaxChunkChars { get; set; } = 1500;
     public int EmbeddingBatchSize { get; set; } = 32;
     public string CacheDirectory { get; set; } = ".cache";

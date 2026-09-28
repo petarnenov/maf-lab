@@ -18,10 +18,10 @@ public class RelevanceFloorAcceptanceTests(CorpusIndexFixture corpus)
 
     /// <summary>Floors no candidate in any corpus can clear, so the test is about the mechanism, not the numbers.</summary>
     private static SearchSettings Rejecting(string mode = RetrievalModes.Hybrid) =>
-        new(mode, FusionModes.Rrf, "dense_v1", false, float.MaxValue, float.MaxValue);
+        new(mode, FusionModes.Rrf, "dense_v3", false, float.MaxValue, float.MaxValue);
 
     private static SearchSettings NoFloors(string mode = RetrievalModes.Hybrid) =>
-        new(mode, FusionModes.Rrf, "dense_v1", false);
+        new(mode, FusionModes.Rrf, "dense_v3", false);
 
     [Fact]
     public async Task Nothing_above_the_floor_returns_no_results_and_a_hint_rather_than_an_error()
@@ -78,7 +78,7 @@ public class RelevanceFloorAcceptanceTests(CorpusIndexFixture corpus)
 
         var without = await search.SearchAsync(AdvisorA, query, null, 10, NoFloors(), Ct);
         var withFloor = await search.SearchAsync(AdvisorA, query, null, 10,
-            new SearchSettings(RetrievalModes.Hybrid, FusionModes.Rrf, "dense_v1", false, float.MinValue, float.MinValue), Ct);
+            new SearchSettings(RetrievalModes.Hybrid, FusionModes.Rrf, "dense_v3", false, float.MinValue, float.MinValue), Ct);
 
         Assert.Equal(without.Result.Results.Select(r => r.DocId), withFloor.Result.Results.Select(r => r.DocId));
     }
@@ -92,7 +92,7 @@ public class RelevanceFloorAcceptanceTests(CorpusIndexFixture corpus)
 
         // Dense rejects everything, sparse rejects nothing: hybrid still answers, from the sparse branch alone.
         var outcome = await search.SearchAsync(AdvisorA, query, null, 10,
-            new SearchSettings(RetrievalModes.Hybrid, FusionModes.Rrf, "dense_v1", false, float.MaxValue, null), Ct);
+            new SearchSettings(RetrievalModes.Hybrid, FusionModes.Rrf, "dense_v3", false, float.MaxValue, null), Ct);
 
         Assert.NotEmpty(outcome.Result.Results);
     }

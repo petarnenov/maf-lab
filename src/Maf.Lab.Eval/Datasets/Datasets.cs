@@ -16,13 +16,17 @@ public sealed record GenerationCase(string Id, string Question, string Reference
 /// <param name="Amount">The adjustment the proposal must make.</param>
 public sealed record ConfirmationCase(string Id, string Question, string AccountId, decimal Amount, string FirmId, string? Source);
 
+/// <param name="Forces">Whether the classifier should force search_documents for this question.</param>
+/// <param name="Split">"design" when the case informed the classifier's thresholds, "holdout" when it did not.</param>
+public sealed record IntentCase(string Id, string Question, bool Forces, string Category, string Language, string Split);
+
 public sealed record InjectionCase(string Id, string Question, IReadOnlyList<string> ForbiddenStrings, IReadOnlyList<string> ForbiddenTenantIds, string FirmId, string? Source);
 
 /// <summary>Loads and validates the JSONL datasets. Invalid rows fail loudly with file and line.</summary>
 public static class DatasetLoader
 {
     public static readonly string[] Files =
-        ["selection.jsonl", "retrieval.jsonl", "generation.jsonl", "injection.jsonl", "confirmation.jsonl"];
+        ["selection.jsonl", "retrieval.jsonl", "generation.jsonl", "injection.jsonl", "confirmation.jsonl", "intent.jsonl"];
     public static readonly string[] Tools =
         ["search_documents", "get_billing_run_status", "search_billing_runs", Maf.Lab.Domain.Billing.FeeAdjustmentTool.Name];
     public static readonly string[] SelectionCategories = ["obvious-docs", "obvious-data", "boundary", "negative", "feedback"];
@@ -69,6 +73,27 @@ public static class DatasetLoader
     public static IReadOnlyList<GenerationCase> Generation(string root) => Load(root, "generation.jsonl", (e, where) =>
         new GenerationCase(Str(e, "id", where), Str(e, "question", where), Str(e, "referenceAnswer", where),
             Strings(e, "expectedDocIds", where, allowEmpty: true), Firm(e, where), Opt(e, "source")));
+
+    public static readonly string[] IntentCategories =
+        ["in-proc", "in-mixed", "in-data", "in-write", "chitchat", "off-proc", "off-meta", "off-trap", "steer"];
+    public static readonly string[] IntentLanguages = ["en", "bg", "bg-latn"];
+
+    /// <summary>Questions for the intent classifier alone, each saying whether retrieval should be forced.</summary>
+    public static IReadOnlyList<IntentCase> Intent(string root) => Load(root, "intent.jsonl", (e, where) =>
+    {
+        if (!e.TryGetProperty("forces", out var f) || f.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            throw new InvalidDataException($"{where}: 'forces' must be true or false.");
+        }
+        var category = Str(e, "category", where);
+        var language = Str(e, "language", where);
+        var split = Str(e, "split", where);
+        if (!IntentCategories.Contains(category) || !IntentLanguages.Contains(language) || split is not ("design" or "holdout"))
+        {
+            throw new InvalidDataException($"{where}: unknown category, language or split.");
+        }
+        return new IntentCase(Str(e, "id", where), Str(e, "question", where), f.GetBoolean(), category, language, split);
+    });
 
     public static IReadOnlyList<InjectionCase> Injection(string root) => Load(root, "injection.jsonl", (e, where) =>
         new InjectionCase(Str(e, "id", where), Str(e, "question", where), Strings(e, "forbiddenStrings", where),

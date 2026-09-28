@@ -46,7 +46,7 @@ make help                  # every target
 |---|---|
 | `make` / `make up` | Start the stack (`API_REPLICAS=3 MCP_REPLICAS=3` to scale), wait until healthy, reload the balancer |
 | `make down` / `restart` / `ps` / `logs` | Stop (volumes kept), restart, status, follow logs (`SERVICE=api`) |
-| `make index` / `reindex` / `drift` / `migrate` | Indexing CLI against the compose Qdrant + Ollama (`TO=dense_v2`) |
+| `make index` / `reindex` / `drift` / `migrate` / `rebuild-index` | Indexing CLI against the compose Qdrant + Ollama; `rebuild-index FORCE=1` re-creates the collection with the configured embedding |
 | `make test` / `test-dotnet` / `test-web` / `lint` | Test suites and linters |
 | `make verify` | 17 checks through the load balancer (routing, ports, balancing, SSE, MCP, failover, jobs) |
 | `make eval` / `eval-selection` / … | Evals against the stack's MCP (`SUITE=all`) |
@@ -187,8 +187,11 @@ as it happens. Tabs:
 
 **Intent:** before the first model call the question is classified, which decides whether the turn is *forced* to call
 `search_documents`. Every question, in any language, is classified by TypeSafe's Jev (`jev-1.13.0`, key from
-`JEV_MAF_LAB`), which returns one of the five intents with a probability for each and a confidence. The intent event
-shows all of it, e.g. "Intent Procedural (jev 0.97, 285 ms)". A choice below `Jev:MinConfidence` (0.5), a timeout
+`JEV_MAF_LAB`), which returns one of the five intents with a probability for each and a confidence, and — in the same
+call — the probability that the question is about fee billing at all. Retrieval is forced only for a procedural
+question inside the domain (`Jev:MinInDomain`, 0.2), so "how do I cook carbonara?" is not sent to the documentation.
+The intent event shows all of it, e.g. "Intent Other (jev 0.99, outside the domain 0.00, 282 ms)". `make eval-intent`
+measures the classifier alone over 101 labelled questions in English, Bulgarian and Latin-script Bulgarian. A choice below `Jev:MinConfidence` (0.5), a timeout
 (`Jev:TimeoutSeconds`, 2; 0 disables it), a rejected call or a missing key leaves the turn unforced, and the event
 says why.
 
@@ -210,9 +213,9 @@ Prerequisites: .NET SDK 10.0.401 (`global.json`), Node 24, Docker, Ollama (host 
 
 ```bash
 docker compose -f compose/docker-compose.yml up -d qdrant     # vector store only
-ollama pull nomic-embed-text && ollama pull all-minilm && ollama pull qwen3:4b
+ollama pull embeddinggemma && ollama pull qwen3:4b
 
-dotnet run --project src/Maf.Lab.Indexing                     # index data/ (index | drift | status | migrate --to dense_v2)
+dotnet run --project src/Maf.Lab.Indexing                     # index data/ (index | drift | status | rebuild --yes | migrate --to <vector>)
 dotnet run --project src/Maf.Lab.Retrieval                    # MCP server on :5090
 dotnet run --project src/Maf.Lab.Api                          # agent host on :5080
 cd web && npm install && npm run dev                          # UI on :5174

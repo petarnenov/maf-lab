@@ -25,7 +25,7 @@ public class TenancyAcceptanceTests(CorpusIndexFixture corpus)
         foreach (var mode in RetrievalModes.All)
         {
             var outcome = await search.SearchAsync(AdvisorA, "what is the procedure when a fee schedule is missing", null, 10,
-                new SearchSettings(mode, FusionModes.Rrf, "dense_v1", false), Ct);
+                new SearchSettings(mode, FusionModes.Rrf, "dense_v3", false), Ct);
             Assert.NotEmpty(outcome.Chunks);
             Assert.All(outcome.Chunks, c => Assert.Contains(c.Chunk.TenantId, new[] { "firm-a", "shared" }));
             Assert.All(outcome.Result.Results, r => Assert.True(r.DocId.StartsWith("firm-a/") || r.DocId.StartsWith("shared/")));
@@ -44,7 +44,7 @@ public class TenancyAcceptanceTests(CorpusIndexFixture corpus)
 
         foreach (var rerank in new[] { false, true })
         {
-            var outcome = await search.SearchAsync(AdvisorA, query, null, 10, new SearchSettings(RetrievalModes.Hybrid, FusionModes.Rrf, "dense_v1", rerank), Ct);
+            var outcome = await search.SearchAsync(AdvisorA, query, null, 10, new SearchSettings(RetrievalModes.Hybrid, FusionModes.Rrf, "dense_v3", rerank), Ct);
             Assert.Equal(10, outcome.Result.Results.Count);
             Assert.All(outcome.Chunks, c => Assert.Contains(c.Chunk.TenantId, new[] { "firm-a", "shared" }));
             Assert.DoesNotContain(outcome.Result.Results, r => r.Snippet.Contains("NW-CANARY-7731-") || r.Snippet.Contains("Northwind"));
@@ -63,14 +63,14 @@ public class TenancyAcceptanceTests(CorpusIndexFixture corpus)
         var encoder = FakeDenseEncoder.Default();
 
         // Precondition, using a raw unscoped query that only test code may issue: the global top-10 is all firm-b.
-        var global = await corpus.Qdrant.RawClient().QueryAsync(corpus.Collection, query: encoder.Embed("dense_v1", query),
-            usingVector: "dense_v1", limit: 10, payloadSelector: true, cancellationToken: Ct);
+        var global = await corpus.Qdrant.RawClient().QueryAsync(corpus.Collection, query: encoder.Embed("dense_v3", query),
+            usingVector: "dense_v3", limit: 10, payloadSelector: true, cancellationToken: Ct);
         Assert.All(global, p => Assert.Equal("firm-b", p.Payload[ChunkSchema.TenantId].StringValue));
 
         var search = services.GetRequiredService<DocumentSearchService>();
         foreach (var mode in RetrievalModes.All)
         {
-            var outcome = await search.SearchAsync(AdvisorC, query, null, 10, new SearchSettings(mode, FusionModes.Rrf, "dense_v1", false), Ct);
+            var outcome = await search.SearchAsync(AdvisorC, query, null, 10, new SearchSettings(mode, FusionModes.Rrf, "dense_v3", false), Ct);
             Assert.Equal(10, outcome.Result.Results.Count);
             Assert.All(outcome.Chunks, c => Assert.Contains(c.Chunk.TenantId, new[] { "firm-c", "shared" }));
             Assert.Contains(outcome.Chunks, c => c.Chunk.TenantId == "firm-c");

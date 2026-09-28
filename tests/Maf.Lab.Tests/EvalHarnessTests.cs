@@ -28,6 +28,25 @@ public class EvalHarnessTests
         Assert.NotEmpty(DatasetLoader.Generation(EvalsRoot));
         Assert.NotEmpty(DatasetLoader.Injection(EvalsRoot));
         Assert.NotEmpty(DatasetLoader.Confirmation(EvalsRoot));
+        Assert.NotEmpty(DatasetLoader.Intent(EvalsRoot));
+    }
+
+    [Fact]
+    public void Intent_dataset_holds_off_domain_procedures_in_every_language()
+    {
+        var cases = DatasetLoader.Intent(EvalsRoot);
+
+        Assert.Equal(101, cases.Count);
+        Assert.Equal(53, cases.Count(c => !c.Forces));
+        Assert.Equal(37, cases.Count(c => !c.Forces && (c.Category.StartsWith("off-", StringComparison.Ordinal) || c.Category == "steer")));
+        Assert.Equal(30, cases.Count(c => c.Split == "holdout"));
+        // A classifier that forces everything phrased as a procedure must fail somewhere in every language.
+        foreach (var language in DatasetLoader.IntentLanguages)
+        {
+            Assert.Contains(cases, c => c.Language == language && c.Forces);
+            Assert.Contains(cases, c => c.Language == language && c.Category == "off-proc");
+        }
+        Assert.Contains(cases, c => c.Question == "Procedurata kak edna vaba da izqden edin slon e: ???" && !c.Forces);
     }
 
     [Fact]
@@ -112,6 +131,30 @@ public class EvalHarnessTests
         Assert.Equal(2.0 / 3, recall, 6);
         Assert.Equal(2.0 / 3, precision, 6);
         Assert.Equal(0.5, exact, 6);
+    }
+
+    [Fact]
+    public void Intent_metrics_keep_the_two_errors_apart()
+    {
+        var metrics = Metrics.Intent(
+        [
+            (true, true, "en", "design"),
+            (true, false, "bg-latn", "holdout"),
+            (false, true, "bg-latn", "design"),
+            (false, false, "en", "holdout"),
+            (false, false, "bg", "design"),
+        ]);
+        Assert.Equal(3.0 / 5, metrics["accuracy"], 6);
+        Assert.Equal(2.0 / 3, metrics["unforcedWhenShouldNot"], 6);
+        Assert.Equal(1.0 / 2, metrics["forcedWhenShould"], 6);
+        Assert.Equal(1.0, metrics["accuracy:en"], 6);
+        Assert.Equal(0.0, metrics["accuracy:bg-latn"], 6);
+        Assert.Equal(2.0 / 3, metrics["accuracy:design"], 6);
+
+        // Forcing everything is perfect on should-force and still fails.
+        var forceAll = Metrics.Intent([(true, true, "en", "design"), (false, true, "en", "design")]);
+        Assert.Equal(1.0, forceAll["forcedWhenShould"]);
+        Assert.Equal(0.0, forceAll["unforcedWhenShouldNot"]);
     }
 
     [Fact]

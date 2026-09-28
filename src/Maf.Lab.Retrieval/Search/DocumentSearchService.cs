@@ -29,13 +29,14 @@ public sealed partial class DocumentSearchService(
     IReranker reranker,
     IQueryTranslator translator,
     IOptions<RetrievalOptions> options,
+    IOptions<ModelOptions> models,
     ILogger<DocumentSearchService> logger)
 {
     public const int MaxResultsCap = 10;
     private readonly RetrievalOptions _options = options.Value;
 
     public SearchSettings DefaultSettings => new(_options.Mode, _options.Fusion, _options.DenseVector, _options.RerankEnabled,
-        _options.DenseFloor, _options.SparseFloor);
+        _options.DenseFloorFor(models.Value, _options.DenseVector), _options.SparseFloor);
 
     public async Task<SearchOutcome> SearchAsync(
         Principal principal, string query, IReadOnlyList<string>? sourceTypes, int? maxResults, SearchSettings? settings, CancellationToken ct,

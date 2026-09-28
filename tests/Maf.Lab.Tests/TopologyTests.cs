@@ -193,13 +193,13 @@ public class TopologyTests
     public async Task The_embeddings_node_is_degraded_when_a_configured_model_is_not_pulled()
     {
         var handler = StubHandler.AllHealthy();
-        handler.PulledModels = ["nomic-embed-text:latest"];
+        handler.PulledModels = ["some-other-model:latest"];
         using var api = Api(handler);
 
         var node = (await GetAsync(api)).Nodes.Single(n => n.Id == "ollama-embeddings");
 
         Assert.Equal(NodeHealth.Degraded, node.Health);
-        Assert.Contains("all-minilm", node.Reason);
+        Assert.Contains("embeddinggemma", node.Reason);
     }
 
     [Fact]
@@ -341,7 +341,7 @@ internal sealed class StubHandler : HttpMessageHandler
     public Dictionary<string, (string Instance, bool Healthy)> Health { get; } = [];
     public HashSet<string> Fail { get; } = [];
     public HashSet<string> Hang { get; } = [];
-    public string[] PulledModels { get; set; } = ["nomic-embed-text:latest", "all-minilm:latest"];
+    public string[] PulledModels { get; set; } = ["embeddinggemma:latest"];
     public int Requests;
 
     public static StubHandler AllHealthy() => new();

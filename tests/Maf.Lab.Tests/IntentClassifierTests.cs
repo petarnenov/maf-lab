@@ -222,6 +222,81 @@ public class IntentClassifierTests
     }
 
     [Fact]
+    public async Task One_request_asks_the_intent_and_the_domain_and_neither_holds_the_question()
+    {
+        var h = Build();
+
+        await h.Classifier.ClassifyAsync("Procedurata kak edna vaba da izqden edin slon e: ???", Ct);
+
+        var asked = Assert.Single(h.Jev.Questions);
+        Assert.Equal("choice", asked["intent"]);
+        Assert.Equal("noul", asked["in_domain"]);
+        var questions = JsonDocument.Parse(Assert.Single(h.Jev.Requests).Body).RootElement.GetProperty("questions");
+        Assert.DoesNotContain("slon", questions.GetRawText());
+        var domain = questions.GetProperty("in_domain").GetProperty("instructions");
+        Assert.Contains("`user_question`", domain.GetProperty("question").GetString());
+        Assert.Contains("`domain`", domain.GetProperty("question").GetString());
+        Assert.Contains("Fee billing", domain.GetProperty("domain").GetString());
+    }
+
+    [Theory]
+    [InlineData("procedural", 0.02, Intent.Other, "outside the domain (0.02)")]
+    [InlineData("mixed", 0.19, Intent.Other, "outside the domain (0.19)")]
+    [InlineData("procedural", 0.2, Intent.Procedural, null)]
+    [InlineData("procedural", 0.96, Intent.Procedural, null)]
+    // Only an intent that would force retrieval is gated.
+    [InlineData("data", 0.0, Intent.Data, null)]
+    [InlineData("chitchat", 0.0, Intent.ChitChat, null)]
+    public async Task A_forcing_intent_outside_the_domain_forces_nothing(string choice, double inDomain, Intent expected, string? reason)
+    {
+        var h = Build(new FakeJev { Choose = _ => choice, InDomain = inDomain, Confidence = 0.93 });
+
+        var decision = await h.Classifier.ClassifyAsync("a question", Ct);
+
+        Assert.Equal(expected, decision.Intent);
+        Assert.Equal(reason, decision.Reason);
+        Assert.Equal(inDomain, decision.InDomain);
+        // What Jev said is kept, so the trace can show why the turn was not forced.
+        Assert.Equal(choice, decision.Choice);
+        Assert.Equal(0.93, decision.Confidence);
+    }
+
+    [Fact]
+    public async Task A_missing_domain_answer_fails_closed()
+    {
+        var h = Build(new FakeJev { InDomain = null });
+
+        var decision = await h.Classifier.ClassifyAsync("what is the procedure when a fee schedule is missing", Ct);
+
+        Assert.Equal(Intent.Other, decision.Intent);
+        Assert.Equal("outside the domain (none)", decision.Reason);
+    }
+
+    [Fact]
+    public async Task A_zero_floor_turns_the_gate_off()
+    {
+        var h = Build(new FakeJev { InDomain = 0.0 }, options: new JevOptions { MinInDomain = 0 });
+
+        var decision = await h.Classifier.ClassifyAsync("what is the procedure when a fee schedule is missing", Ct);
+
+        Assert.Equal(Intent.Procedural, decision.Intent);
+        Assert.Null(decision.Reason);
+    }
+
+    [Fact]
+    public void The_documented_noul_answer_is_read()
+    {
+        // The Noul example response from https://docs.typesafe.ai/api, verbatim.
+        const string json = """
+            {"model":"jev-1.13.0","answers":{"is_urgent":{"type":"noul","noul":0.95}},"usage":{"input_tokens":296,"output_tokens":20}}
+            """;
+
+        var response = JsonSerializer.Deserialize<JevResponse>(json, JevRequest.Json)!;
+
+        Assert.Equal(0.95, response.Answers!["is_urgent"].Noul);
+    }
+
+    [Fact]
     public void The_documented_response_shape_is_read()
     {
         // The example response from https://docs.typesafe.ai/api, verbatim.

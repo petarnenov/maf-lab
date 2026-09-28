@@ -70,4 +70,33 @@ public static class Metrics
 
     public static IReadOnlyDictionary<string, double> Round(Dictionary<string, double> metrics) =>
         metrics.ToDictionary(m => m.Key, m => Math.Round(m.Value, 4));
+
+    /// <summary>
+    /// Forcing decisions against their labels. Each rate is higher-is-better and reported separately, so a classifier
+    /// that forces everything (perfect on should-force) cannot hide behind one that forces nothing, or the reverse.
+    /// </summary>
+    public static Dictionary<string, double> Intent(IEnumerable<(bool Expected, bool Forced, string Language, string Split)> cases)
+    {
+        var all = cases.ToList();
+        static double Share(IEnumerable<bool> hits)
+        {
+            var list = hits.ToList();
+            return list.Count == 0 ? 1 : (double)list.Count(h => h) / list.Count;
+        }
+        var metrics = new Dictionary<string, double>
+        {
+            ["accuracy"] = Share(all.Select(c => c.Expected == c.Forced)),
+            ["unforcedWhenShouldNot"] = Share(all.Where(c => !c.Expected).Select(c => !c.Forced)),
+            ["forcedWhenShould"] = Share(all.Where(c => c.Expected).Select(c => c.Forced)),
+        };
+        foreach (var group in all.GroupBy(c => c.Language).OrderBy(g => g.Key, StringComparer.Ordinal))
+        {
+            metrics[$"accuracy:{group.Key}"] = Share(group.Select(c => c.Expected == c.Forced));
+        }
+        foreach (var group in all.GroupBy(c => c.Split).OrderBy(g => g.Key, StringComparer.Ordinal))
+        {
+            metrics[$"accuracy:{group.Key}"] = Share(group.Select(c => c.Expected == c.Forced));
+        }
+        return metrics;
+    }
 }

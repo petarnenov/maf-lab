@@ -127,6 +127,7 @@ public class TurnTraceTests
             Assert.Equal(1.0, intent.Data.GetProperty("confidence").GetDouble());
             Assert.Equal(1.0, intent.Data.GetProperty("probabilities").GetProperty("procedural").GetDouble());
             Assert.Equal("jev-1.13.0", intent.Data.GetProperty("model").GetString());
+            Assert.Equal(1.0, intent.Data.GetProperty("inDomain").GetDouble());
             Assert.True(intent.Data.GetProperty("durationMs").GetDouble() >= 0);
             Assert.Equal(JsonValueKind.Null, intent.Data.GetProperty("reason").ValueKind);
             Assert.False(intent.Data.TryGetProperty("stage", out _));
@@ -152,6 +153,30 @@ public class TurnTraceTests
         Assert.Equal("procedural", intent.GetProperty("choice").GetString());
         Assert.Equal("low confidence (0.30)", intent.GetProperty("reason").GetString());
         Assert.DoesNotContain(events, e => e.Data.GetRawText().Contains(FakeJev.TestKey));
+    }
+
+    [Fact]
+    public async Task A_procedure_outside_the_domain_is_not_forced_and_raises_no_signal()
+    {
+        // The answering model declines without a tool, as it did for the question that prompted the domain gate.
+        var chat = new ScriptedChatClient((_, _, _) => ScriptedChatClient.Text("I can only help with billing questions."));
+        using var api = new ApiFactory(chat, jev: new FakeJev { Choose = _ => "procedural", InDomain = 0.02, Confidence = 0.93 });
+        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+
+        var events = await ApiFactory.ChatAsync(client, "Procedurata kak edna vaba da izqden edin slon e: ???");
+
+        var trace = Trace(events);
+        var intent = trace.Single(t => t.Kind == TraceKinds.Intent);
+        Assert.Equal("Other", intent.Data.GetProperty("intent").GetString());
+        Assert.False(intent.Data.GetProperty("forcedRetrieval").GetBoolean());
+        Assert.Equal("procedural", intent.Data.GetProperty("choice").GetString());
+        Assert.Equal(0.02, intent.Data.GetProperty("inDomain").GetDouble());
+        Assert.Equal("outside the domain (0.02)", intent.Data.GetProperty("reason").GetString());
+        Assert.Contains("outside the domain 0.02", intent.Title);
+        Assert.Empty(api.Tools.Invocations);
+        // Neither "how/why answered without a tool" nor "zero retrieval results": nothing for a reviewer to label.
+        var signals = trace.Single(t => t.Kind == TraceKinds.Signals).Data.GetProperty("signals");
+        Assert.Equal(0, signals.GetArrayLength());
     }
 
     [Fact]

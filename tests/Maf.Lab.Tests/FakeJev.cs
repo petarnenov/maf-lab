@@ -34,6 +34,12 @@ public sealed partial class FakeJev : HttpMessageHandler
 
     public string Model { get; set; } = "jev-1.13.0";
 
+    /// <summary>What every Noul question is answered with — for the classifier, the probability the question is in the domain.</summary>
+    public double? InDomain { get; set; } = 1.0;
+
+    /// <summary>The question ids and types each request carried, in order.</summary>
+    public ConcurrentQueue<IReadOnlyDictionary<string, string>> Questions { get; } = new();
+
     /// <summary>The Content-Length the last request declared before its body was read; null means it was streamed.</summary>
     public long? LastContentLength { get; private set; }
 
@@ -55,22 +61,34 @@ public sealed partial class FakeJev : HttpMessageHandler
             return new HttpResponseMessage(status);
         }
 
-        var question = JsonNode.Parse(body)!["state"]!["user_question"]!.GetValue<string>();
+        var root = JsonNode.Parse(body)!;
+        var question = root["state"]!["user_question"]!.GetValue<string>();
+        var asked = root["questions"]!.AsObject().ToDictionary(q => q.Key, q => q.Value!["type"]!.GetValue<string>());
+        Questions.Enqueue(asked);
         var choice = (Choose ?? Classify)(question);
-        var answer = new
+        var answers = new Dictionary<string, object>();
+        foreach (var (id, type) in asked)
         {
-            model = Model,
-            answers = new Dictionary<string, object>
+            if (type == "choice")
             {
-                ["intent"] = new
+                answers[id] = new
                 {
                     type = "choice",
                     choice,
                     confidence = Confidence,
                     probabilities = new[] { "procedural", "mixed", "data", "chitchat", "other" }
                         .ToDictionary(o => o, o => o == choice ? Confidence : Math.Round((1 - Confidence) / 4, 4)),
-                },
-            },
+                };
+            }
+            else if (InDomain is { } p)
+            {
+                answers[id] = new { type = "noul", noul = p };
+            }
+        }
+        var answer = new
+        {
+            model = Model,
+            answers,
             usage = new { input_tokens = 400, output_tokens = 50 },
         };
         return new HttpResponseMessage(HttpStatusCode.OK)

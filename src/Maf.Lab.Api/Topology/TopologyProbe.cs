@@ -293,7 +293,7 @@ public sealed class TopologyProbe(
                 .TryGetProperty("models", out var list) && list.ValueKind == JsonValueKind.Array
                     ? list.EnumerateArray().Select(m => m.TryGetProperty("model", out var n) ? n.GetString() ?? "" : "").ToList()
                     : [];
-            // Ollama reports "nomic-embed-text:latest" for "nomic-embed-text".
+            // Ollama reports "embeddinggemma:latest" for "embeddinggemma".
             var missing = wanted.Where(w => !pulled.Any(p => p == w || p.StartsWith(w + ":", StringComparison.Ordinal))).ToList();
             facts["pulled"] = pulled.Count.ToString();
             return missing.Count > 0

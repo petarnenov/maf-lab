@@ -4,6 +4,7 @@ using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Retrieval.Models;
 using Maf.Lab.Retrieval.Store;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Maf.Lab.Indexing.Pipeline;
 
@@ -16,6 +17,7 @@ public sealed class MigrationService(
     CollectionBootstrapper bootstrapper,
     TenantScopedMaintenance store,
     IDenseEncoder dense,
+    IOptions<IndexingOptions> indexing,
     ILogger<MigrationService> logger)
 {
     public async Task<MigrationSummary> RunAsync(IReadOnlySet<TenantId> tenants, string targetVector, uint batchSize, CancellationToken ct,
@@ -39,14 +41,15 @@ public sealed class MigrationService(
             long tenantMigrated = 0;
             while (true)
             {
-                var batch = await store.NextMigrationBatchAsync(tenant, target, batchSize, ct);
+                var batch = await store.NextMigrationBatchAsync(tenant, targetVector, target, batchSize, ct);
                 if (batch.Count == 0)
                 {
                     break;
                 }
                 var texts = batch.Select(c => c.Context is null ? $"{c.SectionPath}\n{c.Text}" : $"{c.Context}\n{c.SectionPath}\n{c.Text}").ToList();
                 var vectors = await dense.EmbedDocumentsAsync(targetVector, texts, ct);
-                await store.ApplyMigrationBatchAsync(tenant, targetVector, target, batch.Select((c, i) => (c.PointId, vectors[i])).ToList(), ct);
+                await store.ApplyMigrationBatchAsync(tenant, targetVector, target, targetVector == indexing.Value.DenseVector,
+                    batch.Select((c, i) => (c.PointId, vectors[i])).ToList(), ct);
                 tenantMigrated += batch.Count;
                 batchNo++;
                 if (afterBatch is not null)

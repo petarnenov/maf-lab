@@ -20,6 +20,10 @@ internal static class PayloadMapper
             [ChunkSchema.Text] = c.Text,
             [ChunkSchema.ContentHash] = c.ContentHash,
         };
+        foreach (var (vector, model) in c.DenseModelVersions)
+        {
+            payload[ChunkSchema.ModelVersionOf(vector)] = model;
+        }
         if (c.Symbol is not null)
         {
             payload[ChunkSchema.Symbol] = c.Symbol;
@@ -45,6 +49,8 @@ internal static class PayloadMapper
         Text = Str(p, ChunkSchema.Text),
         Context = p.TryGetValue(ChunkSchema.Context, out var ctx) ? ctx.StringValue : null,
         ContentHash = Str(p, ChunkSchema.ContentHash),
+        DenseModelVersions = p.Where(kv => kv.Key.StartsWith(ChunkSchema.ModelVersionPrefix, StringComparison.Ordinal))
+            .ToDictionary(kv => kv.Key[ChunkSchema.ModelVersionPrefix.Length..], kv => kv.Value.StringValue, StringComparer.Ordinal),
     };
 
     private static string Str(MapField<string, Value> p, string key) => p.TryGetValue(key, out var v) ? v.StringValue : "";

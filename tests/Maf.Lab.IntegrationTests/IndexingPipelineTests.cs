@@ -2,6 +2,7 @@ using Maf.Lab.Domain.Retrieval;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Indexing.Pipeline;
 using Maf.Lab.Retrieval.Configuration;
+using Maf.Lab.Retrieval.Models;
 using Maf.Lab.Retrieval.Search;
 using Maf.Lab.Retrieval.Sparse;
 using Maf.Lab.Retrieval.Store;
@@ -38,7 +39,7 @@ public class IndexingPipelineTests(QdrantFixture qdrant)
             Assert.True(SourceType.IsKnown(c.SourceType));
             Assert.False(string.IsNullOrEmpty(c.SourcePath));
             Assert.False(string.IsNullOrEmpty(c.SectionPath));
-            Assert.Equal("nomic-embed-text", c.ModelVersion);
+            Assert.Equal("embeddinggemma", c.ModelVersion);
             Assert.NotEqual(DateTimeOffset.MinValue, c.UpdatedAt);
             Assert.False(string.IsNullOrEmpty(c.Text));
         });
@@ -56,7 +57,7 @@ public class IndexingPipelineTests(QdrantFixture qdrant)
         var page = await qdrant.RawClient().ScrollAsync(collection, limit: 5, vectorsSelector: true, cancellationToken: Ct);
         Assert.All(page.Result, p =>
         {
-            Assert.True(p.Vectors.Vectors.Vectors.ContainsKey("dense_v1"));
+            Assert.True(p.Vectors.Vectors.Vectors.ContainsKey("dense_v3"));
             Assert.True(p.Vectors.Vectors.Vectors.ContainsKey(ChunkSchema.SparseVector));
         });
     }
@@ -82,6 +83,8 @@ public class IndexingPipelineTests(QdrantFixture qdrant)
 
         Assert.Equal(1, second.DocumentsIndexed);
         Assert.Equal(34, second.DocumentsUnchanged);
+        // Every point of the old version was deleted before the new one was written — not only the sections that went.
+        Assert.Equal(before.Count(c => c.DocId == "shared/docs/billing.md"), second.ChunksDeleted);
         var after = (await AllChunksAsync(services, "shared")).Where(c => c.DocId == "shared/docs/billing.md").ToList();
         Assert.Equal(after.Count, after.Select(c => c.ChunkId).Distinct().Count());
         Assert.All(after, c => Assert.DoesNotContain("FS-REQUIRED", c.Text));
@@ -163,7 +166,7 @@ public class IndexingPipelineTests(QdrantFixture qdrant)
             SectionPath = "X", UpdatedAt = DateTimeOffset.UtcNow, ModelVersion = "m", Text = "t", ContentHash = "h",
         };
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            store.ReplaceDocumentAsync(TenantId.Firm("firm-a"), "firm-b/docs/x.md", [new ChunkWrite(chunk, "dense_v1", new float[768], new SparseVectorData([], []))], Ct));
+            store.ReplaceDocumentAsync(TenantId.Firm("firm-a"), "firm-b/docs/x.md", [new ChunkWrite(chunk, new Dictionary<string, float[]> { ["dense_v3"] = new float[768] }, new SparseVectorData([], []))], Ct));
     }
 
     [Theory]
@@ -180,7 +183,7 @@ public class IndexingPipelineTests(QdrantFixture qdrant)
         var search = services.GetRequiredService<DocumentSearchService>();
 
         var outcome = await search.SearchAsync(FirmA, "what to do when a fee schedule is missing FS-REQUIRED", null, 10,
-            new SearchSettings(mode, fusion, "dense_v1", false), Ct);
+            new SearchSettings(mode, fusion, "dense_v3", false), Ct);
 
         Assert.NotEmpty(outcome.Result.Results);
         Assert.All(outcome.Chunks, c => Assert.Contains(c.Chunk.TenantId, new[] { "firm-a", "shared" }));
@@ -217,8 +220,15 @@ public class IndexingPipelineTests(QdrantFixture qdrant)
     {
         using var corpus = TempCorpus.Small();
         var collection = Name();
-        await using var services = qdrant.Services(collection, corpus.Root);
-        await services.GetRequiredService<IndexingPipeline>().RunAsync(new IndexRequest(), Ct);
+        // Indexed while the second vector was produced by an older model; migrating brings that one vector up to date.
+        var oldModel = new FakeDenseEncoder(new Dictionary<string, int> { ["dense_v3"] = 768, [Alt] = 384 },
+            new Dictionary<string, string> { ["dense_v3"] = "embeddinggemma", [Alt] = "alt-model-old" });
+        await using (var before = qdrant.Services(collection, corpus.Root, FakeDenseEncoder.WithSecondVector,
+                         services: s => s.AddSingleton<IDenseEncoder>(oldModel)))
+        {
+            await before.GetRequiredService<IndexingPipeline>().RunAsync(new IndexRequest(), Ct);
+        }
+        await using var services = qdrant.Services(collection, corpus.Root, FakeDenseEncoder.WithSecondVector);
         var tenants = new HashSet<TenantId> { TenantId.Shared, TenantId.Firm("firm-a"), TenantId.Firm("firm-b"), TenantId.Firm("firm-c") };
         var countBefore = (await qdrant.RawClient().CountAsync(collection, exact: true, cancellationToken: Ct));
         var migration = services.GetRequiredService<MigrationService>();
@@ -226,7 +236,7 @@ public class IndexingPipelineTests(QdrantFixture qdrant)
         var queriesDuringMigration = 0;
 
         // First run is "killed" after two batches.
-        await Assert.ThrowsAsync<OperationCanceledException>(() => migration.RunAsync(tenants, "dense_v2", 5, Ct, async batch =>
+        await Assert.ThrowsAsync<OperationCanceledException>(() => migration.RunAsync(tenants, Alt, 5, Ct, async batch =>
         {
             var hits = await search.SearchAsync(FirmA, "fee schedule missing", null, 5, null, Ct);
             Assert.NotEmpty(hits.Result.Results);
@@ -237,10 +247,10 @@ public class IndexingPipelineTests(QdrantFixture qdrant)
             }
         }));
 
-        var partial = (await VersionsAsync(services, tenants)).GetValueOrDefault("all-minilm");
+        var partial = (await VectorVersionsAsync(services, tenants, Alt)).GetValueOrDefault("alt-model");
         Assert.InRange(partial, 1, (long)countBefore - 1);
 
-        var summary = await migration.RunAsync(tenants, "dense_v2", 5, Ct, async _ =>
+        var summary = await migration.RunAsync(tenants, Alt, 5, Ct, async _ =>
         {
             var hits = await search.SearchAsync(FirmA, "fee schedule missing", null, 5, null, Ct);
             Assert.NotEmpty(hits.Result.Results);
@@ -248,19 +258,132 @@ public class IndexingPipelineTests(QdrantFixture qdrant)
         });
 
         Assert.Equal((long)countBefore - partial, summary.Migrated);
-        var final = await VersionsAsync(services, tenants);
-        Assert.Equal((long)countBefore, final.GetValueOrDefault("all-minilm"));
-        Assert.False(final.ContainsKey("nomic-embed-text"));
+        var final = await VectorVersionsAsync(services, tenants, Alt);
+        Assert.Equal((long)countBefore, final.GetValueOrDefault("alt-model"));
+        Assert.False(final.ContainsKey("alt-model-old"));
+        // Only the second vector's record moved: dense_v3 and the indexing model_version are what they were.
+        Assert.Equal((long)countBefore, (await VectorVersionsAsync(services, tenants, "dense_v3")).GetValueOrDefault("embeddinggemma"));
+        Assert.Equal((long)countBefore, (await VersionsAsync(services, tenants)).GetValueOrDefault("embeddinggemma"));
         Assert.Equal(countBefore, await qdrant.RawClient().CountAsync(collection, exact: true, cancellationToken: Ct));
         Assert.True(queriesDuringMigration > 2);
 
-        var again = await migration.RunAsync(tenants, "dense_v2", 5, Ct);
+        var again = await migration.RunAsync(tenants, Alt, 5, Ct);
         Assert.Equal(0, again.Migrated);
 
+        // A migration leaves nothing for the next indexing run to re-write.
+        var next = await services.GetRequiredService<IndexingPipeline>().RunAsync(new IndexRequest(), Ct);
+        Assert.Equal(0, next.DocumentsIndexed);
+
         // Switching queries to the new vector works.
-        var v2 = await search.SearchAsync(FirmA, "fee schedule missing", null, 5, new SearchSettings(RetrievalModes.Dense, FusionModes.Rrf, "dense_v2", false), Ct);
+        var v2 = await search.SearchAsync(FirmA, "fee schedule missing", null, 5, new SearchSettings(RetrievalModes.Dense, FusionModes.Rrf, Alt, false), Ct);
         Assert.NotEmpty(v2.Result.Results);
     }
+
+    [Fact]
+    public async Task An_edited_document_keeps_every_configured_vector()
+    {
+        using var corpus = TempCorpus.Small();
+        var collection = Name();
+        await using var services = qdrant.Services(collection, corpus.Root, FakeDenseEncoder.WithSecondVector);
+        var pipeline = services.GetRequiredService<IndexingPipeline>();
+        await pipeline.RunAsync(new IndexRequest(), Ct);
+
+        corpus.Write("shared/docs/billing.md", """
+            # Billing overview
+            ## Fee schedules
+            A fee schedule defines the rate. Version two.
+            """, new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc));
+        await pipeline.RunAsync(new IndexRequest(), Ct);
+
+        var filter = new Filter { Must = { Conditions.MatchKeyword(ChunkSchema.DocId, "shared/docs/billing.md") } };
+        var page = await qdrant.RawClient().ScrollAsync(collection, filter, 50, vectorsSelector: true, cancellationToken: Ct);
+        Assert.NotEmpty(page.Result);
+        Assert.All(page.Result, p =>
+        {
+            Assert.True(p.Vectors.Vectors.Vectors.ContainsKey("dense_v3"));
+            Assert.True(p.Vectors.Vectors.Vectors.ContainsKey(Alt));
+            Assert.Equal("embeddinggemma", p.Payload[ChunkSchema.ModelVersionOf("dense_v3")].StringValue);
+            Assert.Equal("alt-model", p.Payload[ChunkSchema.ModelVersionOf(Alt)].StringValue);
+        });
+        // And either vector finds the edited text.
+        var search = services.GetRequiredService<DocumentSearchService>();
+        foreach (var vector in new[] { "dense_v3", Alt })
+        {
+            var hits = await search.SearchAsync(new Principal("adam", TenantId.Firm("firm-a"), Role.ADVISOR, []), "fee schedule defines the rate",
+                null, 5, new SearchSettings(RetrievalModes.Dense, FusionModes.Rrf, vector, false), Ct);
+            Assert.Contains(hits.Result.Results, r => r.DocId == "shared/docs/billing.md");
+        }
+    }
+
+    [Fact]
+    public async Task A_rebuild_provisions_every_configured_vector_on_every_point()
+    {
+        using var corpus = TempCorpus.Small();
+        var collection = Name();
+        // A collection from before a second vector was configured: only dense_v3 provisioned.
+        var old = new VectorParamsMap();
+        old.Map["dense_v3"] = new VectorParams { Size = 768, Distance = Distance.Cosine };
+        await qdrant.RawClient().CreateCollectionAsync(collection, old, cancellationToken: Ct);
+        await using var services = qdrant.Services(collection, corpus.Root, FakeDenseEncoder.WithSecondVector);
+        var bootstrapper = services.GetRequiredService<CollectionBootstrapper>();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => bootstrapper.EnsureAsync(Ct));
+
+        await bootstrapper.DeleteChunkCollectionAsync(Ct);
+        var summary = await services.GetRequiredService<IndexingPipeline>().RunAsync(new IndexRequest { Force = true }, Ct);
+
+        Assert.True(summary.DocumentsIndexed > 0);
+        var total = await qdrant.RawClient().CountAsync(collection, exact: true, cancellationToken: Ct);
+        var page = await qdrant.RawClient().ScrollAsync(collection, limit: (uint)total, vectorsSelector: true, cancellationToken: Ct);
+        Assert.Equal((int)total, page.Result.Count);
+        Assert.All(page.Result, p =>
+        {
+            foreach (var vector in new[] { "dense_v3", Alt })
+            {
+                Assert.True(p.Vectors.Vectors.Vectors.ContainsKey(vector), vector);
+                Assert.False(string.IsNullOrEmpty(p.Payload[ChunkSchema.ModelVersionOf(vector)].StringValue));
+            }
+        });
+    }
+
+    [Fact]
+    public async Task Replacing_a_document_deletes_all_its_points_before_writing_the_new_ones()
+    {
+        using var corpus = TempCorpus.Small();
+        var collection = Name();
+        await using var services = qdrant.Services(collection, corpus.Root);
+        await services.GetRequiredService<IndexingPipeline>().RunAsync(new IndexRequest(), Ct);
+        var store = services.GetRequiredService<TenantScopedMaintenance>();
+        var old = (await AllChunksAsync(services, "shared")).Where(c => c.DocId == "shared/docs/billing.md").ToList();
+        Assert.NotEmpty(old);
+        var chunk = old[0] with { Text = "Version two." };
+        var write = new ChunkWrite(chunk, new Dictionary<string, float[]> { ["dense_v3"] = new float[768] }, new SparseVectorData([], []));
+
+        var (written, deleted) = await store.ReplaceDocumentAsync(TenantId.Shared, "shared/docs/billing.md", [write], Ct);
+
+        Assert.Equal(1, written);
+        // All of the old points were deleted — including the one whose chunk id the new version reuses, which an
+        // upsert-then-delete-the-rest would have overwritten instead and not counted.
+        Assert.Equal(old.Count, deleted);
+        var after = (await AllChunksAsync(services, "shared")).Single(c => c.DocId == "shared/docs/billing.md");
+        Assert.Equal("Version two.", after.Text);
+    }
+
+    private static async Task<Dictionary<string, long>> VectorVersionsAsync(IServiceProvider services, IEnumerable<TenantId> tenants, string vector)
+    {
+        var store = services.GetRequiredService<TenantScopedMaintenance>();
+        var counts = new Dictionary<string, long>();
+        foreach (var tenant in tenants)
+        {
+            await foreach (var c in store.ListChunksAsync(tenant, Ct))
+            {
+                var model = c.DenseModelVersions.GetValueOrDefault(vector) ?? "";
+                counts[model] = counts.GetValueOrDefault(model) + 1;
+            }
+        }
+        return counts;
+    }
+
+    private const string Alt = FakeDenseEncoder.SecondVector;
 
     private static string Name() => $"t_{Guid.NewGuid():N}";
 

@@ -10,8 +10,20 @@ namespace Maf.Lab.TestSupport;
 public sealed class FakeDenseEncoder(IReadOnlyDictionary<string, int> dimensions, IReadOnlyDictionary<string, string> models) : IDenseEncoder
 {
     public static FakeDenseEncoder Default() => new(
-        new Dictionary<string, int> { ["dense_v1"] = 768, ["dense_v2"] = 384 },
-        new Dictionary<string, string> { ["dense_v1"] = "nomic-embed-text", ["dense_v2"] = "all-minilm" });
+        new Dictionary<string, int> { ["dense_v3"] = 768, [SecondVector] = 384 },
+        new Dictionary<string, string> { ["dense_v3"] = "embeddinggemma", [SecondVector] = "alt-model" });
+
+    /// <summary>
+    /// A second dense vector for tests that need two (migration, rebuild, per-vector versions). Production configures
+    /// one; <see cref="WithSecondVector"/> adds this one to a test's configuration.
+    /// </summary>
+    public const string SecondVector = "dense_alt";
+
+    public static void WithSecondVector(Dictionary<string, string?> config)
+    {
+        config[$"Models:Embeddings:{SecondVector}:Model"] = "alt-model";
+        config[$"Models:Embeddings:{SecondVector}:Dimensions"] = "384";
+    }
 
     public int Calls;
 

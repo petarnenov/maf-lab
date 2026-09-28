@@ -25,6 +25,11 @@
       },
       "confirmation": {
         "faithfulness": 1.0
+      },
+      "intent": {
+        "accuracy": 0.95,
+        "unforcedWhenShouldNot": 0.95,
+        "forcedWhenShould": 0.95
       }
     },
     "ContextualCollection": "maf_chunks_ctx",

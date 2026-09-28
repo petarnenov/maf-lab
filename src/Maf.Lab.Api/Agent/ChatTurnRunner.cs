@@ -94,7 +94,10 @@ public sealed class ChatTurnRunner(
             decision = await intents.ClassifyAsync(message, ct);
             forced = IntentClassifier.ForcesRetrieval(decision.Intent) && tools.Names.Contains("search_documents");
             chatOptions.ToolMode = forced ? ChatToolMode.RequireSpecific("search_documents") : ChatToolMode.Auto;
-            var jev = decision.Confidence is { } confidence ? $" (jev {confidence:F2}, {decision.DurationMs:F0} ms)" : "";
+            var outside = decision.Reason?.StartsWith("outside the domain", StringComparison.Ordinal) == true
+                ? $", outside the domain {decision.InDomain ?? 0:F2}"
+                : "";
+            var jev = decision.Confidence is { } confidence ? $" (jev {confidence:F2}{outside}, {decision.DurationMs:F0} ms)" : "";
             trace.Add(TraceKinds.Intent, $"Intent {decision.Intent}{jev}{(forced ? " → forcing search_documents" : "")}", new JsonObject
             {
                 ["intent"] = decision.Intent.ToString(),
@@ -105,6 +108,7 @@ public sealed class ChatTurnRunner(
                     ? new JsonObject(p.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value)))
                     : null,
                 ["confidence"] = decision.Confidence,
+                ["inDomain"] = decision.InDomain,
                 ["model"] = decision.Model,
                 ["durationMs"] = decision.DurationMs,
                 ["reason"] = decision.Reason,

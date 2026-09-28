@@ -34,7 +34,7 @@ public class RetrievalEvalTests(CorpusIndexFixture corpus)
         var options = new EvalOptions { Thresholds = new() { ["retrieval"] = new() { ["recall@5"] = 1.01 } } };
         var ctx = new SuiteContext(root, options, null, _ => { });
 
-        var variants = await new RetrievalSuite().RunAsync(ctx, RetrievalSuite.DefaultVariants(search, "dense_v1", rerank: false), TestContext.Current.CancellationToken);
+        var variants = await new RetrievalSuite().RunAsync(ctx, RetrievalSuite.DefaultVariants(search, "dense_v3", rerank: false), TestContext.Current.CancellationToken);
 
         Assert.Equal(["hybrid", "hybrid-dbsf", "dense", "sparse"], variants.Select(v => v.Name));
         var expectedCases = Maf.Lab.Eval.Datasets.DatasetLoader.Retrieval(root).Count;
