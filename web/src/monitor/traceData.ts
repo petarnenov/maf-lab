@@ -111,6 +111,8 @@ export interface RetrievalData {
     limit?: number;
     prefetchLimit?: number;
     rerank?: boolean;
+    reranker?: string | null;
+    relevanceGate?: boolean;
     /** Lowest score a candidate may have on each branch and still count. Null means that branch has no floor. */
     denseFloor?: number | null;
     sparseFloor?: number | null;
@@ -132,7 +134,37 @@ export interface RetrievalData {
   sparse?: Candidate[];
   fused?: Candidate[];
   rerank?: string[] | null;
-  timings?: { embedMs?: number; sparseEncodeMs?: number; qdrantMs?: number; rerankMs?: number };
+  /** Jev's judgment of the fused candidates; null when no judge ran. Carries the probability of each chunk. */
+  relevance?: (RelevanceData & { scores?: { chunkId: string; p: number }[] | null }) | null;
+  timings?: {
+    embedMs?: number;
+    sparseEncodeMs?: number;
+    qdrantMs?: number;
+    rerankMs?: number;
+    relevanceMs?: number;
+  };
+}
+
+/**
+ * Jev's relevance judgment of one search (the `relevance` event, and the shared part of `retrieval.relevance`).
+ * Numbers only — no query, passage or chunk id.
+ */
+export interface RelevanceData {
+  callId?: string;
+  gate?: boolean;
+  /** The reranker in use (`jev`, `llm`), null when rerank is off. */
+  reranker?: string | null;
+  floor?: number;
+  judged?: number;
+  /** Null when Jev did not answer. */
+  max?: number | null;
+  silenced?: boolean;
+  /** Jev's answer actually ordered the results. */
+  rerankedByJev?: boolean;
+  model?: string | null;
+  durationMs?: number;
+  /** Why Jev did not answer; the search was then left ungated. */
+  reason?: string | null;
 }
 
 export interface EnvelopeData {

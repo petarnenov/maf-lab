@@ -153,6 +153,56 @@ public class GuardrailTests
         Assert.DoesNotContain(stored!.Events, e => e.Data.GetRawText().Contains("Ignore previous instructions"));
     }
 
+    private static string Excerpt(string text) =>
+        $$"""{"snippet":"{{text}}","sourcePath":"procedures/p.txt","sectionPath":"P > S","score":0.5,"updatedAt":"2026-09-01T00:00:00Z","docId":"shared/procedures/p.txt"}""";
+
+    [Fact]
+    public async Task A_search_screening_counts_its_jev_requests_and_spans_the_whole_screening()
+    {
+        // Five excerpts with text and one without: the empty one is judged without asking Jev.
+        var excerpts = new[] { "Assign the fee schedule.", "Re-run the billing.", "Check the household.", "Review the tiers.", "Confirm the run.", "" };
+        var tools = new FakeToolSource
+        {
+            SearchPayloadJson = $$"""{"results":[{{string.Join(",", excerpts.Select(Excerpt))}}],"totalFound":6,"truncated":false}""",
+        };
+        using var api = new ApiFactory(ApiFactory.ProceduralModel(), tools);
+
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), Procedural);
+
+        var screening = Trace(events).Single(t => t.Kind == TraceKinds.Guardrail && t.Data.GetProperty("check").GetString() == Guardrail.CheckToolResult);
+        Assert.Equal(5, screening.Data.GetProperty("requests").GetInt32());
+        Assert.Equal(6, screening.Data.GetProperty("items").GetArrayLength());
+        Assert.All(screening.Data.GetProperty("items").EnumerateArray(), i => Assert.True(i.TryGetProperty("durationMs", out _)));
+        Assert.EndsWith("· 5 Jev requests", screening.Title);
+        // The bar covers the screening, which cannot be shorter than its slowest request.
+        var slowest = screening.Data.GetProperty("items").EnumerateArray().Max(i => i.GetProperty("durationMs").GetDouble());
+        Assert.True(screening.DurationMs >= (long)Math.Floor(slowest));
+    }
+
+    [Fact]
+    public async Task A_result_screened_whole_is_one_request_and_says_nothing_about_a_count()
+    {
+        var tools = new FakeToolSource { SearchPayloadJson = """{"message":"Nothing to list.","totalFound":0,"truncated":false}""" };
+        using var api = new ApiFactory(ApiFactory.ProceduralModel(), tools);
+
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), Procedural);
+
+        var screening = Trace(events).Single(t => t.Kind == TraceKinds.Guardrail && t.Data.GetProperty("check").GetString() == Guardrail.CheckToolResult);
+        Assert.Equal(1, screening.Data.GetProperty("requests").GetInt32());
+        Assert.DoesNotContain("Jev requests", screening.Title);
+    }
+
+    [Fact]
+    public async Task The_prompt_screening_makes_no_request_of_its_own()
+    {
+        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), Procedural);
+
+        var prompt = Trace(events).Single(t => t.Kind == TraceKinds.Guardrail && t.Data.GetProperty("check").GetString() == Guardrail.CheckPrompt);
+        Assert.Equal(JsonValueKind.Null, prompt.Data.GetProperty("requests").ValueKind);
+    }
+
     [Fact]
     public async Task A_Bulgarian_prompt_gets_the_Bulgarian_refusal_and_it_repeats_nothing()
     {

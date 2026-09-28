@@ -111,6 +111,91 @@ public class TurnTraceTests
         Assert.DoesNotContain("tenantScope", modelSaw);
     }
 
+    private const string Kept = """{"gate":true,"floor":0.5,"judged":20,"max":0.87,"silenced":false,"rerankedByJev":true,"model":"jev-1.13.0","durationMs":412,"reason":null}""";
+    private const string Silenced = """{"gate":true,"floor":0.5,"judged":20,"max":0.12,"silenced":true,"rerankedByJev":false,"model":"jev-1.13.0","durationMs":388,"reason":null}""";
+    private const string Unavailable = """{"gate":true,"floor":0.5,"judged":0,"max":null,"silenced":false,"rerankedByJev":false,"model":"jev-1.13.0","durationMs":2000,"reason":"timed out after 2s"}""";
+
+    private static async Task<List<TraceEvent>> TurnWithMetaAsync(string metaJson)
+    {
+        var tools = new FakeToolSource { SearchMetaJson = metaJson };
+        using var api = new ApiFactory(ApiFactory.ProceduralModel("ANSWER-X per the procedure."), tools);
+        return Trace(await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "what is the procedure when a fee schedule is missing"));
+    }
+
+    [Fact]
+    public async Task A_judged_search_gets_its_own_relevance_event_with_the_judges_latency()
+    {
+        var trace = await TurnWithMetaAsync($$"""{"maf-lab/relevance":{{Kept}},"maf-lab/instance":"mcp-1"}""");
+        var kinds = trace.Select(t => t.Kind).ToList();
+
+        var relevance = trace.Single(t => t.Kind == TraceKinds.Relevance);
+        Assert.Equal("Jev relevance: max 0.87 ≥ floor 0.50 — kept · reranked by Jev", relevance.Title);
+        Assert.Equal(412, relevance.DurationMs);
+        Assert.Equal(trace.Single(t => t.Kind == TraceKinds.ToolResult).Data.GetProperty("callId").GetString(),
+            relevance.Data.GetProperty("callId").GetString());
+        Assert.True(kinds.IndexOf(TraceKinds.ToolResult) < kinds.IndexOf(TraceKinds.Relevance));
+        // Diagnostics were not asked for: the judgment is there, the retrieval picture is not.
+        Assert.DoesNotContain(TraceKinds.Retrieval, kinds);
+
+        // The summary is lifted out of the recorded result and never reaches the model.
+        Assert.DoesNotContain("maf-lab/relevance", trace.Single(t => t.Kind == TraceKinds.ToolResult).Data.GetRawText());
+        Assert.DoesNotContain("maf-lab/relevance", trace.Single(t => t.Kind == TraceKinds.Envelope).Data.GetRawText());
+        Assert.DoesNotContain("rerankedByJev", trace.Single(t => t.Kind == TraceKinds.Envelope).Data.GetRawText());
+    }
+
+    [Fact]
+    public async Task A_silenced_search_says_so()
+    {
+        var relevance = (await TurnWithMetaAsync($$"""{"maf-lab/relevance":{{Silenced}}}""")).Single(t => t.Kind == TraceKinds.Relevance);
+
+        Assert.Equal("Jev relevance: max 0.12 < floor 0.50 — silenced", relevance.Title);
+        Assert.True(relevance.Data.GetProperty("silenced").GetBoolean());
+    }
+
+    [Fact]
+    public async Task An_unavailable_judge_leaves_the_search_ungated_with_the_reason()
+    {
+        var relevance = (await TurnWithMetaAsync($$"""{"maf-lab/relevance":{{Unavailable}}}""")).Single(t => t.Kind == TraceKinds.Relevance);
+
+        Assert.Equal("Jev relevance unavailable: timed out after 2s — search left ungated", relevance.Title);
+        Assert.Equal(2000, relevance.DurationMs);
+    }
+
+    [Fact]
+    public async Task A_search_that_asked_no_judge_has_no_relevance_event()
+    {
+        var trace = await TurnWithMetaAsync(Diagnostics);
+
+        Assert.DoesNotContain(trace, t => t.Kind == TraceKinds.Relevance);
+        Assert.Single(trace, t => t.Kind == TraceKinds.Retrieval);
+    }
+
+    [Fact]
+    public async Task With_diagnostics_the_relevance_event_follows_the_retrieval_event()
+    {
+        var meta = Diagnostics.Replace("\"rerank\":null,", "\"rerank\":null,\"relevance\":{\"gate\":true,\"floor\":0.5,\"judged\":1,\"max\":0.9,\"silenced\":false,\"model\":\"jev-1.13.0\",\"durationMs\":300,\"reason\":null,\"scores\":[{\"chunkId\":\"shared/x#a\",\"p\":0.9}]},")
+            .Replace("\"maf-lab/instance\"", "\"maf-lab/relevance\":" + Kept + ",\"maf-lab/instance\"");
+        var trace = await TurnWithMetaAsync(meta);
+        var kinds = trace.Select(t => t.Kind).ToList();
+
+        Assert.True(kinds.IndexOf(TraceKinds.Retrieval) < kinds.IndexOf(TraceKinds.Relevance));
+        var relevance = trace.Single(t => t.Kind == TraceKinds.Relevance);
+        // The summary wins over the diagnostics' copy, and carries no per-candidate score.
+        Assert.Equal(412, relevance.DurationMs);
+        Assert.False(relevance.Data.TryGetProperty("scores", out _));
+    }
+
+    [Fact]
+    public async Task An_older_mcp_server_without_the_summary_still_yields_the_relevance_event()
+    {
+        var meta = Diagnostics.Replace("\"rerank\":null,", "\"rerank\":null,\"relevance\":{\"gate\":true,\"floor\":0.5,\"judged\":1,\"max\":0.2,\"silenced\":true,\"model\":\"jev-1.13.0\",\"durationMs\":300,\"reason\":null,\"scores\":[{\"chunkId\":\"shared/x#a\",\"p\":0.2}]},");
+        var relevance = (await TurnWithMetaAsync(meta)).Single(t => t.Kind == TraceKinds.Relevance);
+
+        Assert.Equal("Jev relevance: max 0.20 < floor 0.50 — silenced", relevance.Title);
+        Assert.Equal(300, relevance.DurationMs);
+        Assert.False(relevance.Data.TryGetProperty("scores", out _));
+    }
+
     [Fact]
     public async Task Intent_event_carries_jevs_answer_in_any_language()
     {

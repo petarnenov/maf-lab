@@ -140,6 +140,69 @@ public class JevStatsTests
         Assert.Equal(1, r.Timeline.Sum(b => b.Unavailable));
     }
 
+    [Fact]
+    public void A_search_traced_both_ways_is_counted_once()
+    {
+        // Since the relevance event exists, a turn with diagnostics on carries the judgment twice.
+        var rows = new[]
+        {
+            Row(-10, Trace(IntentEv("Procedural", forced: true, choice: "procedural"),
+                RetrievalEv(max: 0.82), RelevanceEv(max: 0.82))),
+        };
+
+        var r = Aggregate(rows);
+
+        Assert.Equal(1, r.Relevance.Searches);
+        Assert.Equal(("relevance", 1), (r.Overview.Sites[2].Site, r.Overview.Sites[2].Requests));
+    }
+
+    [Fact]
+    public void Searches_are_counted_from_old_and_new_turns_alike()
+    {
+        var rows = new[]
+        {
+            // Recorded before the relevance event: only the diagnostics hold the judgment.
+            Row(-10, Trace(IntentEv("Procedural", forced: true, choice: "procedural"), RetrievalEv(max: 0.82))),
+            // Diagnostics switched off: only the relevance event.
+            Row(-20, Trace(IntentEv("Procedural", forced: true, choice: "procedural"), RelevanceEv(max: 0.12, silenced: true))),
+            Row(-30, Trace(IntentEv("Procedural", forced: true, choice: "procedural"), RelevanceEv(reason: "timed out after 2s", ms: 2000))),
+        };
+
+        var r = Aggregate(rows).Relevance;
+
+        Assert.Equal(3, r.Searches);
+        Assert.Equal(1, r.Gated);
+        Assert.Equal(1, r.Unavailable);
+        Assert.Equal(3, r.Reranked);
+        Assert.Equal(3, r.Latency.Count);
+    }
+
+    [Fact]
+    public void A_relevance_event_from_another_judge_is_not_a_jev_request()
+    {
+        var rows = new[] { Row(-10, Trace(IntentEv("Procedural", forced: true, choice: "procedural"), RelevanceEv(model: "scripted"))) };
+
+        Assert.Equal(0, Aggregate(rows).Relevance.Searches);
+    }
+
+    [Fact]
+    public void A_screening_that_recorded_its_requests_is_counted_by_them_not_by_its_items()
+    {
+        var rows = new[]
+        {
+            Row(-10, Trace(
+                IntentEv("Procedural", forced: true, choice: "procedural"),
+                WithRequests(GuardEv("tool_result", "pass", items: 5), 3),
+                GuardEv("tool_result", "pass", items: 2))),
+        };
+
+        var r = Aggregate(rows);
+
+        // 3 recorded + 2 from an older event without the count.
+        Assert.Equal(("guardrail", 5), (r.Overview.Sites[1].Site, r.Overview.Sites[1].Requests));
+        Assert.Equal(1 + 5, r.Overview.Requests);
+    }
+
     // ---- Routing ----
 
     [Fact]
@@ -366,6 +429,30 @@ public class JevStatsTests
                 ["scores"] = null,
             },
         });
+
+    /// <summary>A search's own relevance event: the numbers-only summary, as recorded since it exists.</summary>
+    private static JsonObject RelevanceEv(double? max = 0.8, bool silenced = false, string? reason = null,
+        double ms = 300, string? reranker = "jev", double floor = 0.3, string? model = "jev-1.13.0") =>
+        Ev("relevance", new JsonObject
+        {
+            ["gate"] = true,
+            ["reranker"] = reranker,
+            ["floor"] = floor,
+            ["judged"] = reason is null ? 20 : 0,
+            ["max"] = reason is null ? max : null,
+            ["silenced"] = silenced,
+            ["rerankedByJev"] = reranker == "jev" && !silenced && reason is null,
+            ["model"] = model,
+            ["durationMs"] = ms,
+            ["reason"] = reason,
+            ["callId"] = "c1",
+        });
+
+    private static JsonObject WithRequests(JsonObject guardEv, int requests)
+    {
+        guardEv["data"]!["requests"] = requests;
+        return guardEv;
+    }
 
     private static JsonObject ModelReq(int iteration) => Ev("model.request", new JsonObject { ["iteration"] = iteration });
 }

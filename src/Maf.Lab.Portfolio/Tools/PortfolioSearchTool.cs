@@ -63,6 +63,12 @@ public sealed class PortfolioSearchTool(DocumentSearchService search, IPrincipal
                     [SearchDocumentsTool.InstanceKey] = InstanceIdentity.Name,
                 };
             }
+            // As search_documents does: a judged search says what Jev decided, so its Jev request is never invisible.
+            if (outcome.Relevance is { } relevance)
+            {
+                result.Meta ??= [];
+                result.Meta[SearchDocumentsTool.RelevanceKey] = relevance;
+            }
             return result;
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)

@@ -228,6 +228,10 @@ describe('JevPage', () => {
 
     // Guardrail
     expect(screen.getByRole('img', { name: 'Screenings by check' })).toBeInTheDocument();
+    // The screen says what it covers: chat turns, not the A2A partner path.
+    expect(
+      screen.getByText(/Jev calls made by chat turns — the A2A partner path is not counted/),
+    ).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Guard questions that tripped' })).toHaveTextContent(
       'guard_override',
     );

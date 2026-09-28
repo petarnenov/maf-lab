@@ -7,8 +7,8 @@ namespace Maf.Lab.Api.Agent;
 
 /// <summary>
 /// Aggregates every Jev call site of a set of turns into a <see cref="JevStatsReport"/>. A pure function of its input:
-/// it reuses <see cref="IntentStatistics"/> for the intent section and reads only the <c>guardrail</c>, <c>retrieval</c>
-/// and <c>model.request</c> events for the rest — never the question, the passages or the model's messages — and returns
+/// it reuses <see cref="IntentStatistics"/> for the intent section and reads only the <c>guardrail</c>, <c>relevance</c>,
+/// <c>retrieval</c> and <c>model.request</c> events for the rest — never the question, the passages or the model's messages — and returns
 /// numbers only.
 /// </summary>
 public static class JevStatistics
@@ -25,7 +25,7 @@ public static class JevStatistics
         string? RoutedTool, string? RouteReason, double? DurationMs, int ModelCalls);
 
     private sealed record GuardFact(DateTime At, string Check, string Decision, string? TopQuestion, bool Content,
-        int Items, int UnscreenedItems, IReadOnlyList<double> ItemDurations);
+        int Items, int UnscreenedItems, IReadOnlyList<double> ItemDurations, int Requests);
 
     private sealed record RelevanceFact(DateTime At, bool Silenced, bool Unavailable, bool RerankJev, double? Max,
         double? DurationMs, double? Floor);
@@ -50,7 +50,7 @@ public static class JevStatistics
         // --- Cross-cutting requests and availability, per request-bearing site ---
         var jevIntents = intent.Where(i => i.Jev).ToList();
         var contentItems = guards.Where(g => g.Content).SelectMany(g => g.ItemDurations).ToList();
-        var contentRequests = guards.Where(g => g.Content).Sum(g => g.Items);
+        var contentRequests = guards.Where(g => g.Content).Sum(g => g.Requests);
         var contentUnavailable = guards.Where(g => g.Content).Sum(g => g.UnscreenedItems);
         var relDurations = relevance.Where(r => r.DurationMs is not null).Select(r => r.DurationMs!.Value).ToList();
 
@@ -102,6 +102,10 @@ public static class JevStatistics
             var at = DateTime.SpecifyKind(row.CreatedAt, DateTimeKind.Utc);
             var modelCalls = 0;
             IntentFact? intentFact = null;
+            // A turn recorded since the relevance event exists has one per judged search; an older turn has only the
+            // judgment inside its retrieval diagnostics. One source per turn, so no search is counted twice.
+            var judged = new List<RelevanceFact>();
+            var diagnosed = new List<RelevanceFact>();
             foreach (var ev in doc.RootElement.EnumerateArray())
             {
                 if (!ev.TryGetProperty("kind", out var k) || k.ValueKind != JsonValueKind.String)
@@ -127,11 +131,18 @@ public static class JevStatistics
                     case TraceKinds.Retrieval when data.ValueKind == JsonValueKind.Object:
                         if (RelevanceOf(at, data) is { } r)
                         {
-                            relevance.Add(r);
+                            diagnosed.Add(r);
+                        }
+                        break;
+                    case TraceKinds.Relevance when data.ValueKind == JsonValueKind.Object:
+                        if (JudgedOf(at, data) is { } j)
+                        {
+                            judged.Add(j);
                         }
                         break;
                 }
             }
+            relevance.AddRange(judged.Count > 0 ? judged : diagnosed);
             if (intentFact is not null)
             {
                 intent.Add(intentFact with { ModelCalls = modelCalls });
@@ -186,8 +197,10 @@ public static class JevStatistics
                 }
             }
         }
+        // Recorded since the count exists: an empty item made no request. Before it, one request per item.
+        var requests = data.TryGetProperty("requests", out var req) && req.ValueKind == JsonValueKind.Number ? req.GetInt32() : items;
         return new GuardFact(at, check, Str(data, "decision") ?? "pass", Str(data, "topQuestion"), content,
-            items, unscreened, durations);
+            items, unscreened, durations, requests);
     }
 
     private static RelevanceFact? RelevanceOf(DateTime at, JsonElement data)
@@ -207,6 +220,18 @@ public static class JevStatistics
             && Str(s, "reranker") == "jev";
         return new RelevanceFact(at, Bool(rel, "silenced"), unavailable, rerankJev, Num(rel, "max"),
             Num(rel, "durationMs"), Num(rel, "floor"));
+    }
+
+    /// <summary>A search's judgment from its own <c>relevance</c> event — the summary, not the diagnostics.</summary>
+    private static RelevanceFact? JudgedOf(DateTime at, JsonElement data)
+    {
+        var model = Str(data, "model");
+        if (model is null || !model.StartsWith("jev-", StringComparison.Ordinal))
+        {
+            return null;
+        }
+        return new RelevanceFact(at, Bool(data, "silenced"), Str(data, "reason") is not null, Str(data, "reranker") == "jev",
+            Num(data, "max"), Num(data, "durationMs"), Num(data, "floor"));
     }
 
     // ---- Sections ----
@@ -287,7 +312,7 @@ public static class JevStatistics
         {
             bool In(DateTime at) => at >= s.Start.UtcDateTime && at < s.End.UtcDateTime;
             var content = guards.Where(g => g.Content && In(g.At)).ToList();
-            var req = jevIntents.Count(i => In(i.At)) + content.Sum(g => g.Items) + relevance.Count(r => In(r.At));
+            var req = jevIntents.Count(i => In(i.At)) + content.Sum(g => g.Requests) + relevance.Count(r => In(r.At));
             var un = jevIntents.Count(i => In(i.At) && i.Failed) + content.Sum(g => g.UnscreenedItems)
                 + relevance.Count(r => In(r.At) && r.Unavailable);
             return new JevAvailabilityBucket(s.Start, req, un);

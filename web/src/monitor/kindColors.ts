@@ -4,7 +4,7 @@ export function kindColor(kind: string): string {
   if (kind.startsWith('model.')) return '#2f5bd3';
   if (kind === 'tool.unknown' || kind === 'guardrail') return '#b42318';
   if (kind.startsWith('tool.') || kind === 'envelope') return '#8e44ad';
-  if (kind === 'retrieval') return '#1d7a3c';
+  if (kind === 'retrieval' || kind === 'relevance') return '#1d7a3c';
   // The domain boundary: where Jev put the question, and where a turn crossed from one domain into another.
   if (kind === 'domain' || kind === 'boundary') return '#0f7b5f';
   if (kind === 'intent' || kind === 'prompt' || kind === 'history' || kind === 'memory')

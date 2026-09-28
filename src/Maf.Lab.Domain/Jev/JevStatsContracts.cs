@@ -45,7 +45,7 @@ public sealed record GuardrailQuestionCount(string Question, string Decision, in
 public sealed record GuardrailTimelineBucket(DateTimeOffset Start, int Screened, int Blocked, int Withheld, int Unscreened);
 
 /// <summary>
-/// What the guardrail did over the window: prompt, tool-result and reviewer/partner screenings and their decisions, the
+/// What the guardrail did over the window: prompt, tool-result and reviewer screenings and their decisions, the
 /// question that tripped each block or withholding, and the latency of the screenings that make their own Jev request.
 /// </summary>
 public sealed record GuardrailStats(
@@ -103,9 +103,10 @@ public sealed record RoutingStats(
     IntentLatency Latency);
 
 /// <summary>
-/// Aggregates of every Jev call site for one firm over one window: the intent aggregate unchanged, the guardrail,
-/// relevance and routing sections, and a cross-cutting overview. Numbers only: no question, answer, passage or
-/// identifier of a turn, conversation or user.
+/// Aggregates of every Jev call site in one firm's chat turns over one window: the intent aggregate unchanged, the
+/// guardrail, relevance and routing sections, and a cross-cutting overview. Jev calls made outside a chat turn — an A2A
+/// partner's question and the tool results on its path — are in no turn trace and are not counted. Numbers only: no
+/// question, answer, passage or identifier of a turn, conversation or user.
 /// </summary>
 public sealed record JevStatsReport(
     string Window,

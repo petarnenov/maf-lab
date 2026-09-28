@@ -1,12 +1,6 @@
-# jev-statistics Specification
+# Spec Delta
 
-## Purpose
-Aggregates what Jev did across every place a firm's chat turns call it — intent classification, prompt/content
-screening, the passage-relevance gate and reranker, and data-turn tool routing — together with a cross-cutting view of
-how many Jev requests each turn made, how long they took and how often Jev was unavailable, so Jev's behaviour and
-availability can be read as a whole rather than one trace at a time.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Jev statistics endpoint
 `GET /api/admin/jev-stats` SHALL return aggregates of the Jev call sites recorded in the turn traces of the caller's
@@ -94,23 +88,3 @@ The counts SHALL come from these records:
 #### Scenario: Nothing recorded
 - **WHEN** no Jev event falls in the window
 - **THEN** the response has zero totals and empty distributions in every section, rather than an error
-
-### Requirement: Jev statistics are firm-scoped and admin-only
-The statistics MUST be computed only from turns of the firm in the caller's token; the endpoint MUST NOT accept a firm
-or tenant parameter. Callers without the FIRM_ADMIN role MUST be refused.
-
-#### Scenario: Other firm's turns are invisible
-- **WHEN** a FIRM_ADMIN of firm A requests the statistics and firm B has recorded turns in the window
-- **THEN** none of firm B's turns is counted in any section
-
-#### Scenario: Not an admin
-- **WHEN** an ADVISOR requests the statistics
-- **THEN** the response is forbidden
-
-### Requirement: No message content in Jev statistics
-The response MUST NOT contain any question, answer, prompt, passage or snippet text, nor turn, conversation or user
-identifiers. Computing it MUST NOT write message content to logs.
-
-#### Scenario: Response carries numbers only
-- **WHEN** the statistics are computed over turns with distinctive question text
-- **THEN** that text appears neither in the response body nor in any log line

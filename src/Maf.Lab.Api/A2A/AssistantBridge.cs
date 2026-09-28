@@ -83,7 +83,7 @@ public sealed class AssistantBridge(
         if (await guardrail.ScreenToolResultAsync(name, payload, structured, isError, ct) is { } screened)
         {
             guardrail.Trace(null, Guardrail.CheckToolResult, name, context.CallContent?.CallId, screened.Decision, screened.Threshold,
-                screened.Items, screened.Withheld, null);
+                screened.Items, screened.Withheld, null, screened.Requests, screened.ElapsedMs);
             payload = screened.Payload;
         }
         return ToolDataEnvelope.Wrap(name, payload);

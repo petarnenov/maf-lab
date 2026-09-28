@@ -28,7 +28,7 @@ const WITHHELD = { label: 'withheld', className: styles.seriesFailed };
 const UNSCREENED = { label: 'unscreened', className: styles.seriesMuted };
 
 /**
- * Everything Jev did for this firm's turns, in one place: a cross-cutting requests/availability overview on top, then a
+ * Everything Jev did for this firm's chat turns, in one place (the A2A path has no turn trace and is not counted): a cross-cutting requests/availability overview on top, then a
  * section per call site — intent, guardrail, relevance & rerank, tool routing. Aggregates only; no question, answer or
  * passage is on this screen.
  */
@@ -56,6 +56,10 @@ export function JevPage() {
         screening what the assistant reads, judging and ordering searches, and routing data turns —
         and how often it was unavailable across all of them. Numbers only: no question, answer or
         passage is shown here.
+      </p>
+      <p className={page.muted}>
+        Jev calls made by chat turns — the A2A partner path is not counted: its screenings are
+        logged, not traced.
       </p>
 
       <div className={styles.controls}>

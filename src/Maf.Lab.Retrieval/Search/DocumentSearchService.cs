@@ -22,7 +22,12 @@ namespace Maf.Lab.Retrieval.Search;
 public sealed record SearchSettings(string Mode, string Fusion, string DenseVector, bool Rerank,
     float? DenseFloor = null, float? SparseFloor = null, bool RelevanceGate = false, string? Reranker = null);
 
-public sealed record SearchOutcome(SearchDocumentsResult Result, IReadOnlyList<ScoredChunk> Chunks);
+/// <param name="Relevance">
+/// What the relevance judge said about this search, as numbers only (<see cref="SearchDiagnostics.SummaryOf"/>); null
+/// when the search did not ask it.
+/// </param>
+public sealed record SearchOutcome(SearchDocumentsResult Result, IReadOnlyList<ScoredChunk> Chunks,
+    System.Text.Json.Nodes.JsonObject? Relevance = null);
 
 public sealed partial class DocumentSearchService(
     TenantScopedSearch search,
@@ -57,7 +62,7 @@ public sealed partial class DocumentSearchService(
 
         var sw = Stopwatch.StartNew();
         var candidateLimit = settings.Rerank ? Math.Max(_options.RerankCandidates, limit) : Math.Max(limit * 2, 20);
-        var candidates = await RankAsync(principal, query, sourceTypes, candidateLimit, settings, ct, diagnostics);
+        var (candidates, relevance) = await RankCoreAsync(principal, query, sourceTypes, candidateLimit, settings, ct, diagnostics);
         diagnostics?.Settings.Add("limit", limit);
 
         var top = candidates.Take(limit).ToList();
@@ -74,7 +79,7 @@ public sealed partial class DocumentSearchService(
             candidates.Count,
             truncated,
             hint);
-        return new SearchOutcome(result, top);
+        return new SearchOutcome(result, top, relevance);
     }
 
     /// <summary>
@@ -82,7 +87,12 @@ public sealed partial class DocumentSearchService(
     /// Used by search_documents and by the retrieval eval (recall@20).
     /// </summary>
     public async Task<IReadOnlyList<ScoredChunk>> RankAsync(Principal principal, string query, IReadOnlyList<string>? sourceTypes, int k,
-        SearchSettings settings, CancellationToken ct, SearchDiagnostics? diagnostics = null)
+        SearchSettings settings, CancellationToken ct, SearchDiagnostics? diagnostics = null) =>
+        (await RankCoreAsync(principal, query, sourceTypes, k, settings, ct, diagnostics)).Ranked;
+
+    private async Task<(IReadOnlyList<ScoredChunk> Ranked, System.Text.Json.Nodes.JsonObject? Relevance)> RankCoreAsync(
+        Principal principal, string query, IReadOnlyList<string>? sourceTypes, int k,
+        SearchSettings settings, CancellationToken ct, SearchDiagnostics? diagnostics)
     {
         var clock = Stopwatch.StartNew();
         // Both halves of hybrid search read the same text, so the query is brought into the corpus language before
@@ -247,7 +257,12 @@ public sealed partial class DocumentSearchService(
             diagnostics.Timings["relevanceMs"] = relevanceMs;
             diagnostics.Timings["branchQueriesMs"] = branchMs;
         }
-        return ranked;
+        // The judge's verdict travels with every judged search, traced or not: it is one of the Jev requests this
+        // search made, and whoever counts them must not depend on the monitor being switched on.
+        var relevance = judgement is null ? null
+            : SearchDiagnostics.SummaryOf(judgement, settings.RelevanceGate, _options.RelevanceFloor, silenced,
+                settings.Rerank ? rerankerKind : null, rerankedByJev: reranker is JevReranker && !silenced && judgement.Scores is not null);
+        return (ranked, relevance);
     }
 
     private string Snippet(string text)

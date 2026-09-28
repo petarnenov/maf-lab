@@ -200,4 +200,6 @@ public static class TraceMeta
     public const string Flag = "maf-lab/trace";
     public const string Diagnostics = "maf-lab/trace";
     public const string Instance = "maf-lab/instance";
+    /// <summary>The relevance judge's numbers-only verdict, sent with every judged search whether traced or not.</summary>
+    public const string Relevance = "maf-lab/relevance";
 }
