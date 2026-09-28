@@ -556,24 +556,37 @@ No message content SHALL appear on the screen, because none of it is in the sign
 - **WHEN** the metrics store cannot be reached
 - **THEN** the screen says the numbers are unavailable and still renders
 
-### Requirement: Intent statistics screen
-The `/admin/intents` screen SHALL show, for a period the user chooses, the intent classifier's statistics as charts,
-and SHALL be reachable from the main navigation. Like the other admin screens it SHALL be shown only to FIRM_ADMIN.
+### Requirement: Jev statistics screen
+The `/admin/jev` screen SHALL show, for a period the user chooses, the statistics of every Jev call site as charts,
+and SHALL be reachable from the main navigation. `/admin/intents` SHALL continue to reach it. Like the other admin
+screens it SHALL be shown only to FIRM_ADMIN.
 
-It SHALL show: headline numbers (classified turns, share used, gated and failed, forced-retrieval rate, p90 latency);
-a diagram of the classification pipeline with the configured floors and how many turns took each path; turns over time
-by outcome; timeouts over time; Jev's choice against the intent the turn proceeded with; reasons an answer was not
-used; the confidence histogram with the confidence floor marked; the in-domain histogram with the in-domain floor
-marked; a confidence × in-domain scatter by outcome with both floors marked; the mean probability per intent; the
-latency histogram with the timeout marked and the latency percentiles; the model versions that answered; and the
-history of the `intent` eval (accuracy per language and per split, forcing rates, and the latest run's failures).
+It SHALL show a cross-cutting overview and a section per call site:
+
+- **Overview**: the total Jev requests over the period, how many were unavailable, the requests per classified turn,
+  and total requests and unavailability over time, so a degraded Jev is visible across every site at once.
+- **Intent**: headline numbers (classified turns, share used, gated and failed, forced-retrieval rate, p90 latency);
+  a diagram of the classification pipeline with the configured floors and how many turns took each path; turns over
+  time by outcome; timeouts over time; Jev's choice against the intent the turn proceeded with; reasons an answer was
+  not used; the confidence histogram with the confidence floor marked; the in-domain histogram with the in-domain
+  floor marked; a confidence × in-domain scatter by outcome with both floors marked; the mean probability per intent;
+  the latency histogram with the timeout marked and the latency percentiles; the model versions that answered; and the
+  history of the `intent` eval (accuracy per language and per split, forcing rates, and the latest run's failures).
+- **Guardrail**: how many prompts, tool results and reviewer/partner texts were screened and their decisions; the
+  question that tripped a block or a withholding; the blocked, withheld and unscreened counts; and screenings over
+  time with the unscreened ones marked.
+- **Relevance & rerank**: how many searches Jev judged, how many the gate silenced, how many were reranked by Jev, how
+  many were left ungated because Jev was unavailable; the distribution of each search's top relevance against the
+  floor; and the judge latency.
+- **Routing**: how many data turns there were, how many were routed and to which tool, why a data turn was not routed,
+  and the model calls a turn made routed against unrouted.
 
 Each chart SHALL name its period, SHALL identify series by a legend or labels and not by colour alone, SHALL offer the
 values behind the marks on hover, and SHALL read as no data rather than as zero when nothing was recorded. When the
 statistics cannot be loaded the screen SHALL say so and stay usable. No message content SHALL appear on the screen.
 
 #### Scenario: Charts after classified turns
-- **WHEN** a FIRM_ADMIN opens `/admin/intents` after turns were classified
+- **WHEN** a FIRM_ADMIN opens `/admin/jev` after turns were classified
 - **THEN** the headline numbers, the pipeline diagram and every chart are shown for the chosen period, with the floors
   drawn at 0.5, 0.2 and the timeout
 
@@ -590,5 +603,11 @@ statistics cannot be loaded the screen SHALL say so and stay usable. No message 
 - **THEN** the screen draws accuracy per language and per split over the runs and lists the latest run's failures
 
 #### Scenario: Not an admin
-- **WHEN** an ADVISOR opens `/admin/intents`
+- **WHEN** an ADVISOR opens `/admin/jev`
 - **THEN** the screen shows access denied, as the other admin screens do
+
+#### Scenario: Every Jev call site has a section
+- **WHEN** a FIRM_ADMIN opens `/admin/jev` after turns that screened prompts and tool results, gated and reranked
+  searches, and routed data turns
+- **THEN** the overview and the guardrail, relevance-and-rerank and routing sections are shown alongside the intent
+  section, each with its own charts for the chosen period

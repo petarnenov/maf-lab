@@ -25,6 +25,9 @@ and the median and p90 latency per bucket; confidence and in-domain probability 
 in-domain pairs for gated and used events (numbers and outcome only); the mean probability Jev gave each intent;
 latency p50, p90, p99 and maximum and a latency histogram; and counts per model version.
 
+This same aggregate SHALL also be available embedded, unchanged, as the intent section of the Jev statistics endpoint
+(`GET /api/admin/jev-stats`), computed by the same aggregation over the same trace events.
+
 #### Scenario: Aggregates over the window
 - **WHEN** a FIRM_ADMIN requests the statistics after turns that were used, gated below the confidence floor, gated
   outside the domain and timed out
@@ -42,6 +45,10 @@ latency p50, p90, p99 and maximum and a latency histogram; and counts per model 
 #### Scenario: Nothing recorded
 - **WHEN** no Jev event falls in the window
 - **THEN** the response has zero totals and empty distributions rather than an error
+
+#### Scenario: Embedded in the Jev overview
+- **WHEN** a FIRM_ADMIN requests `GET /api/admin/jev-stats` for a window
+- **THEN** its intent section is the identical aggregate the intent-stats endpoint returns for that firm and window
 
 ### Requirement: Intent statistics are firm-scoped and admin-only
 The statistics MUST be computed only from turns of the firm in the caller's token; the endpoint MUST NOT accept a firm
