@@ -106,3 +106,11 @@ for `/mcp`. The api SHALL reach the portfolio server only through the balancer.
 #### Scenario: Portfolio MCP reachable through the entry point
 - **WHEN** an authenticated MCP client connects to `http://localhost:7171/portfolio/mcp`
 - **THEN** it lists the portfolio tools, and the response names one of the portfolio replicas
+
+### Requirement: The balancer reads its configuration from a mounted directory
+The balancer SHALL read its configuration from a mounted directory, not from a single-file mount. A configuration file
+replaced on the host (by a git checkout or merge) SHALL be the one a reload reads.
+
+#### Scenario: Configuration changed by a merge
+- **WHEN** a merge replaces `compose/lb/nginx.conf` and `make up` reloads the balancer
+- **THEN** the reload succeeds and the balancer serves the new configuration

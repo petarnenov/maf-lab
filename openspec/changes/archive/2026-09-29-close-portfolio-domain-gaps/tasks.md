@@ -15,4 +15,4 @@
 - [x] 8. Domain eval: 16 more holdout rows.
 - [x] 9. Sharpen the domain descriptions against the measured errors; record before/after in DECISIONS.
 - [x] 10. Run retrieval, selection and domain evals; accept the baselines that moved.
-- [ ] 11. Merge to main, `make` (the web container picks up the chat hints and the Jev page), verify live.
+- [x] 11. Merge to main, `make` (the web container picks up the chat hints and the Jev page), verify live.
