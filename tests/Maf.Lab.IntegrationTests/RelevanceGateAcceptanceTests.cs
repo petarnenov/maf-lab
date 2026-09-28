@@ -133,6 +133,51 @@ public class RelevanceGateAcceptanceTests(CorpusIndexFixture corpus)
         Assert.All(relevance["scores"]!.AsArray(), s => Assert.Equal(0.03, s!["p"]!.GetValue<double>()));
     }
 
+    [Fact]
+    public async Task A_judged_search_returns_the_relevance_summary_without_diagnostics()
+    {
+        await using var services = Services(new ScriptedJudge(_ => 0.03));
+        var search = services.GetRequiredService<DocumentSearchService>();
+
+        var outcome = await search.SearchAsync(AdvisorA, Query, null, 10, Settings(gate: true), Ct);
+
+        var summary = outcome.Relevance!;
+        Assert.True(summary["gate"]!.GetValue<bool>());
+        Assert.True(summary["silenced"]!.GetValue<bool>());
+        Assert.False(summary["rerankedByJev"]!.GetValue<bool>());
+        Assert.Equal(0.03, summary["max"]!.GetValue<double>());
+        Assert.Equal("scripted", summary["model"]!.GetValue<string>());
+        // Numbers and flags only: nothing that names a chunk, a document, the query or a passage.
+        Assert.Equal(
+            ["durationMs", "floor", "gate", "judged", "max", "model", "reason", "rerankedByJev", "reranker", "silenced"],
+            summary.Select(kv => kv.Key).Order());
+        Assert.DoesNotContain("fee schedule", summary.ToJsonString());
+    }
+
+    [Fact]
+    public async Task The_summary_says_when_jev_ordered_the_results()
+    {
+        await using var services = Services(new ScriptedJudge(i => i == 0 ? 0.9 : 0.4));
+        var search = services.GetRequiredService<DocumentSearchService>();
+
+        var outcome = await search.SearchAsync(AdvisorA, Query, null, 10,
+            Settings(gate: true, rerank: true, reranker: RerankerKinds.Jev), Ct);
+
+        Assert.True(outcome.Relevance!["rerankedByJev"]!.GetValue<bool>());
+        Assert.False(outcome.Relevance["silenced"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task A_search_that_asked_no_judge_has_no_summary()
+    {
+        await using var services = Services(new ScriptedJudge(_ => 0.9));
+        var search = services.GetRequiredService<DocumentSearchService>();
+
+        var outcome = await search.SearchAsync(AdvisorA, Query, null, 10, Settings(gate: false), Ct);
+
+        Assert.Null(outcome.Relevance);
+    }
+
     /// <summary>Answers each candidate by its fused position, and counts the requests.</summary>
     private sealed class ScriptedJudge(Func<int, double> score, string? fail = null) : IRelevanceJudge
     {

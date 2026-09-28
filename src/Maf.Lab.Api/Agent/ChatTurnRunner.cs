@@ -448,7 +448,7 @@ public sealed class ChatTurnRunner(
         if (screened is not null)
         {
             guardrail.Trace(state.Trace, Guardrail.CheckToolResult, name, callId, screened.Decision, screened.Threshold, screened.Items,
-                screened.Withheld, null);
+                screened.Withheld, null, screened.Requests, screened.ElapsedMs);
             (payload, structured) = (screened.Payload, screened.Structured);
         }
         var (summary, sources) = screened is { WholeWithheld: true }
@@ -498,12 +498,15 @@ public sealed class ChatTurnRunner(
     {
         var raw = TraceMapping.Node(result) as JsonObject;
         JsonNode? diagnostics = null;
+        JsonObject? relevance = null;
         string? instance = null;
         if (raw?["_meta"] is JsonObject meta)
         {
             diagnostics = meta[TraceMeta.Diagnostics]?.DeepClone();
+            relevance = meta[TraceMeta.Relevance]?.DeepClone() as JsonObject;
             instance = meta[TraceMeta.Instance]?.GetValue<string>();
             meta.Remove(TraceMeta.Diagnostics);
+            meta.Remove(TraceMeta.Relevance);
             if (meta.Count == 0)
             {
                 raw.Remove("_meta");
@@ -521,7 +524,60 @@ public sealed class ChatTurnRunner(
             d["callId"] = callId;
             var fused = (d["fused"] as JsonArray)?.Count ?? 0;
             trace.Add(TraceKinds.Retrieval, $"Retrieval: {d["settings"]?["mode"]} search, {fused} fused candidate(s)", d);
+            // An MCP server from before the summary existed: the diagnostics hold the same judgment.
+            relevance ??= RelevanceFromDiagnostics(d);
         }
+        if (relevance is not null)
+        {
+            relevance["callId"] = callId;
+            var ms = relevance["durationMs"]?.GetValue<double>() ?? 0;
+            trace.Add(TraceKinds.Relevance, RelevanceTitle(relevance), relevance, (long)ms);
+        }
+    }
+
+    /// <summary>The judgment as the summary carries it, read from full diagnostics — without the per-candidate scores.</summary>
+    private static JsonObject? RelevanceFromDiagnostics(JsonObject diagnostics)
+    {
+        if (diagnostics["relevance"] is not JsonObject r)
+        {
+            return null;
+        }
+        var silenced = r["silenced"]?.GetValue<bool>() ?? false;
+        var reranker = diagnostics["settings"]?["reranker"]?.GetValue<string>();
+        var rerankedByJev = reranker == "jev" && !silenced && r["reason"] is null;
+        return new JsonObject
+        {
+            ["gate"] = r["gate"]?.DeepClone(),
+            ["reranker"] = reranker,
+            ["floor"] = r["floor"]?.DeepClone(),
+            ["judged"] = r["judged"]?.DeepClone(),
+            ["max"] = r["max"]?.DeepClone(),
+            ["silenced"] = silenced,
+            ["rerankedByJev"] = rerankedByJev,
+            ["model"] = r["model"]?.DeepClone(),
+            ["durationMs"] = r["durationMs"]?.DeepClone(),
+            ["reason"] = r["reason"]?.DeepClone(),
+        };
+    }
+
+    /// <summary>"Jev relevance: max 0.87 ≥ floor 0.50 — kept", "… — silenced", or why the search was left ungated.</summary>
+    internal static string RelevanceTitle(JsonObject r)
+    {
+        var reason = r["reason"]?.GetValue<string>();
+        if (reason is not null)
+        {
+            return $"Jev relevance unavailable: {reason} — search left ungated";
+        }
+        var gate = r["gate"]?.GetValue<bool>() ?? false;
+        var max = r["max"]?.GetValue<double>();
+        var floor = r["floor"]?.GetValue<double>() ?? 0;
+        var silenced = r["silenced"]?.GetValue<bool>() ?? false;
+        var reranked = r["rerankedByJev"]?.GetValue<bool>() ?? false;
+        var score = max is not { } m ? "no candidates judged"
+            : gate ? $"max {m:F2} {(m < floor ? "<" : "≥")} floor {floor:F2}"
+            : $"max {m:F2}";
+        var verdict = silenced ? "silenced" : gate ? "kept" : "kept (gate off)";
+        return $"Jev relevance: {score} — {verdict}{(reranked ? " · reranked by Jev" : "")}";
     }
 
     /// <summary>

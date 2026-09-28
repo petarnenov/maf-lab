@@ -68,8 +68,10 @@ public sealed record PromptScreen(GuardDecision Decision, GuardScores Scores, do
 }
 
 /// <summary>A tool result as the model will read it, and how each of its items was judged.</summary>
+/// <param name="Requests">How many Jev requests the screening made: one per item that had text.</param>
+/// <param name="ElapsedMs">From the first request to the last answer — the items run in parallel, so not their sum.</param>
 public sealed record ScreenedToolResult(string Payload, JsonElement? Structured, GuardDecision Decision, IReadOnlyList<ScreenedItem> Items,
-    int Withheld, bool WholeWithheld, double Threshold);
+    int Withheld, bool WholeWithheld, double Threshold, int Requests = 0, double ElapsedMs = 0);
 
 /// <summary>
 /// The content guard's policy: what a screening means for the turn. Jev supplies probabilities; this class owns the
@@ -155,7 +157,10 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
         var threshold = options.Value.ContentWithholdAt;
         var excerpts = Excerpts(tool, structured);
         var texts = excerpts ?? [payload];
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         var items = await ScreenAllAsync(texts, ct);
+        var elapsedMs = clock.Elapsed.TotalMilliseconds;
+        var requests = texts.Count(t => !string.IsNullOrWhiteSpace(t));
 
         var withheld = items.Where(i => i.Decision == GuardDecision.Withheld).Select(i => i.Index).ToHashSet();
         var decision = withheld.Count > 0 ? GuardDecision.Withheld
@@ -163,13 +168,14 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
             : GuardDecision.Pass;
         if (withheld.Count == 0)
         {
-            return new ScreenedToolResult(payload, structured, decision, items, 0, false, threshold);
+            return new ScreenedToolResult(payload, structured, decision, items, 0, false, threshold, requests, elapsedMs);
         }
         if (excerpts is null)
         {
             // One item, and it is the result: nothing of it may reach the model.
             var node = new JsonObject { ["withheld"] = true, ["notice"] = WithheldNotice };
-            return new ScreenedToolResult(node.ToJsonString(), JsonSerializer.SerializeToElement(node), decision, items, 1, true, threshold);
+            return new ScreenedToolResult(node.ToJsonString(), JsonSerializer.SerializeToElement(node), decision, items, 1, true, threshold,
+                requests, elapsedMs);
         }
 
         var sanitized = JsonNode.Parse(structured!.Value.GetRawText())!.AsObject();
@@ -181,7 +187,7 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
         sanitized["withheld"] = withheld.Count;
         sanitized["withheldNotice"] = $"{withheld.Count} excerpt(s) removed. {WithheldNotice}";
         return new ScreenedToolResult(sanitized.ToJsonString(), JsonSerializer.SerializeToElement(sanitized), decision, items,
-            withheld.Count, false, threshold);
+            withheld.Count, false, threshold, requests, elapsedMs);
     }
 
     /// <summary>
@@ -207,7 +213,7 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
             : top.Top >= threshold ? GuardDecision.Withheld
             : GuardDecision.Pass;
         Trace(trace, CheckReviewer, null, callId, decision, threshold, [new ScreenedItem(0, decision, scores)],
-            decision == GuardDecision.Withheld ? 1 : 0, scores.Failure);
+            decision == GuardDecision.Withheld ? 1 : 0, scores.Failure, requests: 1, elapsedMs: scores.DurationMs);
 
         return (decision, result) switch
         {
@@ -223,15 +229,21 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
     /// item's text the trace already holds where it arrived (the question, the tool result); a withheld item's is
     /// redacted from the tool-result event, so it is nowhere in the trace. And one log line of structure.
     /// </summary>
+    /// <param name="requests">
+    /// The Jev requests this screening made itself; null for the prompt, whose questions ride in the intent request.
+    /// </param>
+    /// <param name="elapsedMs">The screening's wall-clock time; without it, the slowest item stands in.</param>
     public void Trace(TurnTrace? trace, string check, string? tool, string? callId, GuardDecision decision, double threshold,
-        IReadOnlyList<ScreenedItem> items, int withheld, string? reason)
+        IReadOnlyList<ScreenedItem> items, int withheld, string? reason, int? requests = null, double? elapsedMs = null)
     {
         var top = items.Select(i => i.Scores.Highest).Where(h => h is not null).Select(h => h!.Value)
             .OrderByDescending(h => h.Top).FirstOrDefault();
         var model = items.Select(i => i.Scores.Model).FirstOrDefault(m => m is not null);
-        var durationMs = items.Count == 0 ? 0 : items.Max(i => i.Scores.DurationMs);
+        var durationMs = elapsedMs ?? (items.Count == 0 ? 0 : items.Max(i => i.Scores.DurationMs));
         var word = Word(decision);
-        trace?.Add(TraceKinds.Guardrail, Title(check, tool, word, top, withheld, items.Count, reason), new JsonObject
+        var title = Title(check, tool, word, top, withheld, items.Count, reason)
+            + (requests > 1 ? $" · {requests} Jev requests" : "");
+        trace?.Add(TraceKinds.Guardrail, title, new JsonObject
         {
             ["check"] = check,
             ["tool"] = tool,
@@ -252,6 +264,7 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
                 ["reason"] = i.Scores.Failure,
             }).ToArray()),
             ["model"] = model,
+            ["requests"] = requests,
             ["durationMs"] = Math.Round(durationMs),
             ["reason"] = reason,
         }, (long)durationMs);

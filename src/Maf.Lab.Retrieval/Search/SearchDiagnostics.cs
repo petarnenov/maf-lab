@@ -65,6 +65,26 @@ public sealed class SearchDiagnostics
             : null,
     };
 
+    /// <summary>
+    /// The judge's verdict on one search as numbers and flags only — no query, passage, chunk or document id, and no
+    /// probability per candidate. Returned with every judged search whether or not diagnostics were asked for.
+    /// </summary>
+    /// <param name="reranker">The reranker in use (<see cref="RerankerKinds"/>), or null when rerank is off.</param>
+    /// <param name="rerankedByJev">Whether Jev's answer actually ordered the results — false when silenced or unanswered.</param>
+    public static JsonObject SummaryOf(RelevanceJudgement judgement, bool gate, double floor, bool silenced, string? reranker, bool rerankedByJev) => new()
+    {
+        ["gate"] = gate,
+        ["reranker"] = reranker,
+        ["floor"] = floor,
+        ["judged"] = judgement.Scores?.Count ?? 0,
+        ["max"] = judgement.Max,
+        ["silenced"] = silenced,
+        ["rerankedByJev"] = rerankedByJev,
+        ["model"] = judgement.Model,
+        ["durationMs"] = Math.Round(judgement.DurationMs),
+        ["reason"] = judgement.Reason,
+    };
+
     public JsonObject ToJson(string instance) => new()
     {
         ["instance"] = instance,

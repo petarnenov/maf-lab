@@ -1187,3 +1187,32 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
   (`Columns`/`Bars`/`Lines`) and its three validated categorical colours plus a neutral fourth (gray) for the
   "no real answer" series (unscreened, unavailable). No package added or moved.
 - **Rollback:** remove the endpoint and page; the intent endpoint and its screen behaviour are untouched.
+
+## 39. Every Jev call visible and honestly counted (surface-every-jev-call, 2026-09-29)
+
+- **Why.** A map of Jev's call sites found five in production. The monitor showed three in full. The relevance judge
+  (§36) lived only inside the expanded JSON of the `retrieval` row, with no Jev in its title and no latency bar, and it
+  vanished from both the trace and the §38 statistics when `Agent:TraceRetrieval` was off. The fifth site, the A2A
+  path, was never counted while the page claimed "every call site". A tool-result screening's bar showed its slowest
+  item, not the screening.
+- **A `relevance` trace event, not a richer `retrieval` title.** It gets its own timeline row with the judge's latency
+  as its duration, and exists whether or not diagnostics were requested. Retitling `retrieval` would still vanish with
+  the diagnostics and would give the whole search the judge's duration.
+- **A numbers-only summary always rides in `_meta["maf-lab/relevance"]`.** `search_documents` returns it on every
+  judged search, traced or not: `gate`, `reranker`, `floor`, `judged`, `max`, `silenced`, `rerankedByJev`, `model`,
+  `durationMs`, `reason`. It carries no query, passage, chunk id or per-candidate score; those stay in the diagnostics.
+  An opt-in flag was rejected because nobody would turn it off. The api lifts the summary out of the recorded result;
+  the model never sees `_meta`.
+- **`reranker` vs `rerankedByJev`.** `reranker` is the configured reranker. It keeps §38's "judged with the Jev
+  reranker" count unchanged. `rerankedByJev` means Jev's answer actually ordered the results (false when silenced or
+  unanswered), and it drives the monitor's label.
+- **Counting.** For each turn, the statistics read judged searches from `relevance` events when the turn has any, and
+  otherwise from `retrieval.relevance`, so an older trace still counts and no search is counted twice. A tool-result
+  screening now records `requests` (one per item with text; an empty excerpt makes no call) and its wall-clock
+  duration. The statistics count requests by that field, falling back to items for older events. The per-item latency
+  stays in the event for the percentiles.
+- **A2A: wording, not counting (owner's choice).** The endpoint, contracts, spec and `/admin/jev` now say they count
+  Jev calls made by chat turns. The A2A partner path is logged, not traced, and is not counted. The "partner"
+  screenings the guardrail section could never have counted are dropped from its wording.
+- **Rollback:** a plain revert. Stored traces with `relevance` events remain readable (unknown kinds are ignored), and
+  either service can be deployed first because of the fallbacks. No package added or moved.

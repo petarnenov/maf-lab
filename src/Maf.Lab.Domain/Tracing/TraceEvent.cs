@@ -22,6 +22,8 @@ public static class TraceKinds
     public const string ToolCall = "tool.call";
     public const string ToolResult = "tool.result";
     public const string Retrieval = "retrieval";
+    /// <summary>Jev's relevance judgment of one search: the gate's verdict, the highest probability, the judge's latency.</summary>
+    public const string Relevance = "relevance";
     public const string Envelope = "envelope";
     public const string AnswerDelta = "answer.delta";
     /// <summary>A chunk of what the model reasoned before it answered, recorded the way the answer is.</summary>

@@ -231,6 +231,137 @@ describe('MonitorPanel', () => {
     expect(search).not.toHaveTextContent('translated in');
   });
 
+  it('retrieval tab shows a silenced search with the probability Jev gave each candidate', async () => {
+    const judgment = {
+      gate: true,
+      reranker: 'jev',
+      floor: 0.5,
+      judged: 2,
+      max: 0.12,
+      silenced: true,
+      rerankedByJev: false,
+      model: 'jev-1.13.0',
+      durationMs: 388,
+      reason: null,
+    };
+    const events = fixtureTrace.flatMap((e) =>
+      e.kind === 'retrieval'
+        ? [
+            {
+              ...e,
+              data: {
+                ...(e.data as object),
+                callId: 'forced_1',
+                relevance: {
+                  ...judgment,
+                  scores: [
+                    { chunkId: 'shared/procedures/missing-fee-schedule.txt#step-1', p: 0.12 },
+                    { chunkId: 'shared/docs/billing-overview.txt#intro', p: 0.03 },
+                  ],
+                },
+              },
+            },
+            {
+              ...e,
+              seq: e.seq + 1000,
+              kind: 'relevance',
+              title: 'Jev relevance: max 0.12 < floor 0.50 — silenced',
+              durationMs: 388,
+              data: { ...judgment, callId: 'forced_1' },
+            },
+          ]
+        : [e],
+    );
+    render(<MonitorPanel events={events} />);
+
+    // Its own row in the timeline, with the judge's latency.
+    const timeline = screen.getByRole('list', { name: 'Timeline' });
+    expect(
+      within(timeline).getByText('Jev relevance: max 0.12 < floor 0.50 — silenced · 388 ms'),
+    ).toBeInTheDocument();
+
+    await userEvent.click(tab('Retrieval'));
+    const jev = within(screen.getByRole('region', { name: 'Search' })).getByRole('group', {
+      name: 'Jev relevance',
+    });
+    expect(jev).toHaveTextContent('model: jev-1.13.0');
+    expect(jev).toHaveTextContent('floor 0.50');
+    expect(jev).toHaveTextContent('max 0.12');
+    expect(jev).toHaveTextContent('silenced');
+    const perCandidate = within(jev).getByRole('table', { name: 'Jev relevance per candidate' });
+    expect(perCandidate).toHaveTextContent('0.120');
+    expect(perCandidate).toHaveTextContent('0.030');
+  });
+
+  it('retrieval tab shows a judgment recorded without diagnostics', async () => {
+    const events = [
+      ...fixtureTrace.filter((e) => e.kind !== 'retrieval'),
+      {
+        seq: 999,
+        atMs: 130,
+        kind: 'relevance',
+        title: 'Jev relevance: max 0.87 ≥ floor 0.50 — kept · reranked by Jev',
+        durationMs: 412,
+        data: {
+          callId: 'forced_1',
+          gate: true,
+          reranker: 'jev',
+          floor: 0.5,
+          judged: 20,
+          max: 0.87,
+          silenced: false,
+          rerankedByJev: true,
+          model: 'jev-1.13.0',
+          durationMs: 412,
+          reason: null,
+        },
+        truncated: false,
+      },
+    ];
+    render(<MonitorPanel events={events} />);
+    await userEvent.click(tab('Retrieval'));
+
+    const search = screen.getByRole('region', { name: 'Search' });
+    expect(search).toHaveTextContent('diagnostics not recorded');
+    const jev = within(search).getByRole('group', { name: 'Jev relevance' });
+    expect(jev).toHaveTextContent('max 0.87');
+    expect(jev).toHaveTextContent('kept');
+    expect(jev).toHaveTextContent('reranked by Jev');
+    expect(jev).toHaveTextContent('412 ms');
+    expect(within(jev).queryByRole('table')).toBeNull();
+  });
+
+  it('retrieval tab says when Jev did not answer', async () => {
+    const events = [
+      ...fixtureTrace.filter((e) => e.kind !== 'retrieval'),
+      {
+        seq: 999,
+        atMs: 130,
+        kind: 'relevance',
+        title: 'Jev relevance unavailable: timed out after 2s — search left ungated',
+        durationMs: 2000,
+        data: {
+          callId: 'forced_1',
+          gate: true,
+          floor: 0.5,
+          judged: 0,
+          max: null,
+          silenced: false,
+          model: 'jev-1.13.0',
+          durationMs: 2000,
+          reason: 'timed out after 2s',
+        },
+        truncated: false,
+      },
+    ];
+    render(<MonitorPanel events={events} />);
+    await userEvent.click(tab('Retrieval'));
+
+    const jev = screen.getByRole('group', { name: 'Jev relevance' });
+    expect(jev).toHaveTextContent('max n/a');
+    expect(jev).toHaveTextContent('ungated — Jev unavailable: timed out after 2s');
+  });
+
   it('mcp tab shows arguments, raw result, replicas and the unknown tool', async () => {
     render(<MonitorPanel events={fixtureTrace} />);
     await userEvent.click(tab('MCP'));

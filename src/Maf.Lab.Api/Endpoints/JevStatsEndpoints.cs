@@ -12,8 +12,8 @@ public static class JevStatsEndpoints
 {
     public static IEndpointRouteBuilder MapJevStats(this IEndpointRouteBuilder app)
     {
-        // Every Jev call site on this firm's turns — intent, guardrail, relevance and routing — over a window the
-        // caller picks from a list. The firm is the caller's own; there is no way to name another. Numbers only: the
+        // Every Jev call site on this firm's chat turns — intent, guardrail, relevance and routing — over a window the
+        // caller picks from a list. The A2A path has no turn trace and is not counted. The firm is the caller's own; there is no way to name another. Numbers only: the
         // traces it reads stay on the server.
         app.MapGet("/api/admin/jev-stats", async (string? window, IPrincipalAccessor principals, IDbContextFactory<MafDbContext> db,
             IOptions<JevOptions> jev, IOptions<GuardOptions> guard, TimeProvider time, CancellationToken ct) =>

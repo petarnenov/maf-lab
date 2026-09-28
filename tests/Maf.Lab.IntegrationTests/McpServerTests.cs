@@ -300,4 +300,57 @@ public sealed class McpDiagnosticsTests(CorpusIndexFixture corpus)
         Assert.True(diag.GetProperty("timings").GetProperty("qdrantMs").GetInt64() >= 0);
         Assert.False(string.IsNullOrEmpty(traced.GetProperty("_meta").GetProperty("maf-lab/instance").GetString()));
     }
+
+    [Fact]
+    public async Task A_judged_search_carries_the_relevance_summary_with_or_without_the_trace_flag()
+    {
+        var values = corpus.Qdrant.Config(corpus.Collection, corpus.CorpusRoot);
+        values["Retrieval:RelevanceGateEnabled"] = "true";
+        await using var factory = new WebApplicationFactory<Maf.Lab.Retrieval.Program>().WithWebHostBuilder(b =>
+        {
+            b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(values));
+            b.WithFakeSharedState();
+            b.ConfigureTestServices(s =>
+            {
+                s.RemoveAll<IDenseEncoder>();
+                s.AddSingleton<IDenseEncoder>(FakeDenseEncoder.Default());
+                s.RemoveAll<Maf.Lab.Retrieval.Rerank.IRelevanceJudge>();
+                s.AddSingleton<Maf.Lab.Retrieval.Rerank.IRelevanceJudge>(new FixedJudge(0.8));
+            });
+        });
+        var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.ADVISOR, []);
+        var http = factory.CreateDefaultClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        await using var client = await McpClient.CreateAsync(new HttpClientTransport(new HttpClientTransportOptions
+        {
+            Endpoint = new Uri(http.BaseAddress!, "/mcp"), TransportMode = HttpTransportMode.StreamableHttp,
+        }, http, NullLoggerFactory.Instance, ownsHttpClient: true), cancellationToken: Ct);
+
+        var args = new Dictionary<string, object?> { ["query"] = "household rebalancing fee schedule" };
+        var plain = await client.CallToolAsync("search_documents", args, cancellationToken: Ct);
+
+        Assert.False(plain.Meta!.ContainsKey("maf-lab/trace"));
+        var summary = plain.Meta["maf-lab/relevance"]!.AsObject();
+        Assert.Equal(0.8, summary["max"]!.GetValue<double>());
+        Assert.False(summary["silenced"]!.GetValue<bool>());
+        Assert.Equal("jev-test", summary["model"]!.GetValue<string>());
+        // Nothing in the summary names a chunk or a document, or repeats the query or a passage.
+        Assert.DoesNotContain("chunkId", summary.ToJsonString());
+        Assert.DoesNotContain("docId", summary.ToJsonString());
+        Assert.DoesNotContain("household", summary.ToJsonString());
+        Assert.DoesNotContain("maf-lab/relevance", plain.StructuredContent!.Value.GetRawText());
+
+        var tools = await client.ListToolsAsync(cancellationToken: Ct);
+        var search = tools.Single(t => t.Name == "search_documents").WithMeta(new System.Text.Json.Nodes.JsonObject { ["maf-lab/trace"] = true });
+        var traced = (JsonElement)(await search.InvokeAsync(new Microsoft.Extensions.AI.AIFunctionArguments(args), Ct))!;
+        Assert.Equal(plain.StructuredContent!.Value.GetRawText(), traced.GetProperty("structuredContent").GetRawText());
+        Assert.Equal(0.8, traced.GetProperty("_meta").GetProperty("maf-lab/relevance").GetProperty("max").GetDouble());
+    }
+
+    private sealed class FixedJudge(double p) : Maf.Lab.Retrieval.Rerank.IRelevanceJudge
+    {
+        public Task<Maf.Lab.Retrieval.Rerank.RelevanceJudgement> JudgeAsync(string query,
+            IReadOnlyList<Maf.Lab.Retrieval.Store.ScoredChunk> candidates, CancellationToken ct) =>
+            Task.FromResult(new Maf.Lab.Retrieval.Rerank.RelevanceJudgement(candidates.Select(_ => p).ToList(), null, "jev-test", 12));
+    }
 }

@@ -68,6 +68,13 @@ public sealed class SearchDocumentsTool(DocumentSearchService search, IPrincipal
                     [InstanceKey] = Hosting.InstanceIdentity.Name,
                 };
             }
+            // Asked or not: a judged search says what Jev decided, as numbers only, so the Jev request it made is
+            // never invisible to the caller.
+            if (outcome.Relevance is { } relevance)
+            {
+                result.Meta ??= [];
+                result.Meta[RelevanceKey] = relevance;
+            }
             return result;
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
@@ -79,6 +86,8 @@ public sealed class SearchDocumentsTool(DocumentSearchService search, IPrincipal
 
     public const string TraceFlag = "maf-lab/trace";
     public const string InstanceKey = "maf-lab/instance";
+    /// <summary>The relevance judge's numbers-only verdict, present on every search that asked it.</summary>
+    public const string RelevanceKey = "maf-lab/relevance";
 
     /// <summary>True when the caller asked for diagnostics via request _meta {"maf-lab/trace": true}.</summary>
     internal static bool TraceRequested(RequestContext<CallToolRequestParams>? context) =>

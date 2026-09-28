@@ -16,6 +16,7 @@ import {
   type ModelRequestData,
   type ModelResponseData,
   type PromptData,
+  type RelevanceData,
   type RetrievalData,
   type ToolCallData,
   type ToolResultData,
@@ -214,11 +215,31 @@ function MessageView({ message }: { message: TraceMessage }) {
 
 export function RetrievalTab({ events }: { events: TraceEvent[] }) {
   const searches = byKind(events, 'retrieval');
-  if (searches.length === 0) return <p className={styles.empty}>No retrieval in this turn.</p>;
+  const judgments = byKind(events, 'relevance').map((e) => dataOf<RelevanceData>(e));
+  const judgmentOf = (callId?: string) =>
+    callId === undefined ? undefined : judgments.find((j) => j.callId === callId);
+  // A search judged with diagnostics off has a judgment and no retrieval picture; it is still a search Jev saw.
+  const diagnosed = new Set(searches.map((e) => dataOf<RetrievalData>(e).callId));
+  const judgedOnly = judgments.filter((j) => !diagnosed.has(j.callId));
+  if (searches.length === 0 && judgedOnly.length === 0)
+    return <p className={styles.empty}>No retrieval in this turn.</p>;
   return (
     <div>
+      {judgedOnly.map((j, i) => (
+        <section key={`judged-${j.callId ?? i}`} className={styles.card} aria-label="Search">
+          <h3 className={styles.cardTitle}>
+            search_documents
+            <span className={styles.chip}>diagnostics not recorded</span>
+          </h3>
+          <JevRelevance judgment={j} />
+        </section>
+      ))}
       {searches.map((e) => {
         const d = dataOf<RetrievalData>(e);
+        // The search's own event says whether Jev ordered the results; the diagnostics add each chunk's probability.
+        const judgment: RelevanceData | undefined = d.relevance
+          ? { ...d.relevance, ...judgmentOf(d.callId) }
+          : judgmentOf(d.callId);
         const s = d.settings ?? {};
         const terms = d.query?.terms ?? [];
         return (
@@ -291,6 +312,7 @@ export function RetrievalTab({ events }: { events: TraceEvent[] }) {
               <RankedList title="Fused" items={d.fused} />
             </div>
             {(d.fused ?? []).length === 0 && <NothingReturned data={d} />}
+            {judgment && <JevRelevance judgment={judgment} scores={d.relevance?.scores} />}
             {d.rerank && d.rerank.length > 0 && (
               <>
                 <div className={styles.sub}>Rerank order</div>
@@ -309,10 +331,72 @@ export function RetrievalTab({ events }: { events: TraceEvent[] }) {
               <span className={styles.chip}>bm25 {formatMs(d.timings?.sparseEncodeMs)}</span>
               <span className={styles.chip}>qdrant {formatMs(d.timings?.qdrantMs)}</span>
               <span className={styles.chip}>rerank {formatMs(d.timings?.rerankMs)}</span>
+              {judgment && (
+                <span className={styles.chip}>
+                  jev {formatMs(d.timings?.relevanceMs ?? judgment.durationMs)}
+                </span>
+              )}
             </div>
           </section>
         );
       })}
+    </div>
+  );
+}
+
+/** What the gate did with Jev's answer, in the words the trace title uses. */
+function verdictOf(j: RelevanceData): string {
+  if (j.reason) return `ungated — Jev unavailable: ${j.reason}`;
+  if (j.silenced) return 'silenced';
+  return j.gate ? 'kept' : 'kept (gate off)';
+}
+
+/**
+ * Jev's relevance judgment of one search: the model, the floor, the highest probability and what the gate did with
+ * it — and, when the diagnostics carry them, each judged chunk's probability, so a silenced search shows what it
+ * withheld.
+ */
+function JevRelevance({
+  judgment: j,
+  scores,
+}: {
+  judgment: RelevanceData;
+  scores?: { chunkId: string; p: number }[] | null;
+}) {
+  return (
+    <div role="group" aria-label="Jev relevance">
+      <div className={styles.sub}>Jev relevance</div>
+      <div className={styles.stats}>
+        <span className={styles.chip}>model: {j.model ?? 'n/a'}</span>
+        {j.gate && <span className={styles.chip}>floor {j.floor?.toFixed(2)}</span>}
+        <span className={styles.chip}>
+          max {j.max === null || j.max === undefined ? 'n/a' : j.max.toFixed(2)}
+        </span>
+        <span className={`${styles.chip} ${j.silenced || j.reason ? styles.error : styles.ok}`}>
+          {verdictOf(j)}
+        </span>
+        {j.rerankedByJev && <span className={styles.chip}>reranked by Jev</span>}
+        <span className={styles.chip}>{formatMs(j.durationMs)}</span>
+      </div>
+      {scores && scores.length > 0 && (
+        <table className={styles.table} aria-label="Jev relevance per candidate">
+          <tbody>
+            {scores.map((s) => (
+              <tr
+                key={s.chunkId}
+                className={
+                  j.gate && j.floor !== undefined && s.p < j.floor ? styles.dropped : undefined
+                }
+              >
+                <td className={styles.mono} title={s.chunkId}>
+                  {shortDoc(s.chunkId)}
+                </td>
+                <td className={styles.num}>{s.p.toFixed(3)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
