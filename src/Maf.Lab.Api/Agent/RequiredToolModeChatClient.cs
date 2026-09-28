@@ -9,8 +9,11 @@ namespace Maf.Lab.Api.Agent;
 /// on the model's behalf with the user's question as the query. FunctionInvokingChatClient (above this client)
 /// executes it through MCP and clears the required mode for the next iteration, so the model then answers — or calls
 /// further tools — with the retrieved snippets in context.
+/// A data turn Jev routed to a read tool (<paramref name="route"/>) is issued the same way, with the route's arguments:
+/// the model's tool-choosing call is skipped and its first call is the answer.
 /// </summary>
-public sealed class RequiredToolModeChatClient(IChatClient inner, Action<FunctionCallContent>? onForced = null) : DelegatingChatClient(inner)
+public sealed class RequiredToolModeChatClient(IChatClient inner, Action<FunctionCallContent>? onForced = null, Jev.ToolRoute? route = null)
+    : DelegatingChatClient(inner)
 {
     public const string EmulatedTool = "search_documents";
 
@@ -41,12 +44,18 @@ public sealed class RequiredToolModeChatClient(IChatClient inner, Action<Functio
         }
     }
 
-    private static FunctionCallContent? ForcedCall(IList<ChatMessage> messages, ChatOptions? options)
+    private FunctionCallContent? ForcedCall(IList<ChatMessage> messages, ChatOptions? options)
     {
-        if (options?.ToolMode is not RequiredChatToolMode { RequiredFunctionName: EmulatedTool }
-            || messages.SelectMany(m => m.Contents).OfType<FunctionCallContent>().Any(c => c.Name == EmulatedTool))
+        if (options?.ToolMode is not RequiredChatToolMode { RequiredFunctionName: { } required }
+            || messages.SelectMany(m => m.Contents).OfType<FunctionCallContent>().Any(c => c.Name == required))
         {
             return null;
+        }
+        if (required != EmulatedTool)
+        {
+            return route is { } r && r.Tool == required
+                ? new FunctionCallContent($"routed_{Guid.NewGuid():N}"[..20], r.Tool, r.Arguments.ToDictionary(a => a.Key, a => a.Value))
+                : null;
         }
         var question = messages.LastOrDefault(m => m.Role == ChatRole.User)?.Text?.Trim();
         return string.IsNullOrEmpty(question)

@@ -292,7 +292,12 @@ public class TurnTraceTests
     {
         const string first = "THOUGHT-MARKER I should look the run up. ";
         const string second = "THOUGHT-MARKER it failed on a fee schedule.";
-        using var api = new ApiFactory(ReasoningModel(first, second, "ANSWER-R."));
+        // Routing off: a routed data question skips the model's tool-choosing call, and this test needs the model itself
+        // to decide on a tool between its thoughts.
+        using var api = new ApiFactory(ReasoningModel(first, second, "ANSWER-R."))
+        {
+            ExtraSettings = new Dictionary<string, string?> { ["Jev:RouteDataTools"] = "false" },
+        };
         var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
         // A data question: nothing forces retrieval, so the model itself decides to call a tool between its thoughts.
         var events = await ApiFactory.ChatAsync(adam, "status of run 4417");

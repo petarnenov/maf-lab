@@ -37,14 +37,16 @@ public class TenancyAcceptanceTests(CorpusIndexFixture corpus)
     {
         var logs = new CapturingLoggerProvider();
         var reranker = new RecordingReranker();
+        var judge = new RecordingJudge();
         await using var services = corpus.Qdrant.Services(corpus.Collection, corpus.CorpusRoot, logs: logs,
-            services: s => s.AddSingleton<IReranker>(reranker));
+            services: s => s.AddSingleton<IReranker>(reranker).AddSingleton<IRelevanceJudge>(judge));
         var search = services.GetRequiredService<DocumentSearchService>();
         const string query = "Northwind Capital household rebalancing fee schedule NW-CANARY-7731";
 
         foreach (var rerank in new[] { false, true })
         {
-            var outcome = await search.SearchAsync(AdvisorA, query, null, 10, new SearchSettings(RetrievalModes.Hybrid, FusionModes.Rrf, "dense_v3", rerank), Ct);
+            var outcome = await search.SearchAsync(AdvisorA, query, null, 10,
+                new SearchSettings(RetrievalModes.Hybrid, FusionModes.Rrf, "dense_v3", rerank, RelevanceGate: true, Reranker: RecordingReranker.Name), Ct);
             Assert.Equal(10, outcome.Result.Results.Count);
             Assert.All(outcome.Chunks, c => Assert.Contains(c.Chunk.TenantId, new[] { "firm-a", "shared" }));
             Assert.DoesNotContain(outcome.Result.Results, r => r.Snippet.Contains("NW-CANARY-7731-") || r.Snippet.Contains("Northwind"));
@@ -52,6 +54,9 @@ public class TenancyAcceptanceTests(CorpusIndexFixture corpus)
 
         Assert.NotEmpty(reranker.Inputs);
         Assert.All(reranker.Inputs.SelectMany(i => i), c => Assert.Contains(c.Chunk.TenantId, new[] { "firm-a", "shared" }));
+        // The relevance judge reads the same candidates the reranker does: the caller's scope, nothing else.
+        Assert.NotEmpty(judge.Inputs);
+        Assert.All(judge.Inputs.SelectMany(i => i), c => Assert.Contains(c.Chunk.TenantId, new[] { "firm-a", "shared" }));
         Assert.DoesNotContain(logs.Messages, m => m.Contains("NW-CANARY") || m.Contains("Northwind") || m.Contains(query));
     }
 
@@ -79,12 +84,28 @@ public class TenancyAcceptanceTests(CorpusIndexFixture corpus)
 
     private sealed class RecordingReranker : IReranker
     {
+        public const string Name = "recording";
+
+        public string Kind => Name;
+
         public List<IReadOnlyList<ScoredChunk>> Inputs { get; } = [];
 
         public Task<IReadOnlyList<ScoredChunk>> RerankAsync(string query, IReadOnlyList<ScoredChunk> candidates, CancellationToken ct)
         {
             Inputs.Add(candidates);
             return Task.FromResult<IReadOnlyList<ScoredChunk>>(candidates.Reverse().ToList());
+        }
+    }
+
+    /// <summary>Records what it was asked to judge and finds everything relevant, so the gate never silences.</summary>
+    private sealed class RecordingJudge : IRelevanceJudge
+    {
+        public List<IReadOnlyList<ScoredChunk>> Inputs { get; } = [];
+
+        public Task<RelevanceJudgement> JudgeAsync(string query, IReadOnlyList<ScoredChunk> candidates, CancellationToken ct)
+        {
+            Inputs.Add(candidates);
+            return Task.FromResult(new RelevanceJudgement(candidates.Select(_ => 1.0).ToList(), null, "recording", 0));
         }
     }
 }

@@ -1,11 +1,11 @@
 using System.Net.Http.Headers;
 
-namespace Maf.Lab.Api.Agent.Jev;
+namespace Maf.Lab.Retrieval.Jev;
 
 /// <summary>
 /// The Jev API key, held in exactly one place. It is read from the <c>JEV_MAF_LAB</c> environment variable and leaves
-/// this class only as the bearer header of a request to the Jev endpoint — never as a value the classifier, a trace,
-/// a log line or a model prompt could see.
+/// this class only as the bearer header of a request to the Jev endpoint — never as a value a classifier, a judge, a
+/// trace, a log line or a model prompt could see.
 /// </summary>
 public sealed class JevCredential
 {
@@ -19,7 +19,8 @@ public sealed class JevCredential
         _key = string.IsNullOrWhiteSpace(key) ? null : key.Trim();
         if (_key is null)
         {
-            logger.LogWarning("intent classification unavailable: {Variable} is not set; every turn proceeds with no recognised intent",
+            logger.LogWarning("Jev unavailable: {Variable} is not set; intent classification, tool routing and the relevance judge " +
+                "proceed as if Jev had not answered (no recognised intent, nothing routed, no gate, fused order)",
                 EnvironmentVariable);
         }
     }

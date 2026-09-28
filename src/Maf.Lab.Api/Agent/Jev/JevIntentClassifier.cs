@@ -1,7 +1,4 @@
-using System.Diagnostics;
-using System.Net.Http.Json;
-using System.Text;
-using System.Text.Json;
+using Maf.Lab.Retrieval.Jev;
 using Microsoft.Extensions.Options;
 
 namespace Maf.Lab.Api.Agent.Jev;
@@ -15,7 +12,7 @@ namespace Maf.Lab.Api.Agent.Jev;
 public sealed class JevIntentClassifier(
     IHttpClientFactory http, JevCredential credential, IOptions<JevOptions> options, ILoggerFactory loggers) : IIntentClassifier
 {
-    public const string HttpClientName = "jev";
+    public const string HttpClientName = JevClient.HttpClientName;
     internal const string QuestionId = "intent";
     internal const string DomainQuestionId = "in_domain";
 
@@ -60,12 +57,12 @@ public sealed class JevIntentClassifier(
     };
 
     private readonly ILogger _logger = loggers.CreateLogger<JevIntentClassifier>();
+    private readonly JevClient _jev = new(http, credential, options);
 
     public async Task<IntentDecision> ClassifyAsync(string question, CancellationToken ct)
     {
         var o = options.Value;
-        var timeout = TimeSpan.FromSeconds(o.TimeoutSeconds);
-        if (timeout <= TimeSpan.Zero)
+        if (o.TimeoutSeconds <= 0)
         {
             return new IntentDecision(Intent.Other, Model: o.Model, Reason: "classification disabled");
         }
@@ -74,69 +71,39 @@ public sealed class JevIntentClassifier(
             return new IntentDecision(Intent.Other, Model: o.Model, Reason: "no key");
         }
 
-        var sw = Stopwatch.StartNew();
-        try
+        var questions = new Dictionary<string, object>
         {
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(timeout);
-            var call = AskAsync(question, o.Model, cts.Token);
-
-            // The token is the transport's cue to stop; the race is what the turn actually waits on, so a client that
-            // ignores cancellation delays the answer by the timeout and no longer.
-            if (await Task.WhenAny(call, Task.Delay(timeout, ct)) != call)
+            [QuestionId] = new JevChoiceQuestion(Instructions, Criteria),
+            [DomainQuestionId] = new JevNoulQuestion(Domain),
+        };
+        if (o.RouteDataTools)
+        {
+            // Same request, same state: each tool is described in its own question's instructions, never in the state
+            // — described in the state, they moved the intent and domain answers of 22 of 35 planning questions.
+            foreach (var (id, q) in DataToolRouter.Questions())
             {
-                Forget(call);
-                return Failed($"timed out after {o.TimeoutSeconds}s", o.Model, sw);
+                questions[id] = q;
             }
-            return Decide(await call, o, sw);
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            return Failed($"timed out after {o.TimeoutSeconds}s", o.Model, sw);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return Failed(ex.GetType().Name, o.Model, sw);
-        }
+        var outcome = await _jev.AskAsync(new JevState(question), questions, o.TimeoutSeconds, ct);
+        return outcome.Response is { } response
+            ? WithRoute(Decide(response, o, outcome.DurationMs), question, response, o)
+            : Failed(outcome.Failure ?? "no answer", o.Model, outcome.DurationMs);
     }
 
-    private async Task<(int Status, JevResponse? Body)> AskAsync(string question, string model, CancellationToken ct)
+    private IntentDecision Decide(JevResponse response, JevOptions o, double ms)
     {
-        var request = new JevRequest(model, new JevState(question),
-            new Dictionary<string, object>
-            {
-                [QuestionId] = new JevChoiceQuestion(Instructions, Criteria),
-                [DomainQuestionId] = new JevNoulQuestion(Domain),
-            });
-        // Buffered with a Content-Length rather than streamed chunked: the body is a few hundred bytes, and not every
-        // server in the path (the CI stub, for one) reads a chunked request.
-        using var content = new StringContent(JsonSerializer.Serialize(request, JevRequest.Json), Encoding.UTF8, "application/json");
-        using var response = await http.CreateClient(HttpClientName).PostAsync("v1/systemone", content, ct);
-        if (!response.IsSuccessStatusCode)
+        var model = response.Model ?? o.Model;
+        if (response.Answers?.GetValueOrDefault(QuestionId) is not { Choice: { } choice } answer)
         {
-            return ((int)response.StatusCode, null);
-        }
-        return ((int)response.StatusCode, await response.Content.ReadFromJsonAsync<JevResponse>(JevRequest.Json, ct));
-    }
-
-    private IntentDecision Decide((int Status, JevResponse? Body) result, JevOptions o, Stopwatch sw)
-    {
-        var ms = sw.Elapsed.TotalMilliseconds;
-        if (result.Body is null)
-        {
-            return Failed($"rejected ({result.Status})", o.Model, sw);
-        }
-        var model = result.Body.Model ?? o.Model;
-        if (result.Body.Answers?.GetValueOrDefault(QuestionId) is not { Choice: { } choice } answer)
-        {
-            return Failed("no answer", model, sw);
+            return Failed("no answer", model, ms);
         }
         if (!Intents.TryGetValue(choice, out var intent))
         {
-            return Unused(answer, result.Body.Answers.GetValueOrDefault(DomainQuestionId)?.Noul, model, ms,
+            return Unused(answer, response.Answers.GetValueOrDefault(DomainQuestionId)?.Noul, model, ms,
                 "answer is not one of the known intents");
         }
-        var inDomain = result.Body.Answers.GetValueOrDefault(DomainQuestionId)?.Noul;
+        var inDomain = response.Answers.GetValueOrDefault(DomainQuestionId)?.Noul;
         if (answer.Confidence is not { } confidence || confidence < o.MinConfidence)
         {
             return Unused(answer, inDomain, model, ms, $"low confidence ({answer.Confidence?.ToString("F2") ?? "none"})");
@@ -150,37 +117,48 @@ public sealed class JevIntentClassifier(
         return new IntentDecision(intent, choice, answer.Probabilities, confidence, model, ms, InDomain: inDomain);
     }
 
+    /// <summary>
+    /// Routing is a second reading of the same answer: only a data intent that was used can be routed, and anything the
+    /// router cannot pin down leaves the turn exactly as it would be without routing — with the reason kept.
+    /// </summary>
+    private IntentDecision WithRoute(IntentDecision decision, string question, JevResponse response, JevOptions o)
+    {
+        if (!o.RouteDataTools || response.Answers is null)
+        {
+            return decision;
+        }
+        if (DataToolRouter.Read(response.Answers) is not { } routing)
+        {
+            return decision with { RouteReason = "no routing answer" };
+        }
+        if (decision.Intent != Intent.Data)
+        {
+            return decision with { Routing = routing, RouteReason = $"intent is {decision.Intent}, not Data" };
+        }
+        var (route, reason) = DataToolRouter.Route(question, routing, o);
+        return decision with { Routing = routing, Route = route, RouteReason = reason };
+    }
+
     private IntentDecision Unused(JevAnswer answer, double? inDomain, string model, double ms, string reason)
     {
         _logger.LogDebug("intent classification not used: {Reason}", reason);
         return new IntentDecision(Intent.Other, answer.Choice, answer.Probabilities, answer.Confidence, model, ms, reason, inDomain);
     }
 
-    private IntentDecision Failed(string reason, string model, Stopwatch sw)
+    private IntentDecision Failed(string reason, string model, double ms)
     {
         // Never the question itself: no message content in logs.
         _logger.LogDebug("intent classification failed: {Reason}", reason);
-        return new IntentDecision(Intent.Other, Model: model, DurationMs: sw.Elapsed.TotalMilliseconds, Reason: reason);
+        return new IntentDecision(Intent.Other, Model: model, DurationMs: ms, Reason: reason);
     }
-
-    /// <summary>Keeps an abandoned call from surfacing as an unobserved exception.</summary>
-    private static void Forget(Task task) => _ = task.ContinueWith(static t => _ = t.Exception, TaskScheduler.Default);
 }
 
 public static class JevServiceCollectionExtensions
 {
-    /// <summary>Jev as the intent classifier: options, the credential, and a named client that alone carries the key.</summary>
+    /// <summary>Jev as the intent classifier: the shared Jev client (options, the credential, the one keyed client) and the classifier.</summary>
     public static IServiceCollection AddJevIntentClassifier(this IServiceCollection services, IConfiguration configuration)
     {
-        services.Configure<JevOptions>(configuration.GetSection(JevOptions.Section));
-        services.AddSingleton<JevCredential>();
-        services.AddTransient<JevAuthHandler>();
-        services.AddHttpClient(JevIntentClassifier.HttpClientName, (sp, client) =>
-            {
-                var endpoint = sp.GetRequiredService<IOptions<JevOptions>>().Value.Endpoint;
-                client.BaseAddress = new Uri(endpoint.TrimEnd('/') + "/");
-            })
-            .AddHttpMessageHandler<JevAuthHandler>();
+        services.AddJevClient(configuration);
         services.AddSingleton<IIntentClassifier, JevIntentClassifier>();
         return services;
     }

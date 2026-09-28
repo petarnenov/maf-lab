@@ -26,12 +26,15 @@ public sealed class RetrievalSuite
         {
             double r5 = 0, r20 = 0, mrr = 0, silent = 0;
             var failures = new List<EvalCaseFailure>();
+            var judge = new JudgeTally();
             // Per language, so a suite passing overall cannot hide a language that retrieves nothing useful.
             var byLanguage = new Dictionary<string, (double Recall5, int Count)>(StringComparer.OrdinalIgnoreCase);
             foreach (var c in cases)
             {
-                var ranked = (await variant.Search.RankAsync(EvalAgentHost.EvalPrincipal(c.FirmId), c.Query, null, 20, variant.Settings, ct))
+                var diagnostics = new SearchDiagnostics { Branches = false };
+                var ranked = (await variant.Search.RankAsync(EvalAgentHost.EvalPrincipal(c.FirmId), c.Query, null, 20, variant.Settings, ct, diagnostics))
                     .Select(r => r.Chunk.ChunkId).ToList();
+                judge.Add(c.Id, diagnostics.Relevance, offDomain: false);
                 var relevant = c.RelevantChunkIds.ToHashSet();
                 var caseR5 = Metrics.RecallAtK(ranked, relevant, 5);
                 r5 += caseR5;
@@ -49,7 +52,9 @@ public sealed class RetrievalSuite
             // handful of unrelated chunks that will be cited under "we have no documentation on that".
             foreach (var c in offDomain)
             {
-                var ranked = await variant.Search.RankAsync(EvalAgentHost.EvalPrincipal(c.FirmId), c.Query, null, 20, variant.Settings, ct);
+                var diagnostics = new SearchDiagnostics { Branches = false };
+                var ranked = await variant.Search.RankAsync(EvalAgentHost.EvalPrincipal(c.FirmId), c.Query, null, 20, variant.Settings, ct, diagnostics);
+                judge.Add(c.Id, diagnostics.Relevance, offDomain: true);
                 if (ranked.Count == 0)
                 {
                     silent++;
@@ -79,8 +84,62 @@ public sealed class RetrievalSuite
                 .Select(m => $"{m.Key}={m.Value:0.###}"));
             var silence = metrics.TryGetValue("offDomainSilence", out var q) ? $" off-domain-silence={q:0.###} ({offDomain.Count})" : "";
             ctx.Progress($"retrieval {variant.Name}: recall@5={metrics["recall@5"]:0.###} recall@20={metrics["recall@20"]:0.###} mrr={metrics["mrr"]:0.###}{silence} {perLanguage}".TrimEnd());
+            foreach (var line in judge.Describe(variant.Name))
+            {
+                ctx.Progress(line);
+            }
         }
         return results;
+    }
+
+    /// <summary>
+    /// What the relevance judge did over one variant's run, kept out of the metrics on purpose: a judge that timed out
+    /// or was rejected leaves the search ungated, so an outage would otherwise read as a quality result. Also the margin
+    /// the floor sits in — the highest off-domain maximum against the lowest in-domain ones.
+    /// </summary>
+    private sealed class JudgeTally
+    {
+        private readonly List<(string Id, double Max, bool OffDomain)> _answered = [];
+        private readonly Dictionary<string, int> _failures = new(StringComparer.Ordinal);
+        private readonly List<double> _durations = [];
+
+        public void Add(string caseId, System.Text.Json.Nodes.JsonObject? relevance, bool offDomain)
+        {
+            if (relevance is null)
+            {
+                return;
+            }
+            _durations.Add(relevance["durationMs"]?.GetValue<double>() ?? 0);
+            if (relevance["reason"]?.GetValue<string>() is { } reason)
+            {
+                // "timed out after 2s" and "rejected (503)" are what an outage looks like; count them by kind.
+                var kind = reason.StartsWith("timed out", StringComparison.Ordinal) ? "timeout" : reason;
+                _failures[kind] = _failures.GetValueOrDefault(kind) + 1;
+                return;
+            }
+            if (relevance["max"]?.GetValue<double>() is { } max)
+            {
+                _answered.Add((caseId, max, offDomain));
+            }
+        }
+
+        public IEnumerable<string> Describe(string variant)
+        {
+            if (_durations.Count == 0)
+            {
+                yield break;
+            }
+            var sorted = _durations.Order().ToList();
+            var failed = _failures.Count == 0 ? "none" : string.Join(", ", _failures.Select(f => $"{f.Key} ×{f.Value}"));
+            yield return $"retrieval {variant}: relevance judge {sorted.Count} request(s), p50 {sorted[sorted.Count / 2]:0} ms, max {sorted[^1]:0} ms; failures: {failed}";
+            var off = _answered.Where(a => a.OffDomain).OrderByDescending(a => a.Max).ToList();
+            var inDomain = _answered.Where(a => !a.OffDomain).OrderBy(a => a.Max).ToList();
+            if (off.Count > 0 && inDomain.Count > 0)
+            {
+                yield return $"retrieval {variant}: relevance max — off-domain highest {string.Join(", ", off.Take(3).Select(a => $"{a.Id}={a.Max:0.00}"))}; " +
+                    $"in-domain lowest {string.Join(", ", inDomain.Take(6).Select(a => $"{a.Id}={a.Max:0.00}"))}";
+            }
+        }
     }
 
     /// <summary>
@@ -88,18 +147,33 @@ public sealed class RetrievalSuite
     /// production does; a calibration sweep overrides them per run.
     /// </summary>
     public static IReadOnlyList<RetrievalVariant> DefaultVariants(DocumentSearchService search, string denseVector, bool rerank,
-        float? denseFloor = null, float? sparseFloor = null)
+        float? denseFloor = null, float? sparseFloor = null, bool relevanceGate = false, IReadOnlyList<string>? rerankers = null,
+        string? productionReranker = null)
     {
+        // "hybrid" is what production does: its floors, its gate and, when it reranks, its reranker.
+        var hybrid = new SearchSettings(RetrievalModes.Hybrid, FusionModes.Rrf, denseVector, productionReranker is not null, denseFloor, sparseFloor,
+            relevanceGate, productionReranker);
         var list = new List<RetrievalVariant>
         {
-            new("hybrid", new SearchSettings(RetrievalModes.Hybrid, FusionModes.Rrf, denseVector, false, denseFloor, sparseFloor), search, true),
+            new("hybrid", hybrid, search, true),
+            // The gate the other way round from production, so every run shows what it changes.
+            new(relevanceGate ? "hybrid-nogate" : "hybrid+gate", hybrid with { RelevanceGate = !relevanceGate }, search, false),
             new("hybrid-dbsf", new SearchSettings(RetrievalModes.Hybrid, FusionModes.Dbsf, denseVector, false, denseFloor, sparseFloor), search, false),
             new("dense", new SearchSettings(RetrievalModes.Dense, FusionModes.Rrf, denseVector, false, denseFloor, sparseFloor), search, false),
             new("sparse", new SearchSettings(RetrievalModes.Sparse, FusionModes.Rrf, denseVector, false, denseFloor, sparseFloor), search, false),
         };
+        if (productionReranker is not null)
+        {
+            // What the reranker adds, measured every run.
+            list.Add(new("hybrid-norerank", hybrid with { Rerank = false, Reranker = null }, search, false));
+        }
         if (rerank)
         {
-            list.Add(new("hybrid+rerank", new SearchSettings(RetrievalModes.Hybrid, FusionModes.Rrf, denseVector, true, denseFloor, sparseFloor), search, false));
+            // One variant per reranker, gated as production is, so each compares directly with "hybrid".
+            foreach (var kind in rerankers ?? [RerankerKinds.Llm, RerankerKinds.Jev])
+            {
+                list.Add(new($"hybrid+rerank-{kind}", hybrid with { Rerank = true, Reranker = kind }, search, false));
+            }
         }
         return list;
     }

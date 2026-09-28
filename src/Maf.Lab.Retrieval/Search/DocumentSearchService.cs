@@ -17,8 +17,10 @@ namespace Maf.Lab.Retrieval.Search;
 /// <summary>Per-call overrides used by the eval harness to compare retrieval configurations.</summary>
 /// <param name="DenseFloor">Lowest dense score a candidate may have and still count. Null leaves the branch unfiltered.</param>
 /// <param name="SparseFloor">The same for the sparse branch. Dense and sparse are different scales, so never one value.</param>
+/// <param name="RelevanceGate">Ask Jev whether any fused candidate addresses the query, and return nothing when none does.</param>
+/// <param name="Reranker">Which reranker <paramref name="Rerank"/> uses (<see cref="RerankerKinds"/>); null means the configured one.</param>
 public sealed record SearchSettings(string Mode, string Fusion, string DenseVector, bool Rerank,
-    float? DenseFloor = null, float? SparseFloor = null);
+    float? DenseFloor = null, float? SparseFloor = null, bool RelevanceGate = false, string? Reranker = null);
 
 public sealed record SearchOutcome(SearchDocumentsResult Result, IReadOnlyList<ScoredChunk> Chunks);
 
@@ -26,7 +28,8 @@ public sealed partial class DocumentSearchService(
     TenantScopedSearch search,
     IDenseEncoder dense,
     Bm25Store bm25,
-    IReranker reranker,
+    IEnumerable<IReranker> rerankers,
+    IRelevanceJudge judge,
     IQueryTranslator translator,
     IOptions<RetrievalOptions> options,
     IOptions<ModelOptions> models,
@@ -36,7 +39,7 @@ public sealed partial class DocumentSearchService(
     private readonly RetrievalOptions _options = options.Value;
 
     public SearchSettings DefaultSettings => new(_options.Mode, _options.Fusion, _options.DenseVector, _options.RerankEnabled,
-        _options.DenseFloorFor(models.Value, _options.DenseVector), _options.SparseFloor);
+        _options.DenseFloorFor(models.Value, _options.DenseVector), _options.SparseFloor, _options.RelevanceGateEnabled, _options.Reranker);
 
     public async Task<SearchOutcome> SearchAsync(
         Principal principal, string query, IReadOnlyList<string>? sourceTypes, int? maxResults, SearchSettings? settings, CancellationToken ct,
@@ -63,8 +66,8 @@ public sealed partial class DocumentSearchService(
             ? "No matching documentation. Rephrase as a question about a procedure, policy or term, or remove the sourceTypes filter."
             : truncated ? "More matches exist; narrow the query or filter by sourceTypes to see them." : null;
 
-        logger.LogInformation("search_documents mode={Mode} fusion={Fusion} rerank={Rerank} candidates={Candidates} returned={Returned} ms={Elapsed}",
-            settings.Mode, settings.Fusion, settings.Rerank, candidates.Count, top.Count, sw.ElapsedMilliseconds);
+        logger.LogInformation("search_documents mode={Mode} fusion={Fusion} rerank={Rerank} gate={Gate} candidates={Candidates} returned={Returned} ms={Elapsed}",
+            settings.Mode, settings.Fusion, settings.Rerank, settings.RelevanceGate, candidates.Count, top.Count, sw.ElapsedMilliseconds);
 
         var result = new SearchDocumentsResult(
             top.Select(c => new DocumentSnippet(Snippet(c.Chunk.Text), c.Chunk.SourcePath, c.Chunk.SectionPath, Math.Round(c.Score, 4), c.Chunk.UpdatedAt, c.Chunk.DocId)).ToList(),
@@ -121,12 +124,34 @@ public sealed partial class DocumentSearchService(
         var qdrantMs = clock.ElapsedMilliseconds;
 
         IReadOnlyList<ScoredChunk> ranked = candidates;
-        long rerankMs = 0;
-        if (settings.Rerank)
+        var rerankerKind = settings.Reranker ?? _options.Reranker;
+        var reranker = settings.Rerank ? rerankers.FirstOrDefault(r => r.Kind == rerankerKind) : null;
+
+        // One question to Jev per search, shared by the gate and the Jev reranker. The gate reads only the maximum —
+        // the stable part of Jev's answer — and decides whether the corpus answers at all, never which chunks.
+        RelevanceJudgement? judgement = null;
+        var silenced = false;
+        long relevanceMs = 0;
+        if ((settings.RelevanceGate || reranker is JevReranker) && candidates.Count > 0)
         {
             clock.Restart();
-            ranked = await LabTelemetry.InSpanAsync("retrieval.rerank",
-                () => reranker.RerankAsync(searchedQuery, candidates, ct));
+            judgement = await LabTelemetry.InSpanAsync("retrieval.relevance",
+                () => judge.JudgeAsync(searchedQuery, candidates, ct));
+            relevanceMs = clock.ElapsedMilliseconds;
+            silenced = settings.RelevanceGate && judgement.Max is { } max && max < _options.RelevanceFloor;
+        }
+
+        long rerankMs = 0;
+        if (silenced)
+        {
+            ranked = [];
+        }
+        else if (reranker is not null)
+        {
+            clock.Restart();
+            ranked = reranker is JevReranker
+                ? JevReranker.Order(candidates, judgement)
+                : await LabTelemetry.InSpanAsync("retrieval.rerank", () => reranker.RerankAsync(searchedQuery, candidates, ct));
             rerankMs = clock.ElapsedMilliseconds;
         }
 
@@ -134,9 +159,13 @@ public sealed partial class DocumentSearchService(
         LabTelemetry.Instruments.RetrievalStage.Record(embedMs, new KeyValuePair<string, object?>("stage", "embed"));
         LabTelemetry.Instruments.RetrievalStage.Record(sparseMs, new KeyValuePair<string, object?>("stage", "sparse_encode"));
         LabTelemetry.Instruments.RetrievalStage.Record(qdrantMs, new KeyValuePair<string, object?>("stage", "query"));
-        if (settings.Rerank)
+        if (reranker is not null)
         {
             LabTelemetry.Instruments.RetrievalStage.Record(rerankMs, new KeyValuePair<string, object?>("stage", "rerank"));
+        }
+        if (judgement is not null)
+        {
+            LabTelemetry.Instruments.RetrievalStage.Record(relevanceMs, new KeyValuePair<string, object?>("stage", "relevance"));
         }
 
         if (diagnostics is not null)
@@ -151,6 +180,8 @@ public sealed partial class DocumentSearchService(
             diagnostics.Settings["candidateLimit"] = k;
             diagnostics.Settings["prefetchLimit"] = request.PrefetchLimit;
             diagnostics.Settings["rerank"] = settings.Rerank;
+            diagnostics.Settings["reranker"] = settings.Rerank ? rerankerKind : null;
+            diagnostics.Settings["relevanceGate"] = settings.RelevanceGate;
             diagnostics.Settings["denseFloor"] = settings.DenseFloor;
             diagnostics.Settings["sparseFloor"] = settings.SparseFloor;
             diagnostics.Settings["sourceTypes"] = sourceTypes is null ? null : new System.Text.Json.Nodes.JsonArray(sourceTypes.Select(t => (System.Text.Json.Nodes.JsonNode)System.Text.Json.Nodes.JsonValue.Create(t)!).ToArray());
@@ -170,9 +201,15 @@ public sealed partial class DocumentSearchService(
             diagnostics.Query["denseDims"] = denseVector?.Length;
             diagnostics.Fused = SearchDiagnostics.Candidates(candidates);
             diagnostics.Rerank = settings.Rerank ? new System.Text.Json.Nodes.JsonArray(ranked.Select(c => (System.Text.Json.Nodes.JsonNode)System.Text.Json.Nodes.JsonValue.Create(c.Chunk.ChunkId)!).ToArray()) : null;
+            diagnostics.Relevance = judgement is null ? null : SearchDiagnostics.RelevanceOf(judgement, candidates, settings.RelevanceGate, _options.RelevanceFloor, silenced);
 
             long branchMs = 0;
-            if (_options.TraceBranches && settings.Mode == RetrievalModes.Hybrid)
+            if (!diagnostics.Branches)
+            {
+                // The caller wants what the search did, not the monitor's picture of each branch (the eval, counting
+                // judge failures), so the branches are not queried again.
+            }
+            else if (_options.TraceBranches && settings.Mode == RetrievalModes.Hybrid)
             {
                 // Per-branch lists go through the same tenant-scoped query path, but without the floors: the
                 // operator needs to see the near misses the answer was denied, not the same list the model got.
@@ -207,6 +244,7 @@ public sealed partial class DocumentSearchService(
             diagnostics.Timings["sparseEncodeMs"] = sparseMs;
             diagnostics.Timings["qdrantMs"] = qdrantMs;
             diagnostics.Timings["rerankMs"] = rerankMs;
+            diagnostics.Timings["relevanceMs"] = relevanceMs;
             diagnostics.Timings["branchQueriesMs"] = branchMs;
         }
         return ranked;

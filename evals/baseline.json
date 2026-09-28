@@ -48,34 +48,52 @@
     "retrieval": {
       "metrics": {
         "dense": {
-          "mrr": 0.6704,
+          "mrr": 0.6662,
           "offDomainSilence": 0.6667,
           "recall@20": 0.8676,
-          "recall@5": 0.7306,
-          "recall@5:bg": 0.7986,
+          "recall@5": 0.7237,
+          "recall@5:bg": 0.7778,
           "recall@5:bg-latn": 0.5972,
           "recall@5:en": 0.7933
         },
         "hybrid": {
-          "mrr": 0.6323,
-          "offDomainSilence": 0.3333,
-          "recall@20": 0.879,
-          "recall@5": 0.7032,
-          "recall@5:bg": 0.7778,
-          "recall@5:bg-latn": 0.6181,
-          "recall@5:en": 0.7133
+          "mrr": 0.7639,
+          "offDomainSilence": 1,
+          "recall@20": 0.8653,
+          "recall@5": 0.7717,
+          "recall@5:bg": 0.8264,
+          "recall@5:bg-latn": 0.6944,
+          "recall@5:en": 0.7933
         },
         "hybrid-dbsf": {
-          "mrr": 0.6096,
+          "mrr": 0.6098,
           "offDomainSilence": 0.3333,
-          "recall@20": 0.8653,
+          "recall@20": 0.8584,
           "recall@5": 0.6689,
           "recall@5:bg": 0.7153,
           "recall@5:bg-latn": 0.6181,
           "recall@5:en": 0.6733
         },
+        "hybrid-nogate": {
+          "mrr": 0.777,
+          "offDomainSilence": 0.3333,
+          "recall@20": 0.8653,
+          "recall@5": 0.7648,
+          "recall@5:bg": 0.8264,
+          "recall@5:bg-latn": 0.6736,
+          "recall@5:en": 0.7933
+        },
+        "hybrid-norerank": {
+          "mrr": 0.6331,
+          "offDomainSilence": 1,
+          "recall@20": 0.8653,
+          "recall@5": 0.6963,
+          "recall@5:bg": 0.7569,
+          "recall@5:bg-latn": 0.6181,
+          "recall@5:en": 0.7133
+        },
         "sparse": {
-          "mrr": 0.3271,
+          "mrr": 0.3274,
           "offDomainSilence": 0.5,
           "recall@20": 0.6279,
           "recall@5": 0.3516,
@@ -84,8 +102,8 @@
           "recall@5:en": 0.4333
         }
       },
-      "acceptedFrom": "20260928-142922-retrieval",
-      "acceptedAt": "2026-09-28T14:30:10.767422+00:00"
+      "acceptedFrom": "20260928-173600-retrieval",
+      "acceptedAt": "2026-09-28T17:38:17.560566+00:00"
     },
     "selection": {
       "metrics": {

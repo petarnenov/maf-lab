@@ -93,12 +93,18 @@ public sealed class ChatTurnRunner(
             chatOptions.Tools = [.. tools.Tools];
             decision = await intents.ClassifyAsync(message, ct);
             forced = IntentClassifier.ForcesRetrieval(decision.Intent) && tools.Names.Contains("search_documents");
-            chatOptions.ToolMode = forced ? ChatToolMode.RequireSpecific("search_documents") : ChatToolMode.Auto;
+            // A data turn Jev routed to a read tool this server offers: the call is issued without the model's first
+            // call. Never a write — the router has no write to offer.
+            var route = !forced && decision.Route is { } r && tools.Names.Contains(r.Tool) ? r : null;
+            chatOptions.ToolMode = forced ? ChatToolMode.RequireSpecific("search_documents")
+                : route is not null ? ChatToolMode.RequireSpecific(route.Tool)
+                : ChatToolMode.Auto;
             var outside = decision.Reason?.StartsWith("outside the domain", StringComparison.Ordinal) == true
                 ? $", outside the domain {decision.InDomain ?? 0:F2}"
                 : "";
             var jev = decision.Confidence is { } confidence ? $" (jev {confidence:F2}{outside}, {decision.DurationMs:F0} ms)" : "";
-            trace.Add(TraceKinds.Intent, $"Intent {decision.Intent}{jev}{(forced ? " → forcing search_documents" : "")}", new JsonObject
+            var routed = route is null ? "" : $" → routing {route.Tool} (jev {route.Probability:F2})";
+            trace.Add(TraceKinds.Intent, $"Intent {decision.Intent}{jev}{(forced ? " → forcing search_documents" : "")}{routed}", new JsonObject
             {
                 ["intent"] = decision.Intent.ToString(),
                 ["forcedRetrieval"] = forced,
@@ -112,6 +118,7 @@ public sealed class ChatTurnRunner(
                 ["model"] = decision.Model,
                 ["durationMs"] = decision.DurationMs,
                 ["reason"] = decision.Reason,
+                ["routing"] = Routing(decision, route),
             });
             trace.Add(TraceKinds.Prompt, $"System prompt {prompt.Version} + {tools.Tools.Count} tool(s)", new JsonObject
             {
@@ -132,16 +139,19 @@ public sealed class ChatTurnRunner(
                 reasoning.Flush();
                 chunker.Flush();
             });
-            if (options.Value.EmulateRequiredToolMode)
+            if (options.Value.EmulateRequiredToolMode || route is not null)
             {
                 chatClient = new RequiredToolModeChatClient(chatClient, call => trace.Add(TraceKinds.ToolForced,
-                    $"Forced {call.Name} issued on the model's behalf", new JsonObject
+                    call.Name == route?.Tool ? $"Routed {call.Name} issued on the model's behalf" : $"Forced {call.Name} issued on the model's behalf",
+                    new JsonObject
                     {
                         ["callId"] = call.CallId,
                         ["tool"] = call.Name,
                         ["arguments"] = TraceMapping.Node(call.Arguments),
-                        ["reason"] = "Procedural intent requires retrieval; the provider ignores tool_choice, so the call is issued without asking the model.",
-                    }));
+                        ["reason"] = call.Name == route?.Tool
+                            ? $"Data intent routed by Jev ({route.Tool} {route.Probability:F2}); the call is issued without asking the model which tool to use."
+                            : "Procedural intent requires retrieval; the provider ignores tool_choice, so the call is issued without asking the model.",
+                    }), route);
             }
 
             var agent = new ChatClientAgent(
@@ -245,6 +255,29 @@ public sealed class ChatTurnRunner(
         {
             Proposal = state.Proposal,
             ProposalQuestion = state.Interrupt?.Message,
+        };
+    }
+
+    /// <summary>
+    /// Jev's routing answer as the trace shows it: each tool's probability, the status asked about, and the call issued
+    /// or why none was. Null when routing is off or Jev gave no routing answer at all.
+    /// </summary>
+    private static JsonObject? Routing(IntentDecision decision, Jev.ToolRoute? route)
+    {
+        if (decision.Routing is null && decision.RouteReason is null)
+        {
+            return null;
+        }
+        return new JsonObject
+        {
+            ["tools"] = decision.Routing is { } r
+                ? new JsonObject(r.Tools.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value)))
+                : null,
+            ["status"] = decision.Routing?.Status,
+            ["statusConfidence"] = decision.Routing?.StatusConfidence,
+            ["routedTool"] = route?.Tool,
+            ["arguments"] = route is null ? null : TraceMapping.Node(route.Arguments),
+            ["reason"] = route is null ? decision.RouteReason ?? (decision.Route is { } unoffered ? $"{unoffered.Tool} is not offered" : null) : null,
         };
     }
 

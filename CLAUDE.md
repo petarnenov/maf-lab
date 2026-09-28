@@ -14,7 +14,8 @@ Non-negotiables while editing:
 - If a package version must move, update DECISIONS.md in the same commit.
 
 Chat model: `gpt-oss:120b` on Ollama Cloud — needs `OLLAMA_API_KEY` in the environment.
-Intent classifier: TypeSafe Jev (`jev-1.13.0`), the only one — needs `JEV_MAF_LAB` in the environment,
+Intent classifier: TypeSafe Jev (`jev-1.13.0`), the only one; the same key routes data turns (api) and judges search
+relevance (mcp-retrieval) — needs `JEV_MAF_LAB` in the environment,
 sent only as the bearer header; never put it in a prompt, state, trace or log.
 Embeddings: local Ollama, one multilingual model (`embeddinggemma`, vector `dense_v3`). Changing it = new profile + `make rebuild-index FORCE=1`.
 

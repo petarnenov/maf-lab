@@ -34,6 +34,9 @@ public sealed class QdrantFixture : IAsyncLifetime
         ["Qdrant:Collection"] = collection,
         ["Qdrant:MetaCollection"] = collection + "_meta",
         ["Indexing:CorpusRoot"] = corpusRoot,
+        // A developer's Jev key in the environment must never turn a test into a call to the real endpoint: the
+        // hosted retrieval server reads environment variables, and this in-memory value is added after them.
+        ["JEV_MAF_LAB"] = "",
     };
 
     /// <summary>Indexing + retrieval services wired to the container with the deterministic fake embedder.</summary>
