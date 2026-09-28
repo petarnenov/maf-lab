@@ -69,4 +69,4 @@
 ## 8. Verify
 
 - [x] 8.1 `make test`, `make lint`.
-- [ ] 8.2 `make` on the live stack: portfolio indexed, both servers healthy, a crossing question traced end to end.
+- [x] 8.2 `make` on the live stack: portfolio indexed, both servers healthy, a crossing question traced end to end.

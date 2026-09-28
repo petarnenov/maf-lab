@@ -232,7 +232,8 @@ export function ChatPage() {
             {!loadingConversation && state.turns.length === 0 && (
               <p className={styles.empty}>
                 Ask a procedural question, e.g. “What is the procedure when a fee schedule is
-                missing?”
+                missing?” — or one that crosses into the portfolio domain: “Why did the fee on
+                A-1042 go up this quarter? Did its AUM cross a tier?”
               </p>
             )}
             {!loadingConversation &&
@@ -277,7 +278,7 @@ export function ChatPage() {
             aria-label="Message"
             value={draft}
             rows={2}
-            placeholder="Ask about billing procedures, runs, or fee schedules…"
+            placeholder="Ask about billing or portfolios: procedures, runs, fees, holdings, AUM…"
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) submit(e);
