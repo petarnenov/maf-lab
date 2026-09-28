@@ -515,3 +515,117 @@ export interface TelemetryReport {
   /** Where a turn's trace opens; the trace id is appended to it. */
   traceUrl: string | null;
 }
+
+// ---- Intent statistics ----
+
+/** Jev's answer was acted on, answered but overruled by a floor, or never usable. */
+export type IntentOutcome = 'used' | 'gated' | 'failed';
+
+export interface IntentStatsSettings {
+  model: string;
+  minConfidence: number;
+  minInDomain: number;
+  timeoutSeconds: number;
+}
+
+export interface IntentStatsTotals {
+  classified: number;
+  used: number;
+  gated: number;
+  failed: number;
+  forced: number;
+  /** Intent events from an earlier classifier in the window, left out of everything else. */
+  excludedEvents: number;
+}
+
+/** Counts along the edges of the classification pipeline. */
+export interface IntentPipelineCounts {
+  classified: number;
+  failed: number;
+  answered: number;
+  unknownChoice: number;
+  belowConfidence: number;
+  notForcingIntent: number;
+  forcingIntent: number;
+  outsideDomain: number;
+  forced: number;
+}
+
+export interface IntentReasonCount {
+  outcome: IntentOutcome;
+  label: string;
+  count: number;
+}
+
+export interface IntentChoiceCount {
+  /** Jev's raw choice, or 'none' when it gave no answer. */
+  choice: string;
+  /** The intent the turn proceeded with. */
+  intent: string;
+  count: number;
+}
+
+export interface IntentTimelineBucket {
+  start: string;
+  used: number;
+  gated: number;
+  failed: number;
+  timedOut: number;
+  p50Ms: number | null;
+  p90Ms: number | null;
+}
+
+export interface IntentProbabilityBin {
+  from: number;
+  to: number;
+  used: number;
+  gated: number;
+}
+
+export interface IntentPoint {
+  confidence: number;
+  inDomain: number;
+  outcome: IntentOutcome;
+  choice: string;
+}
+
+export interface IntentMeanProbability {
+  intent: string;
+  mean: number;
+  chosen: number;
+}
+
+export interface IntentLatencyBin {
+  fromMs: number;
+  /** Null for the overflow bin at and past the timeout. */
+  toMs: number | null;
+  count: number;
+}
+
+export interface IntentLatency {
+  count: number;
+  p50: number | null;
+  p90: number | null;
+  p99: number | null;
+  max: number | null;
+  bins: IntentLatencyBin[];
+}
+
+export interface IntentStatsReport {
+  window: string;
+  from: string;
+  to: string;
+  bucketMinutes: number;
+  settings: IntentStatsSettings;
+  totals: IntentStatsTotals;
+  pipeline: IntentPipelineCounts;
+  reasons: IntentReasonCount[];
+  choices: IntentChoiceCount[];
+  timeline: IntentTimelineBucket[];
+  confidence: IntentProbabilityBin[];
+  inDomain: IntentProbabilityBin[];
+  points: IntentPoint[];
+  meanProbabilities: IntentMeanProbability[];
+  latency: IntentLatency;
+  models: { model: string; count: number }[];
+}

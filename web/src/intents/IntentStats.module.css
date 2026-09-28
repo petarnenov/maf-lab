@@ -1,0 +1,350 @@
+/*
+ * Outcome colours are three categorical slots, validated as a set for all pairs on this app's surfaces (light #fff,
+ * dark #181c21): used = blue, gated = orange, failed = aqua. Light aqua sits below 3:1 on white, so every chart that
+ * uses it has a legend, hover values and a table beside it.
+ */
+.root {
+  --used: #2a78d6;
+  --gated: #eb6834;
+  --failed: #1baf7a;
+  --single: #2a78d6;
+  --grid: #e7eaef;
+  --axis-line: #c3c8d1;
+}
+
+@media (prefers-color-scheme: dark) {
+  .root {
+    --used: #3987e5;
+    --gated: #d95926;
+    --failed: #199e70;
+    --single: #3987e5;
+    --grid: #262c35;
+    --axis-line: #3a424e;
+  }
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.kpi {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: var(--surface);
+}
+
+.kpiLabel {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.kpiValue {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.kpiNote {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--surface);
+  min-width: 0;
+}
+
+.panelWide {
+  margin-bottom: 16px;
+}
+
+.panelTitle {
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.panelNote {
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin: 2px 0 8px;
+}
+
+.noData {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-style: italic;
+  margin: 8px 0 0;
+}
+
+.frame {
+  position: relative;
+}
+
+.chart {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+
+.diagram {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.tip {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  font-variant-numeric: tabular-nums;
+}
+
+.tipHead {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.legend {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 0 6px;
+  padding: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* ---- Marks ---- */
+
+.seriesUsed {
+  fill: var(--used);
+  color: var(--used);
+}
+
+.seriesGated {
+  fill: var(--gated);
+  color: var(--gated);
+}
+
+.seriesFailed {
+  fill: var(--failed);
+  color: var(--failed);
+}
+
+.seriesSingle {
+  fill: var(--single);
+  color: var(--single);
+}
+
+.hit {
+  fill: transparent;
+}
+
+.grid {
+  stroke: var(--grid);
+  stroke-width: 1;
+}
+
+.baseline {
+  stroke: var(--axis-line);
+  stroke-width: 1;
+}
+
+.axis {
+  fill: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.axisTitle {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.rowLabel {
+  fill: var(--text);
+  font-size: 12px;
+}
+
+.value {
+  fill: var(--text);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.threshold {
+  stroke: var(--text);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  opacity: 0.7;
+}
+
+.thresholdLabel {
+  fill: var(--text);
+  font-size: 10px;
+}
+
+.line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.dot {
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+/* ---- Pipeline diagram ---- */
+
+.node {
+  fill: var(--surface-2);
+  stroke: var(--border);
+}
+
+.nodeGoal {
+  fill: var(--surface-2);
+  stroke: var(--used);
+  stroke-width: 2;
+}
+
+.nodeTitle {
+  fill: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.nodeDetail {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.edge {
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+
+.arrowHead {
+  fill: var(--muted);
+}
+
+.edgeCount {
+  fill: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Choice matrix ---- */
+
+.matrix {
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.matrix th,
+.matrix td {
+  padding: 5px 8px;
+  text-align: center;
+  border: 2px solid var(--surface);
+}
+
+.matrix th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.matrix th[scope='row'] {
+  text-align: right;
+}
+
+.cell {
+  min-width: 52px;
+}
+
+.cellStrong {
+  color: #fff;
+}
+
+.tableSmall {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.tableSmall th,
+.tableSmall td {
+  text-align: left;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tableSmall th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.num {
+  text-align: right !important;
+}
+
+.swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+
+.details {
+  margin-top: 8px;
+  font-size: 0.8rem;
+}
+
+.details summary {
+  cursor: pointer;
+  color: var(--link);
+}

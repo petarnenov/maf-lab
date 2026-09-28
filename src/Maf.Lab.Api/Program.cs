@@ -122,6 +122,7 @@ public partial class Program
         app.MapHistory();
         app.MapTopology();
         app.MapCompliance();
+        app.MapIntentStats();
         app.MapA2AAdmin();
         app.MapA2ASurface();
         app.MapA2AProtocol();

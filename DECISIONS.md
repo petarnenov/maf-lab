@@ -1010,3 +1010,27 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
 - **Re-indexing a changed document deletes its points first** (§5 revised).
 - **Cost measured:** the four-model bake-off rebuild took 74 minutes; production rebuilds with one model.
 
+
+## 34. Jev's answers, in aggregate (add-intent-statistics, 2026-09-28)
+
+- **Why.** Every turn's `intent` event says what Jev answered, but only one turn at a time. TypeSafe was degraded
+  today (22–36 s calls, 503s), and each such turn quietly lost its forced search with `timed out after 2s` in a trace
+  nobody opened. `GET /api/admin/intent-stats?window=1h|24h|7d` and the `/admin/intents` screen ("Jev intents") show it
+  as a whole.
+- **Aggregated on the server, from the intent event only.** A turn's trace also holds its question, prompt and the
+  model's messages; parsing it in the browser would ship all of that. The API reads `(CreatedAt, Json)` of the
+  caller's firm's traces and returns numbers only — no text, no turn, conversation or user id. FIRM_ADMIN only, firm
+  from the token; no parameter names a firm. The window is bounded by trace retention (7 days).
+- **Three outcomes, from the reason the classifier writes.** *used* (no reason); *gated* — Jev answered and a floor or
+  the option list overruled it (`low confidence`, `outside the domain`, `unknown choice`); *failed* — no usable answer
+  (`timed out`, `rejected (NNN)` with its status kept, `no answer`, `no key`, `classification disabled`, an exception
+  name). An unrecognised reason is a failure under its own label, so it shows rather than vanishes.
+- **Jev only.** An event counts when its `model` starts with `jev-`; the live database still holds turns classified by
+  the rules, `gemma4:31b` and `gpt-oss:120b`, which are reported only as "left out".
+- **No chart library.** Stacked columns, histograms with a floor, a scatter, lines and bars are each a few dozen lines
+  of SVG, like the evals trend already is; a library would be the first runtime dependency for one screen and would
+  still need theming to the app's tokens. No package added or moved. Outcome colours are three categorical slots
+  (blue, orange, aqua) validated all-pairs for colour-vision deficiency on both surfaces; light aqua is under 3:1 on
+  white, so those charts carry legends, hover values and a table.
+- **Not linked to traces.** A chart point cannot open its turn: the trace endpoint serves a turn to its owner, or to an
+  admin only when it is in the review queue, so most links would 404.
