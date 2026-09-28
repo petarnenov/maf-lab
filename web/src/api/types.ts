@@ -632,3 +632,131 @@ export interface IntentStatsReport {
   latency: IntentLatency;
   models: { model: string; count: number }[];
 }
+
+// ---- Jev overview (every call site) ----
+
+export interface JevStatsSettings {
+  model: string;
+  guardEnabled: boolean;
+  promptBlockAt: number;
+  contentWithholdAt: number;
+  crossTenantAt: number;
+  relevanceFloor: number | null;
+}
+
+export interface JevSiteSummary {
+  site: string;
+  requests: number;
+  unavailable: number;
+  p50Ms: number | null;
+  p90Ms: number | null;
+}
+
+export interface JevAvailabilityBucket {
+  start: string;
+  requests: number;
+  unavailable: number;
+}
+
+export interface JevOverview {
+  settings: JevStatsSettings;
+  requests: number;
+  unavailable: number;
+  turns: number;
+  requestsPerTurn: number | null;
+  sites: JevSiteSummary[];
+  timeline: JevAvailabilityBucket[];
+}
+
+export interface GuardrailCheckCount {
+  check: string;
+  total: number;
+  pass: number;
+  blocked: number;
+  withheld: number;
+  unscreened: number;
+}
+
+export interface GuardrailQuestionCount {
+  question: string;
+  /** blocked or withheld. */
+  decision: string;
+  count: number;
+}
+
+export interface GuardrailTimelineBucket {
+  start: string;
+  screened: number;
+  blocked: number;
+  withheld: number;
+  unscreened: number;
+}
+
+export interface GuardrailStats {
+  checks: GuardrailCheckCount[];
+  trippedBy: GuardrailQuestionCount[];
+  screened: number;
+  blocked: number;
+  withheld: number;
+  unscreened: number;
+  latency: IntentLatency;
+  timeline: GuardrailTimelineBucket[];
+}
+
+export interface RelevanceMaxBin {
+  from: number;
+  to: number;
+  kept: number;
+  gated: number;
+}
+
+export interface RelevanceTimelineBucket {
+  start: string;
+  searches: number;
+  gated: number;
+  unavailable: number;
+}
+
+export interface RelevanceStats {
+  floor: number | null;
+  searches: number;
+  gated: number;
+  reranked: number;
+  unavailable: number;
+  maxHistogram: RelevanceMaxBin[];
+  latency: IntentLatency;
+  timeline: RelevanceTimelineBucket[];
+}
+
+export interface RoutingToolCount {
+  tool: string;
+  count: number;
+}
+
+export interface RoutingReasonCount {
+  reason: string;
+  count: number;
+}
+
+export interface RoutingStats {
+  enabled: boolean;
+  dataTurns: number;
+  routed: number;
+  tools: RoutingToolCount[];
+  notRoutedReasons: RoutingReasonCount[];
+  modelCallsRoutedMedian: number | null;
+  modelCallsUnroutedMedian: number | null;
+  latency: IntentLatency;
+}
+
+export interface JevStatsReport {
+  window: string;
+  from: string;
+  to: string;
+  bucketMinutes: number;
+  overview: JevOverview;
+  intent: IntentStatsReport;
+  guardrail: GuardrailStats;
+  relevance: RelevanceStats;
+  routing: RoutingStats;
+}

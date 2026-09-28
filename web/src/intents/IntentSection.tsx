@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import type {
   EvalReportSummary,
   IntentChoiceCount,
@@ -15,13 +15,6 @@ import styles from './IntentStats.module.css';
 import { PipelineDiagram } from './PipelineDiagram';
 import { bucketLabel, formatMs, percent } from './scale';
 
-/** The windows the server will answer for; trace retention is seven days, so nothing longer exists. */
-const WINDOWS: { id: string; label: string }[] = [
-  { id: '1h', label: 'Last hour' },
-  { id: '24h', label: 'Last 24 hours' },
-  { id: '7d', label: 'Last 7 days' },
-];
-
 const OUTCOMES: Record<IntentOutcome, Series> = {
   used: { label: 'used', className: styles.seriesUsed },
   gated: { label: 'gated', className: styles.seriesGated },
@@ -31,74 +24,10 @@ const OUTCOMES: Record<IntentOutcome, Series> = {
 const INTENTS = ['procedural', 'mixed', 'data', 'chitchat', 'other'];
 
 /**
- * How the intent classifier behaved on this firm's turns: what Jev answered, what the floors did with it, how fast it
- * was, and how its offline eval has moved. Aggregates only — no question or answer is on this screen.
+ * The intent section: what Jev answered on this firm's turns, what the floors did with it, and how fast it was.
+ * A pure view of one {@link IntentStatsReport}; the Jev overview page feeds it `report.intent`.
  */
-export function IntentStatsPage() {
-  const { session } = useAuth();
-  const api = useApi();
-  const [window, setWindow] = useState('24h');
-
-  const stats = useQuery({
-    queryKey: ['admin', 'intent-stats', window, session?.token],
-    queryFn: () => api<IntentStatsReport>(`/api/admin/intent-stats?window=${window}`),
-    enabled: !!session,
-    refetchInterval: 60_000,
-  });
-
-  const period = WINDOWS.find((w) => w.id === window)?.label ?? window;
-  const r = stats.data;
-
-  return (
-    <div className={`${page.page} ${styles.root}`}>
-      <h1 className={page.heading}>Jev intents</h1>
-      <p className={page.muted}>
-        What TypeSafe&apos;s Jev answered for every chat turn of your firm, what the floors did with
-        it, and how fast it was. Numbers only: no question or answer is shown here.
-      </p>
-
-      <div className={styles.controls}>
-        <label>
-          Period{' '}
-          <select aria-label="Period" value={window} onChange={(e) => setWindow(e.target.value)}>
-            {WINDOWS.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        {r && (
-          <span className={page.muted}>
-            {r.settings.model} · confidence floor {r.settings.minConfidence} · in-domain floor{' '}
-            {r.settings.minInDomain} · timeout {r.settings.timeoutSeconds}s
-          </span>
-        )}
-      </div>
-
-      {stats.isLoading && <p className={page.muted}>Loading the numbers…</p>}
-      {stats.isError && (
-        <p className={page.error} role="alert">
-          Could not load the intent statistics.
-        </p>
-      )}
-
-      {r && r.totals.classified === 0 && (
-        <p className={styles.noData}>
-          No turn was classified by Jev in this period ({period.toLowerCase()}).
-          {r.totals.excludedEvents > 0 &&
-            ` ${r.totals.excludedEvents} turn(s) were classified by an earlier classifier and are left out.`}
-        </p>
-      )}
-
-      {r && r.totals.classified > 0 && <Stats r={r} period={period} />}
-
-      <EvalHistory />
-    </div>
-  );
-}
-
-function Stats({ r, period }: { r: IntentStatsReport; period: string }) {
+export function IntentSection({ r, period }: { r: IntentStatsReport; period: string }) {
   const t = r.totals;
   const timeoutMs = r.settings.timeoutSeconds * 1000;
   const timedOut = r.timeline.reduce((sum, b) => sum + b.timedOut, 0);
@@ -389,7 +318,7 @@ function Stats({ r, period }: { r: IntentStatsReport; period: string }) {
   );
 }
 
-function Kpi({ label, value, note }: { label: string; value: string; note: string }) {
+export function Kpi({ label, value, note }: { label: string; value: string; note: string }) {
   return (
     <div className={styles.kpi}>
       <div className={styles.kpiLabel}>{label}</div>
@@ -399,7 +328,15 @@ function Kpi({ label, value, note }: { label: string; value: string; note: strin
   );
 }
 
-function Panel({ title, note, children }: { title: string; note: string; children: ReactNode }) {
+export function Panel({
+  title,
+  note,
+  children,
+}: {
+  title: string;
+  note: string;
+  children: ReactNode;
+}) {
   return (
     <section className={styles.panel} aria-label={title}>
       <h2 className={styles.panelTitle}>{title}</h2>
@@ -487,7 +424,7 @@ function ChoiceMatrix({ choices }: { choices: IntentChoiceCount[] }) {
 }
 
 /** The offline intent eval over the runs this machine has kept, read from the eval report endpoint. */
-function EvalHistory() {
+export function EvalHistory() {
   const { session } = useAuth();
   const api = useApi();
   const reports = useQuery({

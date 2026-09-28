@@ -124,6 +124,7 @@ public partial class Program
         app.MapTopology();
         app.MapCompliance();
         app.MapIntentStats();
+        app.MapJevStats();
         app.MapA2AAdmin();
         app.MapA2ASurface();
         app.MapA2AProtocol();

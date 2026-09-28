@@ -1159,3 +1159,31 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
 - **Decision — ON** (`RouteDataTools=true`): the recall dips are the baseline's own noise on an unrouted turn, present
   with routing off. `make eval-intent` with routing on: identical to its baseline twice (accuracy 0.99, 1.0, 0.979).
 - **Rollback:** `Jev__RouteDataTools=false` restores the two-question request byte for byte.
+
+## 38. Jev, in aggregate across every site (add-jev-statistics, 2026-09-28)
+
+- **Why.** §34 read only the `intent` event, but Jev now answers in four more places (§35 guardrail, §36 relevance
+  gate and reranker, §37 tool routing). The screen showed one of five, and — the part that matters while TypeSafe is
+  degraded — nowhere summed Jev's unavailability across all of them. `GET /api/admin/jev-stats?window=1h|24h|7d` and
+  the `/admin/jev` screen ("Jev") now do, one section per site plus a cross-cutting requests/availability view.
+- **One page, one endpoint, composed.** The new endpoint embeds the intent aggregate by calling `IntentStatistics`
+  unchanged, and adds guardrail, relevance and routing sections computed by `JevStatistics` from the same trace rows.
+  The standalone `/api/admin/intent-stats` stays (backward-compatible); `/admin/intents` redirects to `/admin/jev`.
+  FIRM_ADMIN only, firm from the token, numbers only — the traces it reads never leave the server.
+- **No new trace field.** Every number is derived from what §35–§37 already record: the `intent` event's `routing`
+  sub-object, the `guardrail` events, the `retrieval` event's `relevance` sub-object, and the count of `model.request`
+  events per turn (routing's saving — a routed data turn makes fewer model calls because `TracingChatClient` sits below
+  the forced/routed call). `docs/trace-events.md` was stale relative to §35–§37 and is corrected to document these;
+  the turn-tracing contract is unchanged.
+- **What is a Jev request.** One per jev-model `intent` event, one per content-guard item (`tool_result` / `reviewer`,
+  each excerpt its own bounded request), one per judged search. A prompt/partner screening and a routing answer ride
+  inside the intent (or partner) request, so they add no request and no latency of their own — they are shown in their
+  sections but excluded from the request total. The three request-bearing sites — intent, guardrail, relevance — are
+  the overview's per-site rows and its availability timeline; unavailability is a failed intent, an `unscreened` guard
+  item, or a `relevance.reason`-carrying (Jev-unavailable, ungated) search, summed over time.
+- **Jev only.** As in §34, an event counts when its model starts `jev-`; a disabled or no-key screening (no jev model)
+  is not Jev activity and is excluded, while a timeout or rejection (jev model recorded) is counted as unavailable.
+- **No chart library, still.** The new sections reuse the intent screen's hand-built SVG primitives
+  (`Columns`/`Bars`/`Lines`) and its three validated categorical colours plus a neutral fourth (gray) for the
+  "no real answer" series (unscreened, unavailable). No package added or moved.
+- **Rollback:** remove the endpoint and page; the intent endpoint and its screen behaviour are untouched.

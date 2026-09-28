@@ -6,7 +6,7 @@ import { ChatPage } from './chat/ChatPage';
 import { Layout } from './components/Layout';
 import { RequireAdmin } from './components/RequireAdmin';
 import { EvalsPage } from './evals/EvalsPage';
-import { IntentStatsPage } from './intents/IntentStatsPage';
+import { JevPage } from './jev/JevPage';
 import { CompliancePage } from './compliance/CompliancePage';
 import { TelemetryPage } from './telemetry/TelemetryPage';
 import { TopologyPage } from './topology/TopologyPage';
@@ -46,13 +46,15 @@ export function App() {
           }
         />
         <Route
-          path="admin/intents"
+          path="admin/jev"
           element={
             <RequireAdmin>
-              <IntentStatsPage />
+              <JevPage />
             </RequireAdmin>
           }
         />
+        {/* The screen was "Jev intents" at /admin/intents; keep the old link working. */}
+        <Route path="admin/intents" element={<Navigate to="/admin/jev" replace />} />
         <Route
           path="admin/a2a"
           element={
