@@ -29,9 +29,10 @@ unit and integration tests, including the Testcontainers-based Qdrant tests.
 
 ### Requirement: Model-free end-to-end test
 The e2e job SHALL build the images, start the full stack behind the load balancer on port 7171 using an
-Ollama-compatible stub for embeddings and chat that also answers intent classification requests in Jev's request and
-response shape, index the sample corpus, and pass every check of `make verify`. It MUST NOT require any secret or model
-download, and MUST NOT call the real Jev endpoint.
+Ollama-compatible stub for embeddings and chat that also answers intent classification requests and passage relevance
+requests in Jev's request and response shape, index the sample corpus, and pass every check of `make verify`. It MUST
+NOT require any secret or model download, and MUST NOT call the real Jev endpoint — neither from the api nor from the
+retrieval server.
 
 #### Scenario: Stack verified in CI
 - **WHEN** the e2e job runs on a pull request from a fork (no secrets available)
@@ -44,6 +45,10 @@ download, and MUST NOT call the real Jev endpoint.
 #### Scenario: Diagnostics on failure
 - **WHEN** the e2e job fails
 - **THEN** the service status and container logs are available in the job output or as an artifact
+
+#### Scenario: Relevance judged by the stub in CI
+- **WHEN** a search runs in the e2e stack with the relevance gate on
+- **THEN** the stub answers the relevance request, an in-domain question still returns documentation, and no request leaves the runner for the Jev endpoint
 
 ### Requirement: On-demand evals
 A separate workflow SHALL run the eval suites on manual dispatch, with a suite input (default `all`), using real

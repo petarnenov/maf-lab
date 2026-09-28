@@ -42,6 +42,8 @@ public partial class Program
             .WithTools<FeeAdjustmentTools>();
 
         var app = builder.Build();
+        // Resolved now so a missing JEV_MAF_LAB is reported once at startup, not on the first gated search.
+        app.Services.GetRequiredService<Jev.JevCredential>();
         app.UseInstanceHeader();
         app.UseAuthentication();
         app.UseAuthorization();

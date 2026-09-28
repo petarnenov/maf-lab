@@ -3,6 +3,7 @@ using Maf.Lab.Api.A2A;
 using Maf.Lab.Api.Admin;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Retrieval.Jev;
 using Maf.Lab.Api.Endpoints;
 using Maf.Lab.Api.Feedback;
 using Maf.Lab.Api.Storage;

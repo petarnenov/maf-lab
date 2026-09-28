@@ -1,5 +1,6 @@
 using Maf.Lab.Retrieval.Billing;
 using Maf.Lab.Retrieval.Configuration;
+using Maf.Lab.Retrieval.Jev;
 using Maf.Lab.Retrieval.Models;
 using Maf.Lab.Retrieval.Rerank;
 using Maf.Lab.Retrieval.Search;
@@ -30,11 +31,12 @@ public static class RetrievalServiceCollectionExtensions
         services.TryAddSingleton<TenantScopedSearch>();
         services.TryAddSingleton<TenantScopedMaintenance>();
         services.TryAddSingleton<Bm25Store>();
-        services.TryAddSingleton<IReranker>(sp =>
-            string.IsNullOrWhiteSpace(sp.GetRequiredService<IOptions<ModelOptions>>().Value.RerankModel)
-                && !sp.GetRequiredService<IOptions<RetrievalOptions>>().Value.RerankEnabled
-                ? new NoOpReranker()
-                : ActivatorUtilities.CreateInstance<LlmReranker>(sp));
+        // Jev judges relevance for the gate and the Jev reranker; the key is read here as it is in the api.
+        services.AddJevClient(configuration);
+        services.TryAddSingleton<IRelevanceJudge, JevRelevanceJudge>();
+        // Every reranker is registered; the search picks the one Retrieval:Reranker (or the eval) names.
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IReranker, LlmReranker>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IReranker, JevReranker>());
         services.TryAddSingleton<IQueryTranslator>(sp =>
             sp.GetRequiredService<IOptions<RetrievalOptions>>().Value.NormalizeQueryLanguage
                 ? ActivatorUtilities.CreateInstance<LlmQueryTranslator>(sp)

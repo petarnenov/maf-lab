@@ -110,12 +110,16 @@ Error text MUST NOT contain stack traces, hostnames, SQL, or query internals.
 When a `search_documents` request carries the `maf-lab/trace` flag in its `_meta`, the result SHALL include a
 diagnostics object in the result `_meta` with:
 - the serving replica and the tenant scope applied (tenant ids only);
-- the effective settings: mode, fusion, dense vector, prefetch and final limits, rerank;
+- the effective settings: mode, fusion, dense vector, prefetch and final limits, rerank and the reranker selected,
+  and whether the relevance gate is on;
 - the BM25 query terms, each marked as being in the indexed vocabulary or not, with its IDF weight when it is in
   the vocabulary and no weight when it is not, and the dense model and dimensions;
 - the dense-only, sparse-only and fused candidate lists (chunk id, doc id, tenant, score, rank), plus the rerank order
   when rerank is on;
-- the embedding and vector-store timings.
+- when a relevance judgment was requested: the relevance floor, each judged candidate's probability by chunk id, the
+  highest probability, whether the gate silenced the search, the judge's model and duration, or — when the judge did
+  not answer — the reason;
+- the embedding, vector-store and relevance timings.
 
 A term the indexed corpus has never seen has no IDF weight and cannot contribute to sparse matching. Diagnostics
 SHALL report such a term rather than dropping it, and SHALL NOT invent a weight — neither zero nor any other
@@ -144,20 +148,26 @@ content or text content the model receives. Without the flag, results SHALL NOT 
 - **WHEN** the agent passes a traced search result to the model
 - **THEN** the data envelope contains the structured content only, with no diagnostics
 
+#### Scenario: The relevance judgment is shown
+- **WHEN** a traced search runs with the relevance gate on
+- **THEN** the diagnostics give the floor, each judged candidate's probability, the highest probability and whether the search was silenced — or the reason the judge did not answer
+
 ### Requirement: A search that finds nothing close returns nothing
-When no candidate clears its branch's relevance floor, `search_documents` SHALL return an empty `results[]` with a
-`refineHint` telling the caller how to ask better. It SHALL NOT fall back to the nearest candidates it happened to
-find, and it SHALL NOT report the call as an error: finding nothing is an answer, not a failure.
+When no candidate clears its branch's relevance floor, or the relevance gate judges that no candidate addresses the
+query, `search_documents` SHALL return an empty `results[]` with a `refineHint` telling the caller how to ask better.
+It SHALL NOT fall back to the nearest candidates it happened to find, and it SHALL NOT report the call as an error:
+finding nothing is an answer, not a failure.
 
 An empty result SHALL be distinguishable by the caller from a failed call, because what follows differs — a caller
 routes an empty result to whoever reviews questions the corpus cannot answer, and a failed call to whoever fixes
 the store.
 
-Diagnostics SHALL continue to report what the search found, whatever the floor then did with it. When diagnostics
-are requested they SHALL include the floor applied to each branch and SHALL list the candidates that fell below
-it, marked as such. Someone reading diagnostics SHALL be able to tell "the search found candidates, none of them
-close enough" apart from "the search found nothing at all" — the two have different causes and different fixes.
-The floor SHALL narrow what the model and the citations receive, never what diagnostics show.
+Diagnostics SHALL continue to report what the search found, whatever the floor or the gate then did with it. When
+diagnostics are requested they SHALL include the floor applied to each branch and SHALL list the candidates that fell
+below it, marked as such, and SHALL list the fused candidates a silenced search withheld. Someone reading diagnostics
+SHALL be able to tell "the search found candidates, none of them close enough" apart from "the search found nothing at
+all" — the two have different causes and different fixes. The floor and the gate SHALL narrow what the model and the
+citations receive, never what diagnostics show.
 
 #### Scenario: Nothing close enough
 - **WHEN** a query's candidates all score below their branch floors
@@ -174,3 +184,7 @@ The floor SHALL narrow what the model and the citations receive, never what diag
 #### Scenario: Diagnostics of a search with results
 - **WHEN** a traced search returns results
 - **THEN** the diagnostics state the floors that were applied, whether or not anything was dropped
+
+#### Scenario: Silenced by the relevance gate
+- **WHEN** the relevance gate judges that none of a query's fused candidates addresses it
+- **THEN** the tool returns no results with the rephrase hint, the call is not an error, and traced diagnostics still list the fused candidates with their probabilities

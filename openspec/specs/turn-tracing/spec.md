@@ -13,14 +13,16 @@ For every chat turn the system SHALL record an ordered trace of timestamped even
   its probability for every known intent and its confidence, the probability that the question is about the documented
   domain, the versioned model that answered, how long the classification took, and — when the turn proceeded with no
   recognised intent because of the classifier — why (below the confidence floor, outside the domain, timed out,
-  rejected, unavailable). It MUST NOT contain any credential;
+  rejected, unavailable). When tool routing is enabled it SHALL also carry the routing answer: each routing question's
+  probability, the status answer, and either the routed tool with its arguments or why the turn was not routed. It
+  MUST NOT contain any credential;
 - the history window: included messages with roles, text and token counts, the token budget, and how many older
   messages were left out;
 - the system prompt version and full text, and each offered tool with its description and input schema;
 - every model call: iteration, full request messages and options (tool mode, temperature, reasoning setting), response
   text, requested tool calls, finish reason, input and output token usage when the provider reports it, latency,
   model and endpoint host;
-- any tool call issued on the model's behalf to force retrieval;
+- any tool call issued on the model's behalf — to force retrieval, or a routed read — with the reason it was issued;
 - every tool call: full arguments, raw MCP result, error flag, latency and serving MCP replica;
 - the exact data envelope the model received;
 - the model's reasoning as ordered chunks (`reasoning.delta`, each with its character offset), coalesced from the
@@ -66,6 +68,10 @@ For every chat turn the system SHALL record an ordered trace of timestamped even
 #### Scenario: Question outside the domain
 - **WHEN** a procedurally-phrased question is outside the documented domain
 - **THEN** the intent event shows the classifier's procedural choice, the in-domain probability, no recognised intent, nothing forced, and the reason
+
+#### Scenario: Routed data turn
+- **WHEN** routing is on and the user asks "status of run 4417"
+- **THEN** the intent event shows the data intent, each routing probability and the routed tool with run id 4417, the routed call is recorded as issued on the model's behalf before any model call, and exactly one model call follows it
 
 ### Requirement: Live streaming of the trace
 Trace events SHALL be streamed to the requesting client while the turn runs, interleaved with the run's other

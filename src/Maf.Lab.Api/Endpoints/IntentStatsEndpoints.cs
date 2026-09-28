@@ -1,5 +1,6 @@
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Retrieval.Jev;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.Domain.Intent;
 using Maf.Lab.Retrieval.Auth;

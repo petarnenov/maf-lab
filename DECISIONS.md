@@ -1093,3 +1093,69 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
 - **CI stays secret-free**: the stub answers `guard_*` Nouls from unmistakable phrases ("ignore all previous
   instructions", "evil.example", "Assistant:"); `FakeJev` answers them from a settable function, 0 by default. No
   package added.
+
+## 36. Jev judges whether a search answers, and orders it (add-jev-passage-relevance, 2026-09-28)
+
+- **One request per search.** After fusion the retrieval server asks Jev one Noul per fused candidate (first 20):
+  "Does `passages[i]` address the subject of `query`?", query and passages as named state, never instructions. The gate
+  reads only the **maximum**: below `Retrieval:RelevanceFloor` (0.3) the search returns nothing (the existing empty
+  result and refine hint); otherwise the fused list is returned untouched. The Jev reranker (`Retrieval:Reranker=jev`)
+  orders by the same answers — equal probabilities keep their fused order — so gate and order never cost two requests.
+- **Jev is not deterministic** (planning probe: the identical 20-passage request five times, five queries). Per-passage
+  probabilities move 0.01–0.05, up to 0.19, and every repeat gave a different order — the analysis's MRR 0.722 vs 0.625
+  was the model, not ties (two-decimal ties exist too, up to 5 of 20). The maximum is stable within ±0.03. Hence a
+  query-level gate on the maximum, and per-chunk filtering rejected.
+- **Rules fixed before measuring** (owner): gate on only if off-domain silence rises and recall@5 en/bg/bg-latn stays
+  within 0.02 of the accepted baseline over ≥ 3 runs; Jev rerank on only if recall@5 and MRR beat no-rerank beyond the
+  run-to-run spread over ≥ 3 runs.
+- **Gate — ON.** Four runs of the real retrieval eval (hybrid, production floors): off-domain silence **0.333 → 1.0**
+  every run; recall@5 per language **identical** to the ungated search of the same run, every run. Against the baseline
+  (0.7133 / 0.7778 / 0.6181): en 0.713, bg-latn 0.618 every run; bg 0.778 / 0.757 / 0.757 / 0.778 (mean 0.767, −0.010) —
+  the two 0.757 runs show 0.757 ungated as well (translation noise, the reason `recall@5:bg` has a 0.025 tolerance).
+  Margin: off-domain maxima 0.03–0.09, lowest in-domain maximum 0.54 (`r-07-latn`). Rule applied to the mean over runs.
+- **Jev rerank — ON** (`RerankEnabled=true`, `Reranker=jev`). Three runs, all gated: no rerank recall@5 0.696 / 0.696 /
+  0.703, MRR 0.619 / 0.626 / 0.627; **Jev 0.779 / 0.772 / 0.779, MRR 0.781 / 0.763 / 0.790**; LLM listwise (gpt-oss)
+  0.737 / 0.756 / 0.776, MRR 0.802 / 0.803 / 0.810. Jev's gain is ~10× the spread of either; it beats the LLM on recall@5
+  and trails it on MRR, at no extra request instead of ~2.8 s. The analysis probe (dense-only shortlists) had Jev behind
+  the LLM on both; on the production hybrid shortlists it is not.
+- **Production run after the switch** (baseline accepted, retrieval only): hybrid recall@5 **0.703 → 0.772** (en 0.793,
+  bg 0.826, bg-latn 0.694), MRR **0.632 → 0.764**, off-domain silence **0.333 → 1.0**, recall@20 0.865. The report now also
+  carries `hybrid-nogate` and `hybrid-norerank` every run; `--rerank` adds `hybrid+rerank-llm` / `hybrid+rerank-jev`.
+- **Cost and failure.** Judge p50 273–358 ms per search, max 1345 ms over ~1000 requests, **no timeout or rejection**
+  (counted apart from quality by the suite). Budget `Retrieval:RelevanceTimeoutSeconds` = 2; a timeout, error status,
+  incomplete answer or missing key leaves the search ungated in fused order, with the reason in diagnostics and a
+  content-free warning. ~2.8k input tokens per search.
+- **Found by the eval, fixed:** Jev rerank of a search the dense floor had already emptied dereferenced a missing
+  judgment; covered by a test.
+- **Shared Jev plumbing.** `JevCredential`, `JevAuthHandler`, `JevOptions`, the wire DTOs and a `JevClient` (the timeout
+  race, once) moved to `Maf.Lab.Retrieval.Jev` — the api already references Retrieval for the model factory; Domain stays
+  contracts only. `mcp-retrieval` already received `JEV_MAF_LAB` through compose's shared env. No package added.
+- **Rollback:** `Retrieval__RelevanceGateEnabled=false`, `Retrieval__RerankEnabled=false`.
+
+## 37. Data turns routed by Jev (add-jev-tool-routing, 2026-09-28)
+
+- **The intent request asks which read tool.** With `Jev:RouteDataTools` on, the same request adds a Noul per tool
+  (`get_billing_run_status`, `search_billing_runs`, and `propose_fee_adjustment` as a veto only) and a `run_status`
+  Choice. Each tool is described in its **question's structured instructions**; the state stays `{user_question}`.
+  Planning probe (35 questions): tools described in the state moved the intent/domain answers in **22/35** (s-22 `mixed`
+  0.73 → 0.46, below the floor); in the instructions, **2/35**, small in_domain drifts, no choice changed. Latency
+  unchanged (p50 525 ms either way that hour).
+- **Code routes, Jev decides.** Only a used `data` intent; write probability ≥ 0.5 vetoes; the likelier read tool must
+  reach `Jev:MinRouteProbability` (0.8); arguments by fixed patterns — exactly one run id for the status tool, none for
+  the run search, whose status comes from the Choice and whose period only from "<month> <year>" (EN / BG / BG-Latin).
+  Any other time expression ("last month", a year, Q2) → not routed. The run-id cross-check is what separates the two read
+  tools: on run-id questions the other tool scored up to 0.83. The call is issued like the forced search — same MCP,
+  audit, envelope and tenant path — and the model answers next. Writes are never routed.
+- **Rule fixed before measuring:** on only if selection (≥ 3 runs) keeps recall and negativeAccuracy at the baseline,
+  exactMatch within 0.917–1.0, and traces show the first model call gone on routed turns.
+- **Selection, 6 runs on / 4 off, alternated:** negativeAccuracy 1.0 in all ten. exactMatch on 0.958 ×5, 0.917; off 0.958,
+  1.0, 0.958, 0.917. Recall on 1, 1, 0.96, 1, 1, 0.96; off 1, 1, 1, 0.96 — every recall miss, on or off, is **s-23**, a
+  `mixed` question routing never touches (same intent, confidence 0.90 and forcing in both): the model skipped the status
+  call after the forced search. The exactMatch misses are the model adding a search after the status call (s-10/s-16),
+  on and off alike. **42/42** data turns routed, each to the expected tool with the expected arguments.
+- **Latency (kept eval traces):** model calls per data turn **1.00–1.14 routed vs 2.00–2.14**; median data-turn duration
+  **1266–1586 ms routed vs 2039–2258 ms** (the removed call: median ~640 ms); intent p50 unchanged (261–287 vs 267–300 ms).
+  240 classified turns, no timeout or rejection.
+- **Decision — ON** (`RouteDataTools=true`): the recall dips are the baseline's own noise on an unrouted turn, present
+  with routing off. `make eval-intent` with routing on: identical to its baseline twice (accuracy 0.99, 1.0, 0.979).
+- **Rollback:** `Jev__RouteDataTools=false` restores the two-question request byte for byte.

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using Maf.Lab.Retrieval.Jev;
 using Microsoft.Extensions.Options;
 
 namespace Maf.Lab.Api.Agent.Jev;

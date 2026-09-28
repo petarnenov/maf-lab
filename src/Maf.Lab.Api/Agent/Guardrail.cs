@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Maf.Lab.Api.A2A;
 using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Retrieval.Jev;
 using Maf.Lab.Api.Agent.Tracing;
 using Maf.Lab.Domain.Feedback;
 using Maf.Lab.Domain.Tracing;

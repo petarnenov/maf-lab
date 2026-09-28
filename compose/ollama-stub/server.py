@@ -1,8 +1,10 @@
 """Ollama-compatible stub for CI: deterministic embeddings and a scripted, streamed chat answer.
 
 Implements only what maf-lab calls through OllamaSharp: /api/version, /api/tags, /api/show, /api/embed, /api/chat.
-It also stands in for TypeSafe's Jev at POST /v1/systemone — the intent classifier's and content guard's endpoint —
-answering its Choice question and the guard's Nouls from keyword sets, so forced retrieval is exercised without a model or a real key. No model, no network, no secrets. Real model behaviour is covered by the
+It also stands in for TypeSafe's Jev at POST /v1/systemone — the endpoint of the api's intent classifier and content
+guard and of the retrieval server's relevance judge — answering its Choice question, the guard's and routing Nouls and
+the per-passage relevance Nouls from keyword sets, so forced retrieval, the relevance gate and tool routing are
+exercised without a model or a real key. No model, no network, no secrets. Real model behaviour is covered by the
 on-demand evals workflow.
 """
 import hashlib
@@ -73,9 +75,44 @@ def classify(question: str) -> str:
     return "other"
 
 
-def systemone(body: dict) -> dict:
-    """A Choice answer in the shape of https://docs.typesafe.ai/api, for every question asked."""
+def relevance(body: dict) -> dict:
+    """The relevance judge's request: one Noul per passage. Nothing is relevant to a plainly off-domain query, and
+    everything is relevant to any other — enough for the gate to silence one and pass the other, deterministically."""
     state = body.get("state") or {}
+    query = str(state.get("query", "")).lower()
+    p = 0.0 if any(w in query for w in OFF_DOMAIN_WORDS) else 1.0
+    answers = {qid: {"type": "noul", "noul": p} for qid in (body.get("questions") or {})}
+    return {"model": "jev-stub", "answers": answers, "usage": {"input_tokens": 0, "output_tokens": 0}}
+
+
+STATUS_OPTIONS = ("pending", "running", "completed", "failed", "none")
+WRITE_REQUEST = re.compile(r"\b(credit|reduce|increase|adjust|refund)\b.*\ba-\d+")
+
+
+def tool_probability(tool: str, question: str) -> float:
+    """A routing question: does the question need this tool? The named tool high, the rest low, from keywords."""
+    run = bool(RUN_REFERENCE.search(question))
+    if tool == "get_billing_run_status":
+        return 0.93 if run else 0.1
+    if tool == "search_billing_runs":
+        return 0.92 if not run and (any(w in question for w in INTENT_WORDS["DATA"]) or "runs" in question) else 0.2
+    if tool == "propose_fee_adjustment":
+        return 0.8 if WRITE_REQUEST.search(question) else 0.02
+    return 0.0
+
+
+def run_status(question: str) -> str:
+    for word, status in (("fail", "failed"), ("pending", "pending"), ("running", "running"), ("complete", "completed"), ("finished", "completed")):
+        if word in question:
+            return status
+    return "none"
+
+
+def systemone(body: dict) -> dict:
+    """An answer in the shape of https://docs.typesafe.ai/api, for every question asked."""
+    state = body.get("state") or {}
+    if isinstance(state, dict) and "passages" in state:
+        return relevance(body)
     # A classification or a prompt screening carries "user_question"; a content screening carries "untrusted_text".
     question = (state.get("user_question") or state.get("untrusted_text") or "") if isinstance(state, dict) else str(state)
     choice = classify(question)
@@ -83,8 +120,15 @@ def systemone(body: dict) -> dict:
     # forced. Everything else is in the domain.
     in_domain = 0.0 if any(w in question.lower() for w in OFF_DOMAIN_WORDS) else 1.0
     answers = {}
+    lowered = question.lower()
     for qid, q in (body.get("questions") or {}).items():
-        if (q or {}).get("type") == "noul" and qid.startswith("guard_"):
+        if qid == "run_status":
+            status = run_status(lowered)
+            answers[qid] = {"type": "choice", "choice": status, "confidence": 1.0,
+                            "probabilities": {o: 1.0 if o == status else 0.0 for o in STATUS_OPTIONS}}
+        elif qid.startswith("tool_"):
+            answers[qid] = {"type": "noul", "noul": tool_probability(qid[len("tool_"):], lowered)}
+        elif (q or {}).get("type") == "noul" and qid.startswith("guard_"):
             answers[qid] = {"type": "noul", "noul": guard_score(question)}
         elif (q or {}).get("type") == "noul":
             answers[qid] = {"type": "noul", "noul": in_domain}

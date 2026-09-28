@@ -15,8 +15,9 @@ x-app-env: &app-env
   # Chat runs on Ollama Cloud; the key is passed through from the host environment, never written to a file.
   Models__ChatEndpoint: ${CHAT_ENDPOINT:-https://ollama.com}
   OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
-  # Intent is classified by TypeSafe's Jev, and by nothing else. Same rule as above: passed through from the host
-  # environment, never written to a file; the api sends it only as the bearer header to the Jev endpoint.
+  # Intent is classified by TypeSafe's Jev, and by nothing else; the retrieval server asks Jev whether a search's
+  # candidates are relevant. Same rule as above: passed through from the host environment, never written to a file;
+  # the api and mcp-retrieval send it only as the bearer header to the Jev endpoint.
   JEV_MAF_LAB: ${JEV_MAF_LAB:-}
   Models__OpenAIApiKey: ${OPENAI_API_KEY:-}
   Models__OpenAIEndpoint: ${OPENAI_ENDPOINT:-}

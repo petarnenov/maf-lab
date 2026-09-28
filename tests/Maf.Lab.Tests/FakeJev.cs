@@ -8,10 +8,10 @@ using System.Text.RegularExpressions;
 namespace Maf.Lab.Tests;
 
 /// <summary>
-/// Stands in for TypeSafe's Jev at the HTTP boundary: answers <c>POST /v1/systemone</c> with one Choice answer in the
-/// documented shape, and records what it was sent (the authorization header and the body) so tests can check both.
-/// It classifies with keyword rules — English and the Bulgarian words the tests use — because a test double has to be
-/// deterministic; the real classifier has no rules.
+/// Stands in for TypeSafe's Jev at the HTTP boundary: answers <c>POST /v1/systemone</c> in the documented shape —
+/// the intent classifier's Choice and Nouls, and the relevance judge's per-passage Nouls — and records what it was sent
+/// (the authorization header and the body) so tests can check both. It answers with keyword rules — English and the
+/// Bulgarian words the tests use — because a test double has to be deterministic; the real model has no rules.
 /// </summary>
 public sealed partial class FakeJev : HttpMessageHandler
 {
@@ -43,6 +43,18 @@ public sealed partial class FakeJev : HttpMessageHandler
     /// </summary>
     public Func<string, string, double>? Guard { get; set; }
 
+    /// <summary>
+    /// The relevance judge's answer for one passage, given the query and the passage text. Default: a shared word of
+    /// four letters or more is relevant (0.9), anything else is not (0.02).
+    /// </summary>
+    public Func<string, string, double>? Relevance { get; set; }
+
+    /// <summary>A routing question's answer: the probability that the question needs the tool. Default: <see cref="Tool"/>.</summary>
+    public Func<string, string, double>? Tools { get; set; }
+
+    /// <summary>The run status a question asks about. Default: <see cref="RunStatus"/>.</summary>
+    public Func<string, string>? RunStatusOf { get; set; }
+
     /// <summary>The question ids and types each request carried, in order.</summary>
     public ConcurrentQueue<IReadOnlyDictionary<string, string>> Questions { get; } = new();
 
@@ -68,16 +80,41 @@ public sealed partial class FakeJev : HttpMessageHandler
         }
 
         var root = JsonNode.Parse(body)!;
-        // A classification or a prompt screening carries the user's question; a content screening, the text it judges.
-        var state = root["state"]!;
-        var question = (state["user_question"] ?? state["untrusted_text"])!.GetValue<string>();
         var asked = root["questions"]!.AsObject().ToDictionary(q => q.Key, q => q.Value!["type"]!.GetValue<string>());
         Questions.Enqueue(asked);
-        var choice = (Choose ?? Classify)(question);
         var answers = new Dictionary<string, object>();
+        if (root["state"]!["passages"] is JsonArray passages)
+        {
+            // The relevance judge: one Noul per passage, "p0"…, each about passages[i].
+            var query = root["state"]!["query"]!.GetValue<string>();
+            foreach (var id in asked.Keys)
+            {
+                var text = passages[int.Parse(id[1..])]!["text"]!.GetValue<string>();
+                answers[id] = new { type = "noul", noul = (Relevance ?? Overlap)(query, text) };
+            }
+            return Answer(answers);
+        }
+        // A classification or a prompt screening carries the user's question; a content screening, the text it judges.
+        var question = (root["state"]!["user_question"] ?? root["state"]!["untrusted_text"])!.GetValue<string>();
+        var choice = (Choose ?? Classify)(question);
         foreach (var (id, type) in asked)
         {
-            if (type == "choice")
+            if (id == "run_status")
+            {
+                var runStatus = (RunStatusOf ?? RunStatus)(question);
+                answers[id] = new
+                {
+                    type = "choice",
+                    choice = runStatus,
+                    confidence = 1.0,
+                    probabilities = new[] { "pending", "running", "completed", "failed", "none" }.ToDictionary(o => o, o => o == runStatus ? 1.0 : 0.0),
+                };
+            }
+            else if (id.StartsWith("tool_", StringComparison.Ordinal))
+            {
+                answers[id] = new { type = "noul", noul = (Tools ?? Tool)(id["tool_".Length..], question) };
+            }
+            else if (type == "choice")
             {
                 answers[id] = new
                 {
@@ -97,6 +134,11 @@ public sealed partial class FakeJev : HttpMessageHandler
                 answers[id] = new { type = "noul", noul = p };
             }
         }
+        return Answer(answers);
+    }
+
+    private HttpResponseMessage Answer(Dictionary<string, object> answers)
+    {
         var answer = new
         {
             model = Model,
@@ -108,6 +150,39 @@ public sealed partial class FakeJev : HttpMessageHandler
             Content = new StringContent(JsonSerializer.Serialize(answer), Encoding.UTF8, "application/json"),
         };
     }
+
+    /// <summary>Keyword answers to the routing questions, shaped like the planning probe's: the named tool high, the rest low.</summary>
+    public static double Tool(string tool, string question)
+    {
+        var q = question.ToLowerInvariant();
+        return tool switch
+        {
+            "get_billing_run_status" => RunReference().IsMatch(q) ? 0.93 : 0.1,
+            "search_billing_runs" => !RunReference().IsMatch(q) && (DataWords().IsMatch(q) || q.Contains("runs")) ? 0.92 : 0.2,
+            "propose_fee_adjustment" => WriteWords().IsMatch(q) ? 0.8 : 0.02,
+            _ => 0.0,
+        };
+    }
+
+    public static string RunStatus(string question)
+    {
+        var q = question.ToLowerInvariant();
+        return q.Contains("fail") ? "failed" : q.Contains("pending") ? "pending" : q.Contains("running") ? "running"
+            : q.Contains("complete") || q.Contains("finished") ? "completed" : "none";
+    }
+
+    [GeneratedRegex(@"\b(credit|reduce|increase|adjust|refund)\b.*\ba-\d+")]
+    private static partial Regex WriteWords();
+
+    /// <summary>Relevant when the passage shares a word of four letters or more with the query.</summary>
+    public static double Overlap(string query, string passage)
+    {
+        var words = Words().Matches(query.ToLowerInvariant()).Select(m => m.Value).Where(w => w.Length >= 4).ToHashSet();
+        return Words().Matches(passage.ToLowerInvariant()).Any(m => words.Contains(m.Value)) ? 0.9 : 0.02;
+    }
+
+    [GeneratedRegex(@"\p{L}+")]
+    private static partial Regex Words();
 
     /// <summary>Keyword classification into Jev's option names.</summary>
     public static string Classify(string question)

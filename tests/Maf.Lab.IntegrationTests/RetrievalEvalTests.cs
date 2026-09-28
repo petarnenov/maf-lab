@@ -36,7 +36,8 @@ public class RetrievalEvalTests(CorpusIndexFixture corpus)
 
         var variants = await new RetrievalSuite().RunAsync(ctx, RetrievalSuite.DefaultVariants(search, "dense_v3", rerank: false), TestContext.Current.CancellationToken);
 
-        Assert.Equal(["hybrid", "hybrid-dbsf", "dense", "sparse"], variants.Select(v => v.Name));
+        // The gate flipped relative to production (off by default here) sits beside the modes, so a run shows what it changes.
+        Assert.Equal(["hybrid", "hybrid+gate", "hybrid-dbsf", "dense", "sparse"], variants.Select(v => v.Name));
         var expectedCases = Maf.Lab.Eval.Datasets.DatasetLoader.Retrieval(root).Count;
         Assert.Contains(Maf.Lab.Eval.Datasets.DatasetLoader.Retrieval(root), r => r.Id == "fb-retrieval-t_feedback");
         Assert.All(variants, v => Assert.Equal(expectedCases, v.Cases));

@@ -11,11 +11,16 @@ namespace Maf.Lab.Retrieval.Rerank;
 /// <summary>Reorders already tenant-scoped candidates. Input must only ever come from TenantScopedSearch.</summary>
 public interface IReranker
 {
+    /// <summary>What <c>Retrieval:Reranker</c> calls this reranker (<see cref="RerankerKinds"/>).</summary>
+    string Kind { get; }
+
     Task<IReadOnlyList<ScoredChunk>> RerankAsync(string query, IReadOnlyList<ScoredChunk> candidates, CancellationToken ct);
 }
 
 public sealed class NoOpReranker : IReranker
 {
+    public string Kind => "none";
+
     public Task<IReadOnlyList<ScoredChunk>> RerankAsync(string query, IReadOnlyList<ScoredChunk> candidates, CancellationToken ct) =>
         Task.FromResult(candidates);
 }
@@ -26,6 +31,8 @@ public sealed class NoOpReranker : IReranker
 /// </summary>
 public sealed class LlmReranker(IChatClientFactory providers, IOptions<ModelOptions> options, ILogger<LlmReranker> logger) : IReranker
 {
+    public string Kind => RerankerKinds.Llm;
+
     public async Task<IReadOnlyList<ScoredChunk>> RerankAsync(string query, IReadOnlyList<ScoredChunk> candidates, CancellationToken ct)
     {
         if (candidates.Count < 2)
@@ -60,4 +67,32 @@ public sealed class LlmReranker(IChatClientFactory providers, IOptions<ModelOpti
     }
 
     private static string Trim(string s, int max = 120) => s.Length <= max ? s : s[..max];
+}
+
+/// <summary>
+/// Orders candidates by Jev's probability that each addresses the query — the relevance gate's own answer, so gate and
+/// order never cost two requests. Equal probabilities keep their fused order (Jev answers to two decimals, and ties are
+/// common); candidates beyond those judged follow in fused order. A judge that did not answer leaves the fused order.
+/// </summary>
+public sealed class JevReranker(IRelevanceJudge judge) : IReranker
+{
+    public string Kind => RerankerKinds.Jev;
+
+    public async Task<IReadOnlyList<ScoredChunk>> RerankAsync(string query, IReadOnlyList<ScoredChunk> candidates, CancellationToken ct) =>
+        candidates.Count < 2 ? candidates : Order(candidates, await judge.JudgeAsync(query, candidates, ct));
+
+    /// <summary>The order a judgment gives; the score each judged candidate carries is its probability.</summary>
+    public static IReadOnlyList<ScoredChunk> Order(IReadOnlyList<ScoredChunk> candidates, RelevanceJudgement? judgement)
+    {
+        if (judgement?.Scores is not { Count: > 0 } scores || candidates.Count < 2)
+        {
+            return candidates;
+        }
+        var judged = Math.Min(scores.Count, candidates.Count);
+        return Enumerable.Range(0, judged)
+            .OrderByDescending(i => scores[i]).ThenBy(i => i)
+            .Select(i => candidates[i] with { Score = scores[i] })
+            .Concat(candidates.Skip(judged))
+            .ToList();
+    }
 }

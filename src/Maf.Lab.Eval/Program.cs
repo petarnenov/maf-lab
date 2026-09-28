@@ -15,7 +15,7 @@ namespace Maf.Lab.Eval;
 
 /// <summary>
 /// dotnet run --project src/Maf.Lab.Eval -- --suite selection|retrieval|generation|injection|confirmation|intent|guardrail|all
-///   [--rerank] [--contextual] [--limit N] [--import-feedback [--api-db "Data Source=..."]]
+///   [--rerank [--reranker llm,jev]] [--contextual] [--limit N] [--import-feedback [--api-db "Data Source=..."]]
 /// Run on demand, and always after changing prompts, tool descriptions, the model, the tool set or chunking.
 /// Exit code 1 when any suite is below its configured thresholds.
 /// </summary>
@@ -129,7 +129,12 @@ public static class Program
     {
         var search = host.Services.GetRequiredService<DocumentSearchService>();
         var variants = RetrievalSuite.DefaultVariants(search, retrieval.DenseVector, flags.ContainsKey("rerank"),
-            retrieval.DenseFloorFor(host.Services.GetRequiredService<IOptions<ModelOptions>>().Value, retrieval.DenseVector), retrieval.SparseFloor).ToList();
+            retrieval.DenseFloorFor(host.Services.GetRequiredService<IOptions<ModelOptions>>().Value, retrieval.DenseVector), retrieval.SparseFloor,
+            retrieval.RelevanceGateEnabled, flags.GetValueOrDefault("reranker")?.Split(','),
+            retrieval.RerankEnabled ? retrieval.Reranker : null).ToList();
+        settings["reranker"] = retrieval.RerankEnabled ? retrieval.Reranker : "none";
+        settings["relevanceGate"] = retrieval.RelevanceGateEnabled.ToString();
+        settings["relevanceFloor"] = retrieval.RelevanceFloor.ToString(System.Globalization.CultureInfo.InvariantCulture);
         ServiceProvider? contextual = null;
         if (flags.ContainsKey("contextual"))
         {
