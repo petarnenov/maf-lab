@@ -134,8 +134,10 @@ public class TurnTraceTests
             Assert.StartsWith("Intent Procedural (jev 1.00,", intent.Title);
         }
 
-        // Every classification went to Jev, none to the answering model, and the key is nowhere in what was streamed.
-        Assert.Equal(2, api.Jev.Requests.Count);
+        // Every classification went to Jev, one request per turn, none to the answering model, and the key is nowhere
+        // in what was streamed. (The other requests screen the forced search's excerpts.)
+        Assert.Equal(2, api.Jev.Questions.Count(q => q.ContainsKey("intent")));
+        Assert.Equal(api.Jev.Questions.Count, api.Jev.Requests.Count);
         Assert.DoesNotContain(api.Chat.Requests, r => r.Messages.Any(m => (m.Text ?? "").Contains("user_question")));
     }
 

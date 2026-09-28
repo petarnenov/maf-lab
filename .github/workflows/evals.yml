@@ -9,7 +9,7 @@ on:
       suite:
         description: Eval suite
         type: choice
-        options: [all, selection, retrieval, generation, injection, confirmation, intent]
+        options: [all, selection, retrieval, generation, injection, confirmation, intent, guardrail]
         default: all
 
 permissions:

@@ -30,6 +30,8 @@ public static class TraceKinds
     public const string Audit = "audit";
     /// <summary>A step of a write: proposed, reviewed, confirmed, rejected or applied.</summary>
     public const string Adjustment = "adjustment";
+    /// <summary>A content-guard screening: of the prompt, a tool result or another agent's words.</summary>
+    public const string Guardrail = "guardrail";
     public const string Sources = "sources";
     public const string Signals = "signals";
     public const string Memory = "memory";

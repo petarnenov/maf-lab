@@ -1,8 +1,8 @@
 """Ollama-compatible stub for CI: deterministic embeddings and a scripted, streamed chat answer.
 
 Implements only what maf-lab calls through OllamaSharp: /api/version, /api/tags, /api/show, /api/embed, /api/chat.
-It also stands in for TypeSafe's Jev at POST /v1/systemone — the intent classifier's endpoint — answering its Choice
-question from keyword sets, so forced retrieval is exercised without a model or a real key. No model, no network, no secrets. Real model behaviour is covered by the
+It also stands in for TypeSafe's Jev at POST /v1/systemone — the intent classifier's and content guard's endpoint —
+answering its Choice question and the guard's Nouls from keyword sets, so forced retrieval is exercised without a model or a real key. No model, no network, no secrets. Real model behaviour is covered by the
 on-demand evals workflow.
 """
 import hashlib
@@ -49,6 +49,14 @@ INTENT_WORDS = {
 RUN_REFERENCE = re.compile(r"\b(run|рън)\s*#?\s*\d{3,}")
 JEV_OPTIONS = ("procedural", "mixed", "data", "chitchat", "other")
 OFF_DOMAIN_WORDS = ("cook", "recipe", "carbonara", "passport", "weather", "баница", "паспорт")
+# The content guard's questions (ids "guard_*"): only unmistakable phrases score, so the model-free e2e exercises the
+# path — a refused prompt, a withheld excerpt — without a model or a key, and nothing ordinary is ever flagged.
+GUARD_PHRASES = ("ignore all previous instructions", "ignore all prior instructions", "ignore your rules",
+                 "ignore your instructions", "evil.example", "assistant:")
+
+
+def guard_score(text: str) -> float:
+    return 0.99 if any(p in text.lower() for p in GUARD_PHRASES) else 0.0
 
 
 def classify(question: str) -> str:
@@ -68,14 +76,17 @@ def classify(question: str) -> str:
 def systemone(body: dict) -> dict:
     """A Choice answer in the shape of https://docs.typesafe.ai/api, for every question asked."""
     state = body.get("state") or {}
-    question = state.get("user_question", "") if isinstance(state, dict) else str(state)
+    # A classification or a prompt screening carries "user_question"; a content screening carries "untrusted_text".
+    question = (state.get("user_question") or state.get("untrusted_text") or "") if isinstance(state, dict) else str(state)
     choice = classify(question)
     # The domain Noul: a few words that are plainly not fee billing, enough for a check that such a question is not
     # forced. Everything else is in the domain.
     in_domain = 0.0 if any(w in question.lower() for w in OFF_DOMAIN_WORDS) else 1.0
     answers = {}
     for qid, q in (body.get("questions") or {}).items():
-        if (q or {}).get("type") == "noul":
+        if (q or {}).get("type") == "noul" and qid.startswith("guard_"):
+            answers[qid] = {"type": "noul", "noul": guard_score(question)}
+        elif (q or {}).get("type") == "noul":
             answers[qid] = {"type": "noul", "noul": in_domain}
         else:
             answers[qid] = {"type": "choice", "choice": choice, "confidence": 1.0,

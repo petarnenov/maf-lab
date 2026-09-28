@@ -39,6 +39,7 @@ public abstract record FlowOutcome
 /// </summary>
 public sealed class FeeAdjustmentFlow(
     ComplianceConsultant consultant,
+    Guardrail guardrail,
     ToolAudit audit,
     IDbContextFactory<MafDbContext> db,
     IOptions<FeeAdjustmentOptions> options,
@@ -96,6 +97,9 @@ public sealed class FeeAdjustmentFlow(
             // The reviewer asked something; this is the answer to that same review, not a new one.
             ? await consultant.AnswerAsync(request, taskId, userMessage, ct)
             : await consultant.ReviewAsync(request, ct);
+        // Another agent's words are judged before they are believed or put before the model: flagged, the review has
+        // failed; unscreened, the words that would reach the model are withheld and the outcome stands.
+        result = await guardrail.ScreenConsultationAsync(result, trace, callId, ct);
 
         var reviewed = Step(adjustment, callId, "reviewed");
         reviewed["taskId"] = result.TaskIdOrNull;

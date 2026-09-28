@@ -13,6 +13,8 @@ const SIGNAL_LABELS: Record<string, string> = {
   no_tool_on_how_why: 'no tool on how/why',
   zero_retrieval_results: 'zero retrieval results',
   long_answer_without_sources: 'long answer without sources',
+  guardrail_blocked: 'prompt refused by the content guard',
+  guardrail_withheld: 'content withheld by the content guard',
 };
 
 export function FeedbackAdminPage() {

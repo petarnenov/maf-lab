@@ -20,13 +20,18 @@ public sealed record ConfirmationCase(string Id, string Question, string Account
 /// <param name="Split">"design" when the case informed the classifier's thresholds, "holdout" when it did not.</param>
 public sealed record IntentCase(string Id, string Question, bool Forces, string Category, string Language, string Split);
 
+/// <param name="Side">"prompt" (a user's or partner's message), "tool" (a tool-result item) or "agent" (another agent's words).</param>
+/// <param name="Malicious">Whether the text tries to instruct or steer the assistant; the guard should flag exactly these.</param>
+/// <param name="Split">"design" when the case informed the guard's questions and thresholds, "holdout" when it did not.</param>
+public sealed record GuardrailCase(string Id, string Side, string Text, bool Malicious, string Category, string Language, string Split);
+
 public sealed record InjectionCase(string Id, string Question, IReadOnlyList<string> ForbiddenStrings, IReadOnlyList<string> ForbiddenTenantIds, string FirmId, string? Source);
 
 /// <summary>Loads and validates the JSONL datasets. Invalid rows fail loudly with file and line.</summary>
 public static class DatasetLoader
 {
     public static readonly string[] Files =
-        ["selection.jsonl", "retrieval.jsonl", "generation.jsonl", "injection.jsonl", "confirmation.jsonl", "intent.jsonl"];
+        ["selection.jsonl", "retrieval.jsonl", "generation.jsonl", "injection.jsonl", "confirmation.jsonl", "intent.jsonl", "guardrail.jsonl"];
     public static readonly string[] Tools =
         ["search_documents", "get_billing_run_status", "search_billing_runs", Maf.Lab.Domain.Billing.FeeAdjustmentTool.Name];
     public static readonly string[] SelectionCategories = ["obvious-docs", "obvious-data", "boundary", "negative", "feedback"];
@@ -93,6 +98,25 @@ public static class DatasetLoader
             throw new InvalidDataException($"{where}: unknown category, language or split.");
         }
         return new IntentCase(Str(e, "id", where), Str(e, "question", where), f.GetBoolean(), category, language, split);
+    });
+
+    public static readonly string[] GuardrailSides = ["prompt", "tool", "agent"];
+
+    /// <summary>Texts for the content guard alone, each labelled malicious or benign.</summary>
+    public static IReadOnlyList<GuardrailCase> Guardrail(string root) => Load(root, "guardrail.jsonl", (e, where) =>
+    {
+        if (!e.TryGetProperty("malicious", out var m) || m.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            throw new InvalidDataException($"{where}: 'malicious' must be true or false.");
+        }
+        var side = Str(e, "side", where);
+        var language = Str(e, "language", where);
+        var split = Str(e, "split", where);
+        if (!GuardrailSides.Contains(side) || !IntentLanguages.Contains(language) || split is not ("design" or "holdout"))
+        {
+            throw new InvalidDataException($"{where}: unknown side, language or split.");
+        }
+        return new GuardrailCase(Str(e, "id", where), side, Str(e, "text", where), m.GetBoolean(), Str(e, "category", where), language, split);
     });
 
     public static IReadOnlyList<InjectionCase> Injection(string root) => Load(root, "injection.jsonl", (e, where) =>

@@ -14,7 +14,7 @@ using Microsoft.Extensions.Options;
 namespace Maf.Lab.Eval;
 
 /// <summary>
-/// dotnet run --project src/Maf.Lab.Eval -- --suite selection|retrieval|generation|injection|confirmation|intent|all
+/// dotnet run --project src/Maf.Lab.Eval -- --suite selection|retrieval|generation|injection|confirmation|intent|guardrail|all
 ///   [--rerank] [--contextual] [--limit N] [--import-feedback [--api-db "Data Source=..."]]
 /// Run on demand, and always after changing prompts, tool descriptions, the model, the tool set or chunking.
 /// Exit code 1 when any suite is below its configured thresholds.
@@ -46,7 +46,7 @@ public static class Program
         }
 
         var suite = flags.GetValueOrDefault("suite") ?? "all";
-        var suites = suite == "all" ? new[] { "selection", "retrieval", "generation", "injection", "confirmation", "intent" } : suite.Split(',');
+        var suites = suite == "all" ? new[] { "selection", "retrieval", "generation", "injection", "confirmation", "intent", "guardrail" } : suite.Split(',');
         var ctx = new SuiteContext(root, options, flags.TryGetValue("limit", out var l) ? int.Parse(l) : null, m => Console.WriteLine($"  {m}"),
             configuration["Retrieval:CorpusLanguage"] ?? "en");
         var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss");
@@ -83,6 +83,7 @@ public static class Program
                 "injection" => await new InjectionSuite(host).RunAsync(ctx, ct),
                 "confirmation" => await new ConfirmationSuite(host).RunAsync(ctx, ct),
                 "intent" => await new IntentSuite(host).RunAsync(ctx, ct),
+                "guardrail" => await new GuardrailSuite(host).RunAsync(ctx, ct),
                 _ => throw new ArgumentException($"Unknown suite '{name}'."),
             };
             var comparisons = RegressionGate.Compare(baseline.Suites.GetValueOrDefault(name), variants, metric => options.ToleranceFor(name, metric));

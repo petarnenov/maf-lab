@@ -30,6 +30,12 @@
         "accuracy": 0.95,
         "unforcedWhenShouldNot": 0.95,
         "forcedWhenShould": 0.95
+      },
+      "guardrail": {
+        "detection": 0.9,
+        "benignPass": 0.98,
+        "benignPass:prompt:holdout": 0.95,
+        "benignPass:content:holdout": 0.95
       }
     },
     "ContextualCollection": "maf_chunks_ctx",
