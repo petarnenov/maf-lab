@@ -21,6 +21,9 @@
 .picker {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
+  /* Never wider than the card, so a long option cannot widen the page at phone width. */
+  min-width: 0;
+  max-width: 100%;
 }
 
 .chart {
@@ -67,4 +70,9 @@
 
 .improvement {
   color: var(--ok);
+}
+
+.group {
+  font-size: 13px;
+  color: var(--muted);
 }

@@ -38,50 +38,53 @@ export function EvalsPage() {
       )}
       {reports.data && reports.data.length > 0 && <MetricTrend reports={reports.data} />}
       {reports.data && reports.data.length > 0 && (
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Suite</th>
-              <th>Variant</th>
-              <th>Metrics</th>
-              <th>Result</th>
-            </tr>
-          </thead>
-          <tbody>
-            {reports.data.map((run) => (
-              <Fragment key={run.runId}>
-                {(run.variants.length > 0 ? run.variants : [null]).map((variant, index) => (
-                  <tr
-                    key={`${run.runId}-${variant?.name ?? 'none'}`}
-                    className={`${styles.clickable} ${selected === run.runId ? styles.selected : ''}`}
-                    onClick={() => setSelected(run.runId)}
-                  >
-                    {index === 0 && (
-                      <>
-                        <td rowSpan={Math.max(run.variants.length, 1)}>
-                          {formatDate(run.startedAt)}
-                        </td>
-                        <td rowSpan={Math.max(run.variants.length, 1)}>{run.suite}</td>
-                      </>
-                    )}
-                    <td>{variant?.name ?? '—'}</td>
-                    <td className={styles.mono}>
-                      {variant
-                        ? Object.entries(variant.metrics)
-                            .map(([k, v]) => `${k}=${formatMetric(v)}`)
-                            .join('  ')
-                        : '—'}
-                    </td>
-                    <td>
-                      <PassFail passed={variant ? variant.passed : run.passed} />
-                    </td>
-                  </tr>
-                ))}
-              </Fragment>
-            ))}
-          </tbody>
-        </table>
+        // The metrics column is wide; at phone width the table scrolls inside itself, not the page.
+        <div className={styles.scroll}>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Suite</th>
+                <th>Variant</th>
+                <th>Metrics</th>
+                <th>Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              {reports.data.map((run) => (
+                <Fragment key={run.runId}>
+                  {(run.variants.length > 0 ? run.variants : [null]).map((variant, index) => (
+                    <tr
+                      key={`${run.runId}-${variant?.name ?? 'none'}`}
+                      className={`${styles.clickable} ${selected === run.runId ? styles.selected : ''}`}
+                      onClick={() => setSelected(run.runId)}
+                    >
+                      {index === 0 && (
+                        <>
+                          <td rowSpan={Math.max(run.variants.length, 1)}>
+                            {formatDate(run.startedAt)}
+                          </td>
+                          <td rowSpan={Math.max(run.variants.length, 1)}>{run.suite}</td>
+                        </>
+                      )}
+                      <td>{variant?.name ?? '—'}</td>
+                      <td className={styles.mono}>
+                        {variant
+                          ? Object.entries(variant.metrics)
+                              .map(([k, v]) => `${k}=${formatMetric(v)}`)
+                              .join('  ')
+                          : '—'}
+                      </td>
+                      <td>
+                        <PassFail passed={variant ? variant.passed : run.passed} />
+                      </td>
+                    </tr>
+                  ))}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {selected && <ReportDetail runId={selected} />}
     </div>
