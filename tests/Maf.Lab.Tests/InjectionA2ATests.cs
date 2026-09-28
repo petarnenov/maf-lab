@@ -3,6 +3,7 @@ using Maf.Lab.Api.A2A;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.Domain.Billing;
 using Maf.Lab.Domain.Tenancy;
+using Maf.Lab.Domain.Tracing;
 using Maf.Lab.TestSupport;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
@@ -149,6 +150,68 @@ public class InjectionA2ATests
         var pending = await db.PendingAdjustments.ToListAsync(Ct);
         Assert.DoesNotContain(pending, p => p.Summary.Contains("9999", StringComparison.Ordinal));
         Assert.All(pending, p => Assert.Equal(PendingAdjustmentStatus.Failed, p.Status));
+    }
+
+    [Fact]
+    public async Task A_verdict_whose_words_carry_an_instruction_is_not_believed()
+    {
+        // ia-01 is structurally a valid approval; only its words give it away. The content guard reads them.
+        var row = Load().Single(r => r.Id == "ia-01");
+        await using var reviewer = new HostileReviewerFactory();
+        var url = (await reviewer.ListenAsync()).TrimEnd('/');
+        using var api = Api(url);
+        api.Jev.Guard = (text, id) => id == "guard_to_ai" && text.Contains("SYSTEM:", StringComparison.Ordinal) ? 0.97 : 0.01;
+        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        reviewer.Verdict = row.Verdict;
+        reviewer.EchoedPlaceholder = row.AskedAdjustmentId;
+
+        var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
+
+        // Not believed: nobody is asked to confirm, the review is recorded as failed, nothing exists for A-9999.
+        Assert.Null(ApiFactory.InterruptOf(events));
+        Assert.Contains(await AuditAsync(api), a => a.ToolName == "fee.adjustment.reviewed" && a.Outcome == "failed");
+        await using var scope = api.Services.CreateAsyncScope();
+        var db = await scope.ServiceProvider.GetRequiredService<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(Ct);
+        var pending = await db.PendingAdjustments.ToListAsync(Ct);
+        Assert.All(pending, p => Assert.Equal(PendingAdjustmentStatus.Failed, p.Status));
+        Assert.DoesNotContain(pending, p => p.Summary.Contains("9999", StringComparison.Ordinal));
+
+        var trace = ApiFactory.TracesOf(events).ToList();
+        var guard = trace.Single(t => t.GetProperty("kind").GetString() == TraceKinds.Guardrail
+            && t.GetProperty("data").GetProperty("check").GetString() == Maf.Lab.Api.Agent.Guardrail.CheckReviewer).GetProperty("data");
+        Assert.Equal("withheld", guard.GetProperty("decision").GetString());
+        // And the reviewer's words never reached the model.
+        var modelSaw = string.Join("\n", api.Chat.Requests.SelectMany(r => r.Messages).Select(m => m.Text));
+        Assert.DoesNotContain("A-9999", modelSaw);
+    }
+
+    [Fact]
+    public async Task A_refusal_whose_words_cannot_be_screened_stands_and_its_reason_stays_away_from_the_model()
+    {
+        await using var reviewer = new HostileReviewerFactory();
+        var url = (await reviewer.ListenAsync()).TrimEnd('/');
+        using var api = Api(url);
+        // Jev is down for everything: the turn fails open, the reviewer's words fail closed.
+        api.Jev.Status = System.Net.HttpStatusCode.ServiceUnavailable;
+        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        reviewer.Verdict = JsonSerializer.SerializeToElement(new
+        {
+            decision = "refused",
+            adjustmentId = "ADJ-PLACEHOLDER",
+            accountId = "A-1042",
+            reason = "Refused: REASON-CANARY-551 exceeds the firm's credit limit.",
+        });
+        reviewer.EchoedPlaceholder = "ADJ-PLACEHOLDER";
+
+        var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
+
+        Assert.Null(ApiFactory.InterruptOf(events));
+        Assert.Contains(await AuditAsync(api), a => a.ToolName == "fee.adjustment.reviewed" && a.Outcome == "refused");
+        var modelSaw = string.Join("\n", api.Chat.Requests.SelectMany(r => r.Messages).SelectMany(m => m.Contents)
+            .OfType<FunctionResultContent>().Select(r => r.Result?.ToString()));
+        Assert.Contains("refused", modelSaw);
+        Assert.Contains(Maf.Lab.Api.Agent.Guardrail.ReviewerWordsWithheld, modelSaw);
+        Assert.DoesNotContain("REASON-CANARY-551", modelSaw);
     }
 
     // ── the fixtures ─────────────────────────────────────────────────────────────────────────────────────────

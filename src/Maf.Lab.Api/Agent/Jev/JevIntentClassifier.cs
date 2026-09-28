@@ -102,12 +102,18 @@ public sealed class JevIntentClassifier(
 
     private async Task<(int Status, JevResponse? Body)> AskAsync(string question, string model, CancellationToken ct)
     {
-        var request = new JevRequest(model, new JevState(question),
-            new Dictionary<string, object>
-            {
-                [QuestionId] = new JevChoiceQuestion(Instructions, Criteria),
-                [DomainQuestionId] = new JevNoulQuestion(Domain),
-            });
+        var questions = new Dictionary<string, object>
+        {
+            [QuestionId] = new JevChoiceQuestion(Instructions, Criteria),
+            [DomainQuestionId] = new JevNoulQuestion(Domain),
+        };
+        // The prompt-screening battery rides in the same request: questions are answered in parallel, so screening
+        // costs neither a request nor latency of its own (injection-defense; DECISIONS.md §34).
+        foreach (var (id, screening) in JevGuardQuestions.Prompt)
+        {
+            questions[id] = screening;
+        }
+        var request = new JevRequest(model, new JevState(question), questions);
         // Buffered with a Content-Length rather than streamed chunked: the body is a few hundred bytes, and not every
         // server in the path (the CI stub, for one) reads a chunked request.
         using var content = new StringContent(JsonSerializer.Serialize(request, JevRequest.Json), Encoding.UTF8, "application/json");
@@ -127,27 +133,29 @@ public sealed class JevIntentClassifier(
             return Failed($"rejected ({result.Status})", o.Model, sw);
         }
         var model = result.Body.Model ?? o.Model;
+        // The screening answers are kept on every path that got an answer: an unusable intent does not unscreen a prompt.
+        var screen = JevGuardQuestions.Read(result.Body.Answers, JevGuardQuestions.PromptIds);
         if (result.Body.Answers?.GetValueOrDefault(QuestionId) is not { Choice: { } choice } answer)
         {
-            return Failed("no answer", model, sw);
+            return Failed("no answer", model, sw) with { Screen = screen };
         }
         if (!Intents.TryGetValue(choice, out var intent))
         {
             return Unused(answer, result.Body.Answers.GetValueOrDefault(DomainQuestionId)?.Noul, model, ms,
-                "answer is not one of the known intents");
+                "answer is not one of the known intents") with { Screen = screen };
         }
         var inDomain = result.Body.Answers.GetValueOrDefault(DomainQuestionId)?.Noul;
         if (answer.Confidence is not { } confidence || confidence < o.MinConfidence)
         {
-            return Unused(answer, inDomain, model, ms, $"low confidence ({answer.Confidence?.ToString("F2") ?? "none"})");
+            return Unused(answer, inDomain, model, ms, $"low confidence ({answer.Confidence?.ToString("F2") ?? "none"})") with { Screen = screen };
         }
         // Only an intent that would force retrieval is gated: a data question about run 4417 is not second-guessed
         // by a domain answer. A missing domain answer fails closed, like anything else unusable.
         if (IntentClassifier.ForcesRetrieval(intent) && o.MinInDomain > 0 && (inDomain ?? 0) < o.MinInDomain)
         {
-            return Unused(answer, inDomain, model, ms, $"outside the domain ({inDomain?.ToString("F2") ?? "none"})");
+            return Unused(answer, inDomain, model, ms, $"outside the domain ({inDomain?.ToString("F2") ?? "none"})") with { Screen = screen };
         }
-        return new IntentDecision(intent, choice, answer.Probabilities, confidence, model, ms, InDomain: inDomain);
+        return new IntentDecision(intent, choice, answer.Probabilities, confidence, model, ms, InDomain: inDomain, Screen: screen);
     }
 
     private IntentDecision Unused(JevAnswer answer, double? inDomain, string model, double ms, string reason)
@@ -182,6 +190,11 @@ public static class JevServiceCollectionExtensions
             })
             .AddHttpMessageHandler<JevAuthHandler>();
         services.AddSingleton<IIntentClassifier, JevIntentClassifier>();
+        // The content guard shares the endpoint, the model, the credential and the named client; registered here so
+        // every host that classifies can also screen (injection-defense).
+        services.Configure<GuardOptions>(configuration.GetSection(GuardOptions.Section));
+        services.AddSingleton<JevGuard>();
+        services.AddSingleton<Guardrail>();
         return services;
     }
 }

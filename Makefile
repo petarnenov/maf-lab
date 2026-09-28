@@ -167,6 +167,9 @@ eval-confirmation: require-dotnet ## Eval: does the summary a person approves sa
 eval-intent: require-dotnet ## Eval: intent classifier alone — would each question force search_documents? (needs JEV_MAF_LAB)
 	$(EVAL) intent
 
+eval-guardrail: require-dotnet ## Eval: content guard alone — are malicious prompts/tool results flagged and benign ones not? (needs JEV_MAF_LAB)
+	$(EVAL) guardrail
+
 eval-a2a: require-dotnet ## Conformance: an outside client drives the agents through evals/a2a-conformance.jsonl
 	@# Not $(EVAL): this one is deliberately not run by the harness, which links against the service. See DECISIONS.md.
 	$(DOTNET) run --project tools/Maf.Lab.A2AProbe -- $(BASE_URL)

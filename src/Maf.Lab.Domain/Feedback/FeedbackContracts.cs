@@ -21,6 +21,10 @@ public static class TurnSignal
     public const string NoToolOnHowWhy = "no_tool_on_how_why";
     public const string ZeroRetrievalResults = "zero_retrieval_results";
     public const string LongAnswerWithoutSources = "long_answer_without_sources";
+    /// <summary>The prompt was refused by the content guard.</summary>
+    public const string GuardrailBlocked = "guardrail_blocked";
+    /// <summary>The content guard withheld a tool-result item or another agent's words.</summary>
+    public const string GuardrailWithheld = "guardrail_withheld";
 }
 
 public sealed record FeedbackRequest(string ConversationId, string TurnId, string Kind, string? Comment);

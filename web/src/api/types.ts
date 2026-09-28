@@ -143,6 +143,7 @@ export type TraceKind =
   | 'tool.unknown'
   | 'audit'
   | 'adjustment'
+  | 'guardrail'
   | 'sources'
   | 'signals'
   | 'memory'
@@ -193,7 +194,9 @@ export type TurnSignal =
   | 'rephrased'
   | 'no_tool_on_how_why'
   | 'zero_retrieval_results'
-  | 'long_answer_without_sources';
+  | 'long_answer_without_sources'
+  | 'guardrail_blocked'
+  | 'guardrail_withheld';
 
 export interface ToolCallRecord {
   toolName: string;

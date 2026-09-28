@@ -11,6 +11,7 @@ characters and a trace at 1 MB; `truncated: true` marks a capped event. JSON is 
 |---|---|
 | `turn.start` | `{ conversationId, turnId, principal: { userId, firmId, role }, apiInstance, question, traceId, traceUrl }` — `traceId` is the OpenTelemetry trace this turn's spans are in and `traceUrl` opens it; both are null where no trace store is configured |
 | `intent` | `{ intent, forcedRetrieval, forcedTool, stage, model, rawAnswer, durationMs, reason }` — intent ∈ Procedural, Mixed, Data, ChitChat, Other; `stage` ∈ rules, model (the rules are English, a model classifies what they do not recognise); `model`, `rawAnswer` and `durationMs` are null for the rules stage; `reason` explains a model stage that produced nothing usable (timeout, failure, unknown label) |
+| `guardrail` | `{ check, tool, callId, decision, threshold, top, topQuestion, withheld, items: [{ index, decision, scores: { questionId: probability } \| null, durationMs, reason }], model, durationMs, reason }` — one content-guard screening: `check` ∈ prompt (rides in the intent request), tool_result (one item per `search_documents` excerpt, else the whole result), reviewer (the compliance reviewer's reason or question); `decision` ∈ pass, blocked (prompt refused, no model call), withheld (items removed from what the model reads), unscreened (Jev failed or timed out — `reason` says why; reads fail open, a reviewer's words are withheld). Never the screened text |
 | `history` | `{ budgetTokens, usedTokens, included: [{ role, text, tokens }], excludedCount }` |
 | `prompt` | `{ version, systemPrompt, toolMode, tools: [{ name, description, inputSchema }] }` |
 | `model.request` | `{ iteration, model, endpoint, toolMode, temperature, think, tools: [name], messages: [Message] }` |
@@ -37,8 +38,8 @@ characters and a trace at 1 MB; `truncated: true` marks a capped event. JSON is 
 translation into the corpus language, and `query.original` is what the user asked (`translated` says which).
 `translationNote` explains a query searched as written despite needing translation (timeout, failure, unusable answer).
 
-Typical order for a procedural question: `turn.start → intent → prompt → history → tool.forced → tool.call →
-tool.result → retrieval → audit → envelope → model.request → reasoning.delta… → answer.delta… → model.response →
+Typical order for a procedural question: `turn.start → intent → guardrail → prompt → history → tool.forced → tool.call →
+tool.result → retrieval → guardrail → audit → envelope → model.request → reasoning.delta… → answer.delta… → model.response →
 memory → sources → signals → turn.end`.
 The trace is stored before `done` is sent, so the stored copy is readable as soon as the stream ends.
 

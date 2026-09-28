@@ -44,6 +44,7 @@ public sealed class ChatTurnRunner(
     ToolAudit audit,
     TokenCounter tokens,
     FeeAdjustmentFlow adjustments,
+    Guardrail guardrail,
     IDbContextFactory<MafDbContext> db,
     IOptions<AgentOptions> options,
     IOptions<Telemetry.TelemetryQueryOptions> telemetry,
@@ -64,6 +65,7 @@ public sealed class ChatTurnRunner(
         var chunker = state.Answer;
         var reasoning = state.Reasoning;
         var decision = new IntentDecision(Intent.Other);
+        PromptScreen? screen = null;
         trace.Add(TraceKinds.TurnStart, $"Turn started on {InstanceIdentity.Name}", new JsonObject
         {
             ["conversationId"] = conversationId,
@@ -92,7 +94,9 @@ public sealed class ChatTurnRunner(
             chatOptions.Instructions = prompt.Text;
             chatOptions.Tools = [.. tools.Tools];
             decision = await intents.ClassifyAsync(message, ct);
-            forced = IntentClassifier.ForcesRetrieval(decision.Intent) && tools.Names.Contains("search_documents");
+            // The prompt's screening answered in the same request; a refused prompt forces nothing and runs nothing.
+            screen = guardrail.JudgePrompt(decision);
+            forced = !screen.Blocked && IntentClassifier.ForcesRetrieval(decision.Intent) && tools.Names.Contains("search_documents");
             chatOptions.ToolMode = forced ? ChatToolMode.RequireSpecific("search_documents") : ChatToolMode.Auto;
             var outside = decision.Reason?.StartsWith("outside the domain", StringComparison.Ordinal) == true
                 ? $", outside the domain {decision.InDomain ?? 0:F2}"
@@ -113,6 +117,8 @@ public sealed class ChatTurnRunner(
                 ["durationMs"] = decision.DurationMs,
                 ["reason"] = decision.Reason,
             });
+            guardrail.Trace(trace, Guardrail.CheckPrompt, null, null, screen.Decision, screen.Threshold,
+                [new ScreenedItem(0, screen.Decision, screen.Scores)], 0, screen.Reason);
             trace.Add(TraceKinds.Prompt, $"System prompt {prompt.Version} + {tools.Tools.Count} tool(s)", new JsonObject
             {
                 ["version"] = prompt.Version,
@@ -175,8 +181,12 @@ public sealed class ChatTurnRunner(
                 callId => state.Arguments.TryGetValue(callId, out var a) ? a : null,
                 callId => state.Summaries.TryGetValue(callId, out var r) ? r : null);
 
-            await foreach (var e in Observed(agent, session, message, state, tools.Names, answer, chunker, reasoning, ct)
-                .AsAGUIEventStreamAsync(context, ct))
+            // A refused prompt never reaches the model — not this turn, and not the next one's history, which is written
+            // only by a run of the agent.
+            var stream = screen.Blocked
+                ? Refused(Guardrail.Refusal(message), answer, chunker)
+                : Observed(agent, session, message, state, tools.Names, answer, chunker, reasoning, ct);
+            await foreach (var e in stream.AsAGUIEventStreamAsync(context, ct))
             {
                 if (redaction.Apply(e) is { } send)
                 {
@@ -214,7 +224,10 @@ public sealed class ChatTurnRunner(
         }
 
         var text = answer.ToString().Trim();
-        var signals = TurnSignals.Compute(decision.Intent, state.ToolCalls.Count, state.Searched, text.Length, sources.Count, options.Value.LongAnswerChars);
+        // A refused turn ran no tool on purpose: that is the guard's signal, not "how/why answered without a tool".
+        var signals = TurnSignals.Compute(screen?.Blocked == true ? Intent.Other : decision.Intent, state.ToolCalls.Count, state.Searched,
+            text.Length, sources.Count, options.Value.LongAnswerChars);
+        signals.AddRange(Guardrail.Signals(trace.Events).Distinct().Where(s => !signals.Contains(s)).ToList());
         trace.Add(TraceKinds.Sources, $"{sources.Count} source(s)", new JsonObject
         {
             ["sources"] = new JsonArray(sources.Select(x => (JsonNode)new JsonObject { ["docId"] = x.DocId, ["sectionPath"] = x.SectionPath }).ToArray()),
@@ -286,6 +299,19 @@ public sealed class ChatTurnRunner(
             chat.Contents = contents;
             yield return chat;
         }
+    }
+
+    /// <summary>The fixed refusal, as the one update of a run that called no model.</summary>
+    private static async IAsyncEnumerable<ChatResponseUpdate> Refused(string refusal, StringBuilder answer, AnswerChunker chunker)
+    {
+        answer.Append(refusal);
+        chunker.Append(refusal);
+        await Task.CompletedTask;
+        yield return new ChatResponseUpdate(ChatRole.Assistant, refusal)
+        {
+            MessageId = $"msg_{Guid.NewGuid():N}",
+            ResponseId = $"resp_{Guid.NewGuid():N}",
+        };
     }
 
     /// <summary>
@@ -367,7 +393,18 @@ public sealed class ChatTurnRunner(
 
         var (payload, structured, isError) = ToolDataEnvelope.Unpack(result);
         TraceToolResult(state.Trace, callId, name, result, isError, latency);
-        var (summary, sources) = Summarise(name, structured, isError);
+        // What the tool returned is judged before anything is derived from it: a withheld item is neither read by the
+        // model nor cited as a source. Unscreened (Jev down) fails open — the envelope still frames it as data.
+        var screened = await guardrail.ScreenToolResultAsync(name, payload, structured, isError, ct);
+        if (screened is not null)
+        {
+            guardrail.Trace(state.Trace, Guardrail.CheckToolResult, name, callId, screened.Decision, screened.Threshold, screened.Items,
+                screened.Withheld, null);
+            (payload, structured) = (screened.Payload, screened.Structured);
+        }
+        var (summary, sources) = screened is { WholeWithheld: true }
+            ? ("withheld by the content guard", new List<SourceRef>())
+            : Summarise(name, structured, isError);
         state.Sources.AddRange(sources);
         if (name == "search_documents" && !isError)
         {

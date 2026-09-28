@@ -37,6 +37,12 @@ public sealed partial class FakeJev : HttpMessageHandler
     /// <summary>What every Noul question is answered with — for the classifier, the probability the question is in the domain.</summary>
     public double? InDomain { get; set; } = 1.0;
 
+    /// <summary>
+    /// What every screening Noul (<c>guard_*</c>) is answered with, given the screened text and the question id. Null —
+    /// the default — answers 0, so a test that is not about the content guard never trips it.
+    /// </summary>
+    public Func<string, string, double>? Guard { get; set; }
+
     /// <summary>The question ids and types each request carried, in order.</summary>
     public ConcurrentQueue<IReadOnlyDictionary<string, string>> Questions { get; } = new();
 
@@ -62,7 +68,9 @@ public sealed partial class FakeJev : HttpMessageHandler
         }
 
         var root = JsonNode.Parse(body)!;
-        var question = root["state"]!["user_question"]!.GetValue<string>();
+        // A classification or a prompt screening carries the user's question; a content screening, the text it judges.
+        var state = root["state"]!;
+        var question = (state["user_question"] ?? state["untrusted_text"])!.GetValue<string>();
         var asked = root["questions"]!.AsObject().ToDictionary(q => q.Key, q => q.Value!["type"]!.GetValue<string>());
         Questions.Enqueue(asked);
         var choice = (Choose ?? Classify)(question);
@@ -79,6 +87,10 @@ public sealed partial class FakeJev : HttpMessageHandler
                     probabilities = new[] { "procedural", "mixed", "data", "chitchat", "other" }
                         .ToDictionary(o => o, o => o == choice ? Confidence : Math.Round((1 - Confidence) / 4, 4)),
                 };
+            }
+            else if (id.StartsWith("guard_", StringComparison.Ordinal))
+            {
+                answers[id] = new { type = "noul", noul = Guard?.Invoke(question, id) ?? 0.0 };
             }
             else if (InDomain is { } p)
             {
