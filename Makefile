@@ -29,7 +29,7 @@ OPENSPEC_VERSION ?= 1.13.1
 # Reuse models a host Ollama already pulled, when there is one; set OLLAMA_MODELS_DIR= to use the compose volume.
 OLLAMA_MODELS_DIR ?= $(shell test -d $(HOME)/.ollama && echo $(HOME)/.ollama)
 export CHAT_MODEL OLLAMA_MODELS_DIR
-# OLLAMA_API_KEY is only ever read from the environment (never written to a file or echoed).
+# OLLAMA_API_KEY and JEV_MAF_LAB are only ever read from the environment (never written to a file or echoed).
 
 # ── tools ────────────────────────────────────────────────────────────────────────────────────────────────────────
 DOTNET ?= $(shell command -v dotnet 2>/dev/null || echo $(HOME)/.dotnet/dotnet)
@@ -57,6 +57,7 @@ help: ## List the targets
 # ── lifecycle ────────────────────────────────────────────────────────────────────────────────────────────────────
 up: require-docker ## Build and start the stack (replicas via API_REPLICAS/MCP_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy
 	@if [ "$(CI_MODE)" != "1" ] && [ -z "$$OLLAMA_API_KEY" ]; then echo "⚠ OLLAMA_API_KEY is not set: the stack starts, but chat (Ollama Cloud) will fail. Run 'make setup'."; fi
+	@if [ "$(CI_MODE)" != "1" ] && [ -z "$$JEV_MAF_LAB" ]; then echo "⚠ JEV_MAF_LAB is not set: the stack starts, but no turn is classified (nothing forced to search)."; fi
 	@# compose itself waits for the balancer's dependencies to be healthy; if that fails, show which service and why.
 	$(COMPOSE) up -d --build --remove-orphans --scale api=$(API_REPLICAS) --scale mcp-retrieval=$(MCP_REPLICAS) \
 	  --scale compliance=$(COMPLIANCE_REPLICAS) \
@@ -169,7 +170,7 @@ dev: require-docker require-dotnet require-npm ## Run mcp/api/web locally withou
 	DOTNET=$(DOTNET) NPM=$(NPM) scripts/dev.sh
 
 # ── setup ────────────────────────────────────────────────────────────────────────────────────────────────────────
-doctor: ## Check prerequisites (Docker, .NET SDK, Node/npm, make, OLLAMA_API_KEY)
+doctor: ## Check prerequisites (Docker, .NET SDK, Node/npm, make, OLLAMA_API_KEY, JEV_MAF_LAB)
 	@DOTNET=$(DOTNET) NPM=$(NPM) scripts/doctor.sh
 
 setup: ## Install what 'make doctor' reports missing (.NET SDK unattended; prints the rest)

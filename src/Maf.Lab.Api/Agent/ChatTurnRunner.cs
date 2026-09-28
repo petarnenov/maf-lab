@@ -63,7 +63,7 @@ public sealed class ChatTurnRunner(
         var state = new TurnState(principal, conversationId, turnId, events, trace);
         var chunker = state.Answer;
         var reasoning = state.Reasoning;
-        var decision = IntentDecision.FromRules(Intent.Other);
+        var decision = new IntentDecision(Intent.Other);
         trace.Add(TraceKinds.TurnStart, $"Turn started on {InstanceIdentity.Name}", new JsonObject
         {
             ["conversationId"] = conversationId,
@@ -94,17 +94,18 @@ public sealed class ChatTurnRunner(
             decision = await intents.ClassifyAsync(message, ct);
             forced = IntentClassifier.ForcesRetrieval(decision.Intent) && tools.Names.Contains("search_documents");
             chatOptions.ToolMode = forced ? ChatToolMode.RequireSpecific("search_documents") : ChatToolMode.Auto;
-            var stage = decision.Stage == IntentStage.Model
-                ? $" (model, {decision.DurationMs:F0} ms)"
-                : " (rules)";
-            trace.Add(TraceKinds.Intent, $"Intent {decision.Intent}{stage}{(forced ? " → forcing search_documents" : "")}", new JsonObject
+            var jev = decision.Confidence is { } confidence ? $" (jev {confidence:F2}, {decision.DurationMs:F0} ms)" : "";
+            trace.Add(TraceKinds.Intent, $"Intent {decision.Intent}{jev}{(forced ? " → forcing search_documents" : "")}", new JsonObject
             {
                 ["intent"] = decision.Intent.ToString(),
                 ["forcedRetrieval"] = forced,
                 ["forcedTool"] = forced ? "search_documents" : null,
-                ["stage"] = decision.Stage.ToString().ToLowerInvariant(),
+                ["choice"] = decision.Choice,
+                ["probabilities"] = decision.Probabilities is { } p
+                    ? new JsonObject(p.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value)))
+                    : null,
+                ["confidence"] = decision.Confidence,
                 ["model"] = decision.Model,
-                ["rawAnswer"] = decision.RawAnswer,
                 ["durationMs"] = decision.DurationMs,
                 ["reason"] = decision.Reason,
             });

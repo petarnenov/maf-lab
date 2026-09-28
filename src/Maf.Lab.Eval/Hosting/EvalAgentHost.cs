@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using Maf.Lab.Api.Agent;
+using Maf.Lab.Api.Agent.Jev;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.Domain.Chat;
 using Maf.Lab.Domain.Tenancy;
@@ -75,7 +76,7 @@ public sealed class EvalAgentHost : IAsyncDisposable
         services.AddHttpClient("mcp");
         services.AddSingleton<IToolSource, McpToolSource>();
         services.AddSingleton<ConversationService>();
-        services.AddSingleton<IIntentClassifier, ModelIntentClassifier>();
+        services.AddJevIntentClassifier(configuration);
         // The write flow: an eval turn can propose an adjustment, so the turn runner needs it. No compliance
         // agent is configured here, so a proposal over the threshold ends as "unreachable" — which is an
         // honest outcome for a suite that measures which tool the model picks, not what a reviewer says.

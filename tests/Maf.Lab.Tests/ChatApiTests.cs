@@ -64,7 +64,7 @@ public class ChatApiTests
         Assert.Equal("shared/procedures/missing-fee-schedule.txt", sources.Value[0].GetProperty("docId").GetString());
         var intent = Intent(events);
         Assert.Equal("Procedural", intent.GetProperty("intent").GetString());
-        Assert.Equal("model", intent.GetProperty("stage").GetString());
+        Assert.Equal("jev-1.13.0", intent.GetProperty("model").GetString());
         Assert.True(intent.GetProperty("forcedRetrieval").GetBoolean());
     }
 
@@ -80,7 +80,7 @@ public class ChatApiTests
         Assert.Empty(tools.Invocations);
         var intent = Intent(events);
         Assert.Equal("ChitChat", intent.GetProperty("intent").GetString());
-        Assert.Equal("model", intent.GetProperty("stage").GetString());
+        Assert.Equal("chitchat", intent.GetProperty("choice").GetString());
         Assert.False(intent.GetProperty("forcedRetrieval").GetBoolean());
     }
 

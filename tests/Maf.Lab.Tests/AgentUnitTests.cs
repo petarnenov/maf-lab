@@ -5,17 +5,6 @@ namespace Maf.Lab.Tests;
 
 public class AgentUnitTests
 {
-    [Theory]
-    [InlineData("what is the procedure when a fee schedule is missing", Intent.Procedural)]
-    [InlineData("How do I issue a billing credit?", Intent.Procedural)]
-    [InlineData("explain breakpoint pricing", Intent.Procedural)]
-    [InlineData("status of run 4417", Intent.Data)]
-    [InlineData("which runs failed last month?", Intent.Data)]
-    [InlineData("why did run 4417 fail", Intent.Mixed)]
-    [InlineData("thanks, that's all", Intent.ChitChat)]
-    [InlineData("hello", Intent.ChitChat)]
-    public void Intent_classification(string question, Intent expected) => Assert.Equal(expected, IntentClassifier.Classify(question));
-
     [Fact]
     public void Only_procedural_intents_force_retrieval()
     {

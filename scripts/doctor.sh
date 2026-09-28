@@ -56,6 +56,12 @@ else
   warn ollama-key "OLLAMA_API_KEY" "missing — chat uses Ollama Cloud (gpt-oss:120b) and needs it; export it in your shell"
 fi
 
+if [ -n "${JEV_MAF_LAB:-}" ]; then
+  ok jev-key "JEV_MAF_LAB" "set"
+else
+  warn jev-key "JEV_MAF_LAB" "missing — intent classification uses TypeSafe Jev and needs it (without it nothing is forced to search); export it in your shell"
+fi
+
 # An Ollama of your own on :11434, if you happen to run one — NOT the stack's Ollama, which compose starts
 # in a container on :11435. This only decides whether compose can reuse models you already pulled.
 if curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; then

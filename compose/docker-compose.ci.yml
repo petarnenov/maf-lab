@@ -4,6 +4,10 @@
 x-ci-model-env: &ci-model-env
   Models__ChatEndpoint: http://ollama:11434
   Models__ChatModel: stub
+  # The stub also answers Jev's endpoint. A fixed placeholder, not a secret: only the stub accepts it, and nothing in
+  # CI can reach api.typesafe.ai.
+  Jev__Endpoint: http://ollama:11434
+  JEV_MAF_LAB: ci-stub-placeholder
 
 services:
   ollama:

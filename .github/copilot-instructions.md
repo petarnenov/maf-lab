@@ -35,7 +35,8 @@ cd web && npm test -- --run src/chat/ChatPage.test.tsx
 cd web && npm test -- --run src/chat/ChatPage.test.tsx -t "restores"
 ```
 
-Runtime note: chat uses Ollama Cloud and needs `OLLAMA_API_KEY` in the environment.
+Runtime note: chat uses Ollama Cloud and needs `OLLAMA_API_KEY` in the environment; intent classification uses
+TypeSafe Jev and needs `JEV_MAF_LAB` (sent only as the bearer header).
 MCP note: workspace MCP server config lives in `.mcp.json` (Playwright server via `npx @microsoft/mcp-server-playwright`).
 
 ## High-level architecture

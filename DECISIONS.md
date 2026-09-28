@@ -28,10 +28,10 @@ Pinned versions and the architectural decisions of maf-lab. **If a version moves
 | Dense embedding `dense_v1` | `nomic-embed-text` (768-d) | `search_document:` / `search_query:` prefixes |
 | Dense embedding `dense_v2` | `all-minilm` (384-d) | migration target |
 | Chat / agent / judge / rerank / contextual | **`gpt-oss:120b` on Ollama Cloud** (`https://ollama.com`) | key from env `OLLAMA_API_KEY`; thinking disabled (see §9) |
-| Intent classification | **`gemma4:31b` on Ollama Cloud** | `Agent:IntentModel`; chosen, not inherited — see below. Empty falls back to the chat model |
+| Intent classification | **TypeSafe Jev `jev-1.13.0`** (`https://api.typesafe.ai/v1/systemone`) | the only classifier; key from env `JEV_MAF_LAB`, sent only as the bearer header — see §32 |
 | Local chat fallback | `qwen3:4b` | `Models__ChatEndpoint=http://localhost:11434 Models__ChatModel=qwen3:4b` |
 
-The classifier asks for one word, and a reasoning model spends its budget thinking before it says it. Measured
+*Superseded by §32 — kept for the record of the sweep.* The classifier asked for one word, and a reasoning model spends its budget thinking before it says it. Measured
 over 137 stored turns, the model stage ran on half of them — every Bulgarian question, because the fast rules are
 English regexes — at a median of 1053 ms, while only 26% of its answers changed what the turn did. Swept against
 `make eval SUITE=selection` with latency read from each run's traces: `gemma4:31b` median **479 ms** vs
@@ -376,6 +376,8 @@ referenced web projects' config files never collide.
   - **Trigger for FTS5:** search latency above ~100 ms, or non-ASCII case folding needs.
 
 ## 18. Multilingual intent (add-multilingual-intent, 2026-09-20)
+
+*Superseded by §32: the rules stage and the model stage are gone; Jev is the only classifier.*
 
 - **Two stages, rules first.** `IntentClassifier`'s English regexes still decide `Procedural`, `Mixed`, `Data` and
   `ChitChat` at zero cost; only a question they do not recognise (`Other`) goes to a model. Measured live: an English
@@ -900,3 +902,50 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
 - **Redis is not an audit store and this change does not pretend it is.** Turns, traces, the audit chain,
   feedback, labels and the applied ledger stay in SQLite, and auditability of the state itself is what the
   Postgres change is for.
+
+## 32. Jev is the only intent classifier (use-jev-intent-classifier, 2026-09-28)
+
+- **One classifier, one call per turn.** TypeSafe's Jev — a System One model — answers one Choice question whose
+  options are the five intents, and returns the option, a probability for each and a calibrated confidence. No text
+  to parse. The English regex rules and the `gemma4:31b` stage are deleted, with no fallback to a chat model:
+  `Agent:IntentModel`, `Agent:IntentTimeoutSeconds` and `INTENT_MODEL` no longer exist.
+- **Measured before choosing** (planning probe, 2026-09-28, one call per question): the 24 cases of
+  `evals/selection.jsonl` plus three Bulgarian questions and the spec's steering question — **28/28** forcing
+  decisions as expected, median **285 ms**, p90 339 ms (vs `gemma4:31b` median 479 ms). Lowest confidence 0.70
+  (a `mixed` case); the steering question came back `procedural` at 0.98.
+- **Trade-off accepted:** English questions the rules used to decide in 0 ms, and every "hi", now pay one Jev call.
+- **The question is data.** It travels as `state.user_question`; the instructions and option descriptions are fixed
+  and never contain it. Jev reads literally (jev-1.13 jaggedness), so each option says what separates it. The first
+  wording left "What does the CONTOSO-FLAT-100 schedule charge?" (generation `g-05`) split three ways at confidence
+  0.18–0.22 — unforced; `procedural` now names "what a named fee schedule, failure code or rule means or charges" and
+  `mixed` requires a *run* number. Over all 36 selection + generation + probe questions: 35/36 → **36/36**, lowest
+  confidence 0.22 → 0.71.
+- **Evals after the change** (`jev-1.13.0`, final wording): `selection` three runs — recall 1, negativeAccuracy 1,
+  exactMatch 1 / 1 / 0.958 (the miss, `s-16`, is the answering model adding a search to a question Jev classified
+  `data`, unforced — the same noise the previous classifier's runs showed); `generation` faithfulness 1, relevance
+  0.969, sourceRecall 0.875, every case forced at confidence ≥ 0.83; `injection` 8/8; `confirmation` pass;
+  `retrieval` does not use the classifier (a −0.035 bg recall@5 dip on one run passed on re-run). Intent latency
+  read from the kept eval traces: median **261 ms**, p90 314 ms, max 364 ms, every event `jev-1.13.0`.
+- **Checked live:** a Bulgarian procedural question → `procedural` 1.00, forced; "hi" → `chitchat` 0.99; no chat
+  request is a classification. Without `JEV_MAF_LAB` each api replica warned once and turns answered with
+  `reason: "no key"`. The key value occurs 0 times in service logs, the api database, eval databases, reports and
+  the repository.
+- **Confidence floor `Jev:MinConfidence` = 0.5** (TypeSafe's starting floor). Below it the turn forces nothing and the
+  trace keeps Jev's choice, probabilities and the reason. Not tuned higher: nothing in the probe was uncertain and wrong.
+- **Pinned `jev-1.13.0`, not `jev-latest`:** the floor is tuned against a version, and an alias moves on release. The
+  version that answered is recorded in every `intent` event.
+- **Timeout `Jev:TimeoutSeconds` = 2** (~6× p90), same `Task.WhenAny` race as before; 0 disables classification. No
+  retry on 429/529 inside a turn — a rejected call forces nothing and says so in the trace.
+- **The key lives in one class.** `JevCredential` reads `JEV_MAF_LAB` from configuration (the environment variable
+  itself — no renamed alias to map); `JevAuthHandler` on the named `"jev"` client is the only thing that reads it, to
+  set `Authorization: Bearer`. The classifier, the DTOs, the trace and the logs never hold it; it is not an options
+  property, so no binder or options dump can surface it. Without it the service starts, warns once, and every turn
+  forces nothing (`reason: "no key"`).
+- **Why no Microsoft Agent Framework / Microsoft.Extensions.AI abstraction:** their model seam is `IChatClient` —
+  messages in, generated text out — and Jev generates no text. Wrapping it would serialise typed answers into text
+  and parse them back, the exact mismatch this removes. TypeSafe ships Python and JavaScript SDKs only, so this is a
+  typed `HttpClient` from `IHttpClientFactory` with small DTOs. No package added.
+- **CI stays secret-free.** `compose/ollama-stub` answers `POST /v1/systemone` from keyword sets (and 401s without a
+  bearer token); `docker-compose.ci.yml` points `Jev__Endpoint` at it with a placeholder key. Unit tests use
+  `FakeJev`, an `HttpMessageHandler` with the same shape. The on-demand evals workflow takes `JEV_MAF_LAB` as a secret.
+

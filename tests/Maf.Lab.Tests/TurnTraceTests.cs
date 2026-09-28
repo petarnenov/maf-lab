@@ -112,32 +112,46 @@ public class TurnTraceTests
     }
 
     [Fact]
-    public async Task Intent_event_names_the_stage_that_decided_it()
+    public async Task Intent_event_carries_jevs_answer_in_any_language()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
         var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
 
-        var english = await ApiFactory.ChatAsync(client, "what is the procedure when a fee schedule is missing");
-        var byRules = Trace(english).Single(t => t.Kind == TraceKinds.Intent).Data;
-        Assert.Equal("Procedural", byRules.GetProperty("intent").GetString());
-        Assert.Equal("rules", byRules.GetProperty("stage").GetString());
-        Assert.True(byRules.GetProperty("forcedRetrieval").GetBoolean());
-        Assert.Equal(JsonValueKind.Null, byRules.GetProperty("durationMs").ValueKind);
-        Assert.Equal(JsonValueKind.Null, byRules.GetProperty("model").ValueKind);
+        foreach (var question in new[] { "what is the procedure when a fee schedule is missing", "Каква е процедурата, когато липсва фий схедюл?" })
+        {
+            var events = await ApiFactory.ChatAsync(client, question);
+            var intent = Trace(events).Single(t => t.Kind == TraceKinds.Intent);
+            Assert.Equal("Procedural", intent.Data.GetProperty("intent").GetString());
+            Assert.True(intent.Data.GetProperty("forcedRetrieval").GetBoolean());
+            Assert.Equal("procedural", intent.Data.GetProperty("choice").GetString());
+            Assert.Equal(1.0, intent.Data.GetProperty("confidence").GetDouble());
+            Assert.Equal(1.0, intent.Data.GetProperty("probabilities").GetProperty("procedural").GetDouble());
+            Assert.Equal("jev-1.13.0", intent.Data.GetProperty("model").GetString());
+            Assert.True(intent.Data.GetProperty("durationMs").GetDouble() >= 0);
+            Assert.Equal(JsonValueKind.Null, intent.Data.GetProperty("reason").ValueKind);
+            Assert.False(intent.Data.TryGetProperty("stage", out _));
+            Assert.StartsWith("Intent Procedural (jev 1.00,", intent.Title);
+        }
 
-        var bulgarian = await ApiFactory.ChatAsync(client, "Каква е процедурата, когато липсва фий схедюл?");
-        var byModel = Trace(bulgarian).Single(t => t.Kind == TraceKinds.Intent).Data;
-        Assert.Equal("Procedural", byModel.GetProperty("intent").GetString());
-        Assert.Equal("model", byModel.GetProperty("stage").GetString());
-        Assert.True(byModel.GetProperty("forcedRetrieval").GetBoolean());
-        Assert.Equal(ApiFactory.IntentModelName, byModel.GetProperty("model").GetString());
-        Assert.Equal("PROCEDURAL", byModel.GetProperty("rawAnswer").GetString());
-        Assert.True(byModel.GetProperty("durationMs").GetDouble() >= 0);
+        // Every classification went to Jev, none to the answering model, and the key is nowhere in what was streamed.
+        Assert.Equal(2, api.Jev.Requests.Count);
+        Assert.DoesNotContain(api.Chat.Requests, r => r.Messages.Any(m => (m.Text ?? "").Contains("user_question")));
+    }
 
-        // The classification is reported in the intent event, never as one of the turn's own model calls.
-        Assert.DoesNotContain(Trace(bulgarian).Where(t => t.Kind == TraceKinds.ModelRequest),
-            t => t.Data.GetRawText().Contains(ModelIntentClassifier.PromptMarker));
-        Assert.DoesNotContain(api.Chat.Requests, r => r.Messages.Any(m => (m.Text ?? "").Contains(ModelIntentClassifier.PromptMarker)));
+    [Fact]
+    public async Task Intent_event_explains_a_classification_that_was_not_used()
+    {
+        using var api = new ApiFactory(ApiFactory.ProceduralModel(), jev: new FakeJev { Confidence = 0.3 });
+        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+
+        var events = await ApiFactory.ChatAsync(client, "what is the procedure when a fee schedule is missing");
+
+        var intent = Trace(events).Single(t => t.Kind == TraceKinds.Intent).Data;
+        Assert.Equal("Other", intent.GetProperty("intent").GetString());
+        Assert.False(intent.GetProperty("forcedRetrieval").GetBoolean());
+        Assert.Equal("procedural", intent.GetProperty("choice").GetString());
+        Assert.Equal("low confidence (0.30)", intent.GetProperty("reason").GetString());
+        Assert.DoesNotContain(events, e => e.Data.GetRawText().Contains(FakeJev.TestKey));
     }
 
     [Fact]

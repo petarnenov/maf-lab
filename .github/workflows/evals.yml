@@ -1,5 +1,6 @@
 # On-demand evals with real models (project rule: evals run on demand and after prompt/model/tool/chunking changes).
 # Embeddings: local Ollama in compose (models pulled on the runner). Chat: Ollama Cloud with the OLLAMA_API_KEY secret.
+# Intent classification: TypeSafe Jev with the JEV_MAF_LAB secret.
 name: Evals
 
 on:
@@ -30,16 +31,22 @@ jobs:
     timeout-minutes: 90
     env:
       OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+      JEV_MAF_LAB: ${{ secrets.JEV_MAF_LAB }}
       SUITE: ${{ inputs.suite }}
     steps:
       - uses: actions/checkout@v7
-      - name: Require the OLLAMA_API_KEY secret
+      - name: Require the OLLAMA_API_KEY and JEV_MAF_LAB secrets
         run: |
-          if [ -z "$OLLAMA_API_KEY" ]; then
-            echo "::error::Repository secret OLLAMA_API_KEY is not set (Settings → Secrets and variables → Actions)."
-            exit 1
-          fi
-          echo "OLLAMA_API_KEY is set"
+          missing=0
+          for name in OLLAMA_API_KEY JEV_MAF_LAB; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Repository secret $name is not set (Settings → Secrets and variables → Actions)."
+              missing=1
+            else
+              echo "$name is set"
+            fi
+          done
+          exit $missing
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json

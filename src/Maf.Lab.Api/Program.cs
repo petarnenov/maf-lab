@@ -2,6 +2,7 @@ using Maf.Lab.A2A;
 using Maf.Lab.Api.A2A;
 using Maf.Lab.Api.Admin;
 using Maf.Lab.Api.Agent;
+using Maf.Lab.Api.Agent.Jev;
 using Maf.Lab.Api.Endpoints;
 using Maf.Lab.Api.Feedback;
 using Maf.Lab.Api.Storage;
@@ -48,7 +49,7 @@ public partial class Program
         builder.Services.AddHttpClient("mcp");
         builder.Services.AddSingleton<IToolSource, McpToolSource>();
         builder.Services.AddSingleton<ConversationService>();
-        builder.Services.AddSingleton<IIntentClassifier, ModelIntentClassifier>();
+        builder.Services.AddJevIntentClassifier(builder.Configuration);
         builder.Services.Configure<Agent.FeeAdjustmentOptions>(builder.Configuration.GetSection("FeeAdjustments"));
         builder.Services.AddScoped<Agent.FeeAdjustmentFlow>();
         builder.Services.AddScoped<Agent.ConfirmationService>();
@@ -94,6 +95,8 @@ public partial class Program
         builder.Services.AddHostedService(sp => sp.GetRequiredService<Agent.Tracing.TraceRetentionService>());
 
         var app = builder.Build();
+        // Resolved now so a missing JEV_MAF_LAB is reported once at startup, not on the first turn.
+        app.Services.GetRequiredService<JevCredential>();
         using (var scope = app.Services.CreateScope())
         {
             var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<MafDbContext>>();

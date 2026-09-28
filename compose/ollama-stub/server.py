@@ -1,8 +1,8 @@
 """Ollama-compatible stub for CI: deterministic embeddings and a scripted, streamed chat answer.
 
 Implements only what maf-lab calls through OllamaSharp: /api/version, /api/tags, /api/show, /api/embed, /api/chat.
-It also answers the intent classifier (recognised by its marker) with a single label, so the second classification
-stage is exercised without a model. No model, no network, no secrets. Real model behaviour is covered by the
+It also stands in for TypeSafe's Jev at POST /v1/systemone — the intent classifier's endpoint — answering its Choice
+question from keyword sets, so forced retrieval is exercised without a model or a real key. No model, no network, no secrets. Real model behaviour is covered by the
 on-demand evals workflow.
 """
 import hashlib
@@ -36,36 +36,46 @@ def dims_for(model: str) -> int:
     return DIMENSIONS.get(model.split(":")[0], 768)
 
 
-INTENT_MARKER = "maf-lab/intent-classifier"
-# The same words the rules use, plus the Bulgarian ones the checks rely on. A real model classifies by meaning.
+# English and Bulgarian words the checks rely on. Jev classifies by meaning; a stub has to be deterministic.
 INTENT_WORDS = {
-    "PROCEDURAL": ("how", "why", "procedure", "what is", "explain", "policy",
+    "PROCEDURAL": ("how", "why", "procedure", "process", "steps", "explain", "what is", "what's", "what are",
+                   "what does", "define", "definition", "meaning", "policy", "what should", "what to do",
+                   "when should", "guide",
                    "как", "защо", "процедура", "процедурата", "обясни", "политика"),
     "CHITCHAT": ("hi", "hello", "thanks", "bye", "здравей", "здрасти", "благодаря", "мерси", "чао"),
-    "DATA": ("status", "which runs", "failed runs", "latest run", "статус", "списък", "рънове"),
+    "DATA": ("status", "state of", "which runs", "failed runs", "pending runs", "latest run", "list the runs",
+             "статус", "списък", "рънове"),
 }
 RUN_REFERENCE = re.compile(r"\b(run|рън)\s*#?\s*\d{3,}")
+JEV_OPTIONS = ("procedural", "mixed", "data", "chitchat", "other")
 
 
-def classify(messages: list[dict]) -> str:
-    """One label for the classifier's request; unknown questions are OTHER, as the caller expects."""
-    question = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "").lower()
+def classify(question: str) -> str:
+    """One of Jev's option names for the question; unknown questions are "other", as the caller expects."""
+    question = question.lower()
     procedural = any(w in question for w in INTENT_WORDS["PROCEDURAL"])
     run = bool(RUN_REFERENCE.search(question))
     if procedural:
-        return "MIXED" if run else "PROCEDURAL"
+        return "mixed" if run else "procedural"
     if run or any(w in question for w in INTENT_WORDS["DATA"]):
-        return "DATA"
+        return "data"
     if any(w in question for w in INTENT_WORDS["CHITCHAT"]):
-        return "CHITCHAT"
-    return "OTHER"
+        return "chitchat"
+    return "other"
+
+
+def systemone(body: dict) -> dict:
+    """A Choice answer in the shape of https://docs.typesafe.ai/api, for every question asked."""
+    state = body.get("state") or {}
+    question = state.get("user_question", "") if isinstance(state, dict) else str(state)
+    choice = classify(question)
+    answers = {qid: {"type": "choice", "choice": choice, "confidence": 1.0,
+                     "probabilities": {o: 1.0 if o == choice else 0.0 for o in JEV_OPTIONS}}
+               for qid in (body.get("questions") or {})}
+    return {"model": "jev-stub", "answers": answers, "usage": {"input_tokens": 0, "output_tokens": 0}}
 
 
 TRANSLATOR_MARKER = "maf-lab/query-translator"
-
-
-def is_classification(messages: list[dict]) -> bool:
-    return any(INTENT_MARKER in (m.get("content") or "") for m in messages)
 
 
 def is_translation(messages: list[dict]) -> bool:
@@ -128,6 +138,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         body = self._body()
         model = body.get("model", "stub")
+        if self.path == "/v1/systemone":
+            # Like the real endpoint, no bearer token is a 401 — so CI exercises the header, with a non-secret value.
+            auth = self.headers.get("Authorization") or ""
+            if not auth.startswith("Bearer ") or not auth[7:].strip():
+                return self._json(401, {"detail": "missing API key"})
+            return self._json(200, systemone(body))
         if self.path == "/api/show":
             return self._json(200, {"modelfile": "", "details": {"family": "stub"}, "capabilities": ["completion", "tools", "embedding"]})
         if self.path in ("/api/embed", "/api/embeddings"):
@@ -139,9 +155,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"model": model, "embeddings": vectors, "total_duration": 1, "prompt_eval_count": len(inputs)})
         if self.path == "/api/chat":
             messages = body.get("messages", [])
-            if is_classification(messages):
-                text = classify(messages)
-            elif is_translation(messages):
+            if is_translation(messages):
                 text = translate(messages)
             else:
                 text = answer_for(messages)

@@ -37,6 +37,7 @@ the report but not in the drawing fails the test suite.
 ```bash
 make setup                 # install what's missing (.NET SDK at the version global.json pins, into ~/.dotnet)
 export OLLAMA_API_KEY=…    # chat runs on Ollama Cloud (gpt-oss:120b); the key is only read from the environment
+export JEV_MAF_LAB=…       # intent classification runs on TypeSafe Jev; same rule
 make                       # doctor-lite → build → start → wait until healthy → index if empty → http://localhost:7171
 make help                  # every target
 ```
@@ -50,7 +51,7 @@ make help                  # every target
 | `make verify` | 17 checks through the load balancer (routing, ports, balancing, SSE, MCP, failover, jobs) |
 | `make eval` / `eval-selection` / … | Evals against the stack's MCP (`SUITE=all`) |
 | `make dev` | Run mcp/api/web locally without Docker (infra stays in compose); Ctrl-C stops |
-| `make doctor` | Check Docker, .NET SDK, Node, make, `OLLAMA_API_KEY` (value never printed) |
+| `make doctor` | Check Docker, .NET SDK, Node, make, `OLLAMA_API_KEY`, `JEV_MAF_LAB` (values never printed) |
 | `make setup` | Install what `doctor` reports missing. Only the unattended, per-user part runs: the .NET SDK `global.json` pins, into `~/.dotnet`. Docker (admin rights), Node (your version manager) and the API key (a secret) are printed as commands, never executed |
 | `make clean` | Remove the stack **with volumes** and build outputs (asks; `FORCE=1` to skip) |
 
@@ -185,11 +186,11 @@ as it happens. Tabs:
 - **Prompt & memory:** system prompt, tool schemas and the history window.
 
 **Intent:** before the first model call the question is classified, which decides whether the turn is *forced* to call
-`search_documents`. English rules decide first, for free; a question they do not recognise — anything in another
-language, for instance — is classified by a model (`Agent:IntentModel`, default the chat model, budget
-`Agent:IntentTimeoutSeconds`, 0 disables it). The intent event names the stage, so "Intent Procedural (model, 959 ms)"
-is a turn that Bulgarian rules never matched. A timeout, a failure or an answer that is not one of the five intents
-leaves the turn unforced, exactly as before the classifier existed.
+`search_documents`. Every question, in any language, is classified by TypeSafe's Jev (`jev-1.13.0`, key from
+`JEV_MAF_LAB`), which returns one of the five intents with a probability for each and a confidence. The intent event
+shows all of it, e.g. "Intent Procedural (jev 0.97, 285 ms)". A choice below `Jev:MinConfidence` (0.5), a timeout
+(`Jev:TimeoutSeconds`, 2; 0 disables it), a rejected call or a missing key leaves the turn unforced, and the event
+says why.
 
 **Time travel:** scrub, step (←/→), jump (Home/End) or replay (Space; 1×–10×, long waits compressed) through any
 turn. Every tab shows the state as of the chosen step, and the chat rewinds with it: the answer text, tool cards and
@@ -241,7 +242,7 @@ GitHub Actions ([`.github/workflows`](.github/workflows)) — `make ci` runs the
 | Workflow | Trigger | What runs |
 |---|---|---|
 | **CI** (`ci.yml`) | every push and pull request | `specs` (OpenSpec strict validation) · `dotnet` (build with warnings as errors, unit + Testcontainers integration tests) · `web` (lint, Vitest, build) · `e2e` (full stack behind the balancer on :7171, corpus indexed, `make verify`) |
-| **Evals** (`evals.yml`) | manual (*Actions → Evals → Run workflow*, choose a suite) | real embeddings in compose Ollama + chat on Ollama Cloud (`OLLAMA_API_KEY` repository secret); reports uploaded as an artifact |
+| **Evals** (`evals.yml`) | manual (*Actions → Evals → Run workflow*, choose a suite) | real embeddings in compose Ollama + chat on Ollama Cloud and intent on Jev (`OLLAMA_API_KEY` and `JEV_MAF_LAB` repository secrets); reports uploaded as an artifact |
 
 The e2e job needs **no model and no secret**, so it also runs for pull requests from forks. `CI_MODE=1` replaces the
 `ollama` service with a deterministic Ollama-compatible stub (`compose/ollama-stub`): hash-based embeddings and a
