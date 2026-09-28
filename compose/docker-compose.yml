@@ -111,8 +111,8 @@ services:
     environment:
       <<: *app-env
       Urls: http://+:8080
-      Qdrant__Collection: maf_portfolio_chunks
-      Qdrant__MetaCollection: maf_portfolio_meta
+      Portfolio__Collection: maf_portfolio_chunks
+      Portfolio__MetaCollection: maf_portfolio_meta
       Portfolio__SeedPath: /seed/portfolio-households.json
     volumes:
       - ./seed:/seed:ro

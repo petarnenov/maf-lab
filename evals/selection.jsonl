@@ -22,3 +22,8 @@
 {"id": "s-41", "question": "reduce the fee on A-1043 by 50", "expectedTools": ["propose_fee_adjustment"], "category": "obvious-data", "firmId": "firm-a"}
 {"id": "s-42", "question": "how do fee adjustments get approved?", "expectedTools": ["search_documents"], "category": "obvious-docs", "firmId": "firm-a"}
 {"id": "s-43", "question": "who is allowed to adjust a fee, and what is the approval threshold?", "expectedTools": ["search_documents"], "category": "boundary", "firmId": "firm-a"}
+{"id": "s-50", "question": "How much drift triggers a rebalance?", "expectedTools": ["search_portfolio_documents"], "category": "portfolio", "firmId": "firm-a"}
+{"id": "s-51", "question": "What does account A-1042 hold, and is it outside its drift tolerance?", "expectedTools": ["get_household_portfolio"], "category": "portfolio", "firmId": "firm-a"}
+{"id": "s-52", "question": "Show me the quarter-end AUM of A-1043 over the last year.", "expectedTools": ["get_aum_history"], "category": "portfolio", "firmId": "firm-a"}
+{"id": "s-53", "question": "Why did the fee on A-1042 go up this quarter? Did its AUM cross a tier?", "expectedTools": ["get_aum_history", "search_documents", "search_portfolio_documents"], "category": "cross-domain", "firmId": "firm-a"}
+{"id": "s-54", "question": "If we rebalance A-1044 before quarter end, does that change its fee?", "expectedTools": ["search_documents", "search_portfolio_documents"], "category": "cross-domain", "firmId": "firm-a"}

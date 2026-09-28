@@ -124,6 +124,40 @@ public static class Metrics
     /// Forcing decisions against their labels. Each rate is higher-is-better and reported separately, so a classifier
     /// that forces everything (perfect on should-force) cannot hide behind one that forces nothing, or the reverse.
     /// </summary>
+    /// <summary>
+    /// The domain verdict: exact accuracy over billing / portfolio / both / none, how many crossing questions were seen to
+    /// cross (and how many that were said to cross really do), how often a question in neither domain was left alone, and
+    /// accuracy per language and split.
+    /// </summary>
+    public static Dictionary<string, double> Domain(IEnumerable<(string Expected, string Actual, string Language, string Split)> cases)
+    {
+        var all = cases.ToList();
+        static double Share(IEnumerable<bool> hits)
+        {
+            var list = hits.ToList();
+            return list.Count == 0 ? 1 : (double)list.Count(h => h) / list.Count;
+        }
+        var metrics = new Dictionary<string, double>
+        {
+            ["accuracy"] = Share(all.Select(c => c.Expected == c.Actual)),
+            ["crossingRecall"] = Share(all.Where(c => c.Expected == "both").Select(c => c.Actual == "both")),
+            ["crossingPrecision"] = Share(all.Where(c => c.Actual == "both").Select(c => c.Expected == "both")),
+            ["noneAccuracy"] = Share(all.Where(c => c.Expected == "none").Select(c => c.Actual == "none")),
+            // A single-domain question put in the other domain alone is the costly error: the wrong server is searched.
+            ["notConfused"] = Share(all.Where(c => c.Expected is "billing" or "portfolio")
+                .Select(c => !(c.Actual is "billing" or "portfolio" && c.Actual != c.Expected))),
+        };
+        foreach (var group in all.GroupBy(c => c.Language).OrderBy(g => g.Key, StringComparer.Ordinal))
+        {
+            metrics[$"accuracy:{group.Key}"] = Share(group.Select(c => c.Expected == c.Actual));
+        }
+        foreach (var group in all.GroupBy(c => c.Split).OrderBy(g => g.Key, StringComparer.Ordinal))
+        {
+            metrics[$"accuracy:{group.Key}"] = Share(group.Select(c => c.Expected == c.Actual));
+        }
+        return metrics;
+    }
+
     public static Dictionary<string, double> Intent(IEnumerable<(bool Expected, bool Forced, string Language, string Split)> cases)
     {
         var all = cases.ToList();

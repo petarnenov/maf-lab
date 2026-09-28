@@ -1187,3 +1187,75 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
   (`Columns`/`Bars`/`Lines`) and its three validated categorical colours plus a neutral fourth (gray) for the
   "no real answer" series (unscreened, unavailable). No package added or moved.
 - **Rollback:** remove the endpoint and page; the intent endpoint and its screen behaviour are untouched.
+
+## 39. A second domain, and the boundary Jev draws between them (add-portfolio-domain, 2026-09-28)
+
+- **Why.** One domain cannot show what a multi-domain assistant is about: a question that starts in one domain and is
+  answered from another. "Why did A-1042's fee go up?" is billing's question, and its answer is in the portfolio: the
+  account's quarter-end AUM crossed a fee band. The lab now has a Portfolio domain and makes the crossing visible.
+- **A server, a corpus, a collection per domain.**
+  - The portfolio domain has its own MCP server, `mcp-portfolio` (`src/Maf.Lab.Portfolio`, 2 replicas,
+    `/portfolio/mcp` through the balancer), and its own documentation (`data-portfolio/`, 21 documents, 142 chunks).
+  - The documentation is indexed into its own collection and BM25 vocabulary (`maf_portfolio_chunks`,
+    `maf_portfolio_meta`). IDF from the billing corpus would mis-weight portfolio terms.
+  - The server reuses the retrieval core as a library. `search_portfolio_documents` runs the same hybrid search,
+    relevance gate and Jev reranker through the same `TenantScopedSearch.QueryAsync`.
+  - The collection is configuration, pinned by the server itself (`Portfolio:Collection`), so a shared
+    `Qdrant__Collection` can never point it at billing's. No new code builds a Qdrant query.
+  - A `domain` payload field in one collection was rejected: it would re-index every chunk, add a second filter
+    dimension to the one query method, and stop the domain owning its data.
+  - The two read tools, `get_household_portfolio` and `get_aum_history`, read `compose/seed/portfolio-households.json`,
+    keyed by billing's account ids. Another firm's account gets the not-found answer, and a record's note never leaves
+    the store (the seed carries canaries).
+- **The api reads every domain's server.**
+  - `Agent:McpEndpoint` stays billing's, and `Agent:Servers` adds the others.
+  - `McpToolSource` connects to each server with the user's bearer token and offers the union of their tools. Each tool
+    is known by its domain and its server; a duplicated name stays with the first server.
+  - If billing's server fails, the turn fails, as before. If another domain's server fails, only its tools are left
+    out, and the prompt event says which domain was unavailable.
+  - A confirmation goes back to the client that owns the tool.
+- **Jev draws the boundary, in the same request.**
+  - The intent request already asked `in_domain` (billing, id unchanged so older traces and statistics still read) and
+    now also asks `in_portfolio`: one Noul per domain, the domain described beside the question.
+  - Two Nouls rather than one Choice, so that a crossing question can score high on both instead of splitting one
+    probability between them.
+  - The domain gate reads the highest domain against `MinInDomain` (0.2, unchanged).
+  - A domain at or above `Jev:MinDomainScope` is in scope. When the gate passes and nothing reaches scope, the most
+    probable domain alone is in scope, so a billing question at 0.37 behaves as it always did. Two domains in scope and
+    the question crosses.
+  - The `data` intent's criterion now names portfolio state (holdings, allocation, drift, AUM) beside billing runs.
+  - The billing router routes only when billing is in scope.
+- **Scope floor 0.5, measured.** `make eval SUITE=domain` runs 44 labelled questions (billing, portfolio, both, none;
+  EN, BG and Latin-script BG). The floor-sweep variant re-reads one run's answers at every candidate floor:
+
+  | floor | accuracy | crossing recall | crossing precision | none |
+  |---|---|---|---|---|
+  | 0.4 | 0.909 | 0.917 | 0.786 | 1.0 |
+  | **0.5** | **0.886** | **0.833** | **0.769** | **1.0** |
+  | 0.6 | 0.909 | 0.750 | 0.900 | 1.0 |
+
+  - 0.6 buys two correct single-domain verdicts, but crossing recall then sits exactly on its 0.75 threshold.
+  - The errors are not symmetrical:
+    - a missed crossing loses half the answer;
+    - a false crossing costs one extra search, which the relevance gate (§36) silences when it does not answer.
+  - Hence 0.5.
+  - Every error was English. Portfolio questions about quarter-end values draw a moderate billing probability, and
+    crossing questions written from the invoice's side draw too little portfolio probability.
+- **Forcing per domain.**
+  - A forcing intent calls the documentation search of every domain in scope.
+  - With emulation on, `RequiredToolModeChatClient` issues those searches together, as parallel calls of one assistant
+    message, before the model's first call.
+  - With emulation off, only the first is required, because `tool_choice` names one function.
+- **The crossing is traced from the calls, never claimed by the model.**
+  - A `domain` event after `intent`.
+  - `domain` and `server` on `tool.forced`, `tool.call` and `tool.result`.
+  - A `boundary` event whenever a call enters a different domain from the previous call.
+  - `domainPath`, `domainsTouched`, `domainsPredicted` and `crossings` on `turn.end`.
+  - The monitor's **Domains** view shows Jev's verdict against the floor, the path across servers with each replica,
+    and where the prediction and the calls disagree. The header shows the path when a turn crossed.
+  - The topology gains an `mcp-portfolio` node.
+- **Prompt.** `system.v1` describes both domains' tools and when a question needs both, which needs a selection eval
+  run. `selection.jsonl` gains `portfolio` and `cross-domain` rows.
+- **No package moved.**
+- **Rollback:** remove `Agent:Servers`. The api then reads billing's server alone. The portfolio question still rides
+  in the request, but its domain is never offered, so nothing is forced there.

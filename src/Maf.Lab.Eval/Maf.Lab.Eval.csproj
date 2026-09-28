@@ -10,6 +10,7 @@
     <ProjectReference Include="..\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />
     <ProjectReference Include="..\Maf.Lab.Retrieval\Maf.Lab.Retrieval.csproj" />
     <ProjectReference Include="..\Maf.Lab.Api\Maf.Lab.Api.csproj" />
+    <ProjectReference Include="..\Maf.Lab.Portfolio\Maf.Lab.Portfolio.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Maf.Lab.Tests" />

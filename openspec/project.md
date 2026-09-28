@@ -44,12 +44,14 @@ maf-lab/
   src/
     Maf.Lab.Api/            ASP.NET Core host: agent, chat endpoints (SSE), feedback, admin
     Maf.Lab.Retrieval/      MCP server exposing search_documents; Qdrant access; BM25
+    Maf.Lab.Portfolio/      MCP server for the portfolio domain: search_portfolio_documents (own collection), household read tools
     Maf.Lab.Indexing/       Console app: source loaders, chunkers, embedding, upsert
     Maf.Lab.Eval/           Console app: eval datasets, runners, metrics, report
     Maf.Lab.Domain/         Shared contracts ONLY (principal, tenant, result shapes)
   web/                      Vite + React app
   compose/                  docker-compose.yml, ollama model pull script, seed data
   data/                     Sample corpus: docs/, procedures/, code/ per tenant + shared
+  data-portfolio/           Portfolio domain corpus, same tenant layout, indexed into its own collection
   evals/                    JSONL datasets: selection, retrieval, generation, injection
   openspec/
   DECISIONS.md

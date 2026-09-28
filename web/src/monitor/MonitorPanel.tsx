@@ -7,6 +7,8 @@ import { TimeTravelBar } from './TimeTravelBar';
 import { timeTravelKeyHandler } from './timeTravelKeys';
 import { useTimeTravel, type TimeTravel } from './useTimeTravel';
 import { AguiTab, McpTab, ModelTab, PromptTab, RetrievalTab, TimelineTab } from './MonitorTabs';
+import { DomainsTab } from './DomainsTab';
+import { domainPath } from './domainData';
 import {
   byKind,
   dataOf,
@@ -21,6 +23,7 @@ const TABS = [
   { id: 'timeline', label: 'Timeline' },
   { id: 'model', label: 'Model' },
   { id: 'retrieval', label: 'Retrieval' },
+  { id: 'domains', label: 'Domains' },
   { id: 'mcp', label: 'MCP' },
   { id: 'prompt', label: 'Prompt & memory' },
   { id: 'agui', label: 'AG-UI' },
@@ -67,6 +70,7 @@ export function MonitorPanel({
   const start = dataOf<TurnStartData>(firstOf(visible, 'turn.start'));
   const reached = framesReached(events, frames, cursor);
   const mcp = mcpInstances(visible);
+  const path = domainPath(visible);
 
   return (
     <section
@@ -98,6 +102,15 @@ export function MonitorPanel({
               <a className={styles.chip} href={start.traceUrl} target="_blank" rel="noreferrer">
                 open trace
               </a>
+            )}
+            {path.length > 1 && (
+              <span
+                className={styles.chip}
+                data-testid="domain-path"
+                title="The domains this turn's tool calls crossed"
+              >
+                domains: {path.join(' → ')}
+              </span>
             )}
             {mcp.map((m) => (
               <span key={m} className={styles.chip}>
@@ -154,6 +167,8 @@ export function MonitorPanel({
             <ModelTab events={visible} />
           ) : tab === 'retrieval' ? (
             <RetrievalTab events={visible} />
+          ) : tab === 'domains' ? (
+            <DomainsTab events={visible} />
           ) : tab === 'mcp' ? (
             <McpTab events={visible} apiInstance={start.apiInstance} />
           ) : tab === 'prompt' ? (

@@ -131,6 +131,8 @@ export type ChatStreamEvent =
 export type TraceKind =
   | 'turn.start'
   | 'intent'
+  | 'domain'
+  | 'boundary'
   | 'history'
   | 'prompt'
   | 'model.request'

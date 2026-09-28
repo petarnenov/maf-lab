@@ -1,0 +1,44 @@
+{"id": "d-billing-01", "question": "What is the procedure when a fee schedule is missing?", "expected": "billing", "language": "en", "split": "design"}
+{"id": "d-billing-02", "question": "How do I issue a billing credit?", "expected": "billing", "language": "en", "split": "design"}
+{"id": "d-billing-03", "question": "Why did run 4417 fail?", "expected": "billing", "language": "en", "split": "holdout"}
+{"id": "d-billing-04", "question": "Which billing runs failed in June 2026?", "expected": "billing", "language": "en", "split": "design"}
+{"id": "d-billing-05", "question": "Who can approve a fee adjustment above the threshold?", "expected": "billing", "language": "en", "split": "design"}
+{"id": "d-billing-06", "question": "How is a partial quarter prorated on the invoice?", "expected": "billing", "language": "en", "split": "holdout"}
+{"id": "d-billing-07", "question": "Каква е процедурата, когато липсва тарифа за такси?", "expected": "billing", "language": "bg", "split": "design"}
+{"id": "d-billing-08", "question": "Как се издава кредит по фактура?", "expected": "billing", "language": "bg", "split": "design"}
+{"id": "d-billing-09", "question": "Zashto se provali run 4417?", "expected": "billing", "language": "bg-latn", "split": "holdout"}
+{"id": "d-billing-10", "question": "Kak se odobryava korekciya na taksata?", "expected": "billing", "language": "bg-latn", "split": "design"}
+{"id": "d-billing-11", "question": "Credit 200 off the fee on A-1043, we overcharged them.", "expected": "billing", "language": "en", "split": "design"}
+{"id": "d-billing-12", "question": "What does the AUM-STALE failure code mean?", "expected": "billing", "language": "en", "split": "holdout"}
+{"id": "d-portfolio-01", "question": "How much drift triggers a rebalance?", "expected": "portfolio", "language": "en", "split": "design"}
+{"id": "d-portfolio-02", "question": "What does account A-1042 hold right now?", "expected": "portfolio", "language": "en", "split": "design"}
+{"id": "d-portfolio-03", "question": "Is A-1044 outside its drift tolerance?", "expected": "portfolio", "language": "en", "split": "holdout"}
+{"id": "d-portfolio-04", "question": "What are the target weights of the ACME-BALANCED-60-40 model?", "expected": "portfolio", "language": "en", "split": "design"}
+{"id": "d-portfolio-05", "question": "How is time-weighted return different from money-weighted return?", "expected": "portfolio", "language": "en", "split": "design"}
+{"id": "d-portfolio-06", "question": "Are held-away assets rebalanced with the rest of the household?", "expected": "portfolio", "language": "en", "split": "holdout"}
+{"id": "d-portfolio-07", "question": "Какво е отклонението на портфейла на A-1042 от модела?", "expected": "portfolio", "language": "bg", "split": "design"}
+{"id": "d-portfolio-08", "question": "Кога се ребалансира портфейл, който е извън толеранса?", "expected": "portfolio", "language": "bg", "split": "design"}
+{"id": "d-portfolio-09", "question": "Kakvi sa celevite tegla na modelniya portfeyl?", "expected": "portfolio", "language": "bg-latn", "split": "holdout"}
+{"id": "d-portfolio-10", "question": "Kak se izchislyava dohodnostta na portfeyla?", "expected": "portfolio", "language": "bg-latn", "split": "design"}
+{"id": "d-portfolio-11", "question": "How do I move an account to a different model portfolio?", "expected": "portfolio", "language": "en", "split": "design"}
+{"id": "d-portfolio-12", "question": "Show the quarter-end market values of C-77 this year.", "expected": "portfolio", "language": "en", "split": "holdout"}
+{"id": "d-both-01", "question": "Why did the fee on A-1042 go up this quarter — did its AUM cross a tier?", "expected": "both", "language": "en", "split": "design"}
+{"id": "d-both-02", "question": "A-1042's quarterly invoice is higher than last quarter; was it the market or a change in the fee schedule?", "expected": "both", "language": "en", "split": "design"}
+{"id": "d-both-03", "question": "If we rebalance A-1044 before quarter end, does that change its fee?", "expected": "both", "language": "en", "split": "holdout"}
+{"id": "d-both-04", "question": "A quarter-end price for C-77 was wrong and billing already ran — what do we do?", "expected": "both", "language": "en", "split": "design"}
+{"id": "d-both-05", "question": "Do held-away assets count toward the household's fee tier?", "expected": "both", "language": "en", "split": "design"}
+{"id": "d-both-06", "question": "How does a large withdrawal from Calder Retirement Plan affect next quarter's billing?", "expected": "both", "language": "en", "split": "holdout"}
+{"id": "d-both-07", "question": "Защо таксата на A-1042 се увеличи — AUM-ът премина ли праг на тарифата?", "expected": "both", "language": "bg", "split": "design"}
+{"id": "d-both-08", "question": "Ако ребалансираме портфейла преди края на тримесечието, променя ли се таксата?", "expected": "both", "language": "bg", "split": "design"}
+{"id": "d-both-09", "question": "Zashto taksata na A-1042 se uvelichi, AUM-a li premina v drug tier?", "expected": "both", "language": "bg-latn", "split": "holdout"}
+{"id": "d-both-10", "question": "Is cash in the sweep account billed, and how much cash does the model target?", "expected": "both", "language": "en", "split": "design"}
+{"id": "d-both-11", "question": "Explain how the quarter-end valuation feeds the fee calculation.", "expected": "both", "language": "en", "split": "design"}
+{"id": "d-both-12", "question": "Our fee went down although we added money — did the market value drop?", "expected": "both", "language": "en", "split": "holdout"}
+{"id": "d-none-01", "question": "What is the procedure for renewing a passport?", "expected": "none", "language": "en", "split": "design"}
+{"id": "d-none-02", "question": "How do I split the bill for pizza with my friends?", "expected": "none", "language": "en", "split": "design"}
+{"id": "d-none-03", "question": "What is a good recipe for lentil soup?", "expected": "none", "language": "en", "split": "holdout"}
+{"id": "d-none-04", "question": "How do I rebalance my bicycle wheel?", "expected": "none", "language": "en", "split": "design"}
+{"id": "d-none-05", "question": "Как се прави баница?", "expected": "none", "language": "bg", "split": "design"}
+{"id": "d-none-06", "question": "zashto nebeto e sinio", "expected": "none", "language": "bg-latn", "split": "holdout"}
+{"id": "d-none-07", "question": "Write me a poem about autumn.", "expected": "none", "language": "en", "split": "design"}
+{"id": "d-none-08", "question": "What is the capital of Portugal?", "expected": "none", "language": "en", "split": "design"}

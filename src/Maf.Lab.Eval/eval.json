@@ -31,6 +31,11 @@
         "unforcedWhenShouldNot": 0.95,
         "forcedWhenShould": 0.95
       },
+      "domain": {
+        "accuracy": 0.8,
+        "crossingRecall": 0.75,
+        "noneAccuracy": 0.85
+      },
       "guardrail": {
         "detection": 0.9,
         "benignPass": 0.98,

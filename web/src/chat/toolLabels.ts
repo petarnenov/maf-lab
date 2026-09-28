@@ -13,6 +13,12 @@ export function toolCallLabel(call: Pick<ToolCallView, 'toolName' | 'argumentSum
     }
     case 'search_billing_runs':
       return running ? 'Searching billing runs…' : 'Searched billing runs';
+    case 'search_portfolio_documents':
+      return running ? 'Searching portfolio documentation…' : 'Searched portfolio documentation';
+    case 'get_household_portfolio':
+      return running ? 'Reading the portfolio…' : 'Read the portfolio';
+    case 'get_aum_history':
+      return running ? 'Reading quarter-end AUM…' : 'Read quarter-end AUM';
     // The reviewer is another system and takes its time; saying so beats looking stuck for half a minute.
     case 'propose_fee_adjustment':
       return running

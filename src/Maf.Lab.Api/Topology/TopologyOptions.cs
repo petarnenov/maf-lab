@@ -9,6 +9,8 @@ public sealed class TopologyOptions
     public string ApiService { get; set; } = "api";
     /// <summary>Compose service name of the MCP server. Empty disables discovery.</summary>
     public string McpService { get; set; } = "mcp-retrieval";
+    /// <summary>Compose service name of the portfolio domain's MCP server. Empty disables discovery.</summary>
+    public string PortfolioService { get; set; } = "mcp-portfolio";
     /// <summary>The second agent's container name, resolved the same way the others are.</summary>
     public string ComplianceService { get; set; } = "compliance";
     /// <summary>Port both hosts listen on inside the network.</summary>

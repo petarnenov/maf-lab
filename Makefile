@@ -46,7 +46,7 @@ HOST_ENV := Models__OllamaEndpoint=http://localhost:11435
 # The portfolio domain is indexed by the same indexer into its own collection and BM25 vocabulary.
 PORTFOLIO_ENV := Indexing__CorpusRoot=$(ROOT)/data-portfolio Qdrant__Collection=maf_portfolio_chunks Qdrant__MetaCollection=maf_portfolio_meta
 
-.PHONY: all help up down restart ps logs clean index index-portfolio reindex drift migrate test test-dotnet test-web lint verify \
+.PHONY: all help up down restart ps logs clean index index-portfolio reindex ask drift migrate test test-dotnet test-web lint verify \
         eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-a2a dev doctor banner index-if-empty \
         specs lint-dotnet lint-web build-web ci ci-e2e setup \
         require-docker require-dotnet require-npm
@@ -149,10 +149,14 @@ ci-e2e: require-docker require-dotnet ## Model-free end-to-end: stack with the O
 verify: ## Verify the running stack through the load balancer (17 checks)
 	scripts/verify_lb.sh $(BASE_URL)
 
-eval: require-dotnet ## Run evals (SUITE=all|selection|retrieval|generation|injection|confirmation) against the stack's MCP
-	Evals__McpEndpoint=$(BASE_URL)/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval -- --suite $(SUITE)
+eval: require-dotnet ## Run evals (SUITE=all|selection|retrieval|generation|injection|confirmation|intent|domain) against the stack's MCP servers
+	Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval -- --suite $(SUITE)
 
-EVAL = Evals__McpEndpoint=$(BASE_URL)/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval -- --suite
+EVAL_HOST = Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval --
+EVAL = $(EVAL_HOST) --suite
+
+ask: require-dotnet ## Ask one question through the agent and print its trace (Q="…" FIRM=firm-a), e.g. a cross-domain one
+	$(EVAL_HOST) --ask "$(Q)" --firm $(or $(FIRM),firm-a)
 
 eval-accept: require-dotnet ## Run the evals and accept their metrics as the new baseline (commit the result)
 	$(EVAL) $(SUITE) --accept-baseline

@@ -12,6 +12,16 @@
       "console": "internalConsole"
     },
     {
+      "name": "mcp-portfolio",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Maf.Lab.Portfolio/bin/Debug/net10.0/Maf.Lab.Portfolio.dll",
+      "cwd": "${workspaceFolder}/src/Maf.Lab.Portfolio",
+      "env": { "ASPNETCORE_ENVIRONMENT": "Development" },
+      "console": "internalConsole"
+    },
+    {
       "name": "api",
       "type": "coreclr",
       "request": "launch",
@@ -51,8 +61,8 @@
   ],
   "compounds": [
     {
-      "name": "api + web (with mcp-retrieval)",
-      "configurations": ["mcp-retrieval", "api", "web (vite)"],
+      "name": "api + web (with mcp-retrieval and mcp-portfolio)",
+      "configurations": ["mcp-retrieval", "mcp-portfolio", "api", "web (vite)"],
       "stopAll": true
     }
   ]

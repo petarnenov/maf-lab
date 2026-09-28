@@ -18,6 +18,9 @@ public sealed record ConfirmationCase(string Id, string Question, string Account
 
 /// <param name="Forces">Whether the classifier should force search_documents for this question.</param>
 /// <param name="Split">"design" when the case informed the classifier's thresholds, "holdout" when it did not.</param>
+/// <param name="Expected">billing, portfolio, both (the question crosses the boundary) or none.</param>
+public sealed record DomainCase(string Id, string Question, string Expected, string Language, string Split);
+
 public sealed record IntentCase(string Id, string Question, bool Forces, string Category, string Language, string Split);
 
 /// <param name="Side">"prompt" (a user's or partner's message), "tool" (a tool-result item) or "agent" (another agent's words).</param>
@@ -31,10 +34,13 @@ public sealed record InjectionCase(string Id, string Question, IReadOnlyList<str
 public static class DatasetLoader
 {
     public static readonly string[] Files =
-        ["selection.jsonl", "retrieval.jsonl", "generation.jsonl", "injection.jsonl", "confirmation.jsonl", "intent.jsonl", "guardrail.jsonl"];
+        ["selection.jsonl", "retrieval.jsonl", "generation.jsonl", "injection.jsonl", "confirmation.jsonl", "intent.jsonl", "guardrail.jsonl",
+            "domain.jsonl"];
     public static readonly string[] Tools =
-        ["search_documents", "get_billing_run_status", "search_billing_runs", Maf.Lab.Domain.Billing.FeeAdjustmentTool.Name];
-    public static readonly string[] SelectionCategories = ["obvious-docs", "obvious-data", "boundary", "negative", "feedback"];
+        ["search_documents", "get_billing_run_status", "search_billing_runs", Maf.Lab.Domain.Billing.FeeAdjustmentTool.Name,
+            Maf.Lab.Domain.Portfolio.PortfolioTools.Search, Maf.Lab.Domain.Portfolio.PortfolioTools.GetPortfolio,
+            Maf.Lab.Domain.Portfolio.PortfolioTools.AumHistory];
+    public static readonly string[] SelectionCategories = ["obvious-docs", "obvious-data", "boundary", "negative", "feedback", "portfolio", "cross-domain"];
 
     public static IReadOnlyList<SelectionCase> Selection(string root) => Load(root, "selection.jsonl", (e, where) =>
     {
@@ -98,6 +104,21 @@ public static class DatasetLoader
             throw new InvalidDataException($"{where}: unknown category, language or split.");
         }
         return new IntentCase(Str(e, "id", where), Str(e, "question", where), f.GetBoolean(), category, language, split);
+    });
+
+    public static readonly string[] DomainExpectations = ["billing", "portfolio", "both", "none"];
+
+    /// <summary>Questions for Jev's domain verdict alone, each labelled with the domains it belongs to.</summary>
+    public static IReadOnlyList<DomainCase> Domain(string root) => Load(root, "domain.jsonl", (e, where) =>
+    {
+        var expected = Str(e, "expected", where);
+        var language = Str(e, "language", where);
+        var split = Str(e, "split", where);
+        if (!DomainExpectations.Contains(expected) || !IntentLanguages.Contains(language) || split is not ("design" or "holdout"))
+        {
+            throw new InvalidDataException($"{where}: unknown expected domain, language or split.");
+        }
+        return new DomainCase(Str(e, "id", where), Str(e, "question", where), expected, language, split);
     });
 
     public static readonly string[] GuardrailSides = ["prompt", "tool", "agent"];

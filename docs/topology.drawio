@@ -31,6 +31,10 @@
           <mxGeometry x="700" y="290" width="160" height="80" as="geometry" />
         </mxCell>
 
+        <mxCell id="mcp-portfolio" value="mcp-portfolio&#10;MCP server (portfolio)" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="700" y="120" width="160" height="70" as="geometry" />
+        </mxCell>
+
         <mxCell id="qdrant" value="qdrant&#10;vector store" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
           <mxGeometry x="930" y="290" width="140" height="80" as="geometry" />
         </mxCell>
@@ -70,6 +74,18 @@
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e-api-mcp" value="/mcp via lb" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="api" target="mcp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-api-portfolio" value="/portfolio/mcp via lb" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="api" target="mcp-portfolio">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-portfolio-qdrant" value="gRPC" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="mcp-portfolio" target="qdrant">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-portfolio-embeddings" value="embed" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="mcp-portfolio" target="ollama-embeddings">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-portfolio-otel" value="OTLP" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;" edge="1" parent="1" source="mcp-portfolio" target="otel-collector">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e-mcp-qdrant" value="gRPC" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="mcp" target="qdrant">

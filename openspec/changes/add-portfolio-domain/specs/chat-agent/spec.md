@@ -9,7 +9,8 @@ their union.
 Every tool SHALL be known by the domain and the server that own it. A tool name offered by two servers SHALL be kept
 from the first and dropped from the second, with a log entry.
 
-A server that cannot be reached SHALL leave its tools out of the turn without failing it.
+The billing server failing SHALL fail the turn, as before. Another domain's server that cannot be reached SHALL leave
+its tools out of the turn without failing it.
 
 A confirmation SHALL be sent to the server that owns the tool.
 

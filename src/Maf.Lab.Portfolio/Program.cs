@@ -14,12 +14,22 @@ public partial class Program
 {
     public const string ServerName = "maf-lab-portfolio";
 
+    /// <summary>This domain's own collection and BM25 vocabulary: never billing's, whatever else configures the core.</summary>
+    public const string Collection = "maf_portfolio_chunks";
+    public const string MetaCollection = "maf_portfolio_meta";
+
     public static void Main(string[] args) => BuildApp(args).Run();
 
     public static WebApplication BuildApp(string[] args, Action<WebApplicationBuilder>? configure = null)
     {
         var builder = WebApplication.CreateBuilder(args);
         builder.Configuration.AddJsonFile("portfolio.json", optional: true).AddEnvironmentVariables();
+        // Pinned after every other source: a shared Qdrant__Collection meant for billing must not point this server at it.
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Qdrant:Collection"] = builder.Configuration["Portfolio:Collection"] ?? Collection,
+            ["Qdrant:MetaCollection"] = builder.Configuration["Portfolio:MetaCollection"] ?? MetaCollection,
+        });
         configure?.Invoke(builder);
 
         builder.AddLabTelemetry("maf-lab-mcp-portfolio");
