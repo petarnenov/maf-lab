@@ -29,12 +29,14 @@ is unavailable. The known intents SHALL be exactly `procedural`, `mixed`, `data`
 - **THEN** no chat or generative model receives a request to classify the question
 
 ### Requirement: Typed classification request
-Classification SHALL be one request carrying two questions about the same state: a Choice whose options are the five
-known intents, each with a description that separates it from the others, and a yes/no question asking whether the
-question is about the domain the documentation covers, with that domain described in the question itself. The user's
-question SHALL be carried as a named field of the request's state, as text to classify; it SHALL NOT be placed in either
-question's instructions or criteria, and SHALL NOT be treated as instructions. The request SHALL name a pinned, versioned
-Jev model rather than a moving alias, and the versioned model that answered SHALL be recorded with the classification.
+Classification SHALL be one request carrying, about the same state, a Choice whose options are the five known intents,
+each with a description that separates it from the others, and a yes/no question asking whether the question is about
+the domain the documentation covers, with that domain described in the question itself. The same request SHALL also
+carry the prompt-screening questions that injection-defense requires, so that screening the prompt costs no request of
+its own. The user's question SHALL be carried as a named field of the request's state, as text to classify; it SHALL NOT
+be placed in any question's instructions or criteria, and SHALL NOT be treated as instructions. The request SHALL name a
+pinned, versioned Jev model rather than a moving alias, and the versioned model that answered SHALL be recorded with the
+classification.
 
 #### Scenario: Question carried as data
 - **WHEN** a turn is classified
@@ -50,7 +52,7 @@ Jev model rather than a moving alias, and the versioned model that answered SHAL
 
 #### Scenario: One request per turn
 - **WHEN** a turn is classified
-- **THEN** exactly one request is sent to Jev, and it carries both the intent question and the domain question
+- **THEN** exactly one request is sent to Jev for the prompt, and it carries the intent question, the domain question and the screening questions
 
 ### Requirement: Confidence-gated intent
 A classification SHALL be accepted only when Jev's confidence for its choice is at or above a configured floor. Below
@@ -69,8 +71,10 @@ code, and SHALL default to 0.5.
 When Jev cannot be reached, returns an error status, returns an answer that is not one of the known intents, or does
 not answer within the configured timeout, the turn SHALL proceed with no recognised intent, which forces nothing, and
 SHALL still answer. The wait SHALL be bounded by the timeout even if the transport ignores cancellation.
-Classification MUST NOT change the answer the user receives other than through the tools the turn is required to call,
-and MUST NOT be reported to the user as part of the answer.
+The intent and domain answers MUST NOT change the answer the user receives other than through the tools the turn is
+required to call, and MUST NOT be reported to the user as part of the answer. The screening answers carried by the same
+request act only as injection-defense specifies, and an intent answer that is not used — below the confidence floor, or
+outside the domain — SHALL NOT discard them.
 
 #### Scenario: Jev times out
 - **WHEN** Jev does not answer within the configured timeout
@@ -83,6 +87,10 @@ and MUST NOT be reported to the user as part of the answer.
 #### Scenario: Unknown option returned
 - **WHEN** Jev's answer names an option that is not one of the known intents
 - **THEN** the answer is discarded and the turn proceeds with no recognised intent
+
+#### Scenario: An uncertain intent does not unscreen the prompt
+- **WHEN** Jev's intent confidence is below the floor and one of its screening answers is above the block threshold
+- **THEN** the turn proceeds with no recognised intent and is still refused
 
 ### Requirement: Jev credential handling
 The Jev API key SHALL be read only from the `JEV_MAF_LAB` environment variable. It SHALL be sent only as the bearer

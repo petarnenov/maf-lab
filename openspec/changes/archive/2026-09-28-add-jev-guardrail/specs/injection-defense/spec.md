@@ -11,8 +11,9 @@ use a tool the assistant does not have; and a request to carry out instructions 
 another agent's message. The message SHALL be carried as data in the request's state, never in a question.
 
 When any of those probabilities is at or above its configured block threshold — 0.65 by default, and 0.8 for the
-question about other firms' data, which cannot know which firm is the user's own — the turn SHALL be refused: the answering model SHALL NOT be called, no tool SHALL run, the answer SHALL be a fixed refusal that does
-not repeat the message (in Bulgarian when the message is written in Cyrillic, otherwise in English), the message SHALL
+question about other firms' data, which cannot know which firm is the user's own — the turn SHALL be refused: the
+answering model SHALL NOT be called, no tool SHALL run, the answer SHALL be a fixed refusal that does not repeat the
+message (in Bulgarian when the message is written in Cyrillic, otherwise in English), the message SHALL
 NOT enter the conversation's model history, and the turn SHALL carry the review signal `guardrail_blocked`. Below the
 thresholds the turn SHALL run as usual. The thresholds SHALL be configuration.
 
