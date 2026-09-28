@@ -264,6 +264,17 @@ public class PortfolioDomainTests
         Assert.Equal("answer", second.Text);
     }
 
+    [Fact]
+    public async Task A_mixed_question_about_two_runs_leaves_the_status_calls_to_the_model()
+    {
+        var stubborn = new ScriptedChatClient((_, _, _) => ScriptedChatClient.Text("answer"));
+        using var api = new ApiFactory(stubborn);
+
+        await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "why did run 4417 and run 4418 fail");
+
+        Assert.Equal(["search_documents"], api.Tools.Invocations);
+    }
+
     // ---- the trace of a crossing -----------------------------------------------------------------------------------------
 
     private static List<TraceEvent> Trace(IEnumerable<SseEvent> events) =>

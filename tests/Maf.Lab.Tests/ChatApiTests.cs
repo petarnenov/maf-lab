@@ -132,7 +132,8 @@ public class ChatApiTests
         using var api = new ApiFactory(stubborn);
         await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "why did run 4417 fail");
 
-        Assert.Equal(["search_documents"], api.Tools.Invocations);
+        // A mixed question about one named run reads that run's state beside the documentation, without the model.
+        Assert.Equal(["search_documents", "get_billing_run_status"], api.Tools.Invocations);
         var turn = await Db(api).Turns.SingleAsync(Ct);
         Assert.True(turn.ForcedRetrieval);
     }

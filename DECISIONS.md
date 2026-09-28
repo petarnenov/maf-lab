@@ -1254,8 +1254,23 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
   - The monitor's **Domains** view shows Jev's verdict against the floor, the path across servers with each replica,
     and where the prediction and the calls disagree. The header shows the path when a turn crossed.
   - The topology gains an `mcp-portfolio` node.
-- **Prompt.** `system.v1` describes both domains' tools and when a question needs both, which needs a selection eval
-  run. `selection.jsonl` gains `portfolio` and `cross-domain` rows.
+- **A mixed question reads its run too.**
+  - A `mixed` question that names exactly one run (the router's run-id pattern), with billing in scope, now gets
+    `get_billing_run_status` for that run forced beside its searches.
+  - Why: the two-domain prompt made the model skip that call. On s-23, under the same forcing, `main`'s prompt called
+    it in 3 of 4 trials and the new prompt in 0 of 4.
+  - Making the call deterministic fixed it: s-23 passes and recall is back to 1.
+  - Two run ids, or none, and the model decides as before.
+- **Prompt and selection.** `system.v1` describes both domains' tools, when a question needs both, and that a
+  state-only question needs no documentation search. `selection.jsonl` gains 3 `portfolio` and 2 `cross-domain` rows.
+  - **New rows:** all 5 pass. s-53, "why did A-1042's fee go up", calls `search_documents`,
+    `search_portfolio_documents` and `get_aum_history`.
+  - **Original 24 rows:** s-16 fails as it does on `main` (5 of the last 6 `main` runs). s-04 ("What does the
+    AUM-STALE failure code mean?") gains a portfolio search. Jev gives it billing 0.91 and portfolio 0.87, a false
+    crossing no floor separates.
+  - It is kept as a known false crossing: the extra search is silenced by the relevance gate when it does not answer,
+    and the monitor shows exactly that.
+  - The selection and domain baselines were re-accepted on the new datasets.
 - **No package moved.**
 - **Rollback:** remove `Agent:Servers`. The api then reads billing's server alone. The portfolio question still rides
   in the request, but its domain is never offered, so nothing is forced there.

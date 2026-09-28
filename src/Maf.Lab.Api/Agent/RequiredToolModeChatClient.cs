@@ -15,8 +15,10 @@ namespace Maf.Lab.Api.Agent;
 /// issued together, as parallel calls of one assistant message, so the turn reads both sides of the boundary before the
 /// model says a word (add-portfolio-domain).
 /// </summary>
+/// <paramref name="alongside"/> are read calls issued with those searches, arguments taken from the question — the run a
+/// mixed question names, whose state the answer needs as much as the documentation.
 public sealed class RequiredToolModeChatClient(IChatClient inner, Action<FunctionCallContent>? onForced = null, Jev.ToolRoute? route = null,
-    IReadOnlyList<string>? forcedSearches = null)
+    IReadOnlyList<string>? forcedSearches = null, IReadOnlyList<Jev.ToolRoute>? alongside = null)
     : DelegatingChatClient(inner)
 {
     public const string EmulatedTool = "search_documents";
@@ -70,6 +72,10 @@ public sealed class RequiredToolModeChatClient(IChatClient inner, Action<Functio
         var question = messages.LastOrDefault(m => m.Role == ChatRole.User)?.Text?.Trim();
         return string.IsNullOrEmpty(question)
             ? null
-            : [.. searches.Select(tool => new FunctionCallContent($"forced_{Guid.NewGuid():N}"[..20], tool, new Dictionary<string, object?> { ["query"] = question }))];
+            : [
+                .. searches.Select(tool => new FunctionCallContent($"forced_{Guid.NewGuid():N}"[..20], tool, new Dictionary<string, object?> { ["query"] = question })),
+                .. (alongside ?? []).Where(r => !called.Contains(r.Tool))
+                    .Select(r => new FunctionCallContent($"forced_{Guid.NewGuid():N}"[..20], r.Tool, r.Arguments.ToDictionary(a => a.Key, a => a.Value))),
+            ];
     }
 }

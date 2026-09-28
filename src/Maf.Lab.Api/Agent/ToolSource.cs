@@ -73,11 +73,12 @@ public sealed class McpToolSource(IOptions<AgentOptions> options, ILoggerFactory
         {
             try
             {
-                return (server, Client: await ConnectAsync(server, bearerToken, confirmations, ct), Error: (Exception?)null);
+                return (server, Client: ((McpClient Client, IList<McpClientTool> Tools)?)await ConnectAsync(server, bearerToken, confirmations, ct),
+                    Error: (Exception?)null);
             }
             catch (Exception ex) when (index > 0 && ex is not OperationCanceledException)
             {
-                return (server, Client: ((McpClient Client, IList<McpClientTool> Tools)?)null, Error: ex);
+                return (server, Client: ((McpClient Client, IList<McpClientTool> Tools)?)null, Error: (Exception?)ex);
             }
         }));
 

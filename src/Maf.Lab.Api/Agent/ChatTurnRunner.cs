@@ -97,6 +97,7 @@ public sealed class ChatTurnRunner(
             await using var tools = screen.Blocked ? null : await toolSource.GetToolsAsync(bearerToken, state.Confirmations, ct);
             Jev.ToolRoute? route = null;
             IReadOnlyList<string> forcedSearches = [];
+            IReadOnlyList<Jev.ToolRoute> alongside = [];
             if (tools is not null)
             {
                 state.KnownTools = tools.Names;
@@ -104,6 +105,7 @@ public sealed class ChatTurnRunner(
                 // A forcing intent searches every domain Jev put the question in, each through its own server's search.
                 forcedSearches = IntentClassifier.ForcesRetrieval(decision.Intent) ? ForcedSearches(decision.Domains, tools) : [];
                 forced = forcedSearches.Count > 0;
+                alongside = forced ? Alongside(decision, message, tools) : [];
                 // A data turn Jev routed to a read tool this server offers: the call is issued without the model's first
                 // call. Never a write — the router has no write to offer.
                 route = !forced && decision.Route is { } r && tools.Names.Contains(r.Tool) ? r : null;
@@ -114,12 +116,12 @@ public sealed class ChatTurnRunner(
                 : "";
             var jev = decision.Confidence is { } confidence ? $" (jev {confidence:F2}{outside}, {decision.DurationMs:F0} ms)" : "";
             var routed = route is null ? "" : $" → routing {route.Tool} (jev {route.Probability:F2})";
-            trace.Add(TraceKinds.Intent, $"Intent {decision.Intent}{jev}{(forced ? $" → forcing {string.Join(" + ", forcedSearches)}" : "")}{routed}", new JsonObject
+            trace.Add(TraceKinds.Intent, $"Intent {decision.Intent}{jev}{(forced ? $" → forcing {string.Join(" + ", forcedSearches.Concat(alongside.Select(a => a.Tool)))}" : "")}{routed}", new JsonObject
             {
                 ["intent"] = decision.Intent.ToString(),
                 ["forcedRetrieval"] = forced,
                 ["forcedTool"] = forced ? forcedSearches[0] : null,
-                ["forcedTools"] = new JsonArray([.. forcedSearches.Select(t => (JsonNode)JsonValue.Create(t)!)]),
+                ["forcedTools"] = new JsonArray([.. forcedSearches.Concat(alongside.Select(a => a.Tool)).Select(t => (JsonNode)JsonValue.Create(t)!)]),
                 ["choice"] = decision.Choice,
                 ["probabilities"] = decision.Probabilities is { } p
                     ? new JsonObject(p.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value)))
@@ -197,10 +199,12 @@ public sealed class ChatTurnRunner(
                             ["arguments"] = TraceMapping.Node(call.Arguments),
                             ["reason"] = call.Name == route?.Tool
                                 ? $"Data intent routed by Jev ({route.Tool} {route.Probability:F2}); the call is issued without asking the model which tool to use."
+                                : alongside.Any(a => a.Tool == call.Name)
+                                    ? "Mixed intent about one named run: its state is read together with the documentation, without asking the model."
                                 : forcedSearches.Count > 1
                                     ? $"Procedural intent requires retrieval in every domain in scope ({string.Join(", ", decision.Domains?.InScope ?? [])}); the searches are issued together without asking the model."
                                     : "Procedural intent requires retrieval; the provider ignores tool_choice, so the call is issued without asking the model.",
-                        }), route, forcedSearches);
+                        }), route, forcedSearches, alongside);
                 }
 
                 var agent = new ChatClientAgent(
@@ -323,6 +327,23 @@ public sealed class ChatTurnRunner(
             .Select(d => Domains.SearchTool.GetValueOrDefault(d))
             .OfType<string>()
             .Where(tools.Names.Contains)];
+    }
+
+    /// <summary>
+    /// The read call a mixed question needs beside its documentation: the status of the one run it names, when billing is
+    /// in scope and the server offers the tool. The run id comes from the question through the router's fixed pattern,
+    /// never from the model; two run ids, or none, and the model decides as before.
+    /// </summary>
+    internal static IReadOnlyList<Jev.ToolRoute> Alongside(IntentDecision decision, string question, ToolSet tools)
+    {
+        var status = Maf.Lab.Retrieval.Tools.BillingTools.GetStatusName;
+        if (decision.Intent != Intent.Mixed || !tools.Names.Contains(status)
+            || decision.Domains is { InScope.Count: > 0 } d && !d.InScope.Contains(Domains.Billing))
+        {
+            return [];
+        }
+        var runs = Jev.DataToolRouter.RunIds(question);
+        return runs.Count == 1 ? [new Jev.ToolRoute(status, new Dictionary<string, object?> { ["runId"] = runs[0] }, decision.Confidence ?? 0)] : [];
     }
 
     /// <summary>
