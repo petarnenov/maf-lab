@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import type {
+  AnswerCheckStats,
   GuardrailStats,
   JevOverview,
   JevStatsReport,
@@ -30,7 +31,7 @@ const UNSCREENED = { label: 'unscreened', className: styles.seriesMuted };
 
 /**
  * Everything Jev did for this firm's chat turns, in one place (the A2A path has no turn trace and is not counted): a cross-cutting requests/availability overview on top, then a
- * section per call site — intent, guardrail, relevance & rerank, tool routing. Aggregates only; no question, answer or
+ * section per call site — intent, guardrail, relevance & rerank, tool routing, the answer check. Aggregates only; no question, answer or
  * passage is on this screen.
  */
 export function JevPage() {
@@ -54,9 +55,9 @@ export function JevPage() {
       <h1 className={page.heading}>Jev</h1>
       <p className={page.muted}>
         Everything TypeSafe&apos;s Jev did for your firm&apos;s chat turns — classifying intent,
-        screening what the assistant reads, judging and ordering searches, and routing data turns —
-        and how often it was unavailable across all of them. Numbers only: no question, answer or
-        passage is shown here.
+        screening what the assistant reads, judging and ordering searches, routing data turns and
+        checking the final answer — and how often it was unavailable across all of them. Numbers
+        only: no question, answer or passage is shown here.
       </p>
       <p className={page.muted}>
         Jev calls made by chat turns — the A2A partner path is not counted: its screenings are
@@ -117,6 +118,9 @@ export function JevPage() {
 
           <h2 className={page.heading}>Domains</h2>
           <DomainsSection d={r.domains ?? null} period={period} />
+
+          <h2 className={page.heading}>Answer check</h2>
+          <AnswerCheckSection a={r.answerCheck ?? null} period={period} />
         </>
       )}
 
@@ -169,7 +173,7 @@ function OverviewSection({
         <Kpi
           label="Sites in use"
           value={String(o.sites.filter((x) => x.requests > 0).length)}
-          note="intent · guardrail · relevance"
+          note="intent · guardrail · relevance · answer"
         />
       </div>
 
@@ -454,6 +458,54 @@ function DomainsSection({ d, period }: { d: DomainStats | null; period: string }
         note={`${d.agreed} of ${d.withCalls} turns that called a tool`}
       />
     </div>
+  );
+}
+
+/**
+ * Jev's check of the final answer: how many answers got a verdict, the share below each floor, how many were left
+ * unchecked, and the check's latency. The check flags a turn for review; it never blocks the answer.
+ */
+function AnswerCheckSection({ a, period }: { a: AnswerCheckStats | null; period: string }) {
+  if (!a || a.answers === 0) {
+    return (
+      <p className={styles.noData}>
+        No answer was checked by Jev in this period ({period.toLowerCase()}).
+      </p>
+    );
+  }
+  return (
+    <>
+      <div className={styles.kpis}>
+        <Kpi
+          label="Answers checked"
+          value={String(a.checked)}
+          note={`${a.answers} answered turns`}
+        />
+        <Kpi
+          label="Not relevant"
+          value={percent(a.notRelevant, a.checked)}
+          note={`${a.notRelevant} below floor ${a.relevantFloor ?? '–'}`}
+        />
+        <Kpi
+          label="Not grounded"
+          value={percent(a.notGrounded, a.checked)}
+          note={`${a.notGrounded} below floor ${a.groundedFloor ?? '–'}`}
+        />
+        <Kpi
+          label="Unchecked"
+          value={String(a.unchecked)}
+          note={`${a.unavailable} Jev unavailable · the rest off or no key`}
+        />
+      </div>
+      <div className={styles.grid2}>
+        <Panel
+          title="Answer check latency"
+          note={`${period} · ${a.latency.count} checks, one Jev request each, added to the turn, 100 ms bins`}
+        >
+          <LatencyHistogram latency={a.latency} budgetLabel="timeout 3s" />
+        </Panel>
+      </div>
+    </>
   );
 }
 

@@ -38,6 +38,8 @@ public static class TraceKinds
     public const string Adjustment = "adjustment";
     /// <summary>A content-guard screening: of the prompt, a tool result or another agent's words.</summary>
     public const string Guardrail = "guardrail";
+    /// <summary>Jev's check of the final answer: relevant to the question, grounded in what the model read, or unchecked.</summary>
+    public const string AnswerCheck = "answer.check";
     public const string Sources = "sources";
     public const string Signals = "signals";
     public const string Memory = "memory";

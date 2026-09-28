@@ -25,6 +25,10 @@ public static class TurnSignal
     public const string GuardrailBlocked = "guardrail_blocked";
     /// <summary>The content guard withheld a tool-result item or another agent's words.</summary>
     public const string GuardrailWithheld = "guardrail_withheld";
+    /// <summary>Jev found a claim in the answer that the data the model read does not support.</summary>
+    public const string AnswerNotGrounded = "answer_not_grounded";
+    /// <summary>Jev found that the answer does not address the question.</summary>
+    public const string AnswerNotRelevant = "answer_not_relevant";
 }
 
 public sealed record FeedbackRequest(string ConversationId, string TurnId, string Kind, string? Comment);

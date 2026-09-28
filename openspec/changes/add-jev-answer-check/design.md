@@ -80,7 +80,7 @@ generation eval's agreement metrics have been read over several paid runs.
 
 `{ verdict, relevant, grounded, relevantFloor, groundedFloor, model, durationMs, reason, sources, sourceChars,
 requests }`, durationMs as the event's duration, recorded before `sources`. `sources` is a count. Title: `Jev answer
-check: relevant 0.93 · grounded 0.88 — pass`, `… — not grounded`, or `Jev answer check unavailable: <reason> —
+check: relevant 0.93 ≥ 0.50, grounded 0.41 < 0.50 — not grounded`, or `Jev answer check unavailable: <reason> —
 unchecked`. Never the answer or the sources' text: the answer is in the `answer.delta` events already, and the data in
 the `envelope` events.
 

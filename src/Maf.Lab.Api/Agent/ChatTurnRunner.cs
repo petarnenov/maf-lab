@@ -30,6 +30,9 @@ public sealed record TurnResult(string ConversationId, string TurnId, Intent Int
     public Maf.Lab.Domain.Billing.FeeAdjustmentSummary? Proposal { get; init; }
 
     public string? ProposalQuestion { get; init; }
+
+    /// <summary>Jev's check of the answer; null for a turn that ran none (refused, waiting for a person, failed, empty).</summary>
+    public Jev.AnswerCheck? AnswerCheck { get; init; }
 }
 
 /// <summary>
@@ -45,6 +48,7 @@ public sealed class ChatTurnRunner(
     TokenCounter tokens,
     FeeAdjustmentFlow adjustments,
     Guardrail guardrail,
+    Jev.JevAnswerCheck answerCheck,
     IDbContextFactory<MafDbContext> db,
     IOptions<AgentOptions> options,
     IOptions<Telemetry.TelemetryQueryOptions> telemetry,
@@ -78,6 +82,8 @@ public sealed class ChatTurnRunner(
             ["question"] = message,
         });
         var forced = false;
+        // Whether the turn's answer came from the model — a refused prompt's came from the guard.
+        var reachedModel = false;
         string? error = null;
         var answer = new StringBuilder();
         var sw = Stopwatch.StartNew();
@@ -100,6 +106,7 @@ public sealed class ChatTurnRunner(
             IReadOnlyList<Jev.ToolRoute> alongside = [];
             if (tools is not null)
             {
+                reachedModel = true;
                 state.KnownTools = tools.Names;
                 state.Tools = tools;
                 // A forcing intent searches every domain Jev put the question in, each through its own server's search.
@@ -271,10 +278,19 @@ public sealed class ChatTurnRunner(
         }
 
         var text = answer.ToString().Trim();
+        // The answer has streamed, so the check cannot block it; it runs before the trace is stored and the run ends, so
+        // both carry it. A refused prompt, a pause for a person and a failure have no answer of the model's to check.
+        Jev.AnswerCheck? check = null;
+        if (reachedModel && error is null && !state.AwaitingConfirmation && text.Length > 0)
+        {
+            check = await answerCheck.CheckAsync(message, text, state.Read, ct);
+            Jev.JevAnswerCheck.Trace(trace, check);
+        }
         // A refused turn ran no tool on purpose: that is the guard's signal, not "how/why answered without a tool".
         var signals = TurnSignals.Compute(screen?.Blocked == true ? Intent.Other : decision.Intent, state.ToolCalls.Count, state.Searched,
             text.Length, sources.Count, options.Value.LongAnswerChars);
         signals.AddRange(Guardrail.Signals(trace.Events).Distinct().Where(s => !signals.Contains(s)).ToList());
+        signals.AddRange((check?.Signals ?? []).Where(s => !signals.Contains(s)).ToList());
         trace.Add(TraceKinds.Sources, $"{sources.Count} source(s)", new JsonObject
         {
             ["sources"] = new JsonArray(sources.Select(x => (JsonNode)new JsonObject { ["docId"] = x.DocId, ["sectionPath"] = x.SectionPath }).ToArray()),
@@ -304,14 +320,15 @@ public sealed class ChatTurnRunner(
         }, sw.ElapsedMilliseconds);
         await PersistAsync(principal, conversationId, turnId, message, text, decision.Intent, forced, state.ToolCalls, sources, signals, trace, ct);
 
-        _logger.LogInformation("chat turn done turn={TurnId} intent={Intent} forced={Forced} tools={ToolCount} sources={SourceCount} signals={Signals} ms={Elapsed}",
-            turnId, decision.Intent, forced, state.ToolCalls.Count, sources.Count, string.Join(",", signals), sw.ElapsedMilliseconds);
+        _logger.LogInformation("chat turn done turn={TurnId} intent={Intent} forced={Forced} tools={ToolCount} sources={SourceCount} signals={Signals} answerCheck={AnswerCheck} ms={Elapsed}",
+            turnId, decision.Intent, forced, state.ToolCalls.Count, sources.Count, string.Join(",", signals), check?.Verdict ?? "none", sw.ElapsedMilliseconds);
 
         await events.WriteAsync(Terminal(state, conversationId, runId, error), ct);
         return new TurnResult(conversationId, turnId, decision.Intent, forced, text, state.ToolCalls, sources, signals, error)
         {
             Proposal = state.Proposal,
             ProposalQuestion = state.Interrupt?.Message,
+            AnswerCheck = check,
         };
     }
 
@@ -522,7 +539,9 @@ public sealed class ChatTurnRunner(
             }, sw.ElapsedMilliseconds);
             state.ToolCalls.Add(new ToolCallRecord(name, args, "error", 0, [], [], callId, "failed"));
             state.Summaries[callId] = Result(name, "failed", 0, isError: true);
-            return ToolDataEnvelope.Wrap(name, "The tool is temporarily unavailable.");
+            const string unavailable = "The tool is temporarily unavailable.";
+            state.Read.Add($"{name}: {unavailable}");
+            return ToolDataEnvelope.Wrap(name, unavailable);
         }
 
         var latency = sw.ElapsedMilliseconds;
@@ -569,12 +588,32 @@ public sealed class ChatTurnRunner(
         });
         state.ToolCalls.Add(new ToolCallRecord(name, args, outcome, sources.Count, sources.Select(s => s.DocId).Distinct().ToList(), [], callId, summary));
         state.Summaries[callId] = Result(name, summary, sources.Count, isError);
+        Read(state, name, payload, structured, isError);
         var envelope = ToolDataEnvelope.Wrap(name, payload);
         state.Trace.Add(TraceKinds.Envelope, $"Data envelope handed to the model ({envelope.Length} chars)", new JsonObject
         {
             ["callId"] = callId, ["tool"] = name, ["text"] = envelope,
         });
         return envelope;
+    }
+
+    /// <summary>
+    /// What the model was handed, as the answer check reads it: a documentation search's excerpts one by one, any other
+    /// result whole, prefixed with its tool. Called after the guard, so a withheld item is never among them.
+    /// </summary>
+    private static void Read(TurnState state, string tool, string payload, JsonElement? structured, bool isError)
+    {
+        // An empty search is read whole: its hint is what the model was told.
+        if (!isError && Domains.IsSearch(tool) && structured is { } s && s.TryGetProperty("results", out var results)
+            && results.ValueKind == JsonValueKind.Array && results.GetArrayLength() > 0)
+        {
+            foreach (var r in results.EnumerateArray())
+            {
+                state.Read.Add($"{Str(r, "docId")} › {Str(r, "sectionPath")}: {Str(r, "snippet")}");
+            }
+            return;
+        }
+        state.Read.Add($"{tool}: {payload}");
     }
 
     /// <summary>
@@ -735,6 +774,7 @@ public sealed class ChatTurnRunner(
         }
 
         var told = ((FlowOutcome.TellModel)outcome).Message;
+        state.Read.Add($"{name}: {told}");
         var envelope = ToolDataEnvelope.Wrap(name, told);
         state.Trace.Add(TraceKinds.Envelope, $"Data envelope handed to the model ({envelope.Length} chars)", new JsonObject
         {
@@ -882,6 +922,9 @@ public sealed class ChatTurnRunner(
         public List<string> DomainPath { get; } = [];
         public List<ToolCallRecord> ToolCalls { get; } = [];
         public List<SourceRef> Sources { get; } = [];
+
+        /// <summary>The data the model was handed this turn, after the guard — what the answer check calls its sources.</summary>
+        public List<string> Read { get; } = [];
         public bool Searched { get; set; }
 
         /// <summary>The user's words this turn, which is what a reviewer's question gets answered with.</summary>

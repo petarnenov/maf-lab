@@ -198,7 +198,9 @@ export type TurnSignal =
   | 'zero_retrieval_results'
   | 'long_answer_without_sources'
   | 'guardrail_blocked'
-  | 'guardrail_withheld';
+  | 'guardrail_withheld'
+  | 'answer_not_grounded'
+  | 'answer_not_relevant';
 
 export interface ToolCallRecord {
   toolName: string;
@@ -751,6 +753,26 @@ export interface DomainStats {
   agreed: number;
 }
 
+/** Jev's check of the final answer, over the window. Numbers only. */
+export interface AnswerCheckStats {
+  /** Answer checks recorded, checked or not. */
+  answers: number;
+  /** Answers that got a verdict. */
+  checked: number;
+  pass: number;
+  /** Checked answers below the relevance floor. */
+  notRelevant: number;
+  /** Checked answers below the grounding floor; an answer can be below both. */
+  notGrounded: number;
+  /** No verdict: disabled, no key, or Jev unavailable. */
+  unchecked: number;
+  /** Of the unchecked, those Jev was unavailable for. */
+  unavailable: number;
+  relevantFloor: number | null;
+  groundedFloor: number | null;
+  latency: IntentLatency;
+}
+
 export interface RoutingToolCount {
   tool: string;
   count: number;
@@ -783,4 +805,6 @@ export interface JevStatsReport {
   relevance: RelevanceStats;
   routing: RoutingStats;
   domains?: DomainStats | null;
+  /** Absent from an api older than the answer check. */
+  answerCheck?: AnswerCheckStats | null;
 }

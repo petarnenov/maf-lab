@@ -34,8 +34,9 @@ dataset, never on production turns.
   existing review queue.
 - **Jev statistics:** `answer` becomes a request-bearing site in the overview (requests, unavailable, latency), and a new
   Answer check section counts checked turns, the share not relevant and not grounded, unchecked turns and the latency.
-- **Monitor:** the event gets a kind colour on the timeline, and a failed verdict shows as a header chip
-  ("answer: not grounded").
+- **Monitor:** the event draws its own timeline bar (its duration is the Jev request's latency) in a kind colour of its
+  own, titled with Jev, both probabilities against their floors and the verdict; a failed verdict shows as a header
+  chip ("answer: not grounded").
 - **Eval:** the `generation` suite also reads each case's Jev verdict from the turn and reports how often Jev and the
   rubric agree, as extra metrics.
 
@@ -51,6 +52,8 @@ dataset, never on production turns.
 - `turn-tracing`: a new requirement for the `answer.check` event.
 - `jev-statistics`: the answer check as a request-bearing site and its own section.
 - `eval-harness`: the generation suite reports Jev's verdict beside the rubric.
+- `web-ui`: the monitor shows the check (timeline row with its own colour and latency bar, a header chip when flagged)
+  and `/admin/jev` shows the `answer` site and an Answer check section.
 
 ## Impact
 

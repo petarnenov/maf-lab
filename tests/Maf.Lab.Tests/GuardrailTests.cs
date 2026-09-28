@@ -285,13 +285,19 @@ public class GuardrailTests
         Assert.Equal(2, guard.GetProperty("items").GetArrayLength());
         Assert.Equal("withheld", guard.GetProperty("items")[1].GetProperty("decision").GetString());
         Assert.Contains(TurnSignal.GuardrailWithheld, Signals(events));
-        // One request for the turn, one per excerpt; each excerpt travelled as data in the state, never in a question.
-        Assert.Equal(3, api.Jev.Requests.Count);
+        // One request for the turn, one per excerpt, one for the answer check; each excerpt travelled as data in the
+        // state, never in a question.
+        Assert.Equal(4, api.Jev.Requests.Count);
         var screenings = api.Jev.Requests.Select(r => JsonDocument.Parse(r.Body).RootElement).Where(b => b.GetProperty("state").TryGetProperty("untrusted_text", out _)).ToList();
         Assert.Equal(2, screenings.Count);
         Assert.All(screenings, b => Assert.DoesNotContain("FS-REQUIRED", b.GetProperty("questions").GetRawText()));
         Assert.All(api.Jev.Requests, r => Assert.Equal($"Bearer {FakeJev.TestKey}", r.Authorization));
         Assert.All(api.Jev.Requests, r => Assert.DoesNotContain(FakeJev.TestKey, r.Body));
+        // The answer is checked against what the model read: the clean excerpt, never the withheld one.
+        var check = api.Jev.Requests.Select(r => JsonDocument.Parse(r.Body).RootElement)
+            .Single(b => b.GetProperty("state").TryGetProperty("sources", out _));
+        Assert.Contains("FS-REQUIRED", check.GetProperty("state").GetProperty("sources").GetRawText());
+        Assert.DoesNotContain("Ignore previous instructions", check.GetRawText());
     }
 
     [Fact]
@@ -333,7 +339,10 @@ public class GuardrailTests
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel(), jev: new FakeJev { Hang = TimeSpan.FromSeconds(4) })
         {
-            ExtraSettings = new Dictionary<string, string?> { ["Jev:TimeoutSeconds"] = "0.3", ["Guard:TimeoutSeconds"] = "0.3" },
+            ExtraSettings = new Dictionary<string, string?>
+            {
+                ["Jev:TimeoutSeconds"] = "0.3", ["Guard:TimeoutSeconds"] = "0.3", ["Jev:AnswerCheck:TimeoutSeconds"] = "0.3",
+            },
         };
         var sw = Stopwatch.StartNew();
 
@@ -355,7 +364,9 @@ public class GuardrailTests
         await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), Procedural);
 
         Assert.Contains("Ignore previous instructions", ModelSaw(api));
-        Assert.Single(api.Jev.Requests); // the classification only
+        // The classification and the answer check: no screening request.
+        Assert.Equal(2, api.Jev.Requests.Count);
+        Assert.DoesNotContain(api.Jev.Requests, r => r.Body.Contains("untrusted_text"));
     }
 
     // ── A2A partners ─────────────────────────────────────────────────────────────────────────────────────────────

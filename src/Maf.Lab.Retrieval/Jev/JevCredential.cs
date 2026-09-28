@@ -19,8 +19,9 @@ public sealed class JevCredential
         _key = string.IsNullOrWhiteSpace(key) ? null : key.Trim();
         if (_key is null)
         {
-            logger.LogWarning("Jev unavailable: {Variable} is not set; intent classification, tool routing and the relevance judge " +
-                "proceed as if Jev had not answered (no recognised intent, nothing routed, no gate, fused order)",
+            logger.LogWarning("Jev unavailable: {Variable} is not set; intent classification, tool routing, the relevance judge and " +
+                "the answer check proceed as if Jev had not answered (no recognised intent, nothing routed, no gate, fused order, " +
+                "answers unchecked)",
                 EnvironmentVariable);
         }
     }

@@ -9,7 +9,7 @@ namespace Maf.Lab.Tests;
 
 /// <summary>
 /// Stands in for TypeSafe's Jev at the HTTP boundary: answers <c>POST /v1/systemone</c> in the documented shape —
-/// the intent classifier's Choice and Nouls, and the relevance judge's per-passage Nouls — and records what it was sent
+/// the intent classifier's Choice and Nouls, the relevance judge's per-passage Nouls and the answer check's two Nouls — and records what it was sent
 /// (the authorization header and the body) so tests can check both. It answers with keyword rules — English and the
 /// Bulgarian words the tests use — because a test double has to be deterministic; the real model has no rules.
 /// </summary>
@@ -58,6 +58,13 @@ public sealed partial class FakeJev : HttpMessageHandler
 
     /// <summary>A routing question's answer: the probability that the question needs the tool. Default: <see cref="Tool"/>.</summary>
     public Func<string, string, double>? Tools { get; set; }
+
+    /// <summary>
+    /// The answer check's answer, given the question id (<c>answer_relevant</c> or <c>answer_grounded</c>), the user's
+    /// question and the answer. Null — the default — answers 0.95 to both, a pass, so a test that is not about the check
+    /// never flags a turn.
+    /// </summary>
+    public Func<string, string, string, double>? AnswerCheck { get; set; }
 
     /// <summary>The run status a question asks about. Default: <see cref="RunStatus"/>.</summary>
     public Func<string, string>? RunStatusOf { get; set; }
@@ -139,6 +146,11 @@ public sealed partial class FakeJev : HttpMessageHandler
                 {
                     answers[id] = new { type = "noul", noul = portfolio(question) };
                 }
+            }
+            else if (id.StartsWith("answer_", StringComparison.Ordinal))
+            {
+                var answer = root["state"]!["answer"]?.GetValue<string>() ?? "";
+                answers[id] = new { type = "noul", noul = AnswerCheck?.Invoke(id, question, answer) ?? 0.95 };
             }
             else if (id.StartsWith("guard_", StringComparison.Ordinal))
             {

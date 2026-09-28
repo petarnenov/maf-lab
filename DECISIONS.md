@@ -1303,3 +1303,64 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
 - **No package moved.**
 - **Rollback:** remove `Agent:Servers`. The api then reads billing's server alone. The portfolio question still rides
   in the request, but its domain is never offered, so nothing is forced there.
+
+## 41. Jev checks the final answer (add-jev-answer-check, 2026-09-29)
+
+- **Why.** Jev read everything on the way in (intent, domains, routing, prompt screening, tool results, searches) and
+  nothing on the way out. An answer that invented a figure or talked past the question reached the review queue only
+  when the user complained or rephrased. The generation eval's rubric judges faithfulness and relevance, but only on
+  demand and only on its own dataset.
+- **One request after the answer, two Nouls.** State `{ user_question, answer, sources }`; `answer_relevant` ("Does
+  `answer` address what `user_question` asks?") and `answer_grounded` ("Is every factual claim in `answer` supported by
+  `sources`?"), in the guard's style (§35): a context naming the three fields as data, and true/false criteria whose
+  "does not count" halves say that an honest "I cannot answer that" addresses the question and that a greeting, an
+  offer of help, what the assistant can do or "I don't know" claims nothing that needs a source. Through the shared
+  `JevClient` — same endpoint, pinned model, credential and named client. Two atomic Nouls rather than one Choice: the
+  failures are independent and each has its own floor.
+- **`sources` is what the model read.** Every data envelope handed to the model this turn, collected in
+  `InvokeToolAsync` after the content guard: a search's excerpts one by one (`docId › sectionPath: snippet`), an empty
+  search and any other tool's result whole, the fixed texts (tool unavailable, the write flow's message) as sent. A
+  withheld item never enters. Capped in order at `Jev:AnswerCheck:MaxSourceChars` (12000); the event records how many
+  sources and characters went. A turn with no tool result is checked against `sources: []`. Rejected: the model's full
+  request messages — the system prompt and history are not evidence.
+- **Which turns.** Only a turn that reached the model, did not fail, is not waiting for a person's confirmation and has a
+  non-empty answer. A refused prompt, a pause for approval and a failure record nothing.
+- **It flags, never blocks.** The answer has streamed. The outcome is the `answer.check` trace event and, per floor
+  missed, a review signal: `answer_not_grounded`, `answer_not_relevant` (both can fire). The single `verdict` names
+  grounding first — an unsupported claim is the costlier miss.
+- **Latency is added to the turn, on purpose.** The check runs after the stream and before the signals, the stored trace
+  and `RUN_FINISHED`, so the stored trace and the review queue have it. The user has the full answer already; the end
+  of the run and `turn.end`'s duration include the check. The cost is one request per answered turn, at most the
+  timeout; `answer.check.durationMs` measures it, and the `/admin/jev` Answer check section shows its percentiles.
+  Not yet measured against the live endpoint (no paid run in this change); the other Jev sites' p50 is 270–360 ms and
+  the relevance judge — the nearest in state size, ~2.8k tokens — peaked at 1.35 s over ~1000 requests.
+- **Defaults — provisional until measured.**
+  - `MinRelevant` **0.5**, `MinGrounded` **0.5**: a Noul is a calibrated probability of yes, and below 0.5 Jev finds
+    "no" likelier. Nothing blocks on it, so a false positive costs one review and a false negative leaves the turn as it
+    was before this change. To be tuned from the generation eval's agreement metrics over several paid runs.
+  - `TimeoutSeconds` **3**, above the guard's 2 s: the state is the largest any Jev site sends (the answer plus up to
+    12k characters), and the whole budget is added to a turn only when Jev hangs.
+  - `Enabled` **true**.
+- **Fails open.** Disabled, no key, a timeout, an error status, a transport failure or a missing Noul record
+  `unchecked` with the reason and add no signal; the turn completes exactly as before.
+- **Trace event, no content.** `{ verdict, relevant, grounded, relevantFloor, groundedFloor, model, durationMs, reason,
+  sources, sourceChars, requests }`, the request's latency as the event's duration so the timeline draws its bar.
+  Title `Jev answer check: relevant 0.93 ≥ 0.50, grounded 0.41 < 0.50 — not grounded` or `Jev answer check
+  unavailable: <reason> — unchecked`. Never the answer or a source's text: the answer is in `answer.delta`, the data in
+  `envelope`. Logs carry the verdict and numbers only.
+- **Statistics.** `answer` is the fourth request-bearing site of the overview (requests = the event's `requests`,
+  unavailable = a request that ended unchecked), and a new optional `answerCheck` section counts answers, checked, the
+  share below each floor (against the floor recorded with each event), unchecked and unavailable, and a latency
+  histogram against 3 s. Optional in the contract, so an older client still reads the response.
+- **Monitor.** The event has its own kind colour; a `not_relevant` / `not_grounded` verdict adds an "answer: not
+  grounded" header chip. No new tab: the row's JSON is the detail.
+- **Eval.** The `generation` suite reads each case's check from `TurnResult` (no request of its own) and adds
+  `jevChecked`, `jevGroundedAgreement` and `jevRelevantAgreement` (Jev at its floors vs the rubric passing at 0.75,
+  over checked cases; omitted when none was checked, so a Jev outage cannot read as disagreement). No thresholds. They
+  appear as new metrics in the regression gate; accept them into the baseline only after reading a few runs.
+- **Known limit.** The check reads this turn's question, not the conversation: a follow-up ("and the second one?")
+  may read as less relevant than it is. The review queue is where that shows.
+- **CI stays secret-free:** `FakeJev` answers both Nouls 0.95 by default (settable per test); the CI stub answers 1.0.
+  No package added or moved; no model setting changed.
+- **Rollback:** `Jev__AnswerCheck__Enabled=false` — no request; eligible turns record `unchecked (check disabled)`. A
+  plain revert leaves stored `answer.check` events readable (unknown kinds are ignored).

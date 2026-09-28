@@ -285,6 +285,62 @@ describe('JevPage', () => {
     expect(within(perDomain).getByText('2 silenced · 1 ungated')).toBeInTheDocument();
   });
 
+  it('counts the answer check as a site of its own and shows its section', async () => {
+    const base = report();
+    stub(() =>
+      jsonResponse(
+        report({
+          overview: {
+            ...base.overview,
+            sites: [
+              ...base.overview.sites,
+              { site: 'answer', requests: 9, unavailable: 1, p50Ms: 420, p90Ms: 610 },
+            ],
+          },
+          answerCheck: {
+            answers: 10,
+            checked: 8,
+            pass: 5,
+            notRelevant: 1,
+            notGrounded: 2,
+            unchecked: 2,
+            unavailable: 1,
+            relevantFloor: 0.5,
+            groundedFloor: 0.5,
+            latency: latency(9),
+          },
+        }),
+      ),
+    );
+    renderWithProviders(<JevPage />, { session: admin });
+
+    const bySite = await screen.findByRole('table', { name: 'Requests by call site' });
+    const answerRow = within(bySite).getByText('answer').closest('tr')!;
+    expect(answerRow).toHaveTextContent('9');
+    expect(answerRow).toHaveTextContent('1 (11%)');
+
+    expect(screen.getByRole('heading', { name: 'Answer check' })).toBeInTheDocument();
+    expect(screen.getByText('Answers checked')).toBeInTheDocument();
+    expect(screen.getByText('10 answered turns')).toBeInTheDocument();
+    expect(screen.getByText('Not grounded').parentElement).toHaveTextContent('25%');
+    expect(screen.getByText('Not relevant').parentElement).toHaveTextContent('13%');
+    expect(screen.getByText('2 below floor 0.5')).toBeInTheDocument();
+    expect(screen.getByText('1 Jev unavailable · the rest off or no key')).toBeInTheDocument();
+    const latencyPanel = screen.getByRole('region', { name: 'Answer check latency' });
+    expect(within(latencyPanel).getByRole('img', { name: 'Latency histogram' })).toHaveTextContent(
+      'timeout 3s',
+    );
+  });
+
+  it('says when no answer was checked', async () => {
+    stub(() => jsonResponse(report()));
+    renderWithProviders(<JevPage />, { session: admin });
+
+    expect(
+      await screen.findByText(/No answer was checked by Jev in this period/),
+    ).toBeInTheDocument();
+  });
+
   it('shows the values behind a mark on hover', async () => {
     stub(() => jsonResponse(report()));
     renderWithProviders(<JevPage />, { session: admin });

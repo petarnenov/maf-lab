@@ -29,6 +29,7 @@ characters and a trace at 1 MB; `truncated: true` marks a capped event. JSON is 
 | `tool.unknown` | `{ callId, tool }` — the model asked for a tool that does not exist |
 | `audit` | `{ callId, tool, arguments, outcome, durationMs }` — the audit row written (identifiers only) |
 | `adjustment` | `{ callId, step, adjustmentId, accountId, amount, currentFee, resultingFee, taskId?, outcome? }` — one per step of a write: `proposed`, `reviewed` (with the A2A task id and the reviewer's outcome), `awaiting_confirmation`. Never the advisor's reason or the reviewer's words |
+| `answer.check` | `{ verdict, relevant, grounded, relevantFloor, groundedFloor, model, durationMs, reason, sources, sourceChars, requests }` (durationMs = the Jev request's latency) — Jev's check of the final answer: one request, two Nouls over the state `{ user_question, answer, sources }`, where `sources` is every data envelope the model was handed this turn after the content guard (each search excerpt one by one, any other result whole, a withheld item never; capped at `Jev:AnswerCheck:MaxSourceChars`). `relevant` / `grounded` are the probabilities that the answer addresses the question and that every factual claim in it is supported by the sources; `verdict` ∈ pass, not_grounded (grounded below its floor), not_relevant (relevant below its floor), unchecked (`reason`: `check disabled`, `no key`, `timed out after Ns`, `rejected (NNN)`, `incomplete answer`, an exception name). `sources` and `sourceChars` count what was sent; `requests` is 1, or 0 when disabled or keyless. Recorded only for a turn that reached the model and ended with a non-empty answer — never for a refused prompt, a turn waiting for a person's confirmation or a failed turn — after the answer and before `sources`, so the stored trace and the review signals (`answer_not_grounded`, `answer_not_relevant`) carry it; its latency adds to the turn's. Title: `Jev answer check: relevant 0.93 ≥ 0.50, grounded 0.41 < 0.50 — not grounded`, or `Jev answer check unavailable: <reason> — unchecked`. Never the answer or a source's text |
 | `sources` | `{ sources: [{ docId, sectionPath }] }` |
 | `signals` | `{ signals: [string] }` |
 | `memory` | `{ stored: [{ role, tokens }] }` |
@@ -46,8 +47,9 @@ A question in two domains forces both searches together: `… intent → domain 
 
 Typical order for a procedural question: `turn.start → intent → domain → guardrail → prompt → history → tool.forced → tool.call →
 tool.result → retrieval → relevance → guardrail → audit → envelope → model.request → reasoning.delta… → answer.delta… → model.response →
-memory → sources → signals → turn.end`.
-The trace is stored before `done` is sent, so the stored copy is readable as soon as the stream ends.
+memory → answer.check → sources → signals → turn.end`.
+The trace is stored before `done` is sent, so the stored copy is readable as soon as the stream ends. The answer check
+runs before both, so the run's terminal event waits for it (at most `Jev:AnswerCheck:TimeoutSeconds`).
 
 ## AG-UI frames
 

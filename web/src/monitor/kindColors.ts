@@ -5,6 +5,8 @@ export function kindColor(kind: string): string {
   if (kind === 'tool.unknown' || kind === 'guardrail') return '#b42318';
   if (kind.startsWith('tool.') || kind === 'envelope') return '#8e44ad';
   if (kind === 'retrieval' || kind === 'relevance') return '#1d7a3c';
+  // Jev's check of the final answer: a judgment, like relevance, of what came out rather than what was found.
+  if (kind === 'answer.check') return '#3f7d20';
   // The domain boundary: where Jev put the question, and where a turn crossed from one domain into another.
   if (kind === 'domain' || kind === 'boundary') return '#0f7b5f';
   if (kind === 'intent' || kind === 'prompt' || kind === 'history' || kind === 'memory')

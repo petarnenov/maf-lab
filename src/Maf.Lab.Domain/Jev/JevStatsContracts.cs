@@ -22,7 +22,8 @@ public sealed record JevAvailabilityBucket(DateTimeOffset Start, int Requests, i
 /// The cross-cutting view: how many Jev requests a firm's turns made in the window, how many were unavailable, and how
 /// that moved over time — so a degraded Jev shows across every site at once, not only in one section.
 /// </summary>
-/// <param name="Requests">Total Jev requests: one per jev intent event, per content-screening item, per judged search.</param>
+/// <param name="Requests">Total Jev requests: one per jev intent event, per content-screening item, per judged search, per
+/// answer check that sent one.</param>
 /// <param name="Unavailable">Of those, how many timed out, were rejected or errored.</param>
 /// <param name="Turns">Classified turns (the requests-per-turn denominator).</param>
 public sealed record JevOverview(
@@ -91,6 +92,29 @@ public sealed record RelevanceDomainCount(string Domain, int Searches, int Gated
 /// </summary>
 public sealed record DomainStats(int Judged, int Billing, int Portfolio, int Both, int None, int Crossed, int WithCalls, int Agreed);
 
+/// <summary>
+/// Jev's check of the final answer (add-jev-answer-check): how many answers it was asked about, how many got a verdict,
+/// how many of those fell below the relevance and the grounding floor — each against the floor recorded with its check —
+/// how many were left unchecked (of which Jev was unavailable for how many), and the check's latency.
+/// </summary>
+/// <param name="Answers">Answer checks recorded in the window, checked or not.</param>
+/// <param name="Checked">Answers that got a verdict (pass, not relevant, not grounded).</param>
+/// <param name="NotRelevant">Checked answers below the relevance floor.</param>
+/// <param name="NotGrounded">Checked answers below the grounding floor; an answer can be below both.</param>
+/// <param name="Unchecked">Answers with no verdict: disabled, no key, or Jev unavailable.</param>
+/// <param name="Unavailable">Of the unchecked, those whose request timed out, was rejected or failed.</param>
+public sealed record AnswerCheckStats(
+    int Answers,
+    int Checked,
+    int Pass,
+    int NotRelevant,
+    int NotGrounded,
+    int Unchecked,
+    int Unavailable,
+    double? RelevantFloor,
+    double? GroundedFloor,
+    IntentLatency Latency);
+
 /// <param name="Tool">The read tool a data turn was routed to.</param>
 public sealed record RoutingToolCount(string Tool, int Count);
 
@@ -116,7 +140,7 @@ public sealed record RoutingStats(
 
 /// <summary>
 /// Aggregates of every Jev call site in one firm's chat turns over one window: the intent aggregate unchanged, the
-/// guardrail, relevance and routing sections, and a cross-cutting overview. Jev calls made outside a chat turn — an A2A
+/// guardrail, relevance, routing and answer-check sections, and a cross-cutting overview. Jev calls made outside a chat turn — an A2A
 /// partner's question and the tool results on its path — are in no turn trace and are not counted. Numbers only: no
 /// question, answer, passage or identifier of a turn, conversation or user.
 /// </summary>
@@ -130,4 +154,5 @@ public sealed record JevStatsReport(
     GuardrailStats Guardrail,
     RelevanceStats Relevance,
     RoutingStats Routing,
-    DomainStats? Domains = null);
+    DomainStats? Domains = null,
+    AnswerCheckStats? AnswerCheck = null);

@@ -12,6 +12,7 @@ import { domainPath } from './domainData';
 import {
   byKind,
   dataOf,
+  failedAnswerCheck,
   firstOf,
   formatMs,
   mcpInstances,
@@ -71,6 +72,7 @@ export function MonitorPanel({
   const reached = framesReached(events, frames, cursor);
   const mcp = mcpInstances(visible);
   const path = domainPath(visible);
+  const answerFailed = failedAnswerCheck(visible);
 
   return (
     <section
@@ -110,6 +112,15 @@ export function MonitorPanel({
                 title="The domains this turn's tool calls crossed"
               >
                 domains: {path.join(' → ')}
+              </span>
+            )}
+            {answerFailed && (
+              <span
+                className={`${styles.chip} ${styles.chipWarn}`}
+                data-testid="answer-check"
+                title="Jev's check of the final answer flagged it for review"
+              >
+                answer: {answerFailed}
               </span>
             )}
             {mcp.map((m) => (

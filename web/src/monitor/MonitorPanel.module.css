@@ -35,6 +35,11 @@
   white-space: nowrap;
 }
 
+.chipWarn {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
 .live {
   color: var(--ok);
   font-weight: 600;

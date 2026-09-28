@@ -167,6 +167,33 @@ export interface RelevanceData {
   reason?: string | null;
 }
 
+/**
+ * Jev's check of the final answer (the `answer.check` event). Numbers only — never the answer or the sources' text.
+ */
+export interface AnswerCheckData {
+  /** pass, not_relevant, not_grounded or unchecked. */
+  verdict?: string;
+  relevant?: number | null;
+  grounded?: number | null;
+  relevantFloor?: number;
+  groundedFloor?: number;
+  model?: string | null;
+  durationMs?: number;
+  /** Why there is no verdict (disabled, no key, timed out, rejected). */
+  reason?: string | null;
+  sources?: number;
+  sourceChars?: number;
+  requests?: number;
+}
+
+/** "not grounded" / "not relevant" when Jev's answer check flagged the turn's answer; null otherwise. */
+export function failedAnswerCheck(events: TraceEvent[]): string | null {
+  const verdict = dataOf<AnswerCheckData>(byKind(events, 'answer.check').at(-1)).verdict;
+  return verdict === 'not_grounded' || verdict === 'not_relevant'
+    ? verdict.replace('_', ' ')
+    : null;
+}
+
 export interface EnvelopeData {
   callId?: string;
   tool?: string;

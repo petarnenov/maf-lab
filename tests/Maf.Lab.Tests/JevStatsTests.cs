@@ -370,6 +370,85 @@ public class JevStatsTests
         Assert.Equal([new RelevanceDomainCount("billing", 2, 0, 0), new RelevanceDomainCount("portfolio", 1, 1, 0)], r.Relevance.ByDomain);
     }
 
+    // ---- Answer check (add-jev-answer-check) ----
+
+    [Fact]
+    public void The_answer_check_is_a_site_of_its_own_and_has_its_own_section()
+    {
+        var rows = new[]
+        {
+            Row(-5, Trace(IntentEv("Procedural", forced: true, choice: "procedural"), AnswerEv("pass", 0.93, 0.88, ms: 400))),
+            Row(-6, Trace(IntentEv("Procedural", forced: true, choice: "procedural"), AnswerEv("not_grounded", 0.9, 0.2, ms: 500))),
+            // Below both floors: one answer, counted in both shares.
+            Row(-7, Trace(IntentEv("Procedural", forced: true, choice: "procedural"), AnswerEv("not_grounded", 0.3, 0.1, ms: 600))),
+            // Jev rejected the request: a request, unavailable, unchecked.
+            Row(-8, Trace(IntentEv("Procedural", forced: true, choice: "procedural"), AnswerEv("unchecked", null, null, ms: 50, reason: "rejected (503)"))),
+            // Switched off: unchecked, but no request and no latency.
+            Row(-9, Trace(IntentEv("ChitChat", choice: "chitchat"), AnswerEv("unchecked", null, null, ms: 0, reason: "check disabled", requests: 0))),
+            // Not Jev: left out.
+            Row(-10, Trace(AnswerEv("pass", 0.9, 0.9, model: "gemma4:31b"))),
+        };
+
+        var r = Aggregate(rows);
+
+        var site = r.Overview.Sites.Single(x => x.Site == "answer");
+        Assert.Equal(4, site.Requests);
+        Assert.Equal(1, site.Unavailable);
+        Assert.Equal(400, site.P50Ms);
+        // Five intents plus four answer checks; the disabled check sent nothing.
+        Assert.Equal(5 + 4, r.Overview.Requests);
+        Assert.Equal(1, r.Overview.Unavailable);
+        Assert.Equal(9, r.Overview.Timeline.Sum(b => b.Requests));
+        Assert.Equal(1, r.Overview.Timeline.Sum(b => b.Unavailable));
+
+        var a = r.AnswerCheck!;
+        Assert.Equal(5, a.Answers);
+        Assert.Equal(3, a.Checked);
+        Assert.Equal(1, a.Pass);
+        Assert.Equal(1, a.NotRelevant);
+        Assert.Equal(2, a.NotGrounded);
+        Assert.Equal(2, a.Unchecked);
+        Assert.Equal(1, a.Unavailable);
+        Assert.Equal((0.5, 0.5), (a.RelevantFloor, a.GroundedFloor));
+        Assert.Equal(4, a.Latency.Count);
+        Assert.Equal(31, a.Latency.Bins.Count);
+    }
+
+    [Fact]
+    public async Task Answered_turns_reach_the_answer_section_through_the_api()
+    {
+        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        api.Jev.AnswerCheck = (id, question, _) => id == "answer_grounded" && question.StartsWith("hello") ? 0.1 : 0.9;
+        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+
+        await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing");
+        await ApiFactory.ChatAsync(adam, "hello");
+
+        var r = await StatsAsync(api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN));
+
+        Assert.Equal(2, r.Overview.Sites.Single(x => x.Site == "answer").Requests);
+        Assert.Equal(2, r.AnswerCheck!.Checked);
+        Assert.Equal(1, r.AnswerCheck.NotGrounded);
+        Assert.Equal(0, r.AnswerCheck.NotRelevant);
+    }
+
+    private static JsonObject AnswerEv(string verdict, double? relevant, double? grounded, double ms = 400, string? reason = null,
+        int requests = 1, string model = "jev-1.13.0") =>
+        Ev("answer.check", new JsonObject
+        {
+            ["verdict"] = verdict,
+            ["relevant"] = relevant,
+            ["grounded"] = grounded,
+            ["relevantFloor"] = 0.5,
+            ["groundedFloor"] = 0.5,
+            ["model"] = model,
+            ["durationMs"] = ms,
+            ["reason"] = reason,
+            ["sources"] = 2,
+            ["sourceChars"] = 900,
+            ["requests"] = requests,
+        });
+
     private static IntentStatistics.TraceRow Row(int minutesAgo, JsonArray events) =>
         new(Now.AddMinutes(minutesAgo).UtcDateTime, events.ToJsonString());
 

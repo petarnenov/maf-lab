@@ -194,6 +194,16 @@ public class EvalHarnessTests
     }
 
     [Fact]
+    public void The_generation_suite_names_jevs_verdict_beside_the_rubric()
+    {
+        Assert.Equal("jev=none", GenerationSuite.Describe(null));
+        Assert.Equal("jev=pass(r=0.93 g=0.88)", GenerationSuite.Describe(
+            new Maf.Lab.Api.Agent.Jev.AnswerCheck("pass", 0.93, 0.88, 0.5, 0.5, "jev-1.13.0", 300, null, 2, 900, 1)));
+        Assert.Equal("jev=unchecked(timed out after 3s)", GenerationSuite.Describe(
+            new Maf.Lab.Api.Agent.Jev.AnswerCheck("unchecked", null, null, 0.5, 0.5, "jev-1.13.0", 3000, "timed out after 3s", 2, 900, 1)));
+    }
+
+    [Fact]
     public async Task Threshold_above_achievable_fails_the_variant_and_report_is_written_as_json_and_markdown()
     {
         var variant = SuiteContext.Variant("hybrid", new Dictionary<string, double> { ["recall@5"] = 0.9 },

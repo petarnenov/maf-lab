@@ -15,6 +15,8 @@ const SIGNAL_LABELS: Record<string, string> = {
   long_answer_without_sources: 'long answer without sources',
   guardrail_blocked: 'prompt refused by the content guard',
   guardrail_withheld: 'content withheld by the content guard',
+  answer_not_grounded: 'answer not grounded in what the model read (Jev)',
+  answer_not_relevant: 'answer does not address the question (Jev)',
 };
 
 export function FeedbackAdminPage() {

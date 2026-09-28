@@ -10,7 +10,8 @@ time. An answer check that sent no request (disabled, no key) SHALL NOT be count
 
 The response SHALL also carry an answer-check section: how many turns were checked (received a verdict other than
 `unchecked`), how many of those were below the relevance floor and how many below the grounding floor — each against
-the floor recorded with its event — how many turns were left unchecked, and the check's latency. Numbers only.
+the floor recorded with its event — how many turns were left unchecked and how many of those because Jev was
+unavailable, and the check's latency percentiles and histogram. Numbers only.
 
 #### Scenario: The answer site in the overview
 - **WHEN** the window holds two checked answers and one whose check was rejected by Jev

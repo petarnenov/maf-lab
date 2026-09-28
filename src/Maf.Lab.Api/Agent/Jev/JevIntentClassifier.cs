@@ -213,6 +213,9 @@ public static class JevServiceCollectionExtensions
         services.Configure<GuardOptions>(configuration.GetSection(GuardOptions.Section));
         services.AddSingleton<JevGuard>();
         services.AddSingleton<Guardrail>();
+        // The answer check asks the same client after a turn has answered (add-jev-answer-check).
+        services.Configure<AnswerCheckOptions>(configuration.GetSection(AnswerCheckOptions.Section));
+        services.AddSingleton<JevAnswerCheck>();
         return services;
     }
 }

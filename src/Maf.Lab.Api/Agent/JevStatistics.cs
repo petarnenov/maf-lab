@@ -8,7 +8,7 @@ namespace Maf.Lab.Api.Agent;
 /// <summary>
 /// Aggregates every Jev call site of a set of turns into a <see cref="JevStatsReport"/>. A pure function of its input:
 /// it reuses <see cref="IntentStatistics"/> for the intent section and reads only the <c>guardrail</c>, <c>relevance</c>,
-/// <c>retrieval</c> and <c>model.request</c> events for the rest — never the question, the passages or the model's messages — and returns
+/// <c>retrieval</c>, <c>answer.check</c> and <c>model.request</c> events for the rest — never the question, the passages or the model's messages — and returns
 /// numbers only.
 /// </summary>
 public static class JevStatistics
@@ -17,6 +17,8 @@ public static class JevStatistics
     private const double LatencyBinMs = 100;
     // The content guard and the relevance judge both budget 2 s; their latency histograms share it.
     private const double ContentBudgetMs = 2000;
+    // The answer check budgets 3 s (Jev:AnswerCheck:TimeoutSeconds).
+    private const double AnswerBudgetMs = 3000;
 
     /// <summary>The guard configuration surfaced with the numbers, as the running service has it.</summary>
     public readonly record struct GuardSettings(bool Enabled, double PromptBlockAt, double ContentWithholdAt, double CrossTenantAt);
@@ -29,6 +31,13 @@ public static class JevStatistics
 
     private sealed record RelevanceFact(DateTime At, bool Silenced, bool Unavailable, bool RerankJev, double? Max,
         double? DurationMs, double? Floor, string? CallId = null, string Domain = "billing");
+
+    /// <summary>One answer check: its verdict, whether it sent a request, and each probability against its own floor.</summary>
+    private sealed record AnswerFact(DateTime At, string Verdict, int Requests, bool NotRelevant, bool NotGrounded,
+        double? DurationMs, double? RelevantFloor, double? GroundedFloor)
+    {
+        public bool Unavailable => Requests > 0 && Verdict == "unchecked";
+    }
 
     /// <summary>One turn's domain verdict and what its calls did: in scope, crossed, and whether the two agree.</summary>
     private sealed record DomainFact(string Verdict, bool Crossed, bool WithCalls, bool Agreed);
@@ -44,9 +53,10 @@ public static class JevStatistics
         var guards = new List<GuardFact>();
         var relevance = new List<RelevanceFact>();
         var domains = new List<DomainFact>();
+        var answers = new List<AnswerFact>();
         foreach (var row in rows)
         {
-            Read(row, intent, guards, relevance, domains);
+            Read(row, intent, guards, relevance, domains, answers);
         }
 
         var intentReport = IntentStatistics.Aggregate(rows, window, intentSettings, now);
@@ -57,6 +67,8 @@ public static class JevStatistics
         var contentRequests = guards.Where(g => g.Content).Sum(g => g.Requests);
         var contentUnavailable = guards.Where(g => g.Content).Sum(g => g.UnscreenedItems);
         var relDurations = relevance.Where(r => r.DurationMs is not null).Select(r => r.DurationMs!.Value).ToList();
+        // A disabled or keyless check sent nothing: not a request, and no latency.
+        var answerDurations = answers.Where(a => a.Requests > 0 && a.DurationMs is not null).Select(a => a.DurationMs!.Value).ToList();
 
         var sites = new List<JevSiteSummary>
         {
@@ -64,6 +76,7 @@ public static class JevStatistics
                 jevIntents.Where(i => i.DurationMs is not null).Select(i => i.DurationMs!.Value)),
             Site("guardrail", contentRequests, contentUnavailable, contentItems),
             Site("relevance", relevance.Count, relevance.Count(r => r.Unavailable), relDurations),
+            Site("answer", answers.Sum(a => a.Requests), answers.Count(a => a.Unavailable), answerDurations),
         };
         var requests = sites.Sum(s => s.Requests);
         var unavailable = sites.Sum(s => s.Unavailable);
@@ -77,12 +90,24 @@ public static class JevStatistics
             intentReport.Totals.Classified,
             intentReport.Totals.Classified == 0 ? null : Math.Round((double)requests / intentReport.Totals.Classified, 2),
             sites,
-            AvailabilityTimeline(jevIntents, guards, relevance, from, now, bucket));
+            AvailabilityTimeline(jevIntents, guards, relevance, answers, from, now, bucket));
 
         return new JevStatsReport(window, from, now, (int)bucket.TotalMinutes, overview, intentReport,
             Guardrail(guards, contentItems, from, now, bucket), Relevance(relevance, relevanceFloor, from, now, bucket),
-            Routing(intent), Domains(domains));
+            Routing(intent), Domains(domains), AnswerCheck(answers, answerDurations));
     }
+
+    private static AnswerCheckStats AnswerCheck(List<AnswerFact> answers, List<double> durations) => new(
+        answers.Count,
+        answers.Count(a => a.Verdict != "unchecked"),
+        answers.Count(a => a.Verdict == "pass"),
+        answers.Count(a => a.Verdict != "unchecked" && a.NotRelevant),
+        answers.Count(a => a.Verdict != "unchecked" && a.NotGrounded),
+        answers.Count(a => a.Verdict == "unchecked"),
+        answers.Count(a => a.Unavailable),
+        answers.Select(a => a.RelevantFloor).FirstOrDefault(f => f is not null),
+        answers.Select(a => a.GroundedFloor).FirstOrDefault(f => f is not null),
+        Latency(durations, AnswerBudgetMs));
 
     private static DomainStats Domains(List<DomainFact> domains) => new(
         domains.Count,
@@ -97,7 +122,7 @@ public static class JevStatistics
     // ---- Parsing ----
 
     private static void Read(IntentStatistics.TraceRow row, List<IntentFact> intent, List<GuardFact> guards, List<RelevanceFact> relevance,
-        List<DomainFact> domains)
+        List<DomainFact> domains, List<AnswerFact> answers)
     {
         JsonDocument doc;
         try
@@ -173,6 +198,12 @@ public static class JevStatistics
                         if (JudgedOf(at, data) is { } j)
                         {
                             judged.Add(j);
+                        }
+                        break;
+                    case TraceKinds.AnswerCheck when data.ValueKind == JsonValueKind.Object:
+                        if (AnswerOf(at, data) is { } a)
+                        {
+                            answers.Add(a);
                         }
                         break;
                 }
@@ -275,6 +306,23 @@ public static class JevStatistics
             Num(data, "max"), Num(data, "durationMs"), Num(data, "floor"), Str(data, "callId"));
     }
 
+    /// <summary>An answer check, judged against the floors recorded with it — the floors in force when it ran.</summary>
+    private static AnswerFact? AnswerOf(DateTime at, JsonElement data)
+    {
+        var model = Str(data, "model");
+        if (model is null || !model.StartsWith("jev-", StringComparison.Ordinal))
+        {
+            return null;
+        }
+        var relevant = Num(data, "relevant");
+        var grounded = Num(data, "grounded");
+        var relevantFloor = Num(data, "relevantFloor");
+        var groundedFloor = Num(data, "groundedFloor");
+        var requests = data.TryGetProperty("requests", out var req) && req.ValueKind == JsonValueKind.Number ? req.GetInt32() : 1;
+        return new AnswerFact(at, Str(data, "verdict") ?? "unchecked", requests,
+            relevant < relevantFloor, grounded < groundedFloor, Num(data, "durationMs"), relevantFloor, groundedFloor);
+    }
+
     // ---- Sections ----
 
     private static GuardrailStats Guardrail(List<GuardFact> guards, List<double> contentItems, DateTimeOffset from, DateTimeOffset now, TimeSpan bucket)
@@ -349,15 +397,16 @@ public static class JevStatistics
     }
 
     private static IReadOnlyList<JevAvailabilityBucket> AvailabilityTimeline(
-        List<IntentFact> jevIntents, List<GuardFact> guards, List<RelevanceFact> relevance,
+        List<IntentFact> jevIntents, List<GuardFact> guards, List<RelevanceFact> relevance, List<AnswerFact> answers,
         DateTimeOffset from, DateTimeOffset now, TimeSpan bucket) =>
         Buckets(from, now, bucket, s =>
         {
             bool In(DateTime at) => at >= s.Start.UtcDateTime && at < s.End.UtcDateTime;
             var content = guards.Where(g => g.Content && In(g.At)).ToList();
-            var req = jevIntents.Count(i => In(i.At)) + content.Sum(g => g.Requests) + relevance.Count(r => In(r.At));
+            var req = jevIntents.Count(i => In(i.At)) + content.Sum(g => g.Requests) + relevance.Count(r => In(r.At))
+                + answers.Where(a => In(a.At)).Sum(a => a.Requests);
             var un = jevIntents.Count(i => In(i.At) && i.Failed) + content.Sum(g => g.UnscreenedItems)
-                + relevance.Count(r => In(r.At) && r.Unavailable);
+                + relevance.Count(r => In(r.At) && r.Unavailable) + answers.Count(a => In(a.At) && a.Unavailable);
             return new JevAvailabilityBucket(s.Start, req, un);
         });
 

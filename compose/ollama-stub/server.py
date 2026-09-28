@@ -2,9 +2,9 @@
 
 Implements only what maf-lab calls through OllamaSharp: /api/version, /api/tags, /api/show, /api/embed, /api/chat.
 It also stands in for TypeSafe's Jev at POST /v1/systemone — the endpoint of the api's intent classifier and content
-guard and of the retrieval server's relevance judge — answering its Choice question, the guard's and routing Nouls and
-the per-passage relevance Nouls from keyword sets, so forced retrieval, the relevance gate and tool routing are
-exercised without a model or a real key. No model, no network, no secrets. Real model behaviour is covered by the
+guard and answer check and of the retrieval server's relevance judge — answering its Choice question, the guard's,
+routing and answer-check Nouls and the per-passage relevance Nouls from keyword sets, so forced retrieval, the
+relevance gate and tool routing are exercised without a model or a real key. No model, no network, no secrets. Real model behaviour is covered by the
 on-demand evals workflow.
 """
 import hashlib
@@ -128,6 +128,9 @@ def systemone(body: dict) -> dict:
                             "probabilities": {o: 1.0 if o == status else 0.0 for o in STATUS_OPTIONS}}
         elif qid.startswith("tool_"):
             answers[qid] = {"type": "noul", "noul": tool_probability(qid[len("tool_"):], lowered)}
+        elif qid.startswith("answer_"):
+            # The answer check (answer_relevant, answer_grounded): every answer passes, so the e2e flags nothing.
+            answers[qid] = {"type": "noul", "noul": 1.0}
         elif (q or {}).get("type") == "noul" and qid.startswith("guard_"):
             answers[qid] = {"type": "noul", "noul": guard_score(question)}
         elif (q or {}).get("type") == "noul":

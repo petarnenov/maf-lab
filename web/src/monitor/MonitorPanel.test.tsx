@@ -9,6 +9,7 @@ import {
   fixtureTraceNothingFound,
   fixtureTraceOutOfVocabulary,
 } from './fixtures';
+import { kindColor } from './kindColors';
 import { MonitorPanel } from './MonitorPanel';
 
 const FAILURE_DETAIL = 'connection to qdrant-host:6333 refused';
@@ -445,6 +446,73 @@ describe('MonitorPanel', () => {
       'href',
       'http://localhost:7171/jaeger/trace/abc123',
     );
+  });
+
+  describe("Jev's answer check", () => {
+    const check = (verdict: string, grounded: number | null, title: string) => ({
+      seq: 5000,
+      atMs: 700,
+      kind: 'answer.check',
+      title,
+      durationMs: 240,
+      data: {
+        verdict,
+        relevant: grounded === null ? null : 0.93,
+        grounded,
+        relevantFloor: 0.5,
+        groundedFloor: 0.5,
+        model: 'jev-1.13.0',
+        durationMs: 240,
+        reason: grounded === null ? 'timed out after 3s' : null,
+        sources: 2,
+        sourceChars: 812,
+        requests: 1,
+      },
+      truncated: false,
+    });
+    const withCheck = (event: ReturnType<typeof check>) =>
+      fixtureTrace.flatMap((e) => (e.kind === 'sources' ? [event, e] : [e]));
+
+    it('draws the check on the timeline as its own bar, in its colour, with its latency', () => {
+      const title = 'Jev answer check: relevant 0.93 ≥ 0.50, grounded 0.41 < 0.50 — not grounded';
+      render(<MonitorPanel events={withCheck(check('not_grounded', 0.41, title))} />);
+
+      const timeline = screen.getByRole('list', { name: 'Timeline' });
+      const row = within(timeline)
+        .getAllByRole('listitem')
+        .find((r) => r.getAttribute('data-kind') === 'answer.check')!;
+      expect(row).toHaveTextContent(`${title} · 240 ms`);
+      const kind = within(row).getByTitle('answer.check');
+      expect(kind).toHaveStyle({ background: kindColor('answer.check') });
+      const bar = kind.nextElementSibling!.firstElementChild as HTMLElement;
+      expect(bar).toHaveStyle({ background: kindColor('answer.check') });
+      // 240 ms of a 945 ms turn: a bar of its own, not the minimum mark of an instant.
+      expect(parseFloat(bar.style.width)).toBeGreaterThan(20);
+      expect(kindColor('answer.check')).not.toBe(kindColor('answer.delta'));
+    });
+
+    it('names a failed verdict in the header', () => {
+      render(
+        <MonitorPanel
+          events={withCheck(check('not_grounded', 0.41, 'Jev answer check: … — not grounded'))}
+        />,
+      );
+      expect(screen.getByTestId('answer-check')).toHaveTextContent('answer: not grounded');
+    });
+
+    it('adds no header chip for a pass or an unchecked answer', () => {
+      const { unmount } = render(
+        <MonitorPanel events={withCheck(check('pass', 0.9, 'Jev answer check: … — pass'))} />,
+      );
+      expect(screen.queryByTestId('answer-check')).not.toBeInTheDocument();
+      unmount();
+      render(
+        <MonitorPanel
+          events={withCheck(check('unchecked', null, 'Jev answer check unavailable: timed out'))}
+        />,
+      );
+      expect(screen.queryByTestId('answer-check')).not.toBeInTheDocument();
+    });
   });
 
   it('offers no trace link for a turn recorded without one', () => {
