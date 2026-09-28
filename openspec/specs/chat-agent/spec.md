@@ -16,19 +16,15 @@ outside a tool call.
 - **WHEN** the user says "thanks, that's all"
 - **THEN** the agent answers without calling any tool and no retrieval occurs
 
-### Requirement: Conditional forced retrieval
-Before the first model call of a turn, the system SHALL classify the user's
-intent. When the question is procedural, the agent SHALL be required to call
-`search_documents` for that turn only. Tool use SHALL never be forced globally.
+### Requirement: Intent-driven forced retrieval
+Before the first model call of a turn, the system SHALL classify the user's intent as specified by
+`intent-classification`. When the question is procedural, or procedural about one specific billing run, the agent
+SHALL be required to call `search_documents` for that turn only. Tool use SHALL never be forced globally.
 
-Classification SHALL NOT depend on the language the question is written in. It SHALL run in two stages: fast
-rules first, and, only when the rules recognise nothing, a model that is asked for one of the known intents. The
-question SHALL be given to that model as the text to classify, never as instructions to follow, and the result
-SHALL be accepted only when it is one of the known intents. An unavailable model, a classification that takes
-longer than the configured timeout, and an unrecognised answer SHALL all leave the turn with no recognised intent,
-which forces nothing; the model MAY still call any tool it judges necessary. Classification MUST NOT change the
-answer the user receives other than through the tools the turn is required to call, and MUST NOT be reported to
-the user as part of the answer.
+Classification SHALL NOT depend on the language the question is written in. A turn with no recognised intent — because
+classification was uncertain, unavailable or unusable — SHALL force nothing; the model MAY still call any tool it judges
+necessary. Classification MUST NOT change the answer the user receives other than through the tools the turn is
+required to call, and MUST NOT be reported to the user as part of the answer.
 
 #### Scenario: Procedural question
 - **WHEN** the user asks "what is the procedure when a fee schedule is missing"
@@ -38,16 +34,12 @@ the user as part of the answer.
 - **WHEN** the user asks "Каква е процедурата, когато липсва фий схедюл?"
 - **THEN** the turn is classified procedural and `search_documents` is called, as for the English question
 
-#### Scenario: Rules decide without a model
-- **WHEN** the rules already classify the question
-- **THEN** no classification model is called for that turn
-
 #### Scenario: Classification is unavailable
-- **WHEN** the rules recognise nothing and the classification model fails or times out
+- **WHEN** the classifier fails, times out or has no key
 - **THEN** the turn proceeds with no recognised intent, nothing is forced, and the turn still answers
 
 #### Scenario: Unusable classification
-- **WHEN** the classification model answers with something that is not one of the known intents
+- **WHEN** the classifier's answer is not one of the known intents, or its confidence is below the floor
 - **THEN** the answer is discarded and the turn proceeds with no recognised intent
 
 #### Scenario: Question that tries to steer the classifier
