@@ -35,7 +35,9 @@ public sealed class JevOptions
     /// gate above passes and no domain reaches this, the most probable domain alone is in scope, so a billing question
     /// at 0.37 behaves as it always did.
     /// </summary>
-    public double MinDomainScope { get; set; } = 0.5;
+    /// <remarks>0.6 by measurement (close-portfolio-domain-gaps, 60 questions): accuracy 0.95, crossing recall 0.95 and
+    /// precision 0.905, against 0.933 / 1.0 / 0.833 at 0.5 — see DECISIONS.</remarks>
+    public double MinDomainScope { get; set; } = 0.6;
 
     /// <summary>Budget for one classification; 0 disables classification and every turn forces nothing.</summary>
     public double TimeoutSeconds { get; set; } = 2;

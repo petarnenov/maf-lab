@@ -175,6 +175,8 @@ public sealed partial class FakeJev : HttpMessageHandler
             "get_billing_run_status" => RunReference().IsMatch(q) ? 0.93 : 0.1,
             "search_billing_runs" => !RunReference().IsMatch(q) && (DataWords().IsMatch(q) || q.Contains("runs")) ? 0.92 : 0.2,
             "propose_fee_adjustment" => WriteWords().IsMatch(q) ? 0.8 : 0.02,
+            "get_household_portfolio" => Regex.IsMatch(q, @"\b(holdings?|hold|allocation|drift)\b") ? 0.9 : 0.05,
+            "get_aum_history" => Regex.IsMatch(q, @"\baum\b.*\b(history|quarter|quarters|year)\b|quarter-end") ? 0.9 : 0.05,
             _ => 0.0,
         };
     }

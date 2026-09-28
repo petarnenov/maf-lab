@@ -50,9 +50,9 @@ public sealed class JevIntentClassifier(
     /// deliberately names no words: a glossary tried in planning biased unrelated questions toward the domain.
     /// </summary>
     internal static readonly JevDomainInstructions Domain = new(
-        Domain: "Fee billing on a wealth-management platform: billing runs and why they fail, fee schedules and fee tiers, "
-            + "AUM and valuations, invoices, fee adjustments and billing credits, billing periods and period close, "
-            + "households, custodian fee debits, client fee disputes, terminations and refunds, and who may approve what.",
+        Domain: "Fee billing on a wealth-management platform: billing runs and their failure codes, fee schedules and fee tiers, "
+            + "billable AUM and billing exclusions, invoices, fee adjustments and billing credits, billing periods and period close, "
+            + "household fee aggregation, custodian fee debits, client fee disputes, terminations and refunds, and who may approve what.",
         Languages: "Questions may be in English or in Bulgarian, and Bulgarian is often written in Latin letters.",
         Question: "Is `user_question` about something in `domain`?");
 
@@ -63,8 +63,9 @@ public sealed class JevIntentClassifier(
     /// </summary>
     internal static readonly JevDomainInstructions PortfolioDomain = new(
         Domain: "Investment portfolios on a wealth-management platform: what accounts and households hold, model portfolios and "
-            + "target weights, asset allocation, drift and tolerance bands, rebalancing, market value and quarter-end AUM valuations, "
-            + "contributions and withdrawals, cash sweep, held-away assets, and investment performance and returns.",
+            + "target weights, asset allocation, drift and tolerance bands, rebalancing, market value and quarter-end AUM valuations "
+            + "and their price corrections, why an account's value or AUM changed (market movement, contributions, withdrawals) "
+            + "including when that change moved its fee or invoice, cash sweep, held-away assets, and investment performance and returns.",
         Languages: Domain.Languages,
         Question: "Is `user_question` about something in `domain`?");
 
@@ -181,12 +182,8 @@ public sealed class JevIntentClassifier(
         {
             return decision with { Routing = routing, RouteReason = $"intent is {decision.Intent}, not Data" };
         }
-        // The router's tools are billing's: a data question Jev placed in another domain alone is the model's to answer.
-        if (decision.Domains is { InScope.Count: > 0 } verdict && !verdict.InScope.Contains(Domains.Billing))
-        {
-            return decision with { Routing = routing, RouteReason = $"the question is not in the billing domain ({string.Join(", ", verdict.InScope)})" };
-        }
-        var (route, reason) = DataToolRouter.Route(question, routing, o);
+        // Routed only among the tools of the domains Jev put the question in.
+        var (route, reason) = DataToolRouter.Route(question, routing, o, decision.Domains);
         return decision with { Routing = routing, Route = route, RouteReason = reason };
     }
 

@@ -77,7 +77,19 @@ public sealed record RelevanceStats(
     int Unavailable,
     IReadOnlyList<RelevanceMaxBin> MaxHistogram,
     IntentLatency Latency,
-    IReadOnlyList<RelevanceTimelineBucket> Timeline);
+    IReadOnlyList<RelevanceTimelineBucket> Timeline,
+    IReadOnlyList<RelevanceDomainCount>? ByDomain = null);
+
+/// <summary>Judged searches of one domain's documentation — each domain's search asks Jev on its own server.</summary>
+public sealed record RelevanceDomainCount(string Domain, int Searches, int Gated, int Unavailable);
+
+/// <summary>
+/// Where Jev placed the firm's questions among the domains (add-portfolio-domain): how many turns carried a domain
+/// verdict, how many were in billing, portfolio, both (crossing) or neither, how many turns actually crossed from one
+/// domain's tools to the other's, and — of the turns that called any tool — how many touched exactly the domains Jev
+/// predicted.
+/// </summary>
+public sealed record DomainStats(int Judged, int Billing, int Portfolio, int Both, int None, int Crossed, int WithCalls, int Agreed);
 
 /// <param name="Tool">The read tool a data turn was routed to.</param>
 public sealed record RoutingToolCount(string Tool, int Count);
@@ -117,4 +129,5 @@ public sealed record JevStatsReport(
     IntentStatsReport Intent,
     GuardrailStats Guardrail,
     RelevanceStats Relevance,
-    RoutingStats Routing);
+    RoutingStats Routing,
+    DomainStats? Domains = null);

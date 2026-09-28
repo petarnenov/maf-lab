@@ -1,3 +1,4 @@
+using Maf.Lab.Api.Agent;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Maf.Lab.Api.Feedback;
@@ -55,7 +56,8 @@ public static class FeedbackEndpoints
 
         var admin = app.MapGroup("/api/admin/feedback").RequireAuthorization(AuthPolicies.FirmAdmin);
 
-        admin.MapGet("/queue", async (IPrincipalAccessor principals, IDbContextFactory<MafDbContext> db, TenantScopedMaintenance store, CancellationToken ct) =>
+        admin.MapGet("/queue", async (IPrincipalAccessor principals, IDbContextFactory<MafDbContext> db, TenantScopedMaintenance store,
+            [Microsoft.Extensions.DependencyInjection.FromKeyedServices(Domains.Portfolio)] TenantScopedMaintenance portfolioStore, CancellationToken ct) =>
         {
             var principal = principals.Current;
             await using var ctx = await db.CreateDbContextAsync(ct);
@@ -69,10 +71,21 @@ public static class FeedbackEndpoints
             {
                 var toolCalls = JsonSerializer.Deserialize<List<ToolCallRecord>>(t.ToolCallsJson, Json) ?? [];
                 var sources = JsonSerializer.Deserialize<List<SourceKey>>(t.SourcesJson, Json) ?? [];
-                var chunkIds = await ResolveChunkIdsAsync(principal, sources, store, ct);
-                toolCalls = toolCalls.Select(c => c.ToolName == "search_documents"
-                    ? c with { ChunkIds = chunkIds.Where(id => c.DocIds.Any(d => id.StartsWith(d + "#", StringComparison.Ordinal))).ToList() }
-                    : c).ToList();
+                // Each search's sources are resolved in its own domain's collection: a portfolio document's chunks are
+                // not in billing's, and a label must point at chunks the eval of that domain can find.
+                var resolved = new List<ToolCallRecord>();
+                foreach (var c in toolCalls)
+                {
+                    if (!Domains.IsSearch(c.ToolName))
+                    {
+                        resolved.Add(c);
+                        continue;
+                    }
+                    var own = sources.Where(s => c.DocIds.Contains(s.DocId)).ToList();
+                    var chunkIds = await ResolveChunkIdsAsync(principal, own, c.ToolName == Domains.SearchTool[Domains.Portfolio] ? portfolioStore : store, ct);
+                    resolved.Add(c with { ChunkIds = chunkIds.Where(id => c.DocIds.Any(d => id.StartsWith(d + "#", StringComparison.Ordinal))).ToList() });
+                }
+                toolCalls = resolved;
                 items.Add(new ReviewQueueItem(t.Id, t.ConversationId, t.UserId, t.Question, t.Answer,
                     JsonSerializer.Deserialize<List<string>>(t.SignalsJson, Json) ?? [], toolCalls,
                     feedback.Where(f => f.TurnId == t.Id).Select(f => f.Kind).Distinct().ToList(),
@@ -91,7 +104,7 @@ public static class FeedbackEndpoints
             {
                 return Results.NotFound();
             }
-            var (row, error) = BuildRow(turn, request);
+            var (row, error) = BuildRow(turn, request, RetrievalDomain(turn, request));
             if (row is null)
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["label"] = [error!] });
@@ -117,8 +130,28 @@ public static class FeedbackEndpoints
     }
 
     /// <summary>Builds the dataset row for a labeled turn. Row ids are stable per turn and dataset.</summary>
-    public static (JsonObject? Row, string? Error) BuildRow(TurnRow turn, LabelRequest request)
+    /// <summary>
+    /// The domain whose search found the chunks a retrieval label names — billing unless every labelled chunk belongs to a
+    /// document a portfolio search returned. Null when they came from both: one row is scored against one collection.
+    /// </summary>
+    internal static string? RetrievalDomain(TurnRow turn, LabelRequest request)
     {
+        if (request.Dataset != EvalDataset.Retrieval || request.RelevantChunkIds is not { Count: > 0 } chunks)
+        {
+            return Domains.Billing;
+        }
+        var calls = JsonSerializer.Deserialize<List<ToolCallRecord>>(turn.ToolCallsJson, Json) ?? [];
+        var portfolioDocs = calls.Where(c => c.ToolName == Domains.SearchTool[Domains.Portfolio]).SelectMany(c => c.DocIds).ToHashSet();
+        var inPortfolio = chunks.Count(id => portfolioDocs.Contains(id.Split('#')[0]));
+        return inPortfolio == 0 ? Domains.Billing : inPortfolio == chunks.Count ? Domains.Portfolio : null;
+    }
+
+    public static (JsonObject? Row, string? Error) BuildRow(TurnRow turn, LabelRequest request, string? domain = Domains.Billing)
+    {
+        if (domain is null)
+        {
+            return (null, "the relevant chunks come from both domains; label billing and portfolio chunks separately.");
+        }
         var id = $"fb-{request.Dataset}-{turn.Id}";
         switch (request.Dataset)
         {
@@ -129,11 +162,16 @@ public static class FeedbackEndpoints
                     ["category"] = "feedback", ["firmId"] = turn.FirmId, ["source"] = "feedback",
                 }, null);
             case EvalDataset.Retrieval when request.RelevantChunkIds is { Count: > 0 }:
-                return (new JsonObject
+                var retrieval = new JsonObject
                 {
                     ["id"] = id, ["query"] = turn.Question, ["relevantChunkIds"] = Array(request.RelevantChunkIds),
                     ["firmId"] = turn.FirmId, ["source"] = "feedback",
-                }, null);
+                };
+                if (domain != Domains.Billing)
+                {
+                    retrieval["domain"] = domain;
+                }
+                return (retrieval, null);
             case EvalDataset.Generation when !string.IsNullOrWhiteSpace(request.ReferenceAnswer):
                 return (new JsonObject
                 {

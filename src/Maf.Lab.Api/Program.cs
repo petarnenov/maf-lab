@@ -44,6 +44,18 @@ public partial class Program
             .UseSqlite(builder.Configuration["Storage:ConnectionString"] ?? "Data Source=maf-lab.db")
             .AddInterceptors(new SqlitePragmaInterceptor()));
 
+        // The portfolio domain's own chunks, for the review queue to resolve a portfolio search's sources where they live.
+        builder.Services.AddKeyedSingleton(Domains.Portfolio, (sp, _) =>
+        {
+            var qdrant = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Maf.Lab.Retrieval.Configuration.QdrantOptions>>().Value;
+            return new Maf.Lab.Retrieval.Store.TenantScopedMaintenance(sp.GetRequiredService<Qdrant.Client.QdrantClient>(),
+                Microsoft.Extensions.Options.Options.Create(new Maf.Lab.Retrieval.Configuration.QdrantOptions
+                {
+                    Host = qdrant.Host, GrpcPort = qdrant.GrpcPort, Https = qdrant.Https, ApiKey = qdrant.ApiKey, PayloadM = qdrant.PayloadM,
+                    Collection = builder.Configuration["Portfolio:Collection"] ?? Maf.Lab.Domain.Portfolio.PortfolioCollections.Chunks,
+                    MetaCollection = builder.Configuration["Portfolio:MetaCollection"] ?? Maf.Lab.Domain.Portfolio.PortfolioCollections.Meta,
+                }));
+        });
         builder.Services.AddSingleton<SystemPrompt>();
         builder.Services.AddSingleton<TokenCounter>();
         builder.Services.AddSingleton<ToolAudit>();

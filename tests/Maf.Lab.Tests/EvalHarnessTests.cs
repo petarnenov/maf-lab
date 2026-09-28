@@ -101,9 +101,12 @@ public class EvalHarnessTests
     [Fact]
     public void Retrieval_dataset_references_chunks_the_chunkers_actually_produce()
     {
-        var ids = CorpusLoader.Load(Path.Combine(CorpusLoaderTests.RepoRoot(), "data")).Documents
+        // Each domain's rows against its own corpus: a portfolio row's chunks are indexed from data-portfolio/.
+        HashSet<string> Ids(string corpus) => CorpusLoader.Load(Path.Combine(CorpusLoaderTests.RepoRoot(), corpus)).Documents
             .SelectMany(d => ChunkBuilder.Build(d, 1500)).Select(c => c.ChunkId).ToHashSet();
-        var missing = DatasetLoader.Retrieval(EvalsRoot).SelectMany(r => r.RelevantChunkIds).Where(id => !ids.Contains(id)).ToList();
+        var byDomain = new Dictionary<string, HashSet<string>> { ["billing"] = Ids("data"), ["portfolio"] = Ids("data-portfolio") };
+        var missing = DatasetLoader.Retrieval(EvalsRoot)
+            .SelectMany(r => r.RelevantChunkIds.Where(id => !byDomain[r.Domain].Contains(id)).Select(id => $"{r.Domain}:{id}")).ToList();
         Assert.True(missing.Count == 0, "Dataset references unknown chunk ids (did chunking change?): " + string.Join(", ", missing));
     }
 

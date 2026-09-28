@@ -186,7 +186,9 @@ public sealed class ChatTurnRunner(
                     reasoning.Flush();
                     chunker.Flush();
                 });
-                if (options.Value.EmulateRequiredToolMode || route is not null)
+                // tool_choice names one function: a turn that must issue several calls up front — a crossing's searches,
+                // a run's status beside them — is emulated whatever the provider supports, as a routed call is.
+                if (options.Value.EmulateRequiredToolMode || route is not null || forcedSearches.Count > 1 || alongside.Count > 0)
                 {
                     chatClient = new RequiredToolModeChatClient(chatClient, call => trace.Add(TraceKinds.ToolForced,
                         call.Name == route?.Tool ? $"Routed {call.Name} issued on the model's behalf" : $"Forced {call.Name} issued on the model's behalf",

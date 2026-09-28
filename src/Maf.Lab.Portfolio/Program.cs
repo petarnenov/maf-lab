@@ -15,8 +15,8 @@ public partial class Program
     public const string ServerName = "maf-lab-portfolio";
 
     /// <summary>This domain's own collection and BM25 vocabulary: never billing's, whatever else configures the core.</summary>
-    public const string Collection = "maf_portfolio_chunks";
-    public const string MetaCollection = "maf_portfolio_meta";
+    public const string Collection = Domain.Portfolio.PortfolioCollections.Chunks;
+    public const string MetaCollection = Domain.Portfolio.PortfolioCollections.Meta;
 
     public static void Main(string[] args) => BuildApp(args).Run();
 

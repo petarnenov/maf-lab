@@ -248,6 +248,43 @@ describe('JevPage', () => {
     expect(screen.getByText('Model calls · routed')).toBeInTheDocument();
   });
 
+  it("shows where Jev placed the turns among the domains and each domain's judged searches", async () => {
+    const base = report();
+    stub(() =>
+      jsonResponse(
+        report({
+          relevance: {
+            ...base.relevance,
+            byDomain: [
+              { domain: 'billing', searches: 7, gated: 1, unavailable: 0 },
+              { domain: 'portfolio', searches: 3, gated: 2, unavailable: 1 },
+            ],
+          },
+          domains: {
+            judged: 10,
+            billing: 5,
+            portfolio: 2,
+            both: 2,
+            none: 1,
+            crossed: 3,
+            withCalls: 8,
+            agreed: 6,
+          },
+        }),
+      ),
+    );
+    renderWithProviders(<JevPage />, { session: admin });
+
+    expect(await screen.findByText('Both (crossing)')).toBeInTheDocument();
+    expect(
+      screen.getByText("3 turns went from one server's tools to the other's"),
+    ).toBeInTheDocument();
+    expect(screen.getByText('6 of 8 turns that called a tool')).toBeInTheDocument();
+    const perDomain = screen.getByLabelText('Judged searches per domain');
+    expect(within(perDomain).getByText('portfolio documentation')).toBeInTheDocument();
+    expect(within(perDomain).getByText('2 silenced · 1 ungated')).toBeInTheDocument();
+  });
+
   it('shows the values behind a mark on hover', async () => {
     stub(() => jsonResponse(report()));
     renderWithProviders(<JevPage />, { session: admin });

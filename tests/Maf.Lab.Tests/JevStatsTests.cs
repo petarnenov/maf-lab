@@ -335,6 +335,41 @@ public class JevStatsTests
 
     // ---- Trace builders (the exact shapes each site writes) ----
 
+    // ---- Domains (add-portfolio-domain) ----
+
+    [Fact]
+    public void Domain_verdicts_crossings_and_judged_searches_are_counted_per_domain()
+    {
+        static JsonObject DomainEv(params string[] inScope) =>
+            Ev("domain", new JsonObject { ["inScope"] = new JsonArray([.. inScope.Select(d => (JsonNode)JsonValue.Create(d)!)]) });
+        static JsonObject Call(string id, string domain) => Ev("tool.call", new JsonObject { ["callId"] = id, ["domain"] = domain });
+        static JsonObject Judged(string id, bool silenced) => Ev("relevance", new JsonObject
+        {
+            ["callId"] = id, ["model"] = "jev-1.13.0", ["silenced"] = silenced, ["max"] = silenced ? 0.1 : 0.8, ["floor"] = 0.3, ["durationMs"] = 300,
+        });
+        static JsonObject End(int crossings, params string[] touched) => Ev("turn.end", new JsonObject
+        {
+            ["crossings"] = crossings, ["domainsTouched"] = new JsonArray([.. touched.Select(d => (JsonNode)JsonValue.Create(d)!)]),
+        });
+        var rows = new[]
+        {
+            // Predicted both, crossed, agreed; the portfolio search silenced.
+            Row(-5, Trace(DomainEv("billing", "portfolio"), Call("a", "billing"), Judged("a", false), Call("b", "portfolio"), Judged("b", true),
+                End(1, "billing", "portfolio"))),
+            // Predicted billing only, called only billing: agreed.
+            Row(-6, Trace(DomainEv("billing"), Call("c", "billing"), Judged("c", false), End(0, "billing"))),
+            // Predicted portfolio, the model went to billing too: crossed, not agreed.
+            Row(-7, Trace(DomainEv("portfolio"), Call("d", "portfolio"), Call("e", "billing"), End(1, "portfolio", "billing"))),
+            // Neither domain, no calls.
+            Row(-8, Trace(DomainEv(), End(0))),
+        };
+
+        var r = Aggregate(rows);
+
+        Assert.Equal(new DomainStats(4, 1, 1, 1, 1, 2, 3, 2), r.Domains);
+        Assert.Equal([new RelevanceDomainCount("billing", 2, 0, 0), new RelevanceDomainCount("portfolio", 1, 1, 0)], r.Relevance.ByDomain);
+    }
+
     private static IntentStatistics.TraceRow Row(int minutesAgo, JsonArray events) =>
         new(Now.AddMinutes(minutesAgo).UtcDateTime, events.ToJsonString());
 

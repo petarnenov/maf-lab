@@ -28,7 +28,10 @@ public static class JevStatistics
         int Items, int UnscreenedItems, IReadOnlyList<double> ItemDurations, int Requests);
 
     private sealed record RelevanceFact(DateTime At, bool Silenced, bool Unavailable, bool RerankJev, double? Max,
-        double? DurationMs, double? Floor);
+        double? DurationMs, double? Floor, string? CallId = null, string Domain = "billing");
+
+    /// <summary>One turn's domain verdict and what its calls did: in scope, crossed, and whether the two agree.</summary>
+    private sealed record DomainFact(string Verdict, bool Crossed, bool WithCalls, bool Agreed);
 
     public static JevStatsReport Aggregate(
         IReadOnlyCollection<IntentStatistics.TraceRow> rows, string window, IntentStatsSettings intentSettings,
@@ -40,9 +43,10 @@ public static class JevStatistics
         var intent = new List<IntentFact>();
         var guards = new List<GuardFact>();
         var relevance = new List<RelevanceFact>();
+        var domains = new List<DomainFact>();
         foreach (var row in rows)
         {
-            Read(row, intent, guards, relevance);
+            Read(row, intent, guards, relevance, domains);
         }
 
         var intentReport = IntentStatistics.Aggregate(rows, window, intentSettings, now);
@@ -77,12 +81,23 @@ public static class JevStatistics
 
         return new JevStatsReport(window, from, now, (int)bucket.TotalMinutes, overview, intentReport,
             Guardrail(guards, contentItems, from, now, bucket), Relevance(relevance, relevanceFloor, from, now, bucket),
-            Routing(intent));
+            Routing(intent), Domains(domains));
     }
+
+    private static DomainStats Domains(List<DomainFact> domains) => new(
+        domains.Count,
+        domains.Count(d => d.Verdict == Agent.Domains.Billing),
+        domains.Count(d => d.Verdict == Agent.Domains.Portfolio),
+        domains.Count(d => d.Verdict == "both"),
+        domains.Count(d => d.Verdict == "none"),
+        domains.Count(d => d.Crossed),
+        domains.Count(d => d.WithCalls),
+        domains.Count(d => d.WithCalls && d.Agreed));
 
     // ---- Parsing ----
 
-    private static void Read(IntentStatistics.TraceRow row, List<IntentFact> intent, List<GuardFact> guards, List<RelevanceFact> relevance)
+    private static void Read(IntentStatistics.TraceRow row, List<IntentFact> intent, List<GuardFact> guards, List<RelevanceFact> relevance,
+        List<DomainFact> domains)
     {
         JsonDocument doc;
         try
@@ -106,6 +121,12 @@ public static class JevStatistics
             // judgment inside its retrieval diagnostics. One source per turn, so no search is counted twice.
             var judged = new List<RelevanceFact>();
             var diagnosed = new List<RelevanceFact>();
+            // Which domain each call belonged to, so a judged search is counted against its own domain's documentation.
+            var callDomains = new Dictionary<string, string>(StringComparer.Ordinal);
+            string[]? predicted = null;
+            string? verdict = null;
+            string[]? touched = null;
+            var crossed = false;
             foreach (var ev in doc.RootElement.EnumerateArray())
             {
                 if (!ev.TryGetProperty("kind", out var k) || k.ValueKind != JsonValueKind.String)
@@ -118,6 +139,20 @@ public static class JevStatistics
                 {
                     case TraceKinds.ModelRequest:
                         modelCalls++;
+                        break;
+                    case TraceKinds.ToolCall when data.ValueKind == JsonValueKind.Object:
+                        if (Str(data, "callId") is { } callId && Str(data, "domain") is { } callDomain)
+                        {
+                            callDomains[callId] = callDomain;
+                        }
+                        break;
+                    case TraceKinds.Domain when data.ValueKind == JsonValueKind.Object:
+                        predicted = Strings(data, "inScope");
+                        verdict = predicted.Length switch { 0 => "none", 1 => predicted[0], _ => "both" };
+                        break;
+                    case TraceKinds.TurnEnd when data.ValueKind == JsonValueKind.Object:
+                        touched = Strings(data, "domainsTouched");
+                        crossed = data.TryGetProperty("crossings", out var c) && c.ValueKind == JsonValueKind.Number && c.GetInt32() > 0;
                         break;
                     case TraceKinds.Intent when data.ValueKind == JsonValueKind.Object:
                         intentFact = IntentOf(at, data);
@@ -142,7 +177,13 @@ public static class JevStatistics
                         break;
                 }
             }
-            relevance.AddRange(judged.Count > 0 ? judged : diagnosed);
+            relevance.AddRange((judged.Count > 0 ? judged : diagnosed)
+                .Select(r => r.CallId is { } id && callDomains.TryGetValue(id, out var domain) ? r with { Domain = domain } : r));
+            if (verdict is not null)
+            {
+                var calls = touched is { Length: > 0 };
+                domains.Add(new DomainFact(verdict, crossed, calls, calls && predicted!.Order().SequenceEqual(touched!.Order())));
+            }
             if (intentFact is not null)
             {
                 intent.Add(intentFact with { ModelCalls = modelCalls });
@@ -219,7 +260,7 @@ public static class JevStatistics
         var rerankJev = data.TryGetProperty("settings", out var s) && s.ValueKind == JsonValueKind.Object
             && Str(s, "reranker") == "jev";
         return new RelevanceFact(at, Bool(rel, "silenced"), unavailable, rerankJev, Num(rel, "max"),
-            Num(rel, "durationMs"), Num(rel, "floor"));
+            Num(rel, "durationMs"), Num(rel, "floor"), Str(data, "callId"));
     }
 
     /// <summary>A search's judgment from its own <c>relevance</c> event — the summary, not the diagnostics.</summary>
@@ -231,7 +272,7 @@ public static class JevStatistics
             return null;
         }
         return new RelevanceFact(at, Bool(data, "silenced"), Str(data, "reason") is not null, Str(data, "reranker") == "jev",
-            Num(data, "max"), Num(data, "durationMs"), Num(data, "floor"));
+            Num(data, "max"), Num(data, "durationMs"), Num(data, "floor"), Str(data, "callId"));
     }
 
     // ---- Sections ----
@@ -281,7 +322,9 @@ public static class JevStatistics
         });
         return new RelevanceStats(floor, relevance.Count, relevance.Count(r => r.Silenced),
             relevance.Count(r => r.RerankJev), relevance.Count(r => r.Unavailable),
-            histogram, Latency(durations, ContentBudgetMs), timeline);
+            histogram, Latency(durations, ContentBudgetMs), timeline,
+            [.. relevance.GroupBy(r => r.Domain).OrderBy(g => g.Key, StringComparer.Ordinal)
+                .Select(g => new RelevanceDomainCount(g.Key, g.Count(), g.Count(r => r.Silenced), g.Count(r => r.Unavailable)))]);
     }
 
     private static RoutingStats Routing(List<IntentFact> intent)
@@ -363,6 +406,11 @@ public static class JevStatistics
         var open = reason.LastIndexOf(" (", StringComparison.Ordinal);
         return open > 0 && reason.EndsWith(')') ? reason[..open] : reason;
     }
+
+    private static string[] Strings(JsonElement e, string name) =>
+        e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Array
+            ? [.. v.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!)]
+            : [];
 
     private static string? Str(JsonElement e, string name) =>
         e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;

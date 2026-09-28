@@ -157,6 +157,15 @@ public static class Program
             variants.Add(new RetrievalVariant("hybrid+contextual", variants[0].Settings, contextual.GetRequiredService<DocumentSearchService>(), false));
             settings["contextualCollection"] = options.ContextualCollection;
         }
+        // The portfolio domain's cases, searched in its own collection exactly as production searches it.
+        var portfolioConfig = new ConfigurationBuilder().AddConfiguration(configuration).AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Qdrant:Collection"] = Maf.Lab.Domain.Portfolio.PortfolioCollections.Chunks,
+            ["Qdrant:MetaCollection"] = Maf.Lab.Domain.Portfolio.PortfolioCollections.Meta,
+        }).Build();
+        var portfolio = new ServiceCollection().AddLogging().AddMafIndexing(portfolioConfig).BuildServiceProvider();
+        variants.Add(new RetrievalVariant("portfolio-hybrid", variants[0].Settings, portfolio.GetRequiredService<DocumentSearchService>(), true, "portfolio"));
+        settings["portfolioCollection"] = Maf.Lab.Domain.Portfolio.PortfolioCollections.Chunks;
         try
         {
             return await new RetrievalSuite().RunAsync(ctx, variants, ct);
@@ -167,6 +176,7 @@ public static class Program
             {
                 await contextual.DisposeAsync();
             }
+            await portfolio.DisposeAsync();
         }
     }
 

@@ -142,6 +142,11 @@ public class DataToolRoutingTests
         Assert.Null(DataToolRouter.Read(answers));
 
         answers["tool_propose_fee_adjustment"] = new("noul", null, null, null, 0.02);
+        // Every tool the request asked about must be answered, the portfolio domain's included.
+        Assert.Null(DataToolRouter.Read(answers));
+
+        answers["tool_get_household_portfolio"] = new("noul", null, null, null, 0.05);
+        answers["tool_get_aum_history"] = new("noul", null, null, null, 0.05);
         Assert.Equal(0.93, DataToolRouter.Read(answers)!.Tools["get_billing_run_status"]);
     }
 
@@ -171,7 +176,8 @@ public class DataToolRoutingTests
         // The prompt-screening battery (injection-defense) also rides in the intent request, between the domain and the
         // routing questions; the routing questions still travel here and the state stays the user's question alone.
         string[] expected = ["intent", "in_domain", "in_portfolio", .. JevGuardQuestions.PromptIds,
-            "tool_get_billing_run_status", "tool_search_billing_runs", "tool_propose_fee_adjustment", "run_status"];
+            "tool_get_billing_run_status", "tool_search_billing_runs", "tool_propose_fee_adjustment",
+            "tool_get_household_portfolio", "tool_get_aum_history", "run_status"];
         Assert.Equal(expected, questions.EnumerateObject().Select(q => q.Name));
         var tool = questions.GetProperty("tool_get_billing_run_status").GetProperty("instructions");
         Assert.StartsWith("get_billing_run_status: ", tool.GetProperty("tool").GetString());

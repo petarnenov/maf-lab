@@ -1,5 +1,12 @@
 namespace Maf.Lab.Domain.Portfolio;
 
+/// <summary>The portfolio domain's own Qdrant collection and BM25 vocabulary: never billing's.</summary>
+public static class PortfolioCollections
+{
+    public const string Chunks = "maf_portfolio_chunks";
+    public const string Meta = "maf_portfolio_meta";
+}
+
 /// <summary>Wire names of the tools the portfolio MCP server exposes.</summary>
 public static class PortfolioTools
 {

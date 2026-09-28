@@ -728,6 +728,27 @@ export interface RelevanceStats {
   maxHistogram: RelevanceMaxBin[];
   latency: IntentLatency;
   timeline: RelevanceTimelineBucket[];
+  /** Judged searches per domain's documentation; absent from an api older than the portfolio domain. */
+  byDomain?: RelevanceDomainCount[] | null;
+}
+
+export interface RelevanceDomainCount {
+  domain: string;
+  searches: number;
+  gated: number;
+  unavailable: number;
+}
+
+/** Where Jev placed the turns among the domains, and whether the calls went there. */
+export interface DomainStats {
+  judged: number;
+  billing: number;
+  portfolio: number;
+  both: number;
+  none: number;
+  crossed: number;
+  withCalls: number;
+  agreed: number;
 }
 
 export interface RoutingToolCount {
@@ -761,4 +782,5 @@ export interface JevStatsReport {
   guardrail: GuardrailStats;
   relevance: RelevanceStats;
   routing: RoutingStats;
+  domains?: DomainStats | null;
 }

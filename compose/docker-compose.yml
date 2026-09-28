@@ -246,10 +246,13 @@ services:
 
   lb:
     image: nginx:1.30.5-alpine
+    command: ["nginx", "-c", "/etc/nginx/lb/nginx.conf", "-g", "daemon off;"]
     ports:
       - "7171:80"
     volumes:
-      - ./lb/nginx.conf:/etc/nginx/nginx.conf:ro
+      # The directory, not the file: a single-file bind mount pins the file's inode, and a git checkout or merge
+      # replaces the file with a new one — the balancer then keeps serving the old configuration and cannot reload.
+      - ./lb:/etc/nginx/lb:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/lb-health || exit 1"]
       interval: 5s

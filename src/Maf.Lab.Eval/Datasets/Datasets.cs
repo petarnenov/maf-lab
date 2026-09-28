@@ -8,8 +8,9 @@ public sealed record SelectionCase(string Id, string Question, IReadOnlyList<str
 /// A question this corpus cannot answer, for which the right retrieval is none at all. Such a case declares no
 /// relevant chunks; the marker is what stops an unlabelled row being read as one.
 /// </param>
+/// <param name="Domain">Whose collection the case is searched in: billing (the default, when a row names none) or portfolio.</param>
 public sealed record RetrievalCase(string Id, string Query, IReadOnlyList<string> RelevantChunkIds, string FirmId, string? Source,
-    string? Language = null, bool OffDomain = false);
+    string? Language = null, bool OffDomain = false, string Domain = "billing");
 public sealed record GenerationCase(string Id, string Question, string ReferenceAnswer, IReadOnlyList<string> ExpectedDocIds, string FirmId, string? Source);
 /// <param name="Question">What the advisor asks, which must make the assistant propose the adjustment.</param>
 /// <param name="AccountId">The account the proposal must be about.</param>
@@ -77,8 +78,13 @@ public static class DatasetLoader
         {
             throw new InvalidDataException($"{where}: an off-domain case must not declare relevant chunks.");
         }
+        var domain = Opt(e, "domain") ?? "billing";
+        if (domain is not ("billing" or "portfolio"))
+        {
+            throw new InvalidDataException($"{where}: domain must be billing or portfolio.");
+        }
         return new RetrievalCase(Str(e, "id", where), Str(e, "query", where), relevant, Firm(e, where), Opt(e, "source"),
-            Opt(e, "language"), offDomain);
+            Opt(e, "language"), offDomain, domain);
     });
 
     public static IReadOnlyList<GenerationCase> Generation(string root) => Load(root, "generation.jsonl", (e, where) =>

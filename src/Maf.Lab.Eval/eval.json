@@ -16,6 +16,11 @@
         "recall@20": 0.8,
         "mrr": 0.5
       },
+      "retrieval-portfolio": {
+        "recall@5": 0.6,
+        "recall@20": 0.8,
+        "mrr": 0.5
+      },
       "generation": {
         "faithfulness": 0.7,
         "relevance": 0.7

@@ -67,7 +67,7 @@ up: require-docker ## Build and start the stack (replicas via API_REPLICAS/MCP_R
 	  || { scripts/wait_healthy.sh 0; exit 1; }
 	@scripts/wait_healthy.sh $(WAIT_TIMEOUT)
 	@# The balancer resolves the replicas when it (re)loads; reload so it sees the current set after scaling/recreation.
-	@$(COMPOSE) exec -T lb nginx -s reload >/dev/null 2>&1 && echo "✓ load balancer reloaded ($(API_REPLICAS) api, $(MCP_REPLICAS) mcp, $(PORTFOLIO_REPLICAS) portfolio, $(COMPLIANCE_REPLICAS) compliance replicas)"
+	@$(COMPOSE) exec -T lb nginx -c /etc/nginx/lb/nginx.conf -s reload >/dev/null 2>&1 && echo "✓ load balancer reloaded ($(API_REPLICAS) api, $(MCP_REPLICAS) mcp, $(PORTFOLIO_REPLICAS) portfolio, $(COMPLIANCE_REPLICAS) compliance replicas)"
 
 down: require-docker ## Stop the stack (data volumes are kept)
 	$(COMPOSE) down --remove-orphans

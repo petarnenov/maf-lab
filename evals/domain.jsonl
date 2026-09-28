@@ -42,3 +42,19 @@
 {"id": "d-none-06", "question": "zashto nebeto e sinio", "expected": "none", "language": "bg-latn", "split": "holdout"}
 {"id": "d-none-07", "question": "Write me a poem about autumn.", "expected": "none", "language": "en", "split": "design"}
 {"id": "d-none-08", "question": "What is the capital of Portugal?", "expected": "none", "language": "en", "split": "design"}
+{"id": "d-both-13", "question": "The invoice for Whitfield Holdings jumped this quarter; did the account grow or did its fee schedule change?", "expected": "both", "language": "en", "split": "holdout"}
+{"id": "d-both-14", "question": "Why is Calder Retirement Plan paying a lower fee now that its AUM dropped?", "expected": "both", "language": "en", "split": "holdout"}
+{"id": "d-both-15", "question": "Does cash sitting in the sweep count toward the fee tier of A-1042?", "expected": "both", "language": "en", "split": "holdout"}
+{"id": "d-both-16", "question": "A client withdrew $500k in September — how does that show up in their Q3 billable AUM and fee?", "expected": "both", "language": "en", "split": "holdout"}
+{"id": "d-both-17", "question": "If a quarter-end price was corrected after the billing run, how do we fix the invoice?", "expected": "both", "language": "en", "split": "holdout"}
+{"id": "d-both-18", "question": "Would moving A-1043 to the growth model change what we bill them?", "expected": "both", "language": "en", "split": "holdout"}
+{"id": "d-both-19", "question": "Защо таксата на Calder Retirement Plan намаля, след като AUM-ът падна?", "expected": "both", "language": "bg", "split": "holdout"}
+{"id": "d-both-20", "question": "Vliyae li parite v sweep smetkata na tier-a na taksata?", "expected": "both", "language": "bg-latn", "split": "holdout"}
+{"id": "d-billing-13", "question": "Which billing runs are still pending for September 2026?", "expected": "billing", "language": "en", "split": "holdout"}
+{"id": "d-billing-14", "question": "Who can approve a billing credit above the limit?", "expected": "billing", "language": "en", "split": "holdout"}
+{"id": "d-billing-15", "question": "Какво означава кодът за грешка FS-REQUIRED?", "expected": "billing", "language": "bg", "split": "holdout"}
+{"id": "d-portfolio-13", "question": "What is the drift of Northwind Pension Fund's long-duration bonds against its model?", "expected": "portfolio", "language": "en", "split": "holdout"}
+{"id": "d-portfolio-14", "question": "How is a money-weighted return calculated for a household?", "expected": "portfolio", "language": "en", "split": "holdout"}
+{"id": "d-portfolio-15", "question": "Какви са целевите тегла на модела ACME-GROWTH-80-20?", "expected": "portfolio", "language": "bg", "split": "holdout"}
+{"id": "d-none-09", "question": "How do I reset my laptop's Wi-Fi settings?", "expected": "none", "language": "en", "split": "holdout"}
+{"id": "d-none-10", "question": "Какво е времето в София утре?", "expected": "none", "language": "bg", "split": "holdout"}

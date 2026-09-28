@@ -6,7 +6,8 @@ using Maf.Lab.Retrieval.Search;
 
 namespace Maf.Lab.Eval.Suites;
 
-public sealed record RetrievalVariant(string Name, SearchSettings Settings, DocumentSearchService Search, bool Primary);
+/// <param name="Domain">The collection the variant's search reads, and so the cases it is scored on.</param>
+public sealed record RetrievalVariant(string Name, SearchSettings Settings, DocumentSearchService Search, bool Primary, string Domain = "billing");
 
 /// <summary>
 /// recall@5, recall@20 and MRR per retrieval configuration, over the tenant-scoped search path, plus how often a
@@ -18,12 +19,18 @@ public sealed class RetrievalSuite
 {
     public async Task<IReadOnlyList<EvalVariantResult>> RunAsync(SuiteContext ctx, IReadOnlyList<RetrievalVariant> variants, CancellationToken ct)
     {
-        var all = ctx.Take(DatasetLoader.Retrieval(ctx.DatasetRoot)).ToList();
-        var cases = all.Where(c => !c.OffDomain).ToList();
-        var offDomain = all.Where(c => c.OffDomain).ToList();
+        var dataset = ctx.Take(DatasetLoader.Retrieval(ctx.DatasetRoot)).ToList();
         var results = new List<EvalVariantResult>();
         foreach (var variant in variants)
         {
+            // Each domain's cases against its own collection: a portfolio question's chunks are not in billing's.
+            var all = dataset.Where(c => c.Domain == variant.Domain).ToList();
+            if (all.Count == 0)
+            {
+                continue;
+            }
+            var cases = all.Where(c => !c.OffDomain).ToList();
+            var offDomain = all.Where(c => c.OffDomain).ToList();
             double r5 = 0, r20 = 0, mrr = 0, silent = 0;
             var failures = new List<EvalCaseFailure>();
             var judge = new JudgeTally();
@@ -78,7 +85,8 @@ public sealed class RetrievalSuite
                 }
             }
             // Thresholds gate the configured production variant; the others are for comparison.
-            var thresholds = variant.Primary ? ctx.ThresholdsFor("retrieval") : new Dictionary<string, double>();
+            var thresholds = !variant.Primary ? new Dictionary<string, double>()
+                : ctx.ThresholdsFor(variant.Domain == "billing" ? "retrieval" : $"retrieval-{variant.Domain}");
             results.Add(SuiteContext.Variant(variant.Name, metrics, thresholds, all.Count, failures));
             var perLanguage = string.Join(" ", metrics.Where(m => m.Key.StartsWith("recall@5:", StringComparison.Ordinal))
                 .Select(m => $"{m.Key}={m.Value:0.###}"));

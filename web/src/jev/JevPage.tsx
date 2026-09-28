@@ -6,6 +6,7 @@ import type {
   JevStatsReport,
   RelevanceStats,
   RoutingStats,
+  DomainStats,
 } from '../api/types';
 import { useApi, useAuth } from '../auth/useAuth';
 import page from '../components/Page.module.css';
@@ -113,6 +114,9 @@ export function JevPage() {
 
           <h2 className={page.heading}>Tool routing</h2>
           <RoutingSection routing={r.routing} period={period} />
+
+          <h2 className={page.heading}>Domains</h2>
+          <DomainsSection d={r.domains ?? null} period={period} />
         </>
       )}
 
@@ -365,6 +369,19 @@ function RelevanceSection({ rel, period }: { rel: RelevanceStats; period: string
         />
       </div>
 
+      {rel.byDomain && rel.byDomain.length > 1 && (
+        <div className={styles.kpis} aria-label="Judged searches per domain">
+          {rel.byDomain.map((d) => (
+            <Kpi
+              key={d.domain}
+              label={`${d.domain} documentation`}
+              value={String(d.searches)}
+              note={`${d.gated} silenced · ${d.unavailable} ungated`}
+            />
+          ))}
+        </div>
+      )}
+
       <div className={styles.grid2}>
         <Panel
           title="Top relevance per search"
@@ -403,6 +420,40 @@ function RelevanceSection({ rel, period }: { rel: RelevanceStats; period: string
         </Panel>
       </div>
     </>
+  );
+}
+
+/** Where Jev placed the turns among the domains, how often a turn crossed, and whether the calls went where Jev said. */
+function DomainsSection({ d, period }: { d: DomainStats | null; period: string }) {
+  if (!d || d.judged === 0) {
+    return (
+      <p className={styles.noData}>
+        No turn carried a domain verdict in this period ({period.toLowerCase()}).
+      </p>
+    );
+  }
+  return (
+    <div className={styles.kpis}>
+      <Kpi label="Turns with a verdict" value={String(d.judged)} note={period} />
+      <Kpi label="Billing only" value={percent(d.billing, d.judged)} note={`${d.billing} turns`} />
+      <Kpi
+        label="Portfolio only"
+        value={percent(d.portfolio, d.judged)}
+        note={`${d.portfolio} turns`}
+      />
+      <Kpi label="Both (crossing)" value={percent(d.both, d.judged)} note={`${d.both} turns`} />
+      <Kpi label="Neither" value={percent(d.none, d.judged)} note={`${d.none} turns`} />
+      <Kpi
+        label="Crossed by the calls"
+        value={percent(d.crossed, d.judged)}
+        note={`${d.crossed} turns went from one server's tools to the other's`}
+      />
+      <Kpi
+        label="Calls matched the verdict"
+        value={percent(d.agreed, d.withCalls)}
+        note={`${d.agreed} of ${d.withCalls} turns that called a tool`}
+      />
+    </div>
   );
 }
 

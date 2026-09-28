@@ -1,3 +1,4 @@
+using Maf.Lab.Domain.Portfolio;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Maf.Lab.Retrieval.Jev;
@@ -16,7 +17,17 @@ public static partial class DataToolRouter
     public const string StatusQuestionId = "run_status";
 
     /// <summary>The read tools a data question may be routed to. <see cref="WriteTool"/> is asked about only as a veto.</summary>
-    public static readonly IReadOnlyList<string> ReadTools = [BillingTools.GetStatusName, BillingTools.SearchRunsName];
+    public static readonly IReadOnlyList<string> ReadTools =
+        [BillingTools.GetStatusName, BillingTools.SearchRunsName, PortfolioTools.GetPortfolio, PortfolioTools.AumHistory];
+
+    /// <summary>The domain each read tool belongs to: a question is routed only among the tools of its domains in scope.</summary>
+    internal static readonly IReadOnlyDictionary<string, string> ToolDomain = new Dictionary<string, string>
+    {
+        [BillingTools.GetStatusName] = Domains.Billing,
+        [BillingTools.SearchRunsName] = Domains.Billing,
+        [PortfolioTools.GetPortfolio] = Domains.Portfolio,
+        [PortfolioTools.AumHistory] = Domains.Portfolio,
+    };
 
     public const string WriteTool = Maf.Lab.Domain.Billing.FeeAdjustmentTool.Name;
 
@@ -28,6 +39,8 @@ public static partial class DataToolRouter
         [BillingTools.GetStatusName] = "Returns the current status of one billing run by its run id: status, billing period, account count and failure reason.",
         [BillingTools.SearchRunsName] = "Lists the firm's billing runs, optionally filtered by status (pending, running, completed, failed) and billing period.",
         [WriteTool] = "Proposes a change to one account's fee (a credit or an increase), for a person to confirm.",
+        [PortfolioTools.GetPortfolio] = "Returns one account's current portfolio by its account id: holdings, allocation against its model, drift and total value.",
+        [PortfolioTools.AumHistory] = "Returns one account's quarter-end AUM valuations by its account id, oldest first, with each quarter's change.",
     };
 
     internal const string StatusInstructions = "Which billing run status does `user_question` ask about?";
@@ -64,17 +77,33 @@ public static partial class DataToolRouter
     }
 
     /// <summary>The route for a question Jev classified as data, or why there is none.</summary>
-    public static (ToolRoute? Route, string? Reason) Route(string question, RoutingAnswer answer, JevOptions o)
+    public static (ToolRoute? Route, string? Reason) Route(string question, RoutingAnswer answer, JevOptions o, DomainVerdict? domains = null)
     {
         if (answer.Tools.GetValueOrDefault(WriteTool) >= 0.5)
         {
             return (null, $"a write is indicated ({answer.Tools[WriteTool]:F2})");
         }
-        var tool = ReadTools.OrderByDescending(t => answer.Tools.GetValueOrDefault(t)).First();
+        // Only the tools of the domains Jev put the question in; with no verdict, every read tool, as before domains.
+        var candidates = domains is { InScope.Count: > 0 } d
+            ? ReadTools.Where(t => d.InScope.Contains(ToolDomain[t])).ToList()
+            : [.. ReadTools];
+        if (candidates.Count == 0)
+        {
+            return (null, "no read tool belongs to a domain in scope");
+        }
+        var tool = candidates.OrderByDescending(t => answer.Tools.GetValueOrDefault(t)).First();
         var p = answer.Tools.GetValueOrDefault(tool);
         if (p < o.MinRouteProbability)
         {
             return (null, $"no read tool is clear ({tool} {p:F2})");
+        }
+
+        if (ToolDomain[tool] == Domains.Portfolio)
+        {
+            var accounts = AccountIds(question);
+            return accounts.Count == 1
+                ? (new ToolRoute(tool, new Dictionary<string, object?> { ["accountId"] = accounts[0] }, p), null)
+                : (null, $"{tool} needs one account id, the question has {accounts.Count}");
         }
 
         var runs = RunIds(question);
@@ -107,6 +136,13 @@ public static partial class DataToolRouter
         }
         return (new ToolRoute(tool, arguments, p), null);
     }
+
+    /// <summary>Distinct account ids, the platform's letter-dash-number form: A-1042, B-200, C-77 (upper-cased).</summary>
+    internal static IReadOnlyList<string> AccountIds(string question) =>
+        AccountId().Matches(question).Select(m => m.Groups["id"].Value.ToUpperInvariant()).Distinct(StringComparer.Ordinal).ToList();
+
+    [GeneratedRegex(@"(?<![\p{L}\d-])(?<id>[A-Za-z]-\d{2,})(?![\d-])")]
+    private static partial Regex AccountId();
 
     /// <summary>Distinct run ids: a number of three or more digits after "run" (or рън/ран), or after '#'.</summary>
     internal static IReadOnlyList<string> RunIds(string question) =>

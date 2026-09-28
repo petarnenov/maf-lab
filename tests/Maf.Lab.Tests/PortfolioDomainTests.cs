@@ -2,7 +2,9 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Domain.Chat;
 using Maf.Lab.Domain.Configuration;
+using Maf.Lab.Domain.Feedback;
 using Maf.Lab.Domain.Portfolio;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Domain.Tracing;
@@ -230,15 +232,48 @@ public class PortfolioDomainTests
     }
 
     [Fact]
-    public async Task A_portfolio_data_question_is_not_routed_to_a_billing_tool()
+    public async Task A_portfolio_data_question_is_routed_among_the_portfolio_tools_only()
     {
-        var decision = await Classifier(new FakeJev { Choose = _ => "data", InDomain = 0.1, Tools = (_, _) => 0.95 })
+        // Every read tool scores 0.95, the billing ones included: the domain verdict alone keeps them out.
+        var decision = await Classifier(new FakeJev
+            {
+                Choose = _ => "data", InDomain = 0.1,
+                Tools = (tool, _) => tool == Maf.Lab.Domain.Billing.FeeAdjustmentTool.Name ? 0.02 : 0.95,
+            })
             .ClassifyAsync("Show me the holdings of A-1042", Ct);
 
         Assert.Equal(Intent.Data, decision.Intent);
-        Assert.Null(decision.Route);
-        Assert.Contains("not in the billing domain", decision.RouteReason);
+        Assert.Equal(PortfolioTools.GetPortfolio, decision.Route!.Tool);
+        Assert.Equal("A-1042", decision.Route.Arguments["accountId"]);
     }
+
+    [Fact]
+    public async Task A_quarter_end_aum_question_is_routed_to_the_history()
+    {
+        var decision = await Classifier(new FakeJev { Choose = _ => "data", InDomain = 0.1 })
+            .ClassifyAsync("Show me the quarter-end AUM of a-1043 over the last year", Ct);
+
+        Assert.Equal(PortfolioTools.AumHistory, decision.Route!.Tool);
+        Assert.Equal("A-1043", decision.Route.Arguments["accountId"]);
+    }
+
+    [Fact]
+    public async Task A_portfolio_question_about_two_accounts_is_left_to_the_model()
+    {
+        var decision = await Classifier(new FakeJev { Choose = _ => "data", InDomain = 0.1 })
+            .ClassifyAsync("Compare the holdings of A-1042 and A-1043", Ct);
+
+        Assert.Null(decision.Route);
+        Assert.Contains("needs one account id, the question has 2", decision.RouteReason);
+    }
+
+    [Theory]
+    [InlineData("holdings of A-1042", new[] { "A-1042" })]
+    [InlineData("c-77 and B-200, then C-77 again", new[] { "C-77", "B-200" })]
+    [InlineData("run 4417 is not an account", new string[0])]
+    [InlineData("ACME-TIER-2026 is a schedule", new string[0])]
+    public void Account_ids_are_letter_dash_number(string question, string[] expected) =>
+        Assert.Equal(expected, DataToolRouter.AccountIds(question));
 
     // ---- forcing across the boundary -------------------------------------------------------------------------------------
 
@@ -273,6 +308,40 @@ public class PortfolioDomainTests
         await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "why did run 4417 and run 4418 fail");
 
         Assert.Equal(["search_documents"], api.Tools.Invocations);
+    }
+
+    // ---- labels land in their own domain's dataset ----
+
+    private static Maf.Lab.Api.Storage.TurnRow Turn(params ToolCallRecord[] calls) => new()
+    {
+        Id = "t1", ConversationId = "c1", UserId = "adam", FirmId = "firm-a", Question = "q",
+        ToolCallsJson = JsonSerializer.Serialize(calls, Json),
+    };
+
+    private static ToolCallRecord Search(string tool, params string[] docIds) => new(tool, "", "ok", docIds.Length, docIds, [], "x", "done");
+
+    [Fact]
+    public void A_retrieval_label_records_the_domain_whose_search_found_its_chunks()
+    {
+        var turn = Turn(Search("search_documents", "shared/docs/tiered-fee-calculation.md"),
+            Search(PortfolioTools.Search, "shared/docs/portfolio-quarter-end-valuation.md"));
+        LabelRequest Label(params string[] chunks) => new(Maf.Lab.Domain.Feedback.EvalDataset.Retrieval, null, chunks, null, null);
+
+        var portfolio = Label("shared/docs/portfolio-quarter-end-valuation.md#quarter-end-valuation-handoff-to-billing");
+        var billing = Label("shared/docs/tiered-fee-calculation.md#x");
+        var both = Label("shared/docs/tiered-fee-calculation.md#x", "shared/docs/portfolio-quarter-end-valuation.md#y");
+
+        Assert.Equal("portfolio", Maf.Lab.Api.Endpoints.FeedbackEndpoints.RetrievalDomain(turn, portfolio));
+        Assert.Equal("billing", Maf.Lab.Api.Endpoints.FeedbackEndpoints.RetrievalDomain(turn, billing));
+        Assert.Null(Maf.Lab.Api.Endpoints.FeedbackEndpoints.RetrievalDomain(turn, both));
+
+        var (row, _) = Maf.Lab.Api.Endpoints.FeedbackEndpoints.BuildRow(turn, portfolio, "portfolio");
+        Assert.Equal("portfolio", row!["domain"]!.GetValue<string>());
+        var (billingRow, _) = Maf.Lab.Api.Endpoints.FeedbackEndpoints.BuildRow(turn, billing, "billing");
+        Assert.Null(billingRow!["domain"]);
+        var (none, error) = Maf.Lab.Api.Endpoints.FeedbackEndpoints.BuildRow(turn, both, null);
+        Assert.Null(none);
+        Assert.Contains("both domains", error);
     }
 
     // ---- the trace of a crossing -----------------------------------------------------------------------------------------
@@ -317,6 +386,18 @@ public class PortfolioDomainTests
         var sources = ApiFactory.SourcesOf(events)!.Value.GetRawText();
         Assert.Contains("shared/procedures/missing-fee-schedule.txt", sources);
         Assert.Contains("shared/docs/portfolio-quarter-end-valuation.md", sources);
+    }
+
+    [Fact]
+    public async Task A_crossing_is_issued_on_the_models_behalf_even_where_tool_choice_is_honoured()
+    {
+        // With emulation off the provider's tool_choice would force one function; two must go out, so both are issued.
+        var tools = new FakeToolSource { WithPortfolio = true };
+        using var api = new ApiFactory(new ScriptedChatClient((_, _, _) => ScriptedChatClient.Text("answer")), tools, emulateForcing: false);
+
+        await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "Why did the fee on A-1042 go up — did its AUM cross a tier?");
+
+        Assert.Equal(["search_documents", PortfolioTools.Search], tools.Invocations);
     }
 
     [Fact]
