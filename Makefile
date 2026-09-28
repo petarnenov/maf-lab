@@ -19,6 +19,7 @@ endif
 BASE_URL      ?= http://localhost:7171
 API_REPLICAS  ?= 2
 MCP_REPLICAS  ?= 2
+PORTFOLIO_REPLICAS ?= 2
 COMPLIANCE_REPLICAS ?= 2
 CHAT_MODEL    ?= gpt-oss:120b
 SUITE         ?= all
@@ -42,8 +43,10 @@ export DOTNET_CLI_TELEMETRY_OPTOUT := 1
 export DOTNET_NOLOGO := 1
 # Host-side CLIs use the compose infrastructure: Qdrant on 6333/6334, embeddings from the compose Ollama on 11435.
 HOST_ENV := Models__OllamaEndpoint=http://localhost:11435
+# The portfolio domain is indexed by the same indexer into its own collection and BM25 vocabulary.
+PORTFOLIO_ENV := Indexing__CorpusRoot=$(ROOT)/data-portfolio Qdrant__Collection=maf_portfolio_chunks Qdrant__MetaCollection=maf_portfolio_meta
 
-.PHONY: all help up down restart ps logs clean index reindex drift migrate test test-dotnet test-web lint verify \
+.PHONY: all help up down restart ps logs clean index index-portfolio reindex drift migrate test test-dotnet test-web lint verify \
         eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-a2a dev doctor banner index-if-empty \
         specs lint-dotnet lint-web build-web ci ci-e2e setup \
         require-docker require-dotnet require-npm
@@ -51,7 +54,7 @@ HOST_ENV := Models__OllamaEndpoint=http://localhost:11435
 all: require-docker up index-if-empty banner ## Start everything: build, run, wait for health, index if empty (default)
 
 help: ## List the targets
-	@echo "maf-lab — make targets (variables: API_REPLICAS MCP_REPLICAS COMPLIANCE_REPLICAS CHAT_MODEL SUITE BASE_URL WAIT_TIMEOUT TO FORCE)"
+	@echo "maf-lab — make targets (variables: API_REPLICAS MCP_REPLICAS PORTFOLIO_REPLICAS COMPLIANCE_REPLICAS CHAT_MODEL SUITE BASE_URL WAIT_TIMEOUT TO FORCE)"
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 # ── lifecycle ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -60,11 +63,11 @@ up: require-docker ## Build and start the stack (replicas via API_REPLICAS/MCP_R
 	@if [ "$(CI_MODE)" != "1" ] && [ -z "$$JEV_MAF_LAB" ]; then echo "⚠ JEV_MAF_LAB is not set: the stack starts, but no turn is classified (nothing forced to search)."; fi
 	@# compose itself waits for the balancer's dependencies to be healthy; if that fails, show which service and why.
 	$(COMPOSE) up -d --build --remove-orphans --scale api=$(API_REPLICAS) --scale mcp-retrieval=$(MCP_REPLICAS) \
-	  --scale compliance=$(COMPLIANCE_REPLICAS) \
+	  --scale mcp-portfolio=$(PORTFOLIO_REPLICAS) --scale compliance=$(COMPLIANCE_REPLICAS) \
 	  || { scripts/wait_healthy.sh 0; exit 1; }
 	@scripts/wait_healthy.sh $(WAIT_TIMEOUT)
 	@# The balancer resolves the replicas when it (re)loads; reload so it sees the current set after scaling/recreation.
-	@$(COMPOSE) exec -T lb nginx -s reload >/dev/null 2>&1 && echo "✓ load balancer reloaded ($(API_REPLICAS) api, $(MCP_REPLICAS) mcp, $(COMPLIANCE_REPLICAS) compliance replicas)"
+	@$(COMPOSE) exec -T lb nginx -s reload >/dev/null 2>&1 && echo "✓ load balancer reloaded ($(API_REPLICAS) api, $(MCP_REPLICAS) mcp, $(PORTFOLIO_REPLICAS) portfolio, $(COMPLIANCE_REPLICAS) compliance replicas)"
 
 down: require-docker ## Stop the stack (data volumes are kept)
 	$(COMPOSE) down --remove-orphans
@@ -94,11 +97,16 @@ banner:
 index-if-empty: require-dotnet
 	@$(HOST_ENV) scripts/index_if_empty.sh
 
-index: require-dotnet ## Index the corpus (unchanged documents are skipped)
+index: require-dotnet ## Index both domains' corpora (unchanged documents are skipped)
 	$(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- index
+	$(HOST_ENV) $(PORTFOLIO_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- index
 
-reindex: require-dotnet ## Re-embed every document (--force)
+index-portfolio: require-dotnet ## Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only
+	$(HOST_ENV) $(PORTFOLIO_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- index
+
+reindex: require-dotnet ## Re-embed every document of both domains (--force)
 	$(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- index --force
+	$(HOST_ENV) $(PORTFOLIO_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- index --force
 
 drift: require-dotnet ## Report stale documents (source newer than index)
 	$(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- drift

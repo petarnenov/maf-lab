@@ -96,25 +96,30 @@ public sealed class ChatTurnRunner(
             // schemas and the system prompt — what an injection may be trying to extract — are neither fetched nor traced.
             await using var tools = screen.Blocked ? null : await toolSource.GetToolsAsync(bearerToken, state.Confirmations, ct);
             Jev.ToolRoute? route = null;
+            IReadOnlyList<string> forcedSearches = [];
             if (tools is not null)
             {
                 state.KnownTools = tools.Names;
-                forced = IntentClassifier.ForcesRetrieval(decision.Intent) && tools.Names.Contains("search_documents");
+                state.Tools = tools;
+                // A forcing intent searches every domain Jev put the question in, each through its own server's search.
+                forcedSearches = IntentClassifier.ForcesRetrieval(decision.Intent) ? ForcedSearches(decision.Domains, tools) : [];
+                forced = forcedSearches.Count > 0;
                 // A data turn Jev routed to a read tool this server offers: the call is issued without the model's first
                 // call. Never a write — the router has no write to offer.
                 route = !forced && decision.Route is { } r && tools.Names.Contains(r.Tool) ? r : null;
             }
 
             var outside = decision.Reason?.StartsWith("outside the domain", StringComparison.Ordinal) == true
-                ? $", outside the domain {decision.InDomain ?? 0:F2}"
+                ? $", outside the domain {decision.Domains?.Highest ?? decision.InDomain ?? 0:F2}"
                 : "";
             var jev = decision.Confidence is { } confidence ? $" (jev {confidence:F2}{outside}, {decision.DurationMs:F0} ms)" : "";
             var routed = route is null ? "" : $" → routing {route.Tool} (jev {route.Probability:F2})";
-            trace.Add(TraceKinds.Intent, $"Intent {decision.Intent}{jev}{(forced ? " → forcing search_documents" : "")}{routed}", new JsonObject
+            trace.Add(TraceKinds.Intent, $"Intent {decision.Intent}{jev}{(forced ? $" → forcing {string.Join(" + ", forcedSearches)}" : "")}{routed}", new JsonObject
             {
                 ["intent"] = decision.Intent.ToString(),
                 ["forcedRetrieval"] = forced,
-                ["forcedTool"] = forced ? "search_documents" : null,
+                ["forcedTool"] = forced ? forcedSearches[0] : null,
+                ["forcedTools"] = new JsonArray([.. forcedSearches.Select(t => (JsonNode)JsonValue.Create(t)!)]),
                 ["choice"] = decision.Choice,
                 ["probabilities"] = decision.Probabilities is { } p
                     ? new JsonObject(p.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value)))
@@ -125,7 +130,11 @@ public sealed class ChatTurnRunner(
                 ["durationMs"] = decision.DurationMs,
                 ["reason"] = decision.Reason,
                 ["routing"] = Routing(decision, route),
+                ["domains"] = decision.Domains is { } d
+                    ? new JsonObject(d.Probabilities.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value)))
+                    : null,
             });
+            TraceDomains(trace, decision.Domains, forcedSearches, tools);
             guardrail.Trace(trace, Guardrail.CheckPrompt, null, null, screen.Decision, screen.Threshold,
                 [new ScreenedItem(0, screen.Decision, screen.Scores)], 0, screen.Reason);
 
@@ -150,17 +159,20 @@ public sealed class ChatTurnRunner(
                 var chatOptions = models.BaseChatOptions();
                 chatOptions.Instructions = prompt.Text;
                 chatOptions.Tools = [.. tools.Tools];
-                chatOptions.ToolMode = forced ? ChatToolMode.RequireSpecific("search_documents")
+                chatOptions.ToolMode = forced ? ChatToolMode.RequireSpecific(forcedSearches[0])
                     : route is not null ? ChatToolMode.RequireSpecific(route.Tool)
                     : ChatToolMode.Auto;
-                trace.Add(TraceKinds.Prompt, $"System prompt {prompt.Version} + {tools.Tools.Count} tool(s)", new JsonObject
+                trace.Add(TraceKinds.Prompt, $"System prompt {prompt.Version} + {tools.Tools.Count} tool(s) from {string.Join(" + ", tools.OfferedDomains)}", new JsonObject
                 {
                     ["version"] = prompt.Version,
                     ["systemPrompt"] = prompt.Text,
                     ["toolMode"] = TraceMapping.ToolMode(chatOptions.ToolMode),
+                    ["domains"] = new JsonArray([.. tools.OfferedDomains.Select(x => (JsonNode)JsonValue.Create(x)!)]),
+                    ["unavailableDomains"] = new JsonArray([.. tools.Unavailable.Select(x => (JsonNode)JsonValue.Create(x)!)]),
                     ["tools"] = new JsonArray(tools.Tools.OfType<AIFunctionDeclaration>().Select(t => (JsonNode)new JsonObject
                     {
                         ["name"] = t.Name, ["description"] = t.Description, ["inputSchema"] = TraceMapping.Node(t.JsonSchema),
+                        ["domain"] = tools.DomainOf(t.Name), ["server"] = tools.ServerOf(t.Name),
                     }).ToArray()),
                 });
 
@@ -180,11 +192,15 @@ public sealed class ChatTurnRunner(
                         {
                             ["callId"] = call.CallId,
                             ["tool"] = call.Name,
+                            ["domain"] = tools.DomainOf(call.Name),
+                            ["server"] = tools.ServerOf(call.Name),
                             ["arguments"] = TraceMapping.Node(call.Arguments),
                             ["reason"] = call.Name == route?.Tool
                                 ? $"Data intent routed by Jev ({route.Tool} {route.Probability:F2}); the call is issued without asking the model which tool to use."
-                                : "Procedural intent requires retrieval; the provider ignores tool_choice, so the call is issued without asking the model.",
-                        }), route);
+                                : forcedSearches.Count > 1
+                                    ? $"Procedural intent requires retrieval in every domain in scope ({string.Join(", ", decision.Domains?.InScope ?? [])}); the searches are issued together without asking the model."
+                                    : "Procedural intent requires retrieval; the provider ignores tool_choice, so the call is issued without asking the model.",
+                        }), route, forcedSearches);
                 }
 
                 var agent = new ChatClientAgent(
@@ -265,13 +281,20 @@ public sealed class ChatTurnRunner(
         LabTelemetry.Instruments.TurnDuration.Record(sw.Elapsed.TotalMilliseconds,
             new KeyValuePair<string, object?>("outcome", outcome),
             new KeyValuePair<string, object?>("intent", decision.Intent.ToString()));
-        trace.Add(TraceKinds.TurnEnd, $"Turn finished in {sw.ElapsedMilliseconds} ms{(error is null ? "" : " with an error")}", new JsonObject
+        var path = state.DomainPath;
+        var crossed = path.Count > 1 ? $" across {string.Join(" → ", path)}" : "";
+        trace.Add(TraceKinds.TurnEnd, $"Turn finished in {sw.ElapsedMilliseconds} ms{crossed}{(error is null ? "" : " with an error")}", new JsonObject
         {
             ["durationMs"] = sw.ElapsedMilliseconds,
             ["error"] = error,
             ["answerChars"] = text.Length,
             ["toolCalls"] = state.ToolCalls.Count,
             ["sourceCount"] = sources.Count,
+            // Where the turn actually went, beside where Jev said it would: the two disagreeing is worth a look.
+            ["domainPath"] = new JsonArray([.. path.Select(x => (JsonNode)JsonValue.Create(x)!)]),
+            ["domainsTouched"] = new JsonArray([.. path.Distinct().Select(x => (JsonNode)JsonValue.Create(x)!)]),
+            ["domainsPredicted"] = new JsonArray([.. (decision.Domains?.InScope ?? []).Select(x => (JsonNode)JsonValue.Create(x)!)]),
+            ["crossings"] = Math.Max(0, path.Count - 1),
         }, sw.ElapsedMilliseconds);
         await PersistAsync(principal, conversationId, turnId, message, text, decision.Intent, forced, state.ToolCalls, sources, signals, trace, ct);
 
@@ -284,6 +307,51 @@ public sealed class ChatTurnRunner(
             Proposal = state.Proposal,
             ProposalQuestion = state.Interrupt?.Message,
         };
+    }
+
+    /// <summary>
+    /// The documentation searches a forcing intent issues: one per domain in scope whose server is offering its search.
+    /// With no domain verdict at all the turn behaves as it did before domains existed — billing's search, if offered.
+    /// </summary>
+    internal static IReadOnlyList<string> ForcedSearches(DomainVerdict? domains, ToolSet tools)
+    {
+        if (domains is not { InScope.Count: > 0 })
+        {
+            return tools.Names.Contains(Domains.SearchTool[Domains.Billing]) ? [Domains.SearchTool[Domains.Billing]] : [];
+        }
+        return [.. domains.InScope
+            .Select(d => Domains.SearchTool.GetValueOrDefault(d))
+            .OfType<string>()
+            .Where(tools.Names.Contains)];
+    }
+
+    /// <summary>
+    /// Where Jev put the question among the domains: each domain's probability against the scope floor, the domains in
+    /// scope, and whether the question crosses the boundary between them. Nothing when Jev gave no domain answer.
+    /// </summary>
+    private static void TraceDomains(TurnTrace trace, DomainVerdict? domains, IReadOnlyList<string> forcedSearches, ToolSet? tools)
+    {
+        if (domains is null)
+        {
+            return;
+        }
+        var scores = string.Join(" · ", domains.Probabilities
+            .OrderBy(p => Domains.All.ToList().IndexOf(p.Key))
+            .Select(p => $"{p.Key} {p.Value:F2}"));
+        var title = domains.Crossing ? $"Domains: {scores} → crosses {string.Join(" ↔ ", domains.InScope)}"
+            : domains.Primary is { } primary ? $"Domain {primary} ({scores})"
+            : $"No domain in scope ({scores})";
+        trace.Add(TraceKinds.Domain, title, new JsonObject
+        {
+            ["probabilities"] = new JsonObject(domains.Probabilities.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value))),
+            ["scopeFloor"] = domains.ScopeFloor,
+            ["inScope"] = new JsonArray([.. domains.InScope.Select(x => (JsonNode)JsonValue.Create(x)!)]),
+            ["primary"] = domains.Primary,
+            ["crossing"] = domains.Crossing,
+            ["forcedSearches"] = new JsonArray([.. forcedSearches.Select(x => (JsonNode)JsonValue.Create(x)!)]),
+            ["offered"] = tools is null ? null : new JsonArray([.. tools.OfferedDomains.Select(x => (JsonNode)JsonValue.Create(x)!)]),
+            ["unavailable"] = tools is null ? null : new JsonArray([.. tools.Unavailable.Select(x => (JsonNode)JsonValue.Create(x)!)]),
+        });
     }
 
     /// <summary>
@@ -401,9 +469,12 @@ public sealed class ChatTurnRunner(
         state.Answer.Flush();
         state.Reasoning.Flush();
         state.Arguments[callId] = args;
-        state.Trace.Add(TraceKinds.ToolCall, $"Calling {name} over MCP", new JsonObject
+        var domain = state.Tools?.DomainOf(name) ?? Domains.Billing;
+        var server = state.Tools?.ServerOf(name) ?? ToolSet.DefaultServer;
+        EnterDomain(state, domain, name, callId);
+        state.Trace.Add(TraceKinds.ToolCall, $"Calling {name} over MCP ({domain})", new JsonObject
         {
-            ["callId"] = callId, ["tool"] = name, ["arguments"] = TraceMapping.Node(context.Arguments),
+            ["callId"] = callId, ["tool"] = name, ["domain"] = domain, ["server"] = server, ["arguments"] = TraceMapping.Node(context.Arguments),
         });
 
         var sw = Stopwatch.StartNew();
@@ -423,7 +494,8 @@ public sealed class ChatTurnRunner(
             await audit.RecordAsync(new AuditEntry(state.Principal, state.ConversationId, state.TurnId, name, args, "error", sw.ElapsedMilliseconds), ct);
             state.Trace.Add(TraceKinds.ToolResult, $"{name} threw {ex.GetType().Name}", new JsonObject
             {
-                ["callId"] = callId, ["tool"] = name, ["isError"] = true, ["latencyMs"] = sw.ElapsedMilliseconds, ["result"] = null,
+                ["callId"] = callId, ["tool"] = name, ["domain"] = domain, ["server"] = server, ["isError"] = true,
+                ["latencyMs"] = sw.ElapsedMilliseconds, ["result"] = null,
             }, sw.ElapsedMilliseconds);
             state.ToolCalls.Add(new ToolCallRecord(name, args, "error", 0, [], [], callId, "failed"));
             state.Summaries[callId] = Result(name, "failed", 0, isError: true);
@@ -444,7 +516,7 @@ public sealed class ChatTurnRunner(
         // item is neither read by the model, cited as a source, nor written to the trace, only recorded as withheld.
         // Unscreened (Jev down) fails open — the envelope still frames it as data.
         var screened = await guardrail.ScreenToolResultAsync(name, payload, structured, isError, ct);
-        TraceToolResult(state.Trace, callId, name, result, screened, isError, latency);
+        TraceToolResult(state.Trace, callId, name, domain, server, result, screened, isError, latency);
         if (screened is not null)
         {
             guardrail.Trace(state.Trace, Guardrail.CheckToolResult, name, callId, screened.Decision, screened.Threshold, screened.Items,
@@ -455,7 +527,7 @@ public sealed class ChatTurnRunner(
             ? ("withheld by the content guard", new List<SourceRef>())
             : Summarise(name, structured, isError);
         state.Sources.AddRange(sources);
-        if (name == "search_documents" && !isError)
+        if (Domains.IsSearch(name) && !isError)
         {
             // Whether this call found anything is not the question: a turn that searches again and succeeds has
             // nothing wrong with it. What matters is that the turn asked the documentation at all.
@@ -483,6 +555,33 @@ public sealed class ChatTurnRunner(
     }
 
     /// <summary>
+    /// Records the domain a call belongs to, and — when it differs from the previous call's — the boundary the turn just
+    /// crossed. Derived from the tool set, never from anything the model said: the crossing is what the calls did.
+    /// </summary>
+    private static void EnterDomain(TurnState state, string domain, string tool, string callId)
+    {
+        var from = state.DomainPath.Count > 0 ? state.DomainPath[^1] : null;
+        if (from == domain)
+        {
+            return;
+        }
+        state.DomainPath.Add(domain);
+        if (from is null)
+        {
+            return;
+        }
+        state.Trace.Add(TraceKinds.Boundary, $"Crossed {from} → {domain} with {tool}", new JsonObject
+        {
+            ["from"] = from,
+            ["to"] = domain,
+            ["tool"] = tool,
+            ["callId"] = callId,
+            ["server"] = state.Tools?.ServerOf(tool),
+            ["hop"] = state.DomainPath.Count - 1,
+        });
+    }
+
+    /// <summary>
     /// What a tool call's result says to whoever is watching: which tool, how it went, and how many sources it
     /// found — never the result itself. A tool result is structured content, so this is one too.
     /// </summary>
@@ -494,7 +593,8 @@ public sealed class ChatTurnRunner(
     /// withheld anything, the redacted result the model may read — carrying the neutral notice and a count — is recorded
     /// in place of the raw one, so a withheld item's content never enters the trace.
     /// </summary>
-    private static void TraceToolResult(TurnTrace trace, string callId, string tool, object? result, ScreenedToolResult? screened, bool isError, long latencyMs)
+    private static void TraceToolResult(TurnTrace trace, string callId, string tool, string domain, string server, object? result,
+        ScreenedToolResult? screened, bool isError, long latencyMs)
     {
         var raw = TraceMapping.Node(result) as JsonObject;
         JsonNode? diagnostics = null;
@@ -514,7 +614,8 @@ public sealed class ChatTurnRunner(
             : raw;
         trace.Add(TraceKinds.ToolResult, $"{tool} returned{(isError ? " an error" : "")} in {latencyMs} ms{(instance is null ? "" : $" from {instance}")}", new JsonObject
         {
-            ["callId"] = callId, ["tool"] = tool, ["isError"] = isError, ["latencyMs"] = latencyMs, ["mcpInstance"] = instance, ["result"] = recorded,
+            ["callId"] = callId, ["tool"] = tool, ["domain"] = domain, ["server"] = server, ["isError"] = isError, ["latencyMs"] = latencyMs,
+            ["mcpInstance"] = instance, ["result"] = recorded,
         }, latencyMs);
         if (diagnostics is JsonObject d)
         {
@@ -572,7 +673,7 @@ public sealed class ChatTurnRunner(
         }
         switch (tool)
         {
-            case "search_documents" when s.TryGetProperty("results", out var results):
+            case var search when Domains.IsSearch(search) && s.TryGetProperty("results", out var results):
                 foreach (var r in results.EnumerateArray())
                 {
                     sources.Add(new SourceRef(Str(r, "docId"), Str(r, "sectionPath"), Str(r, "sourcePath"), Str(r, "snippet")));
@@ -582,6 +683,11 @@ public sealed class ChatTurnRunner(
                 return ($"run {Str(s, "runId")}: {Str(s, "status")}", sources);
             case "search_billing_runs" when s.TryGetProperty("runs", out var runs):
                 return ($"{runs.GetArrayLength()} run(s)", sources);
+            case Maf.Lab.Domain.Portfolio.PortfolioTools.GetPortfolio:
+                return ($"{Str(s, "accountId")}: {Str(s, "modelPortfolio")}"
+                    + (s.TryGetProperty("outsideTolerance", out var drift) && drift.ValueKind == JsonValueKind.True ? ", outside tolerance" : ""), sources);
+            case Maf.Lab.Domain.Portfolio.PortfolioTools.AumHistory when s.TryGetProperty("valuations", out var valuations):
+                return ($"{Str(s, "accountId")}: {valuations.GetArrayLength()} quarter-end valuation(s)", sources);
             case FeeAdjustmentTool.Name:
                 return (Str(s, "status") switch
                 {
@@ -689,6 +795,12 @@ public sealed class ChatTurnRunner(
         public string TurnId { get; } = turnId;
         public ChannelWriter<BaseEvent> Events { get; } = events;
         public IReadOnlySet<string> KnownTools { get; set; } = new HashSet<string>();
+
+        /// <summary>The turn's tools, for the domain and server each belongs to.</summary>
+        public ToolSet? Tools { get; set; }
+
+        /// <summary>The domains the turn's calls went to, in order, consecutive repeats collapsed.</summary>
+        public List<string> DomainPath { get; } = [];
         public List<ToolCallRecord> ToolCalls { get; } = [];
         public List<SourceRef> Sources { get; } = [];
         public bool Searched { get; set; }

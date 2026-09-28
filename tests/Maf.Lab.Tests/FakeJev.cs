@@ -38,6 +38,13 @@ public sealed partial class FakeJev : HttpMessageHandler
     public double? InDomain { get; set; } = 1.0;
 
     /// <summary>
+    /// The portfolio domain question's answer (<c>in_portfolio</c>), given the user's question. Default:
+    /// <see cref="PortfolioWords"/> — high for questions about holdings, drift, rebalancing or AUM, zero otherwise — so a
+    /// billing test is not a crossing test by accident, and a test's own <see cref="InDomain"/> stays the highest domain.
+    /// </summary>
+    public Func<string, double>? Portfolio { get; set; }
+
+    /// <summary>
     /// What every screening Noul (<c>guard_*</c>) is answered with, given the screened text and the question id. Null —
     /// the default — answers 0, so a test that is not about the content guard never trips it.
     /// </summary>
@@ -125,6 +132,14 @@ public sealed partial class FakeJev : HttpMessageHandler
                         .ToDictionary(o => o, o => o == choice ? Confidence : Math.Round((1 - Confidence) / 4, 4)),
                 };
             }
+            else if (id == "in_portfolio")
+            {
+                // A fake told to leave the domain unanswered leaves every domain question unanswered.
+                if ((Portfolio ?? (InDomain is null ? null : PortfolioWords)) is { } portfolio)
+                {
+                    answers[id] = new { type = "noul", noul = portfolio(question) };
+                }
+            }
             else if (id.StartsWith("guard_", StringComparison.Ordinal))
             {
                 answers[id] = new { type = "noul", noul = Guard?.Invoke(question, id) ?? 0.0 };
@@ -170,6 +185,13 @@ public sealed partial class FakeJev : HttpMessageHandler
         return q.Contains("fail") ? "failed" : q.Contains("pending") ? "pending" : q.Contains("running") ? "running"
             : q.Contains("complete") || q.Contains("finished") ? "completed" : "none";
     }
+
+    /// <summary>Keyword answer to the portfolio domain question.</summary>
+    public static double PortfolioWords(string question) =>
+        PortfolioVocabulary().IsMatch(question.ToLowerInvariant()) ? 0.9 : 0.0;
+
+    [GeneratedRegex(@"\b(holdings?|hold|drift\w*|rebalanc\w*|allocation|model portfolio|aum|tolerance|portfolio)\b|(?<!\p{L})(портфейл\p{L}*|ребаланс\p{L}*)(?!\p{L})")]
+    private static partial Regex PortfolioVocabulary();
 
     [GeneratedRegex(@"\b(credit|reduce|increase|adjust|refund)\b.*\ba-\d+")]
     private static partial Regex WriteWords();

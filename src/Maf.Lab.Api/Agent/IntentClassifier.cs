@@ -21,7 +21,8 @@ public enum Intent
 /// the documented domain. <paramref name="Screen"/> holds the answers to the prompt-screening questions that rode in the
 /// same request (injection-defense), kept whether or not the intent was used; null when Jev gave none. With tool routing
 /// on, <paramref name="Routing"/> is Jev's answer to the routing questions, <paramref name="Route"/> the read call to
-/// issue on the model's behalf, and <paramref name="RouteReason"/> why there is none.
+/// issue on the model's behalf, and <paramref name="RouteReason"/> why there is none. <paramref name="Domains"/> is Jev's
+/// verdict on which domains the question belongs to — null when Jev gave no usable domain answer.
 /// </summary>
 public readonly record struct IntentDecision(
     Intent Intent,
@@ -35,7 +36,38 @@ public readonly record struct IntentDecision(
     IReadOnlyDictionary<string, double>? Screen = null,
     Jev.RoutingAnswer? Routing = null,
     Jev.ToolRoute? Route = null,
-    string? RouteReason = null);
+    string? RouteReason = null,
+    DomainVerdict? Domains = null);
+
+/// <summary>
+/// Which domains a question belongs to, as Jev answered: each domain's probability, the floor a domain must reach to be
+/// in scope, and the domains in scope, most probable first. Two or more in scope and the question crosses the boundary.
+/// </summary>
+public sealed record DomainVerdict(IReadOnlyDictionary<string, double> Probabilities, double ScopeFloor, IReadOnlyList<string> InScope)
+{
+    public bool Crossing => InScope.Count > 1;
+
+    /// <summary>The most probable domain in scope; null when none is.</summary>
+    public string? Primary => InScope.Count > 0 ? InScope[0] : null;
+
+    /// <summary>The highest probability of any domain: what the domain gate compares with its floor.</summary>
+    public double Highest => Probabilities.Count == 0 ? 0 : Probabilities.Values.Max();
+
+    /// <summary>
+    /// Every domain at or above <paramref name="scopeFloor"/>; when none is, the most probable domain alone provided it
+    /// reaches <paramref name="gateFloor"/> — the gate that lets a forcing intent act at all.
+    /// </summary>
+    public static DomainVerdict From(IReadOnlyDictionary<string, double> probabilities, double scopeFloor, double gateFloor)
+    {
+        var ranked = probabilities.OrderByDescending(p => p.Value).ThenBy(p => Agent.Domains.All.ToList().IndexOf(p.Key)).ToList();
+        var inScope = ranked.Where(p => p.Value >= scopeFloor).Select(p => p.Key).ToList();
+        if (inScope.Count == 0 && ranked.Count > 0 && ranked[0].Value >= gateFloor && ranked[0].Value > 0)
+        {
+            inScope.Add(ranked[0].Key);
+        }
+        return new DomainVerdict(probabilities, scopeFloor, inScope);
+    }
+}
 
 /// <summary>Classifies the question of a turn before the first model call, in any language.</summary>
 public interface IIntentClassifier

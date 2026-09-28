@@ -1,0 +1,8 @@
+{
+  "Logging": { "LogLevel": { "Default": "Information", "Microsoft.AspNetCore": "Warning" } },
+  "Urls": "http://localhost:5091",
+  "Qdrant": {
+    "Collection": "maf_portfolio_chunks",
+    "MetaCollection": "maf_portfolio_meta"
+  }
+}

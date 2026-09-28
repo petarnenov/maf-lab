@@ -100,6 +100,28 @@ services:
       redis:
         condition: service_healthy
 
+  # The portfolio domain: its own MCP server, corpus collection and read tools. Read-only, so no ledger and no volume
+  # of its own; it reads the same seed folder for the household portfolios.
+  mcp-portfolio:
+    build:
+      context: ..
+      dockerfile: src/Maf.Lab.Portfolio/Dockerfile
+    deploy:
+      replicas: 2
+    environment:
+      <<: *app-env
+      Urls: http://+:8080
+      Qdrant__Collection: maf_portfolio_chunks
+      Qdrant__MetaCollection: maf_portfolio_meta
+      Portfolio__SeedPath: /seed/portfolio-households.json
+    volumes:
+      - ./seed:/seed:ro
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
+
   compliance:
     build:
       context: ..
@@ -129,6 +151,9 @@ services:
       Urls: http://+:8080
       # Tool calls go through the balancer too, so they are spread over the mcp-retrieval replicas.
       Agent__McpEndpoint: http://lb/mcp
+      # The second domain's server, also through the balancer. The billing server above keeps the domain "billing".
+      Agent__Servers__0__Domain: portfolio
+      Agent__Servers__0__Endpoint: http://lb/portfolio/mcp
       Storage__ConnectionString: Data Source=/app-data/maf-lab.db
       Indexing__CorpusRoot: /data
       Evals__Root: /evals
@@ -153,6 +178,8 @@ services:
       - ../docs:/docs:ro
     depends_on:
       mcp-retrieval:
+        condition: service_healthy
+      mcp-portfolio:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -232,6 +259,8 @@ services:
       api:
         condition: service_healthy
       mcp-retrieval:
+        condition: service_healthy
+      mcp-portfolio:
         condition: service_healthy
       compliance:
         condition: service_healthy

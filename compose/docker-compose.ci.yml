@@ -28,6 +28,10 @@ services:
     environment:
       <<: *ci-model-env
 
+  mcp-portfolio:
+    environment:
+      <<: *ci-model-env
+
   api:
     environment:
       <<: *ci-model-env

@@ -1,0 +1,26 @@
+Explaining a quarter-over-quarter AUM change to a client
+
+Section 1: Gather the Figures
+1. Retrieve the account's or household's quarter-end AUM for the two quarter ends being compared.
+2. Calculate the total change in US dollars and as a percentage.
+3. List all external cash flows (contributions and withdrawals) that settled between the two quarter-end dates, including transfers to or from other household accounts.
+4. Check the valuation history for any correction to either quarter-end value.
+
+Section 2: Break Down the Change
+1. Net flows: add contributions and subtract withdrawals settled in the quarter.
+2. Corrections: note any change caused by a corrected price or a restated valuation.
+3. Market movement: the remainder after flows and corrections is investment result (price change plus income, less fees debited from the account).
+4. Confirm the quarter's time-weighted return is consistent with the market movement component.
+   A large difference usually means a flow was missed or dated in the wrong quarter.
+
+Section 3: Explain to the Client
+1. Present the change as three lines: flows, market movement, corrections.
+2. Explain that rebalancing trades during the quarter moved money between asset classes but did not change total value.
+3. If the client asks why value rose while return was negative (or the reverse), point to the flows.
+4. If held-away assets are shown in the household view, clarify whether they are part of the figure being discussed.
+
+Section 4: Refer Fee Questions to the Billing Desk
+1. If the client asks how the AUM change affects the fee, refer them to the billing desk.
+   The quarter-end AUM is the billable starting point, but exclusions, household aggregation and fee band boundaries are applied by billing.
+2. Refer immediately if the AUM crossed a fee band boundary, if a correction was made after billing ran, or if the client disputes an invoice.
+3. Record the explanation and any referral in the household notes.

@@ -29,6 +29,14 @@ public sealed class JevOptions
     /// </summary>
     public double MinInDomain { get; set; } = 0.2;
 
+    /// <summary>
+    /// A domain whose probability reaches this is in scope for the turn: its documentation is searched when the intent
+    /// forces retrieval, and a question with two domains in scope crosses the boundary (add-portfolio-domain). When the
+    /// gate above passes and no domain reaches this, the most probable domain alone is in scope, so a billing question
+    /// at 0.37 behaves as it always did.
+    /// </summary>
+    public double MinDomainScope { get; set; } = 0.5;
+
     /// <summary>Budget for one classification; 0 disables classification and every turn forces nothing.</summary>
     public double TimeoutSeconds { get; set; } = 2;
 

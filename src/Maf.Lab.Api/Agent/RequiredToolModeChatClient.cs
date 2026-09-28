@@ -11,8 +11,12 @@ namespace Maf.Lab.Api.Agent;
 /// further tools — with the retrieved snippets in context.
 /// A data turn Jev routed to a read tool (<paramref name="route"/>) is issued the same way, with the route's arguments:
 /// the model's tool-choosing call is skipped and its first call is the answer.
+/// A question in scope for several domains forces each domain's search (<paramref name="forcedSearches"/>): they are
+/// issued together, as parallel calls of one assistant message, so the turn reads both sides of the boundary before the
+/// model says a word (add-portfolio-domain).
 /// </summary>
-public sealed class RequiredToolModeChatClient(IChatClient inner, Action<FunctionCallContent>? onForced = null, Jev.ToolRoute? route = null)
+public sealed class RequiredToolModeChatClient(IChatClient inner, Action<FunctionCallContent>? onForced = null, Jev.ToolRoute? route = null,
+    IReadOnlyList<string>? forcedSearches = null)
     : DelegatingChatClient(inner)
 {
     public const string EmulatedTool = "search_documents";
@@ -20,10 +24,10 @@ public sealed class RequiredToolModeChatClient(IChatClient inner, Action<Functio
     public override async Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
     {
         var list = messages as IList<ChatMessage> ?? messages.ToList();
-        if (ForcedCall(list, options) is { } call)
+        if (ForcedCalls(list, options) is { Count: > 0 } calls)
         {
-            onForced?.Invoke(call);
-            return new ChatResponse(new ChatMessage(ChatRole.Assistant, [call])) { FinishReason = ChatFinishReason.ToolCalls };
+            calls.ForEach(c => onForced?.Invoke(c));
+            return new ChatResponse(new ChatMessage(ChatRole.Assistant, [.. calls])) { FinishReason = ChatFinishReason.ToolCalls };
         }
         return await base.GetResponseAsync(list, options, cancellationToken);
     }
@@ -32,10 +36,10 @@ public sealed class RequiredToolModeChatClient(IChatClient inner, Action<Functio
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var list = messages as IList<ChatMessage> ?? messages.ToList();
-        if (ForcedCall(list, options) is { } call)
+        if (ForcedCalls(list, options) is { Count: > 0 } calls)
         {
-            onForced?.Invoke(call);
-            yield return new ChatResponseUpdate(ChatRole.Assistant, [call]) { FinishReason = ChatFinishReason.ToolCalls };
+            calls.ForEach(c => onForced?.Invoke(c));
+            yield return new ChatResponseUpdate(ChatRole.Assistant, [.. calls]) { FinishReason = ChatFinishReason.ToolCalls };
             yield break;
         }
         await foreach (var update in base.GetStreamingResponseAsync(list, options, cancellationToken))
@@ -44,22 +48,28 @@ public sealed class RequiredToolModeChatClient(IChatClient inner, Action<Functio
         }
     }
 
-    private FunctionCallContent? ForcedCall(IList<ChatMessage> messages, ChatOptions? options)
+    private List<FunctionCallContent>? ForcedCalls(IList<ChatMessage> messages, ChatOptions? options)
     {
-        if (options?.ToolMode is not RequiredChatToolMode { RequiredFunctionName: { } required }
-            || messages.SelectMany(m => m.Contents).OfType<FunctionCallContent>().Any(c => c.Name == required))
+        if (options?.ToolMode is not RequiredChatToolMode { RequiredFunctionName: { } required })
         {
             return null;
         }
-        if (required != EmulatedTool)
+        var called = messages.SelectMany(m => m.Contents).OfType<FunctionCallContent>().Select(c => c.Name).ToHashSet(StringComparer.Ordinal);
+        if (!Domains.IsSearch(required))
         {
-            return route is { } r && r.Tool == required
-                ? new FunctionCallContent($"routed_{Guid.NewGuid():N}"[..20], r.Tool, r.Arguments.ToDictionary(a => a.Key, a => a.Value))
+            return !called.Contains(required) && route is { } r && r.Tool == required
+                ? [new FunctionCallContent($"routed_{Guid.NewGuid():N}"[..20], r.Tool, r.Arguments.ToDictionary(a => a.Key, a => a.Value))]
                 : null;
+        }
+        // The searches of every domain in scope go out together, once: any of them already called means they were issued.
+        var searches = forcedSearches is { Count: > 0 } f && f.Contains(required) ? f : [required];
+        if (searches.Any(called.Contains))
+        {
+            return null;
         }
         var question = messages.LastOrDefault(m => m.Role == ChatRole.User)?.Text?.Trim();
         return string.IsNullOrEmpty(question)
             ? null
-            : new FunctionCallContent($"forced_{Guid.NewGuid():N}"[..20], EmulatedTool, new Dictionary<string, object?> { ["query"] = question });
+            : [.. searches.Select(tool => new FunctionCallContent($"forced_{Guid.NewGuid():N}"[..20], tool, new Dictionary<string, object?> { ["query"] = question }))];
     }
 }

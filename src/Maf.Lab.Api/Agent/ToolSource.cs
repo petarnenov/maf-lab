@@ -26,7 +26,8 @@ public delegate Task<ModelContextProtocol.Protocol.CallToolResult> ConfirmedCall
     string tool, IReadOnlyDictionary<string, object?> arguments, string state, bool approve,
     string? idempotencyKey, CancellationToken ct);
 
-public sealed class ToolSet(IReadOnlyList<AITool> tools, IAsyncDisposable? owner, ConfirmedCall? confirm = null) : IAsyncDisposable
+public sealed class ToolSet(IReadOnlyList<AITool> tools, IAsyncDisposable? owner, ConfirmedCall? confirm = null,
+    IReadOnlyDictionary<string, ToolOrigin>? origins = null, IReadOnlyList<string>? unavailable = null) : IAsyncDisposable
 {
     public IReadOnlyList<AITool> Tools { get; } = tools;
     public IReadOnlySet<string> Names { get; } = tools.Select(t => t.Name).ToHashSet(StringComparer.Ordinal);
@@ -34,45 +35,86 @@ public sealed class ToolSet(IReadOnlyList<AITool> tools, IAsyncDisposable? owner
     /// <summary>Answers a pending question. Null when this source cannot carry an answer back.</summary>
     public ConfirmedCall? Confirm { get; } = confirm;
 
+    /// <summary>Domains whose server could not be reached this turn: their tools are simply not offered.</summary>
+    public IReadOnlyList<string> Unavailable { get; } = unavailable ?? [];
+
+    /// <summary>The domain that owns a tool. A source that names none serves the billing domain, as the lab always did.</summary>
+    public string DomainOf(string tool) => origins?.GetValueOrDefault(tool)?.Domain ?? Domains.Billing;
+
+    /// <summary>The MCP server that owns a tool, by the name it gave itself.</summary>
+    public string ServerOf(string tool) => origins?.GetValueOrDefault(tool)?.Server ?? DefaultServer;
+
+    /// <summary>The domains this turn is offered tools of, in the catalogue's order.</summary>
+    public IReadOnlyList<string> OfferedDomains =>
+        [.. Names.Select(DomainOf).Distinct().OrderBy(d => Domains.All.ToList().IndexOf(d) is var i && i < 0 ? int.MaxValue : i)];
+
+    public const string DefaultServer = "maf-lab-retrieval";
+
     public ValueTask DisposeAsync() => owner?.DisposeAsync() ?? ValueTask.CompletedTask;
 }
 
+/// <summary>Where a tool comes from: the domain it belongs to and the MCP server that serves it.</summary>
+public sealed record ToolOrigin(string Domain, string Server);
+
 /// <summary>
-/// Consumes the retrieval MCP server through the MCP client integration. The user's bearer token is forwarded,
-/// so the server derives the tenant itself; the agent host never passes a tenant.
+/// Consumes every domain's MCP server through the MCP client integration: billing first, then each configured domain.
+/// The user's bearer token is forwarded to each, so every server derives the tenant itself; the agent host never
+/// passes a tenant. The billing server failing fails the turn as it always did; another domain's server failing leaves
+/// its tools out of the turn, which then runs with what it has.
 /// </summary>
 public sealed class McpToolSource(IOptions<AgentOptions> options, ILoggerFactory loggers, IHttpClientFactory http) : IToolSource
 {
+    private readonly ILogger _logger = loggers.CreateLogger<McpToolSource>();
+
     public async Task<ToolSet> GetToolsAsync(string bearerToken, ConfirmationSink? confirmations, CancellationToken ct)
     {
-        var transport = new HttpClientTransport(new HttpClientTransportOptions
+        var servers = options.Value.AllServers();
+        var connected = await Task.WhenAll(servers.Select(async (server, index) =>
         {
-            Endpoint = new Uri(options.Value.McpEndpoint),
-            TransportMode = HttpTransportMode.StreamableHttp,
-            AdditionalHeaders = new Dictionary<string, string> { ["Authorization"] = $"Bearer {bearerToken}" },
-            Name = "maf-lab-retrieval",
-        }, http.CreateClient("mcp"), loggers, ownsHttpClient: true);
-        var clientOptions = new McpClientOptions
+            try
+            {
+                return (server, Client: await ConnectAsync(server, bearerToken, confirmations, ct), Error: (Exception?)null);
+            }
+            catch (Exception ex) when (index > 0 && ex is not OperationCanceledException)
+            {
+                return (server, Client: ((McpClient Client, IList<McpClientTool> Tools)?)null, Error: ex);
+            }
+        }));
+
+        var tools = new List<AITool>();
+        var origins = new Dictionary<string, ToolOrigin>(StringComparer.Ordinal);
+        var owners = new Dictionary<string, McpClient>(StringComparer.Ordinal);
+        var unavailable = new List<string>();
+        foreach (var (server, connection, error) in connected)
         {
-            // Declared so the server may ask; answered by taking the question down, never by deciding.
-            Capabilities = new ModelContextProtocol.Protocol.ClientCapabilities
+            if (connection is not { } c)
             {
-                Elicitation = new ModelContextProtocol.Protocol.ElicitationCapability(),
-            },
-            Handlers = new McpClientHandlers
+                // The domain's name and the kind of failure only: an address is not model- or log-worthy detail.
+                _logger.LogWarning("MCP server of domain {Domain} unavailable: {ErrorType}", server.Domain, error?.GetType().Name);
+                unavailable.Add(server.Domain);
+                continue;
+            }
+            var serverName = c.Client.ServerInfo?.Name is { Length: > 0 } n ? n : server.Domain;
+            foreach (var tool in c.Tools)
             {
-                ElicitationHandler = (request, _) =>
-                    ValueTask.FromResult(confirmations?.Capture(request) ?? new ModelContextProtocol.Protocol.ElicitResult { Action = "cancel" }),
-            },
-        };
-        var client = await McpClient.CreateAsync(transport, clientOptions, loggerFactory: loggers, cancellationToken: ct);
-        var tools = await client.ListToolsAsync(cancellationToken: ct);
-        // Ask the server for retrieval diagnostics in the result _meta (shown in the monitor, never to the model).
-        var traced = options.Value.TraceRetrieval
-            ? tools.Select(t => t.WithMeta(new System.Text.Json.Nodes.JsonObject { [TraceMeta.Flag] = true })).Cast<AITool>().ToList()
-            : tools.Cast<AITool>().ToList();
-        return new ToolSet(traced, client, (tool, arguments, state, approve, idempotencyKey, token) =>
-            client.CallToolAsync(new ModelContextProtocol.Protocol.CallToolRequestParams
+                if (!origins.TryAdd(tool.Name, new ToolOrigin(server.Domain, serverName)))
+                {
+                    _logger.LogWarning("tool {Tool} of domain {Domain} dropped: {Owner} already offers it", tool.Name, server.Domain,
+                        origins[tool.Name].Domain);
+                    continue;
+                }
+                owners[tool.Name] = c.Client;
+                // Ask each server for diagnostics in the result _meta (shown in the monitor, never to the model).
+                tools.Add(options.Value.TraceRetrieval
+                    ? tool.WithMeta(new System.Text.Json.Nodes.JsonObject { [TraceMeta.Flag] = true })
+                    : tool);
+            }
+        }
+
+        var clients = connected.Select(x => x.Client?.Client).OfType<McpClient>().ToList();
+        return new ToolSet(tools, new Owners(clients), (tool, arguments, state, approve, idempotencyKey, token) =>
+            // An answer goes back to the server that asked the question: the one that owns the tool.
+            (owners.GetValueOrDefault(tool) ?? clients[0]).CallToolAsync(new ModelContextProtocol.Protocol.CallToolRequestParams
             {
                 Name = tool,
                 Arguments = arguments.ToDictionary(a => a.Key, a => System.Text.Json.JsonSerializer.SerializeToElement(a.Value)),
@@ -99,7 +141,55 @@ public sealed class McpToolSource(IOptions<AgentOptions> options, ILoggerFactory
                                 : null,
                         }),
                 },
-            }, token).AsTask());
+            }, token).AsTask(),
+            origins, unavailable);
+    }
+
+    private async Task<(McpClient Client, IList<McpClientTool> Tools)> ConnectAsync(
+        McpServerOptions server, string bearerToken, ConfirmationSink? confirmations, CancellationToken ct)
+    {
+        var transport = new HttpClientTransport(new HttpClientTransportOptions
+        {
+            Endpoint = new Uri(server.Endpoint),
+            TransportMode = HttpTransportMode.StreamableHttp,
+            AdditionalHeaders = new Dictionary<string, string> { ["Authorization"] = $"Bearer {bearerToken}" },
+            Name = $"maf-lab-{server.Domain}",
+        }, http.CreateClient("mcp"), loggers, ownsHttpClient: true);
+        var clientOptions = new McpClientOptions
+        {
+            // Declared so the server may ask; answered by taking the question down, never by deciding.
+            Capabilities = new ModelContextProtocol.Protocol.ClientCapabilities
+            {
+                Elicitation = new ModelContextProtocol.Protocol.ElicitationCapability(),
+            },
+            Handlers = new McpClientHandlers
+            {
+                ElicitationHandler = (request, _) =>
+                    ValueTask.FromResult(confirmations?.Capture(request) ?? new ModelContextProtocol.Protocol.ElicitResult { Action = "cancel" }),
+            },
+        };
+        var client = await McpClient.CreateAsync(transport, clientOptions, loggerFactory: loggers, cancellationToken: ct);
+        try
+        {
+            return (client, await client.ListToolsAsync(cancellationToken: ct));
+        }
+        catch
+        {
+            await client.DisposeAsync();
+            throw;
+        }
+    }
+
+    /// <summary>Every client of the turn, disposed together when the turn ends.</summary>
+    private sealed class Owners(IReadOnlyList<McpClient> clients) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync()
+        {
+            foreach (var client in clients)
+            {
+                await client.DisposeAsync();
+            }
+        }
     }
 }
 

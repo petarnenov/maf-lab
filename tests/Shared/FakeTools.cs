@@ -18,6 +18,18 @@ public sealed class FakeToolSource : IToolSource
         ],"totalMatches":2,"truncated":false,"refineHint":null}
         """;
 
+    /// <summary>Also offer the portfolio domain's tools, each known by its domain and server (add-portfolio-domain).</summary>
+    public bool WithPortfolio { get; set; }
+
+    /// <summary>With <see cref="WithPortfolio"/>: the portfolio server is down this turn, so its tools are not offered.</summary>
+    public bool PortfolioUnavailable { get; set; }
+
+    public string PortfolioSearchPayloadJson { get; set; } = """
+        {"results":[
+          {"snippet":"The quarter-end valuation is published as the quarter-end AUM the billing engine reads as billable AUM.","sourcePath":"docs/portfolio-quarter-end-valuation.md","sectionPath":"Quarter-End Valuation > Handoff to Billing","score":0.8,"updatedAt":"2026-09-01T00:00:00Z","docId":"shared/docs/portfolio-quarter-end-valuation.md"}
+        ],"totalMatches":1,"truncated":false,"refineHint":null}
+        """;
+
     /// <summary>The proposal the fake write tool will make. Amount and account come from the call.</summary>
     public string ProposalAccountName { get; set; } = "Ridgeline Family Trust";
     public decimal ProposalCurrentFee { get; set; } = 1200m;
@@ -74,7 +86,34 @@ public sealed class FakeToolSource : IToolSource
         }, Maf.Lab.Domain.Billing.FeeAdjustmentTool.Name,
            "Proposes an adjustment to one account's fee and asks for confirmation. It changes nothing on its own.");
 
-        return Task.FromResult(new ToolSet([search, status, runs, propose], null, ConfirmAsync));
+        if (!WithPortfolio)
+        {
+            return Task.FromResult(new ToolSet([search, status, runs, propose], null, ConfirmAsync));
+        }
+        var billing = new ToolOrigin("billing", "maf-lab-retrieval");
+        var origins = new Dictionary<string, ToolOrigin>
+        {
+            ["search_documents"] = billing, ["get_billing_run_status"] = billing, ["search_billing_runs"] = billing,
+            [Maf.Lab.Domain.Billing.FeeAdjustmentTool.Name] = billing,
+        };
+        if (PortfolioUnavailable)
+        {
+            return Task.FromResult(new ToolSet([search, status, runs, propose], null, ConfirmAsync, origins, ["portfolio"]));
+        }
+        var portfolioSearch = AIFunctionFactory.Create((string query, string[]? sourceTypes = null, int? maxResults = null) =>
+        {
+            Invocations.Add(Maf.Lab.Domain.Portfolio.PortfolioTools.Search);
+            return Mcp(PortfolioSearchPayloadJson);
+        }, Maf.Lab.Domain.Portfolio.PortfolioTools.Search, "Searches portfolio documentation.");
+        var history = AIFunctionFactory.Create((string accountId) =>
+        {
+            Invocations.Add(Maf.Lab.Domain.Portfolio.PortfolioTools.AumHistory);
+            return Mcp($$"""{"accountId":"{{accountId}}","householdId":"HH-RIDGELINE","currency":"USD","valuations":[{"quarterEnd":"2026-06-30","aum":2910000,"changePct":null},{"quarterEnd":"2026-09-30","aum":3240000,"changePct":11.3}]}""");
+        }, Maf.Lab.Domain.Portfolio.PortfolioTools.AumHistory, "Quarter-end AUM of one account.");
+        var portfolio = new ToolOrigin("portfolio", "maf-lab-portfolio");
+        origins[Maf.Lab.Domain.Portfolio.PortfolioTools.Search] = portfolio;
+        origins[Maf.Lab.Domain.Portfolio.PortfolioTools.AumHistory] = portfolio;
+        return Task.FromResult(new ToolSet([search, status, runs, propose, portfolioSearch, history], null, ConfirmAsync, origins));
     }
 
     /// <summary>Adjustments this fake has applied, keyed by the state they were proposed with.</summary>

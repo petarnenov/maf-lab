@@ -1,0 +1,24 @@
+Moving an account to a different model portfolio
+
+Section 1: Prepare
+1. Confirm the reason for the change (updated risk questionnaire, new investment policy statement, change in time horizon or income need).
+2. Confirm the target model code exists for the firm and is active on the intended effective date.
+3. Compare the current and target models' asset-class weights and drift tolerance, and note which asset classes will need to be bought or sold.
+4. For taxable accounts, estimate realized gains of the transition and agree with the advisor whether to transition fully or in stages.
+
+Section 2: Change the Assignment
+1. Open the account and set the new model portfolio with the agreed effective date.
+   The effective date should be a business day; drift is measured against the new targets from that date.
+2. If the account is divided into sleeves, change only the sleeve whose model is changing.
+3. Save and confirm the account now shows the new model code and tolerance.
+
+Section 3: Transition the Holdings
+1. Run the drift report for the effective date; expect most asset classes to show drift against the new targets.
+2. Generate a rebalance proposal toward the new model and follow the standard approval process.
+3. If the transition is staged for tax reasons, record the planned stages and dates in the account notes.
+
+Section 4: Verify and Communicate
+1. After execution, confirm the account is inside the new model's tolerance bands.
+2. Confirm the model change did not alter the account's total market value beyond trading costs.
+3. Update the client's performance report benchmark so it uses the new model's blended benchmark from the effective date.
+4. Record the old model, new model, effective date and reason in the account notes.

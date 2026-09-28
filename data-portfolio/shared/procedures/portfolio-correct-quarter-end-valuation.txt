@@ -1,0 +1,24 @@
+Correcting a wrong quarter-end price before billing runs
+
+Section 1: Confirm the Error
+1. Identify the security, the account or accounts that hold it, and the quarter-end date.
+2. Compare the stored quarter-end price with at least one independent source (exchange close, fund NAV, vendor evaluated price or custodian statement).
+3. Calculate the effect on each affected account's quarter-end market value in US dollars.
+
+Section 2: Coordinate with the Billing Desk
+1. Notify the billing desk before changing anything, listing the affected accounts, the old and new quarter-end values and the reason.
+   Billing reads the quarter-end valuation as billable AUM, so the desk must know before the run starts or must hold it.
+2. Ask the billing desk to confirm whether the quarterly billing run has already read the value.
+3. If billing has not run, agree that the run will wait until the correction is locked.
+   If billing has already run, the correction is made as a new version and the billing desk decides on a rerun or adjustment.
+
+Section 3: Correct the Price
+1. Enter the corrected price for the quarter-end date with the source and reason.
+2. Confirm the valuation history retains the original price and the correction.
+3. Relock the quarter-end valuation and confirm the affected accounts show the corrected market value.
+
+Section 4: Downstream Checks
+1. Rerun the quarter-end drift report for the affected accounts; the corrected weights may move an account inside or outside tolerance.
+2. Regenerate quarterly performance for the affected accounts so the ending value matches the corrected valuation.
+3. Tell the billing desk the correction is locked so the run can proceed.
+4. Record the correction, the approver and the billing desk confirmation in the valuation notes.

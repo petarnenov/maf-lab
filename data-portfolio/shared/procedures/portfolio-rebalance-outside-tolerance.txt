@@ -1,0 +1,26 @@
+Rebalancing an account that has drifted outside tolerance
+
+Section 1: Confirm the Drift
+1. Open the drift report for the account and note the valuation date it was measured on.
+2. Identify every asset class whose absolute drift exceeds the model's drift tolerance, with its direction (overweight or underweight) and size in percentage points.
+3. Confirm the valuation date is current and that no price on the pricing exception list affects the account.
+   If a price is under review, wait for it to clear before trading; a bad price can create false drift.
+4. Check for pending contributions, withdrawals or an account-level cash reserve that explains the drift.
+   New cash waiting to be invested is usually resolved by buying underweight asset classes, not by a full rebalance.
+
+Section 2: Generate the Proposal
+1. Start a rebalance proposal from the account's current holdings against its assigned model portfolio.
+2. For taxable accounts, confirm the tax-aware settings (loss harvesting, short-term gain avoidance, wash-sale window).
+3. Review the proposed trades and the estimated drift after trading for every asset class.
+   Every asset class should end inside its tolerance band; if tax settings leave one outside, note the reason.
+4. Confirm the proposal preserves the model's cash target and any cash buffer for upcoming withdrawals.
+
+Section 3: Approve and Execute
+1. Submit the proposal for approval by a user with trading permission; obtain a second approval if the firm requires it for the account type or trade size.
+2. Send approved orders to the custodian before the trading cutoff.
+3. Proposals not approved within five business days expire; regenerate them from current prices rather than reusing them.
+
+Section 4: Verify
+1. On the next valuation cycle, rerun the drift check and confirm the account is inside tolerance.
+2. Record the rebalance date and reason in the account notes.
+3. Remember that the rebalance changes weights, not total market value; it does not by itself change the account's quarter-end AUM.

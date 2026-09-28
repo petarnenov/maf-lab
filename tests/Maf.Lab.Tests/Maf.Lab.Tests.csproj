@@ -17,6 +17,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />
     <ProjectReference Include="..\..\src\Maf.Lab.Retrieval\Maf.Lab.Retrieval.csproj" />
+    <ProjectReference Include="..\..\src\Maf.Lab.Portfolio\Maf.Lab.Portfolio.csproj" />
     <ProjectReference Include="..\..\src\Maf.Lab.Api\Maf.Lab.Api.csproj" />
     <ProjectReference Include="..\..\src\Maf.Lab.ComplianceAgent\Maf.Lab.ComplianceAgent.csproj" />
     <ProjectReference Include="..\..\src\Maf.Lab.Indexing\Maf.Lab.Indexing.csproj" />

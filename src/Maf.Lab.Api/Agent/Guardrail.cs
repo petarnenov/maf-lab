@@ -315,7 +315,7 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
     /// <summary>The excerpts of a document search, in order; null for any other result, which is screened whole.</summary>
     private static List<string>? Excerpts(string tool, JsonElement? structured)
     {
-        if (tool != "search_documents" || structured is not { ValueKind: JsonValueKind.Object } s
+        if (!Domains.IsSearch(tool) || structured is not { ValueKind: JsonValueKind.Object } s
             || !s.TryGetProperty("results", out var results) || results.ValueKind != JsonValueKind.Array)
         {
             return null;

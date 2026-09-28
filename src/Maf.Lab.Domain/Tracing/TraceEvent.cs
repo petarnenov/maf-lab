@@ -14,6 +14,10 @@ public static class TraceKinds
 {
     public const string TurnStart = "turn.start";
     public const string Intent = "intent";
+    /// <summary>Where Jev placed the question among the domains, and whether it crosses the boundary between them.</summary>
+    public const string Domain = "domain";
+    /// <summary>A tool call entered a different domain from the call before it.</summary>
+    public const string Boundary = "boundary";
     public const string History = "history";
     public const string Prompt = "prompt";
     public const string ModelRequest = "model.request";
