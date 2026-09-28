@@ -87,22 +87,24 @@ public sealed class ChatTurnRunner(
         {
             await MarkRephraseAsync(conversationId, message, ct);
             state.UserMessage = message;
-            await using var tools = await toolSource.GetToolsAsync(bearerToken, state.Confirmations, ct);
-            state.KnownTools = tools.Names;
 
-            var chatOptions = models.BaseChatOptions();
-            chatOptions.Instructions = prompt.Text;
-            chatOptions.Tools = [.. tools.Tools];
             decision = await intents.ClassifyAsync(message, ct);
             // The prompt's screening answered in the same request; a refused prompt forces nothing and runs nothing.
             screen = guardrail.JudgePrompt(decision);
-            forced = !screen.Blocked && IntentClassifier.ForcesRetrieval(decision.Intent) && tools.Names.Contains("search_documents");
-            // A data turn Jev routed to a read tool this server offers: the call is issued without the model's first
-            // call. Never a write — the router has no write to offer. A refused prompt routes nothing either.
-            var route = !screen.Blocked && !forced && decision.Route is { } r && tools.Names.Contains(r.Tool) ? r : null;
-            chatOptions.ToolMode = forced ? ChatToolMode.RequireSpecific("search_documents")
-                : route is not null ? ChatToolMode.RequireSpecific(route.Tool)
-                : ChatToolMode.Auto;
+
+            // A refused prompt reaches no model, so this turn reads no tools over MCP and builds no prompt: the tool
+            // schemas and the system prompt — what an injection may be trying to extract — are neither fetched nor traced.
+            await using var tools = screen.Blocked ? null : await toolSource.GetToolsAsync(bearerToken, state.Confirmations, ct);
+            Jev.ToolRoute? route = null;
+            if (tools is not null)
+            {
+                state.KnownTools = tools.Names;
+                forced = IntentClassifier.ForcesRetrieval(decision.Intent) && tools.Names.Contains("search_documents");
+                // A data turn Jev routed to a read tool this server offers: the call is issued without the model's first
+                // call. Never a write — the router has no write to offer.
+                route = !forced && decision.Route is { } r && tools.Names.Contains(r.Tool) ? r : null;
+            }
+
             var outside = decision.Reason?.StartsWith("outside the domain", StringComparison.Ordinal) == true
                 ? $", outside the domain {decision.InDomain ?? 0:F2}"
                 : "";
@@ -126,55 +128,6 @@ public sealed class ChatTurnRunner(
             });
             guardrail.Trace(trace, Guardrail.CheckPrompt, null, null, screen.Decision, screen.Threshold,
                 [new ScreenedItem(0, screen.Decision, screen.Scores)], 0, screen.Reason);
-            trace.Add(TraceKinds.Prompt, $"System prompt {prompt.Version} + {tools.Tools.Count} tool(s)", new JsonObject
-            {
-                ["version"] = prompt.Version,
-                ["systemPrompt"] = prompt.Text,
-                ["toolMode"] = TraceMapping.ToolMode(chatOptions.ToolMode),
-                ["tools"] = new JsonArray(tools.Tools.OfType<AIFunctionDeclaration>().Select(t => (JsonNode)new JsonObject
-                {
-                    ["name"] = t.Name, ["description"] = t.Description, ["inputSchema"] = TraceMapping.Node(t.JsonSchema),
-                }).ToArray()),
-            });
-
-            // The GenAI span and its duration and token metrics belong to the provider call itself, so the
-            // framework's instrumentation sits innermost — below the trace, which is this system's own record.
-            // Sensitive data is never enabled: prompts and completions must not leave the process.
-            IChatClient chatClient = new TracingChatClient(new OpenTelemetryChatClient(models.CreateChatClient()), trace, () =>
-            {
-                reasoning.Flush();
-                chunker.Flush();
-            });
-            if (options.Value.EmulateRequiredToolMode || route is not null)
-            {
-                chatClient = new RequiredToolModeChatClient(chatClient, call => trace.Add(TraceKinds.ToolForced,
-                    call.Name == route?.Tool ? $"Routed {call.Name} issued on the model's behalf" : $"Forced {call.Name} issued on the model's behalf",
-                    new JsonObject
-                    {
-                        ["callId"] = call.CallId,
-                        ["tool"] = call.Name,
-                        ["arguments"] = TraceMapping.Node(call.Arguments),
-                        ["reason"] = call.Name == route?.Tool
-                            ? $"Data intent routed by Jev ({route.Tool} {route.Probability:F2}); the call is issued without asking the model which tool to use."
-                            : "Procedural intent requires retrieval; the provider ignores tool_choice, so the call is issued without asking the model.",
-                    }), route);
-            }
-
-            var agent = new ChatClientAgent(
-                    chatClient,
-                    new ChatClientAgentOptions
-                    {
-                        Name = "maf-lab-assistant",
-                        ChatOptions = chatOptions,
-                        ChatHistoryProvider = new SqliteChatHistoryProvider(db, tokens, conversationId, options.Value.HistoryTokenBudget, time, trace),
-                    },
-                    loggers)
-                .AsBuilder()
-                .Use((agent, context, next, token) => InvokeToolAsync(state, context, next, token))
-                .UseOpenTelemetry()
-                .Build();
-
-            var session = await agent.CreateSessionAsync(ct);
 
             // The adapter maps the model's output to the protocol — the part with the fiddly rules about message
             // ids, ordering and when a text message opens and closes. What it must not carry out is stripped on
@@ -191,11 +144,73 @@ public sealed class ChatTurnRunner(
                 callId => state.Arguments.TryGetValue(callId, out var a) ? a : null,
                 callId => state.Summaries.TryGetValue(callId, out var r) ? r : null);
 
-            // A refused prompt never reaches the model — not this turn, and not the next one's history, which is written
-            // only by a run of the agent.
-            var stream = screen.Blocked
-                ? Refused(Guardrail.Refusal(message), answer, chunker)
-                : Observed(agent, session, message, state, tools.Names, answer, chunker, reasoning, ct);
+            IAsyncEnumerable<ChatResponseUpdate> stream;
+            if (tools is not null)
+            {
+                var chatOptions = models.BaseChatOptions();
+                chatOptions.Instructions = prompt.Text;
+                chatOptions.Tools = [.. tools.Tools];
+                chatOptions.ToolMode = forced ? ChatToolMode.RequireSpecific("search_documents")
+                    : route is not null ? ChatToolMode.RequireSpecific(route.Tool)
+                    : ChatToolMode.Auto;
+                trace.Add(TraceKinds.Prompt, $"System prompt {prompt.Version} + {tools.Tools.Count} tool(s)", new JsonObject
+                {
+                    ["version"] = prompt.Version,
+                    ["systemPrompt"] = prompt.Text,
+                    ["toolMode"] = TraceMapping.ToolMode(chatOptions.ToolMode),
+                    ["tools"] = new JsonArray(tools.Tools.OfType<AIFunctionDeclaration>().Select(t => (JsonNode)new JsonObject
+                    {
+                        ["name"] = t.Name, ["description"] = t.Description, ["inputSchema"] = TraceMapping.Node(t.JsonSchema),
+                    }).ToArray()),
+                });
+
+                // The GenAI span and its duration and token metrics belong to the provider call itself, so the
+                // framework's instrumentation sits innermost — below the trace, which is this system's own record.
+                // Sensitive data is never enabled: prompts and completions must not leave the process.
+                IChatClient chatClient = new TracingChatClient(new OpenTelemetryChatClient(models.CreateChatClient()), trace, () =>
+                {
+                    reasoning.Flush();
+                    chunker.Flush();
+                });
+                if (options.Value.EmulateRequiredToolMode || route is not null)
+                {
+                    chatClient = new RequiredToolModeChatClient(chatClient, call => trace.Add(TraceKinds.ToolForced,
+                        call.Name == route?.Tool ? $"Routed {call.Name} issued on the model's behalf" : $"Forced {call.Name} issued on the model's behalf",
+                        new JsonObject
+                        {
+                            ["callId"] = call.CallId,
+                            ["tool"] = call.Name,
+                            ["arguments"] = TraceMapping.Node(call.Arguments),
+                            ["reason"] = call.Name == route?.Tool
+                                ? $"Data intent routed by Jev ({route.Tool} {route.Probability:F2}); the call is issued without asking the model which tool to use."
+                                : "Procedural intent requires retrieval; the provider ignores tool_choice, so the call is issued without asking the model.",
+                        }), route);
+                }
+
+                var agent = new ChatClientAgent(
+                        chatClient,
+                        new ChatClientAgentOptions
+                        {
+                            Name = "maf-lab-assistant",
+                            ChatOptions = chatOptions,
+                            ChatHistoryProvider = new SqliteChatHistoryProvider(db, tokens, conversationId, options.Value.HistoryTokenBudget, time, trace),
+                        },
+                        loggers)
+                    .AsBuilder()
+                    .Use((agent, context, next, token) => InvokeToolAsync(state, context, next, token))
+                    .UseOpenTelemetry()
+                    .Build();
+
+                var session = await agent.CreateSessionAsync(ct);
+                stream = Observed(agent, session, message, state, tools.Names, answer, chunker, reasoning, ct);
+            }
+            else
+            {
+                // A refused prompt never reaches the model — not this turn, and not the next one's history, which is
+                // written only by a run of the agent.
+                stream = Refused(Guardrail.Refusal(message), answer, chunker);
+            }
+
             await foreach (var e in stream.AsAGUIEventStreamAsync(context, ct))
             {
                 if (redaction.Apply(e) is { } send)
@@ -425,10 +440,11 @@ public sealed class ChatTurnRunner(
         }
 
         var (payload, structured, isError) = ToolDataEnvelope.Unpack(result);
-        TraceToolResult(state.Trace, callId, name, result, isError, latency);
-        // What the tool returned is judged before anything is derived from it: a withheld item is neither read by the
-        // model nor cited as a source. Unscreened (Jev down) fails open — the envelope still frames it as data.
+        // What the tool returned is judged before anything is derived from it — and before it is traced: a withheld
+        // item is neither read by the model, cited as a source, nor written to the trace, only recorded as withheld.
+        // Unscreened (Jev down) fails open — the envelope still frames it as data.
         var screened = await guardrail.ScreenToolResultAsync(name, payload, structured, isError, ct);
+        TraceToolResult(state.Trace, callId, name, result, screened, isError, latency);
         if (screened is not null)
         {
             guardrail.Trace(state.Trace, Guardrail.CheckToolResult, name, callId, screened.Decision, screened.Threshold, screened.Items,
@@ -473,8 +489,12 @@ public sealed class ChatTurnRunner(
     private static string Result(string tool, string summary, int sourceCount, bool isError) =>
         JsonSerializer.Serialize(new { tool, summary, sourceCount, isError }, Json);
 
-    /// <summary>Raw MCP result (diagnostics removed) and, when the server sent them, the retrieval diagnostics.</summary>
-    private static void TraceToolResult(TurnTrace trace, string callId, string tool, object? result, bool isError, long latencyMs)
+    /// <summary>
+    /// Raw MCP result (diagnostics removed) and, when the server sent them, the retrieval diagnostics. When the guard
+    /// withheld anything, the redacted result the model may read — carrying the neutral notice and a count — is recorded
+    /// in place of the raw one, so a withheld item's content never enters the trace.
+    /// </summary>
+    private static void TraceToolResult(TurnTrace trace, string callId, string tool, object? result, ScreenedToolResult? screened, bool isError, long latencyMs)
     {
         var raw = TraceMapping.Node(result) as JsonObject;
         JsonNode? diagnostics = null;
@@ -489,9 +509,12 @@ public sealed class ChatTurnRunner(
                 raw.Remove("_meta");
             }
         }
+        JsonNode? recorded = screened is { Withheld: > 0 }
+            ? (screened.Structured is { } s ? JsonNode.Parse(s.GetRawText()) : new JsonObject { ["withheld"] = screened.Withheld })
+            : raw;
         trace.Add(TraceKinds.ToolResult, $"{tool} returned{(isError ? " an error" : "")} in {latencyMs} ms{(instance is null ? "" : $" from {instance}")}", new JsonObject
         {
-            ["callId"] = callId, ["tool"] = tool, ["isError"] = isError, ["latencyMs"] = latencyMs, ["mcpInstance"] = instance, ["result"] = raw,
+            ["callId"] = callId, ["tool"] = tool, ["isError"] = isError, ["latencyMs"] = latencyMs, ["mcpInstance"] = instance, ["result"] = recorded,
         }, latencyMs);
         if (diagnostics is JsonObject d)
         {

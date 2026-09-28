@@ -219,8 +219,9 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
     }
 
     /// <summary>
-    /// The trace event for one screening: scores per item, the decision and its threshold — never the text, which the
-    /// trace already holds where it arrived (the question, the raw tool result). And one log line of structure.
+    /// The trace event for one screening: scores per item, the decision and its threshold — never the text. A passed
+    /// item's text the trace already holds where it arrived (the question, the tool result); a withheld item's is
+    /// redacted from the tool-result event, so it is nowhere in the trace. And one log line of structure.
     /// </summary>
     public void Trace(TurnTrace? trace, string check, string? tool, string? callId, GuardDecision decision, double threshold,
         IReadOnlyList<ScreenedItem> items, int withheld, string? reason)
