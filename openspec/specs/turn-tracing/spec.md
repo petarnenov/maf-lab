@@ -10,9 +10,10 @@ asked, and keeps it for later inspection, so the internals of the agent and retr
 For every chat turn the system SHALL record an ordered trace of timestamped events. The trace MUST cover:
 - turn start: principal, conversation, turn id, api replica, question;
 - intent classification: the intent the turn proceeded with, whether retrieval was forced, the classifier's choice,
-  its probability for every known intent and its confidence, the versioned model that answered, how long the
-  classification took, and — when the turn proceeded with no recognised intent because of the classifier — why
-  (below the confidence floor, timed out, rejected, unavailable). It MUST NOT contain any credential;
+  its probability for every known intent and its confidence, the probability that the question is about the documented
+  domain, the versioned model that answered, how long the classification took, and — when the turn proceeded with no
+  recognised intent because of the classifier — why (below the confidence floor, outside the domain, timed out,
+  rejected, unavailable). It MUST NOT contain any credential;
 - the history window: included messages with roles, text and token counts, the token budget, and how many older
   messages were left out;
 - the system prompt version and full text, and each offered tool with its description and input schema;
@@ -61,6 +62,10 @@ For every chat turn the system SHALL record an ordered trace of timestamped even
 #### Scenario: Reasoning stays out of the logs
 - **WHEN** a turn's model reasons
 - **THEN** no log line contains any of that reasoning
+
+#### Scenario: Question outside the domain
+- **WHEN** a procedurally-phrased question is outside the documented domain
+- **THEN** the intent event shows the classifier's procedural choice, the in-domain probability, no recognised intent, nothing forced, and the reason
 
 ### Requirement: Live streaming of the trace
 Trace events SHALL be streamed to the requesting client while the turn runs, interleaved with the run's other

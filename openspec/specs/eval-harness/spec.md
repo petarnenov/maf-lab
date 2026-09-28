@@ -73,7 +73,6 @@ Both SHALL be able to gate the configured production variant.
 - **WHEN** the retrieval eval runs over a dataset containing cases in more than one language
 - **THEN** the report gives recall@5 for each language as well as overall
 
-
 #### Scenario: Silence on the unanswerable
 - **WHEN** the retrieval eval runs over a dataset containing off-domain cases
 - **THEN** the report gives the share of them that retrieved nothing, separately from recall over the answerable cases
@@ -232,3 +231,39 @@ run would make a recording decay into a failure that says nothing about the code
 #### Scenario: A recording that has been kept a while
 - **WHEN** a run recorded long enough ago that its proposal's expiry has passed is replayed
 - **THEN** it still produces the state it recorded, because it is replayed as of when it was captured
+
+### Requirement: Intent classification is measured directly
+The harness SHALL have an `intent` suite that measures the intent classifier on its own — without the answering model
+and without tools — over `evals/intent.jsonl`, whose cases give a question, whether retrieval should be forced, a
+category and a language. The dataset SHALL include questions outside the documented domain phrased as procedures, in
+every language and script the dataset covers, because a dataset made only of in-domain questions cannot show a
+classifier that forces retrieval for everything phrased as a procedure. The suite SHALL report forcing accuracy, the
+share of should-not-force cases correctly left unforced, and the share of should-force cases forced — each reported
+separately so a gain in one cannot hide a loss in the other — overall and per language, SHALL name every case it got
+wrong, and SHALL gate against thresholds and the baseline like the other suites.
+
+#### Scenario: Off-domain procedural question forced
+- **WHEN** the classifier forces retrieval for "How do I cook carbonara?"
+- **THEN** the `intent` report counts it against the share of should-not-force cases left unforced, and names the case
+
+#### Scenario: Per language
+- **WHEN** the intent eval runs over cases in English, Bulgarian and Bulgarian written in Latin letters
+- **THEN** the report gives forcing accuracy for each of them as well as overall
+
+#### Scenario: No answering model
+- **WHEN** the intent eval runs
+- **THEN** no chat model is called and no tool runs
+
+### Requirement: Retrieval is measured in every script questions arrive in
+The retrieval dataset SHALL contain, for every Bulgarian case, a twin of the same question written in Latin letters,
+marked with its own language, so that recall is reported for English, Bulgarian and Latin-script Bulgarian
+separately. A change of dense embedding SHALL be judged on all three, and on the lowest of the three as well as on
+their average.
+
+#### Scenario: Latin-script recall is reported
+- **WHEN** the retrieval eval runs
+- **THEN** the report gives recall@5 for `en`, `bg` and `bg-latn`
+
+#### Scenario: A language cannot hide behind the average
+- **WHEN** a candidate embedding raises average recall@5 but lowers one language's
+- **THEN** the report shows that language's recall next to the average, and the regression gate compares each language against its baseline

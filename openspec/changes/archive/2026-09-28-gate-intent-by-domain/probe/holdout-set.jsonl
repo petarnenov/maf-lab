@@ -1,0 +1,30 @@
+{"q":"How do I split the bill for pizza with my friends?","force":false,"kind":"off-trap","lang":"en"}
+{"q":"How are Uber fees calculated?","force":false,"kind":"off-trap","lang":"en"}
+{"q":"What is the tax on a taxi fare in Sofia?","force":false,"kind":"off-trap","lang":"en"}
+{"q":"How do I pay my electricity invoice online?","force":false,"kind":"off-trap","lang":"en"}
+{"q":"Kak da platq smetkata za toka?","force":false,"kind":"off-trap","lang":"bg-latn"}
+{"q":"Колко струва такси до летището?","force":false,"kind":"off-trap","lang":"bg"}
+{"q":"What is the procedure for adopting a cat?","force":false,"kind":"off-proc","lang":"en"}
+{"q":"How does a blockchain work?","force":false,"kind":"off-proc","lang":"en"}
+{"q":"Как се сменя гума на колело?","force":false,"kind":"off-proc","lang":"bg"}
+{"q":"Kak se gotvi bob?","force":false,"kind":"off-proc","lang":"bg-latn"}
+{"q":"obqsni mi kvantovata fizika","force":false,"kind":"off-proc","lang":"bg-latn"}
+{"q":"how do I reset my laptop password","force":false,"kind":"off-proc","lang":"en"}
+{"q":"why is the answer so slow today?","force":false,"kind":"off-meta","lang":"en"}
+{"q":"which model are you running on?","force":false,"kind":"off-meta","lang":"en"}
+{"q":"How do I set a monthly minimum fee for a household?","force":true,"kind":"in-proc","lang":"en"}
+{"q":"What happens to the fee when a client terminates mid-quarter?","force":true,"kind":"in-proc","lang":"en"}
+{"q":"How are held-away assets billed?","force":true,"kind":"in-proc","lang":"en"}
+{"q":"Who can approve an invoice above the large-invoice threshold?","force":true,"kind":"in-proc","lang":"en"}
+{"q":"What is the custodian debit reconciliation procedure?","force":true,"kind":"in-proc","lang":"en"}
+{"q":"Как се таксуват активите, държани другаде?","force":true,"kind":"in-proc","lang":"bg"}
+{"q":"Какво става с таксата при прекратяване по средата на тримесечието?","force":true,"kind":"in-proc","lang":"bg"}
+{"q":"Кой може да одобри голяма фактура?","force":true,"kind":"in-proc","lang":"bg"}
+{"q":"Kak se taksuvat aktivite, darjani drugade?","force":true,"kind":"in-proc","lang":"bg-latn"}
+{"q":"Koi moje da odobri golqma faktura?","force":true,"kind":"in-proc","lang":"bg-latn"}
+{"q":"kakva e minimalnata taksa za domakinstvo","force":true,"kind":"in-proc","lang":"bg-latn"}
+{"q":"kak se vazstanovqva taksa pri prekratqvane na dogovora","force":true,"kind":"in-proc","lang":"bg-latn"}
+{"q":"why did run 4420 fail and what do I do","force":true,"kind":"in-mixed","lang":"en"}
+{"q":"zashto run 4420 se provali","force":true,"kind":"in-mixed","lang":"bg-latn"}
+{"q":"show me the latest runs","force":false,"kind":"in-data","lang":"en"}
+{"q":"pokaji mi poslednite runove","force":false,"kind":"in-data","lang":"bg-latn"}

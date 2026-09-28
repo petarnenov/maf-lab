@@ -18,13 +18,14 @@ outside a tool call.
 
 ### Requirement: Intent-driven forced retrieval
 Before the first model call of a turn, the system SHALL classify the user's intent as specified by
-`intent-classification`. When the question is procedural, or procedural about one specific billing run, the agent
-SHALL be required to call `search_documents` for that turn only. Tool use SHALL never be forced globally.
+`intent-classification`. When the question is procedural, or procedural about one specific billing run, and is about
+the domain the documentation covers, the agent SHALL be required to call `search_documents` for that turn only. Tool use
+SHALL never be forced globally.
 
 Classification SHALL NOT depend on the language the question is written in. A turn with no recognised intent — because
-classification was uncertain, unavailable or unusable — SHALL force nothing; the model MAY still call any tool it judges
-necessary. Classification MUST NOT change the answer the user receives other than through the tools the turn is
-required to call, and MUST NOT be reported to the user as part of the answer.
+classification was uncertain, unavailable or unusable, or the question is outside the domain — SHALL force nothing; the
+model MAY still call any tool it judges necessary. Classification MUST NOT change the answer the user receives other
+than through the tools the turn is required to call, and MUST NOT be reported to the user as part of the answer.
 
 #### Scenario: Procedural question
 - **WHEN** the user asks "what is the procedure when a fee schedule is missing"
@@ -49,6 +50,10 @@ required to call, and MUST NOT be reported to the user as part of the answer.
 #### Scenario: Next turn is not forced
 - **WHEN** the following turn is "status of run 4417"
 - **THEN** the agent is free to call `get_billing_run_status` without first calling `search_documents`
+
+#### Scenario: Procedural question outside the domain
+- **WHEN** the user asks "How do I cook carbonara?"
+- **THEN** `search_documents` is not forced, the turn is not flagged as a how/why question answered without a tool, and the turn still answers
 
 ### Requirement: Tool audit log
 Every tool invocation, including attempts to call non-existent tools, SHALL be
