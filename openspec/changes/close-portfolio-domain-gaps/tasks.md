@@ -13,6 +13,6 @@
 - [x] 6. Review queue: resolve per domain, a domain on the retrieval label, refuse mixed chunks (tests).
 - [x] 7. Jev statistics: relevance per domain, the Domains section, the web section (tests).
 - [x] 8. Domain eval: 16 more holdout rows.
-- [ ] 9. Sharpen the domain descriptions against the measured errors; record before/after in DECISIONS.
-- [ ] 10. Run retrieval, selection and domain evals; accept the baselines that moved.
+- [x] 9. Sharpen the domain descriptions against the measured errors; record before/after in DECISIONS.
+- [x] 10. Run retrieval, selection and domain evals; accept the baselines that moved.
 - [ ] 11. Merge to main, `make` (the web container picks up the chat hints and the Jev page), verify live.

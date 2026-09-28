@@ -1303,3 +1303,54 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
 - **No package moved.**
 - **Rollback:** remove `Agent:Servers`. The api then reads billing's server alone. The portfolio question still rides
   in the request, but its domain is never offered, so nothing is forced there.
+
+## 41. The portfolio domain's gaps, closed (close-portfolio-domain-gaps, 2026-09-29)
+
+- **Balancer.**
+  - `lb` mounts `compose/lb/` and starts and reloads with `-c /etc/nginx/lb/nginx.conf`.
+  - A single-file bind mount pins the file's inode. Once a merge replaced `nginx.conf`, the balancer served the old
+    configuration (no `/portfolio/mcp`), and `make up` failed on the reload.
+- **Several forced calls are always emulated.** `tool_choice` names one function. A crossing's searches, or a run's
+  status beside them, are issued on the model's behalf even with `Agent:EmulateRequiredToolMode=false`.
+- **Portfolio routing.**
+  - The intent request also asks about `get_household_portfolio` and `get_aum_history`, at no extra request.
+  - A data question is routed only among the tools of the domains in scope. A portfolio tool needs exactly one account
+    id (`A-1042`), taken from the question by a fixed pattern.
+  - Selection: s-51 and s-52 route and pass.
+- **Retrieval per domain.**
+  - Rows carry `domain`. The 15 portfolio rows (EN, BG, BG-Latin, 2 off-domain) are scored against
+    `maf_portfolio_chunks` as `portfolio-hybrid`, with thresholds `retrieval-portfolio`.
+  - First run: recall@5 0.714, recall@20 0.929, MRR 0.757, off-domain silence 1.0.
+  - English recall@5 is 0.864. The three non-English rows are weak (bg 0.25, bg-latn 0); that is recorded, not tuned
+    away.
+  - Billing's `hybrid` is unchanged within tolerance.
+- **Review queue and labels.**
+  - Each search's sources resolve in their own collection (a keyed `TenantScopedMaintenance` for portfolio).
+  - A retrieval label writes `"domain": "portfolio"` when its chunks came from a portfolio search, and refuses chunks
+    from both domains. Portfolio chunks can no longer land in billing's retrieval eval.
+- **Jev statistics.**
+  - Judged searches are counted per domain, by the domain of the call that searched.
+  - A Domains section shows turns per verdict, turns that crossed, and turns whose calls matched the verdict.
+- **Domain descriptions and floor.**
+  - The dataset grew to 64 questions: 16 holdout, and 4 billing guard questions about fees and approvals.
+  - Portfolio now names price corrections and why an account's market value or AUM changed. Billing names billable AUM
+    and failure codes.
+  - A clause tying portfolio to "the fee or invoice it moved" raised crossing recall to 1.0 on the domain suite. It also
+    sent billing fee questions (s-05, s-42, s-43) to portfolio in selection, so it was dropped, and those questions are
+    now domain rows.
+  - Final descriptions, same run:
+
+    | floor | accuracy | crossing recall | crossing precision |
+    |---|---|---|---|
+    | 0.5 | 0.953 | 0.9 | 0.947 |
+    | 0.6 | 0.922 | 0.8 | 0.941 |
+
+    The floor stays 0.5.
+  - Accepted run: accuracy 0.938, crossing recall 0.9, precision 0.947, none 1.0.
+  - Left: s-04 / d-billing-12 (AUM-STALE, a false crossing no description fixed), d-both-02 and d-both-13 (invoice-side
+    crossings), and d-billing-08 (a Bulgarian credit question judged outside the domain).
+- **Selection at the final settings:** recall 1.0, precision 0.943, exactMatch 0.931. It fails only s-04 and s-16, as
+  §40 recorded.
+- **Baselines** accepted for selection, domain and retrieval. The floor-sweep "regressions" printed against the
+  minutes-old intermediate baseline are one run's noise at floors not in use.
+- No package moved.
