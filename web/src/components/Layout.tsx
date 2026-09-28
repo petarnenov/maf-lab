@@ -12,6 +12,7 @@ const LINKS = [
   { to: '/admin/compliance', label: 'Compliance' },
   { to: '/admin/jev', label: 'Jev' },
   { to: '/admin/a2a', label: 'Agent to agent' },
+  { to: '/curriculum', label: 'Curriculum' },
 ];
 
 export function Layout() {
