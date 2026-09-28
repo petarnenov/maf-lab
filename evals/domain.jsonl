@@ -58,3 +58,7 @@
 {"id": "d-portfolio-15", "question": "Какви са целевите тегла на модела ACME-GROWTH-80-20?", "expected": "portfolio", "language": "bg", "split": "holdout"}
 {"id": "d-none-09", "question": "How do I reset my laptop's Wi-Fi settings?", "expected": "none", "language": "en", "split": "holdout"}
 {"id": "d-none-10", "question": "Какво е времето в София утре?", "expected": "none", "language": "bg", "split": "holdout"}
+{"id": "d-billing-16", "question": "How are household fees allocated across accounts?", "expected": "billing", "language": "en", "split": "design"}
+{"id": "d-billing-17", "question": "how do fee adjustments get approved?", "expected": "billing", "language": "en", "split": "design"}
+{"id": "d-billing-18", "question": "who is allowed to adjust a fee, and what is the approval threshold?", "expected": "billing", "language": "en", "split": "design"}
+{"id": "d-billing-19", "question": "Why did the fee on our invoice include a minimum-fee line?", "expected": "billing", "language": "en", "split": "design"}

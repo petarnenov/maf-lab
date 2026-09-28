@@ -64,8 +64,8 @@ public sealed class JevIntentClassifier(
     internal static readonly JevDomainInstructions PortfolioDomain = new(
         Domain: "Investment portfolios on a wealth-management platform: what accounts and households hold, model portfolios and "
             + "target weights, asset allocation, drift and tolerance bands, rebalancing, market value and quarter-end AUM valuations "
-            + "and their price corrections, why an account's value or AUM changed (market movement, contributions, withdrawals) "
-            + "including when that change moved its fee or invoice, cash sweep, held-away assets, and investment performance and returns.",
+            + "and their price corrections, why an account's market value or AUM changed (market movement, contributions, withdrawals), "
+            + "cash sweep, held-away assets, and investment performance and returns.",
         Languages: Domain.Languages,
         Question: "Is `user_question` about something in `domain`?");
 

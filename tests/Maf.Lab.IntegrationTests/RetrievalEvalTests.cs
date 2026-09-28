@@ -38,7 +38,8 @@ public class RetrievalEvalTests(CorpusIndexFixture corpus)
 
         // The gate flipped relative to production (off by default here) sits beside the modes, so a run shows what it changes.
         Assert.Equal(["hybrid", "hybrid+gate", "hybrid-dbsf", "dense", "sparse"], variants.Select(v => v.Name));
-        var expectedCases = Maf.Lab.Eval.Datasets.DatasetLoader.Retrieval(root).Count;
+        // Billing's variants score billing's rows only: the portfolio rows belong to the portfolio collection's variant.
+        var expectedCases = Maf.Lab.Eval.Datasets.DatasetLoader.Retrieval(root).Count(r => r.Domain == "billing");
         Assert.Contains(Maf.Lab.Eval.Datasets.DatasetLoader.Retrieval(root), r => r.Id == "fb-retrieval-t_feedback");
         Assert.All(variants, v => Assert.Equal(expectedCases, v.Cases));
         Assert.All(variants, v => Assert.InRange(v.Metrics["recall@20"], 0, 1));
