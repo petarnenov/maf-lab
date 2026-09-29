@@ -332,6 +332,46 @@ describe('JevPage', () => {
     );
   });
 
+  it('shows the calls an open circuit skipped apart from the unavailable requests', async () => {
+    const base = report();
+    stub(() =>
+      jsonResponse(
+        report({
+          overview: {
+            ...base.overview,
+            skipped: 12,
+            sites: base.overview.sites.map((site) =>
+              site.site === 'relevance' ? { ...site, skipped: 12 } : { ...site, skipped: 0 },
+            ),
+            timeline: base.overview.timeline.map((b, i) => ({ ...b, skipped: i === 23 ? 12 : 0 })),
+          },
+        }),
+      ),
+    );
+    renderWithProviders(<JevPage />, { session: admin });
+
+    expect((await screen.findByText('Skipped')).parentElement).toHaveTextContent('12');
+    expect(screen.getByText('3 of 40')).toBeInTheDocument();
+    const bySite = screen.getByRole('table', { name: 'Requests by call site' });
+    const relevanceRow = within(bySite).getByText('relevance').closest('tr')!;
+    expect(within(relevanceRow).getAllByRole('cell')[3]).toHaveTextContent('12');
+    expect(screen.getAllByText('skipped (circuit open)').length).toBeGreaterThan(0);
+
+    const chart = screen.getByRole('img', { name: 'Jev requests over time' });
+    const buckets = chart.querySelectorAll('rect');
+    await userEvent.hover(buckets[buckets.length - 1]);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('skipped (circuit open): 12');
+  });
+
+  it('draws no skipped series when nothing was skipped', async () => {
+    stub(() => jsonResponse(report()));
+    renderWithProviders(<JevPage />, { session: admin });
+
+    expect((await screen.findByText('Skipped')).parentElement).toHaveTextContent('0');
+    expect(screen.getByRole('img', { name: 'Jev requests over time' })).toBeInTheDocument();
+    expect(screen.queryByText('skipped (circuit open)')).not.toBeInTheDocument();
+  });
+
   it('says when no answer was checked', async () => {
     stub(() => jsonResponse(report()));
     renderWithProviders(<JevPage />, { session: admin });

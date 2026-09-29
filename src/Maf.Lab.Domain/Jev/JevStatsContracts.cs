@@ -12,20 +12,28 @@ namespace Maf.Lab.Domain.Jev;
 public sealed record JevStatsSettings(
     string Model, bool GuardEnabled, double PromptBlockAt, double ContentWithholdAt, double CrossTenantAt, double? RelevanceFloor);
 
-/// <summary>One request-bearing site's requests, how many were unavailable, and its latency.</summary>
-public sealed record JevSiteSummary(string Site, int Requests, int Unavailable, double? P50Ms, double? P90Ms);
+/// <summary>
+/// One request-bearing site's requests, how many were unavailable, and its latency. <paramref name="Skipped"/> counts
+/// the calls an open circuit skipped: they sent nothing, so they are neither requests nor unavailable requests, and have
+/// no latency (add-jev-circuit-breaker).
+/// </summary>
+public sealed record JevSiteSummary(string Site, int Requests, int Unavailable, double? P50Ms, double? P90Ms, int Skipped = 0);
 
-/// <summary>One time bucket of total Jev requests and how many were unavailable, summed across every site.</summary>
-public sealed record JevAvailabilityBucket(DateTimeOffset Start, int Requests, int Unavailable);
+/// <summary>
+/// One time bucket of total Jev requests, how many were unavailable, and how many calls an open circuit skipped, summed
+/// across every site.
+/// </summary>
+public sealed record JevAvailabilityBucket(DateTimeOffset Start, int Requests, int Unavailable, int Skipped = 0);
 
 /// <summary>
 /// The cross-cutting view: how many Jev requests a firm's turns made in the window, how many were unavailable, and how
 /// that moved over time — so a degraded Jev shows across every site at once, not only in one section.
 /// </summary>
-/// <param name="Requests">Total Jev requests: one per jev intent event, per content-screening item, per judged search, per
-/// answer check that sent one.</param>
+/// <param name="Requests">Total Jev requests sent: one per jev intent event, per content-screening item, per judged search, per
+/// answer check that sent one — none for a call an open circuit skipped.</param>
 /// <param name="Unavailable">Of those, how many timed out, were rejected or errored.</param>
 /// <param name="Turns">Classified turns (the requests-per-turn denominator).</param>
+/// <param name="Skipped">Calls an open circuit skipped across every site: not requests, and not among the unavailable.</param>
 public sealed record JevOverview(
     JevStatsSettings Settings,
     int Requests,
@@ -33,7 +41,8 @@ public sealed record JevOverview(
     int Turns,
     double? RequestsPerTurn,
     IReadOnlyList<JevSiteSummary> Sites,
-    IReadOnlyList<JevAvailabilityBucket> Timeline);
+    IReadOnlyList<JevAvailabilityBucket> Timeline,
+    int Skipped = 0);
 
 /// <summary>One guard check kind and its decisions.</summary>
 public sealed record GuardrailCheckCount(string Check, int Total, int Pass, int Blocked, int Withheld, int Unscreened);

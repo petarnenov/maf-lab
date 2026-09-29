@@ -223,6 +223,23 @@ public class AnswerCheckTests
     }
 
     [Fact]
+    public async Task An_open_circuit_leaves_the_answer_unchecked_without_a_request()
+    {
+        // The turn's intent request fails once and opens the circuit; everything after it in the turn is skipped.
+        using var api = new ApiFactory(ApiFactory.ProceduralModel(Marker)) { ExtraSettings = ApiFactory.OpensOnFirstFailure };
+        api.Jev.Status = HttpStatusCode.ServiceUnavailable;
+
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), Procedural);
+
+        Assert.Equal(Marker, ApiFactory.AnswerOf(events));
+        Assert.Empty(CheckRequests(api));
+        var check = Trace(events).Single(t => t.Kind == TraceKinds.AnswerCheck).Data;
+        Assert.Equal("unchecked", check.GetProperty("verdict").GetString());
+        Assert.Equal("circuit open", check.GetProperty("reason").GetString());
+        Assert.Equal(0, check.GetProperty("requests").GetInt32());
+    }
+
+    [Fact]
     public async Task Switched_off_it_sends_nothing_and_records_why()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel(Marker))

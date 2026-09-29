@@ -153,8 +153,28 @@ function OverviewSection({
     o.timeline.map((b) => b.start),
     bucketMinutes,
   );
-  const maxReq = Math.max(1, ...o.timeline.map((b) => b.requests));
-  const anyRequests = o.timeline.some((b) => b.requests > 0);
+  // Calls an open circuit skipped sent nothing; drawn as their own series so an outage stays visible once the
+  // breaker has opened (add-jev-circuit-breaker).
+  const skipped = o.skipped ?? 0;
+  const maxReq = Math.max(1, ...o.timeline.map((b) => Math.max(b.requests, b.skipped ?? 0)));
+  const anyRequests = o.timeline.some((b) => b.requests > 0 || (b.skipped ?? 0) > 0);
+  const series = [
+    { label: 'requests', className: styles.seriesUsed, values: o.timeline.map((b) => b.requests) },
+    {
+      label: 'unavailable',
+      className: styles.seriesGated,
+      values: o.timeline.map((b) => b.unavailable),
+    },
+    ...(skipped > 0
+      ? [
+          {
+            label: 'skipped (circuit open)',
+            className: styles.seriesFailed,
+            values: o.timeline.map((b) => b.skipped ?? 0),
+          },
+        ]
+      : []),
+  ];
 
   return (
     <>
@@ -165,6 +185,7 @@ function OverviewSection({
           value={percent(o.unavailable, o.requests)}
           note={`${o.unavailable} of ${o.requests}`}
         />
+        <Kpi label="Skipped" value={String(skipped)} note="circuit open · nothing sent" />
         <Kpi
           label="Requests per turn"
           value={o.requestsPerTurn == null ? '–' : o.requestsPerTurn.toFixed(2)}
@@ -180,29 +201,13 @@ function OverviewSection({
       <div className={styles.grid2}>
         <Panel
           title="Jev requests over time"
-          note={`${period} · total requests and the unavailable ones, ${bucketMinutes}-minute buckets`}
+          note={`${period} · total requests, the unavailable ones and the calls an open circuit skipped, ${bucketMinutes}-minute buckets`}
         >
-          <Legend
-            series={[
-              { label: 'requests', className: styles.seriesUsed },
-              { label: 'unavailable', className: styles.seriesGated },
-            ]}
-          />
+          <Legend series={series.map(({ label, className }) => ({ label, className }))} />
           {anyRequests ? (
             <Lines
               ariaLabel="Jev requests over time"
-              lines={[
-                {
-                  label: 'requests',
-                  className: styles.seriesUsed,
-                  values: o.timeline.map((b) => b.requests),
-                },
-                {
-                  label: 'unavailable',
-                  className: styles.seriesGated,
-                  values: o.timeline.map((b) => b.unavailable),
-                },
-              ]}
+              lines={series}
               xLabels={axis.labels}
               xTicks={axis.ticks}
               yDomain={[0, maxReq * 1.05]}
@@ -220,6 +225,7 @@ function OverviewSection({
                 <th>Site</th>
                 <th className={styles.num}>requests</th>
                 <th className={styles.num}>unavailable</th>
+                <th className={styles.num}>skipped</th>
                 <th className={styles.num}>p50</th>
                 <th className={styles.num}>p90</th>
               </tr>
@@ -232,6 +238,7 @@ function OverviewSection({
                   <td className={styles.num}>
                     {site.unavailable} ({percent(site.unavailable, site.requests)})
                   </td>
+                  <td className={styles.num}>{site.skipped ?? 0}</td>
                   <td className={styles.num}>{formatMs(site.p50Ms)}</td>
                   <td className={styles.num}>{formatMs(site.p90Ms)}</td>
                 </tr>

@@ -1521,3 +1521,75 @@ can I see?" fell to a documentation search that cannot answer it.
     the extra miss being "koi runove se provaliha" (mixed at 0.52), which missed the same way in a run before this
     change. Not a regression; baselines not re-accepted.
   No package added or moved.
+
+## 46. Jev circuit breaker (add-jev-circuit-breaker, 2026-09-29)
+
+Jev sits on five paths of a turn, and each failed open on its own budget with no memory of the call before it. During
+an outage every turn waited out every site's timeout in turn, for the same fail-open outcome.
+
+- **What a turn costs in Jev, measured** (`jev-1.13.0`, kept traces of selection run `20260929-142245-selection`, 34
+  turns, and generation run `20260929-142413-generation`, 8 turns; no failure in either):
+  - Requests per turn: selection mean 5.7 (median 3, max 15); generation mean 9.0 (median 8, max 14). Most of it is
+    tool-result screening, one request per excerpt.
+  - Per-site latency p50 / p90 (ms): intent 258–265 / 305–314; tool-result screening 258–263 / 290–300; relevance
+    judge 268–270 / 300–325; answer check 256–261 / 279–296.
+- **Worst-case wait per turn without the breaker:**
+  - The wait is intent 2 s + 2 s per search (the relevance judge) + 2 s per screened tool result (its excerpts run in
+    parallel) + answer check 3 s.
+  - Over the same traces that is 7 s median and 15 s max (selection), 9 s median and 13 s max (generation).
+- **The breaker:**
+  - One per process, inside `JevClient.AskAsync`, in front of every Jev call: intent, guard, partner, reviewer,
+    relevance, answer check and warm-up.
+  - It opens after `Jev:Breaker:FailureThreshold` (3) consecutive failures and skips Jev for
+    `Jev:Breaker:OpenSeconds` (30).
+  - After the period, one real call is the probe. Its success closes the circuit, and its failure re-opens it.
+  - A skipped call returns `circuit open`, sends nothing, and each site does what it does for any missing answer.
+    Nothing new fails open or closed.
+  - What counts as a failure: a timeout, `HttpRequestException`, or a final status `JevRetryHandler.IsTransient` calls
+    transient. The retry policy and the breaker cannot drift apart.
+  - What never counts: a missing key, the caller's own cancellation, other 4xx and an unreadable body. A bad key keeps
+    showing as 401s, not as an open circuit.
+- **Defaults:**
+  - 3 is less than one degraded turn makes (intent, a screening, the answer check), so the next turn does not wait.
+    The traces above hold no isolated timeout, so three in a row is an outage.
+  - 30 s costs at most one probe timeout per process per 30 s.
+  - Concurrent failures from parallel turns count toward the same streak.
+  - `ApiFactory` runs with the breaker off, so the host tests keep their request counts. The breaker has its own tests.
+- **Checked live** (one api replica pointed at a local proxy that forwarded to Jev, or hung while switched off;
+  retrieval replicas untouched):
+  - Healthy turn: 4.5 s.
+  - Jev off, first turn: 6.6 s. The intent timed out (2 s) and the screening's excerpts timed out in parallel (2 s),
+    and the answer check was already skipped. The log had one line, `Jev circuit opened after 3 consecutive failures
+    (last: timed out after 2s); skipping Jev for 30s`.
+  - The next three turns: 2.3–2.6 s, with no Jev wait. Every Jev call was `circuit open`, and the turns answered
+    unforced and unscreened, as before.
+  - `/admin/jev` showed skipped calls apart from requests: intent 3, guardrail 15, answer 4, total 22. Unavailable
+    stayed at the 6 real timeouts.
+  - Jev back, and after 30 s one probe, then `Jev circuit closed after 57214 ms; 22 calls skipped`. The next turns ran
+    in 3.6–3.8 s, all answered by Jev.
+  - The key occurred 0 times in the api log.
+- **Statistics:**
+  - `JevSiteSummary`, `JevAvailabilityBucket` and `JevOverview` gain `Skipped`. A skipped call is not a request, not
+    an unavailable request and has no latency. It stays a failed classification, an unscreened item, an ungated search
+    or an unchecked answer in its own section.
+  - Intent and relevance events are recognised by their reason. Guard and answer events record `requests: 0`.
+  - The overview draws "skipped (circuit open)" as its own series, so an outage stays visible after the circuit opens.
+- **Rejected:**
+  - A `DelegatingHandler` breaker: it cannot see the caller's timeout, which ends in the race above the handlers.
+  - A breaker shared across replicas: a network hop in front of every call, and each process's view of reachability
+    is its own.
+  - An exponential open period: outages here last minutes to hours, and a fixed 30 s probe is cheap and simple to
+    reason about.
+  - Reading `Retry-After`: the retry handler consumes it, and a fixed period does not depend on a header Jev may not
+    send.
+  - A fallback classifier while open: that would be a different change. This one decides only how long a turn waits
+    before failing open.
+- **Evals after the change:**
+  - `selection` two runs: recall 1, negativeAccuracy 1, exactMatch 0.971 / 0.941, precision 0.974 / 0.95.
+  - `generation` two runs: faithfulness 1 / 0.969, relevance 1, sourceRecall 0.875.
+    - The second run is marked FAILED against the faithfulness baseline (1 → 0.969, −0.031): the LLM judge scored one
+      case 0.75. The report does not name that case, and all eight cases are above the 0.7 threshold.
+    - No Jev call failed in either run, so the breaker never acted on the answers the judge scored.
+  - Baselines not re-accepted.
+
+No package added or moved.

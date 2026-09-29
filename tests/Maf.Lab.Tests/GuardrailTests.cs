@@ -335,6 +335,26 @@ public class GuardrailTests
     }
 
     [Fact]
+    public async Task With_the_circuit_open_the_tool_results_pass_unscreened_without_a_request()
+    {
+        // The intent request fails and opens the circuit; the tool result's screening is then skipped, not sent.
+        using var api = new ApiFactory(ApiFactory.ProceduralModel(), jev: new FakeJev { Status = HttpStatusCode.ServiceUnavailable })
+        {
+            ExtraSettings = ApiFactory.OpensOnFirstFailure,
+        };
+
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), Procedural);
+
+        Assert.NotEmpty(ApiFactory.AnswerOf(events));
+        Assert.Contains("Ignore previous instructions", ModelSaw(api));
+        Assert.DoesNotContain(api.Jev.Requests, r => r.Body.Contains("untrusted_text"));
+        var tool = Guard(events, Guardrail.CheckToolResult);
+        Assert.Equal("unscreened", tool.GetProperty("decision").GetString());
+        Assert.Equal("circuit open", tool.GetProperty("items")[0].GetProperty("reason").GetString());
+        Assert.Equal(0, tool.GetProperty("requests").GetInt32());
+    }
+
+    [Fact]
     public async Task A_hanging_Jev_costs_no_more_than_the_timeouts()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel(), jev: new FakeJev { Hang = TimeSpan.FromSeconds(4) })

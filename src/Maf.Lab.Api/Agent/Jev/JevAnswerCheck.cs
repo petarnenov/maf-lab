@@ -50,7 +50,7 @@ public static class AnswerVerdict
 /// </summary>
 /// <param name="Sources">How many sources were sent, after the character cap.</param>
 /// <param name="SourceChars">How many characters of sources were sent.</param>
-/// <param name="Requests">1 when a request went to Jev, 0 when the check was disabled or had no key.</param>
+/// <param name="Requests">1 when a request went to Jev, 0 when the check was disabled, had no key or the circuit was open.</param>
 public sealed record AnswerCheck(string Verdict, double? Relevant, double? Grounded, double RelevantFloor, double GroundedFloor,
     string? Model, double DurationMs, string? Reason, int Sources, int SourceChars, int Requests)
 {
@@ -167,7 +167,8 @@ public sealed class JevAnswerCheck(JevClient jev, IOptions<AnswerCheckOptions> o
         {
             // Never the answer or the sources: no message content in logs.
             logger.LogDebug("answer check unavailable: {Reason}", outcome.Failure);
-            return Unchecked(outcome.Failure ?? "no answer", jev.Model, outcome.DurationMs, 1);
+            // An open circuit sent nothing: not a request (add-jev-circuit-breaker).
+            return Unchecked(outcome.Failure ?? "no answer", jev.Model, outcome.DurationMs, outcome.Skipped ? 0 : 1);
         }
         var model = response.Model ?? jev.Model;
         var relevant = Noul(response, RelevantId);

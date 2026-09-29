@@ -19,24 +19,39 @@ public static class JevStatistics
     private const double ContentBudgetMs = 2000;
     // The answer check budgets 3 s (Jev:AnswerCheck:TimeoutSeconds).
     private const double AnswerBudgetMs = 3000;
+    // The reason every call site records for a call the circuit breaker skipped.
+    private const string CircuitOpen = Retrieval.Jev.JevClient.CircuitOpen;
 
     /// <summary>The guard configuration surfaced with the numbers, as the running service has it.</summary>
     public readonly record struct GuardSettings(bool Enabled, double PromptBlockAt, double ContentWithholdAt, double CrossTenantAt);
 
+    // A call an open circuit skipped (add-jev-circuit-breaker) sent nothing: it is counted as skipped, never as a
+    // request, an unavailable request or a latency. Its own section still counts it where it counts unavailability.
+
     private sealed record IntentFact(DateTime At, bool Jev, bool Failed, string Intent, bool Used, bool HasRouting,
-        string? RoutedTool, string? RouteReason, double? DurationMs, int ModelCalls);
+        string? RoutedTool, string? RouteReason, double? DurationMs, int ModelCalls, bool Skipped = false);
 
+    /// <param name="ItemDurations">The latency of each content item that sent a request.</param>
+    /// <param name="SkippedItems">Items an open circuit skipped; they are among <paramref name="UnscreenedItems"/>.</param>
     private sealed record GuardFact(DateTime At, string Check, string Decision, string? TopQuestion, bool Content,
-        int Items, int UnscreenedItems, IReadOnlyList<double> ItemDurations, int Requests);
+        int Items, int UnscreenedItems, IReadOnlyList<double> ItemDurations, int Requests, int SkippedItems = 0);
 
+    /// <param name="Unavailable">Left ungated because Jev did not answer — skipped by an open circuit included.</param>
     private sealed record RelevanceFact(DateTime At, bool Silenced, bool Unavailable, bool RerankJev, double? Max,
-        double? DurationMs, double? Floor, string? CallId = null, string Domain = "billing");
+        double? DurationMs, double? Floor, string? CallId = null, string Domain = "billing", bool Skipped = false)
+    {
+        public bool Requested => !Skipped;
+    }
 
     /// <summary>One answer check: its verdict, whether it sent a request, and each probability against its own floor.</summary>
     private sealed record AnswerFact(DateTime At, string Verdict, int Requests, bool NotRelevant, bool NotGrounded,
-        double? DurationMs, double? RelevantFloor, double? GroundedFloor)
+        double? DurationMs, double? RelevantFloor, double? GroundedFloor, bool Skipped = false)
     {
+        /// <summary>A request that went to Jev and got no usable answer.</summary>
         public bool Unavailable => Requests > 0 && Verdict == "unchecked";
+
+        /// <summary>Unchecked because Jev did not answer, whether a request was sent or the circuit skipped it.</summary>
+        public bool JevUnavailable => Unavailable || Skipped;
     }
 
     /// <summary>One turn's domain verdict and what its calls did: in scope, crossed, and whether the two agree.</summary>
@@ -63,23 +78,27 @@ public static class JevStatistics
 
         // --- Cross-cutting requests and availability, per request-bearing site ---
         var jevIntents = intent.Where(i => i.Jev).ToList();
+        var sentIntents = jevIntents.Where(i => !i.Skipped).ToList();
         var contentItems = guards.Where(g => g.Content).SelectMany(g => g.ItemDurations).ToList();
         var contentRequests = guards.Where(g => g.Content).Sum(g => g.Requests);
-        var contentUnavailable = guards.Where(g => g.Content).Sum(g => g.UnscreenedItems);
-        var relDurations = relevance.Where(r => r.DurationMs is not null).Select(r => r.DurationMs!.Value).ToList();
+        var contentSkipped = guards.Where(g => g.Content).Sum(g => g.SkippedItems);
+        var contentUnavailable = guards.Where(g => g.Content).Sum(g => g.UnscreenedItems) - contentSkipped;
+        var sentRelevance = relevance.Where(r => r.Requested).ToList();
+        var relDurations = sentRelevance.Where(r => r.DurationMs is not null).Select(r => r.DurationMs!.Value).ToList();
         // A disabled or keyless check sent nothing: not a request, and no latency.
         var answerDurations = answers.Where(a => a.Requests > 0 && a.DurationMs is not null).Select(a => a.DurationMs!.Value).ToList();
 
         var sites = new List<JevSiteSummary>
         {
-            Site("intent", jevIntents.Count, jevIntents.Count(i => i.Failed),
-                jevIntents.Where(i => i.DurationMs is not null).Select(i => i.DurationMs!.Value)),
-            Site("guardrail", contentRequests, contentUnavailable, contentItems),
-            Site("relevance", relevance.Count, relevance.Count(r => r.Unavailable), relDurations),
-            Site("answer", answers.Sum(a => a.Requests), answers.Count(a => a.Unavailable), answerDurations),
+            Site("intent", sentIntents.Count, sentIntents.Count(i => i.Failed), jevIntents.Count(i => i.Skipped),
+                sentIntents.Where(i => i.DurationMs is not null).Select(i => i.DurationMs!.Value)),
+            Site("guardrail", contentRequests, contentUnavailable, contentSkipped, contentItems),
+            Site("relevance", sentRelevance.Count, sentRelevance.Count(r => r.Unavailable), relevance.Count(r => r.Skipped), relDurations),
+            Site("answer", answers.Sum(a => a.Requests), answers.Count(a => a.Unavailable), answers.Count(a => a.Skipped), answerDurations),
         };
         var requests = sites.Sum(s => s.Requests);
         var unavailable = sites.Sum(s => s.Unavailable);
+        var skipped = sites.Sum(s => s.Skipped);
 
         var relevanceFloor = relevance.Select(r => r.Floor).FirstOrDefault(f => f is not null);
         var overview = new JevOverview(
@@ -90,7 +109,8 @@ public static class JevStatistics
             intentReport.Totals.Classified,
             intentReport.Totals.Classified == 0 ? null : Math.Round((double)requests / intentReport.Totals.Classified, 2),
             sites,
-            AvailabilityTimeline(jevIntents, guards, relevance, answers, from, now, bucket));
+            AvailabilityTimeline(jevIntents, guards, relevance, answers, from, now, bucket),
+            skipped);
 
         return new JevStatsReport(window, from, now, (int)bucket.TotalMinutes, overview, intentReport,
             Guardrail(guards, contentItems, from, now, bucket), Relevance(relevance, relevanceFloor, from, now, bucket),
@@ -104,7 +124,7 @@ public static class JevStatistics
         answers.Count(a => a.Verdict != "unchecked" && a.NotRelevant),
         answers.Count(a => a.Verdict != "unchecked" && a.NotGrounded),
         answers.Count(a => a.Verdict == "unchecked"),
-        answers.Count(a => a.Unavailable),
+        answers.Count(a => a.JevUnavailable),
         answers.Select(a => a.RelevantFloor).FirstOrDefault(f => f is not null),
         answers.Select(a => a.GroundedFloor).FirstOrDefault(f => f is not null),
         Latency(durations, AnswerBudgetMs));
@@ -238,7 +258,7 @@ public static class JevStatistics
             routeReason = Str(routing, "reason");
         }
         return new IntentFact(at, jev, jev && outcome == IntentOutcome.Failed, intent, outcome == IntentOutcome.Used,
-            hasRouting, routedTool, routeReason, Num(data, "durationMs"), 0);
+            hasRouting, routedTool, routeReason, Num(data, "durationMs"), 0, reason == CircuitOpen);
     }
 
     private static GuardFact? GuardOf(DateTime at, JsonElement data)
@@ -253,6 +273,7 @@ public static class JevStatistics
         var content = check is "tool_result" or "reviewer";
         var items = 0;
         var unscreened = 0;
+        var skipped = 0;
         var durations = new List<double>();
         if (data.TryGetProperty("items", out var itemsEl) && itemsEl.ValueKind == JsonValueKind.Array)
         {
@@ -263,7 +284,11 @@ public static class JevStatistics
                 {
                     unscreened++;
                 }
-                if (content && Num(item, "durationMs") is { } ms)
+                if (Str(item, "reason") == CircuitOpen)
+                {
+                    skipped++;
+                }
+                else if (content && Num(item, "durationMs") is { } ms)
                 {
                     durations.Add(ms);
                 }
@@ -272,7 +297,7 @@ public static class JevStatistics
         // Recorded since the count exists: an empty item made no request. Before it, one request per item.
         var requests = data.TryGetProperty("requests", out var req) && req.ValueKind == JsonValueKind.Number ? req.GetInt32() : items;
         return new GuardFact(at, check, Str(data, "decision") ?? "pass", Str(data, "topQuestion"), content,
-            items, unscreened, durations, requests);
+            items, unscreened, durations, requests, skipped);
     }
 
     private static RelevanceFact? RelevanceOf(DateTime at, JsonElement data)
@@ -291,7 +316,7 @@ public static class JevStatistics
         var rerankJev = data.TryGetProperty("settings", out var s) && s.ValueKind == JsonValueKind.Object
             && Str(s, "reranker") == "jev";
         return new RelevanceFact(at, Bool(rel, "silenced"), unavailable, rerankJev, Num(rel, "max"),
-            Num(rel, "durationMs"), Num(rel, "floor"), Str(data, "callId"));
+            Num(rel, "durationMs"), Num(rel, "floor"), Str(data, "callId"), Skipped: reason == CircuitOpen);
     }
 
     /// <summary>A search's judgment from its own <c>relevance</c> event — the summary, not the diagnostics.</summary>
@@ -302,8 +327,9 @@ public static class JevStatistics
         {
             return null;
         }
-        return new RelevanceFact(at, Bool(data, "silenced"), Str(data, "reason") is not null, Str(data, "reranker") == "jev",
-            Num(data, "max"), Num(data, "durationMs"), Num(data, "floor"), Str(data, "callId"));
+        var reason = Str(data, "reason");
+        return new RelevanceFact(at, Bool(data, "silenced"), reason is not null, Str(data, "reranker") == "jev",
+            Num(data, "max"), Num(data, "durationMs"), Num(data, "floor"), Str(data, "callId"), Skipped: reason == CircuitOpen);
     }
 
     /// <summary>An answer check, judged against the floors recorded with it — the floors in force when it ran.</summary>
@@ -320,7 +346,8 @@ public static class JevStatistics
         var groundedFloor = Num(data, "groundedFloor");
         var requests = data.TryGetProperty("requests", out var req) && req.ValueKind == JsonValueKind.Number ? req.GetInt32() : 1;
         return new AnswerFact(at, Str(data, "verdict") ?? "unchecked", requests,
-            relevant < relevantFloor, grounded < groundedFloor, Num(data, "durationMs"), relevantFloor, groundedFloor);
+            relevant < relevantFloor, grounded < groundedFloor, Num(data, "durationMs"), relevantFloor, groundedFloor,
+            requests == 0 && Str(data, "reason") == CircuitOpen);
     }
 
     // ---- Sections ----
@@ -361,7 +388,7 @@ public static class JevStatistics
             .Select(i => new RelevanceMaxBin(Math.Round((double)i / RelevanceBins, 2), Math.Round((double)(i + 1) / RelevanceBins, 2),
                 bins[i, 0], bins[i, 1]))
             .ToList();
-        var durations = relevance.Where(r => r.DurationMs is not null).Select(r => r.DurationMs!.Value).ToList();
+        var durations = relevance.Where(r => r.Requested && r.DurationMs is not null).Select(r => r.DurationMs!.Value).ToList();
         var timeline = Buckets(from, now, bucket, s =>
         {
             var inside = relevance.Where(r => r.At >= s.Start.UtcDateTime && r.At < s.End.UtcDateTime).ToList();
@@ -403,20 +430,22 @@ public static class JevStatistics
         {
             bool In(DateTime at) => at >= s.Start.UtcDateTime && at < s.End.UtcDateTime;
             var content = guards.Where(g => g.Content && In(g.At)).ToList();
-            var req = jevIntents.Count(i => In(i.At)) + content.Sum(g => g.Requests) + relevance.Count(r => In(r.At))
-                + answers.Where(a => In(a.At)).Sum(a => a.Requests);
-            var un = jevIntents.Count(i => In(i.At) && i.Failed) + content.Sum(g => g.UnscreenedItems)
-                + relevance.Count(r => In(r.At) && r.Unavailable) + answers.Count(a => In(a.At) && a.Unavailable);
-            return new JevAvailabilityBucket(s.Start, req, un);
+            var req = jevIntents.Count(i => In(i.At) && !i.Skipped) + content.Sum(g => g.Requests)
+                + relevance.Count(r => In(r.At) && r.Requested) + answers.Where(a => In(a.At)).Sum(a => a.Requests);
+            var un = jevIntents.Count(i => In(i.At) && i.Failed && !i.Skipped) + content.Sum(g => g.UnscreenedItems - g.SkippedItems)
+                + relevance.Count(r => In(r.At) && r.Unavailable && r.Requested) + answers.Count(a => In(a.At) && a.Unavailable);
+            var skipped = jevIntents.Count(i => In(i.At) && i.Skipped) + content.Sum(g => g.SkippedItems)
+                + relevance.Count(r => In(r.At) && r.Skipped) + answers.Count(a => In(a.At) && a.Skipped);
+            return new JevAvailabilityBucket(s.Start, req, un, skipped);
         });
 
     // ---- Helpers ----
 
-    private static JevSiteSummary Site(string name, int requests, int unavailable, IEnumerable<double> durations)
+    private static JevSiteSummary Site(string name, int requests, int unavailable, int skipped, IEnumerable<double> durations)
     {
         var sorted = durations.Order().ToList();
         return new JevSiteSummary(name, requests, unavailable,
-            IntentStatistics.Percentile(sorted, 0.5), IntentStatistics.Percentile(sorted, 0.9));
+            IntentStatistics.Percentile(sorted, 0.5), IntentStatistics.Percentile(sorted, 0.9), skipped);
     }
 
     /// <summary>A latency summary and a 100 ms-binned histogram up to a budget, like the intent one.</summary>

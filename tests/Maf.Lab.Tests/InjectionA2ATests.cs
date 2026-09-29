@@ -214,6 +214,37 @@ public class InjectionA2ATests
         Assert.DoesNotContain("REASON-CANARY-551", modelSaw);
     }
 
+    [Fact]
+    public async Task With_the_circuit_open_a_refusals_words_are_still_withheld()
+    {
+        await using var reviewer = new HostileReviewerFactory();
+        var url = (await reviewer.ListenAsync()).TrimEnd('/');
+        using var api = Api(url, ApiFactory.OpensOnFirstFailure);
+        // The first Jev failure opens the circuit: the reviewer's words are skipped, not screened, and still fail closed.
+        api.Jev.Status = System.Net.HttpStatusCode.ServiceUnavailable;
+        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        reviewer.Verdict = JsonSerializer.SerializeToElement(new
+        {
+            decision = "refused",
+            adjustmentId = "ADJ-PLACEHOLDER",
+            accountId = "A-1042",
+            reason = "Refused: REASON-CANARY-552 exceeds the firm's credit limit.",
+        });
+        reviewer.EchoedPlaceholder = "ADJ-PLACEHOLDER";
+
+        var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
+
+        var modelSaw = string.Join("\n", api.Chat.Requests.SelectMany(r => r.Messages).SelectMany(m => m.Contents)
+            .OfType<FunctionResultContent>().Select(r => r.Result?.ToString()));
+        Assert.Contains(Maf.Lab.Api.Agent.Guardrail.ReviewerWordsWithheld, modelSaw);
+        Assert.DoesNotContain("REASON-CANARY-552", modelSaw);
+        var guard = ApiFactory.TracesOf(events).Single(t => t.GetProperty("kind").GetString() == TraceKinds.Guardrail
+            && t.GetProperty("data").GetProperty("check").GetString() == Maf.Lab.Api.Agent.Guardrail.CheckReviewer).GetProperty("data");
+        Assert.Equal("unscreened", guard.GetProperty("decision").GetString());
+        Assert.Equal("circuit open", guard.GetProperty("reason").GetString());
+        Assert.Equal(0, guard.GetProperty("requests").GetInt32());
+    }
+
     // ── the fixtures ─────────────────────────────────────────────────────────────────────────────────────────
 
     private static List<HostileVerdict> Load()
@@ -242,7 +273,7 @@ public class InjectionA2ATests
         }
     }
 
-    private static ApiFactory Api(string reviewerUrl) =>
+    private static ApiFactory Api(string reviewerUrl, IReadOnlyDictionary<string, string?>? extra = null) =>
         new(ProposingModel(), new FakeToolSource())
         {
             ExtraSettings = new Dictionary<string, string?>
@@ -252,7 +283,7 @@ public class InjectionA2ATests
                 ["Compliance:ClientSecret"] = "assistant-secret",
                 ["Compliance:Deadline"] = "00:00:10",
                 ["FeeAdjustments:ReviewAboveAmount"] = "500",
-            },
+            }.Concat(extra ?? new Dictionary<string, string?>()).ToDictionary(),
         };
 
     /// <summary>A model that proposes an adjustment when asked to, and otherwise answers.</summary>

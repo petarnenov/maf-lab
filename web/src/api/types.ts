@@ -657,12 +657,16 @@ export interface JevSiteSummary {
   unavailable: number;
   p50Ms: number | null;
   p90Ms: number | null;
+  /** Calls an open circuit skipped: not requests, not unavailable. Absent from an api older than the breaker. */
+  skipped?: number;
 }
 
 export interface JevAvailabilityBucket {
   start: string;
   requests: number;
   unavailable: number;
+  /** Absent from an api older than the circuit breaker. */
+  skipped?: number;
 }
 
 export interface JevOverview {
@@ -673,6 +677,8 @@ export interface JevOverview {
   requestsPerTurn: number | null;
   sites: JevSiteSummary[];
   timeline: JevAvailabilityBucket[];
+  /** Calls an open circuit skipped across every site. Absent from an api older than the breaker. */
+  skipped?: number;
 }
 
 export interface GuardrailCheckCount {

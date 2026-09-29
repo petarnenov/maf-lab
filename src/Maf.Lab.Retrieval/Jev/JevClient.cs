@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -7,8 +8,12 @@ using Microsoft.Extensions.Options;
 
 namespace Maf.Lab.Retrieval.Jev;
 
-/// <summary>What one request to Jev came to: the answer, or why there is none, and how long it took.</summary>
-public sealed record JevOutcome(JevResponse? Response, string? Failure, double DurationMs);
+/// <summary>
+/// What one request to Jev came to: the answer, or why there is none, and how long it took. <paramref name="Skipped"/>
+/// is true when an open circuit sent nothing (<see cref="JevClient.CircuitOpen"/>): the caller treats it as any other
+/// missing answer and records no request.
+/// </summary>
+public sealed record JevOutcome(JevResponse? Response, string? Failure, double DurationMs, bool Skipped = false);
 
 /// <summary>
 /// One request to Jev's System One endpoint, bounded by a budget and never throwing: a timeout, an error status, a
@@ -16,11 +21,15 @@ public sealed record JevOutcome(JevResponse? Response, string? Failure, double D
 /// Shared by everything that asks Jev (intent classification, screening and the answer check in the api, the relevance
 /// judge in retrieval), so the key, the wire shape and the timeout race exist once. It is a singleton holding one
 /// <see cref="HttpClient"/> for the life of the process, whose kept-alive connection every request reuses
-/// (jev-client-reuse).
+/// (jev-client-reuse). Every request passes the process's <see cref="JevCircuitBreaker"/>, which skips Jev while it is
+/// failing (add-jev-circuit-breaker); a client built without one sends every request.
 /// </summary>
-public sealed class JevClient(IHttpClientFactory http, JevCredential credential, IOptions<JevOptions> options)
+public sealed class JevClient(IHttpClientFactory http, JevCredential credential, IOptions<JevOptions> options, JevCircuitBreaker? breaker = null)
 {
     public const string HttpClientName = "jev";
+
+    /// <summary>The failure reason of a call an open circuit skipped.</summary>
+    public const string CircuitOpen = "circuit open";
 
     // Created once: the named client's handler is never rotated (see AddJevClient), so this instance and its pooled
     // connections are what every request goes through.
@@ -36,6 +45,29 @@ public sealed class JevClient(IHttpClientFactory http, JevCredential credential,
         {
             return new JevOutcome(null, "no key", 0);
         }
+        var ticket = breaker?.Enter() ?? new JevCircuitTicket(true, false);
+        if (!ticket.Allowed)
+        {
+            return new JevOutcome(null, CircuitOpen, 0, Skipped: true);
+        }
+        // Neutral until shown otherwise: the caller's own cancellation leaves by the exception and says nothing about Jev.
+        var result = JevCallResult.Neutral;
+        string? failure = null;
+        try
+        {
+            var (outcome, verdict) = await SendAsync(state, questions, timeoutSeconds, ct);
+            (result, failure) = (verdict, outcome.Failure);
+            return outcome;
+        }
+        finally
+        {
+            breaker?.Exit(ticket, result, failure);
+        }
+    }
+
+    private async Task<(JevOutcome Outcome, JevCallResult Result)> SendAsync(object state, IReadOnlyDictionary<string, object> questions,
+        double timeoutSeconds, CancellationToken ct)
+    {
         var timeout = TimeSpan.FromSeconds(timeoutSeconds);
         var sw = Stopwatch.StartNew();
         try
@@ -49,20 +81,27 @@ public sealed class JevClient(IHttpClientFactory http, JevCredential credential,
             if (await Task.WhenAny(call, Task.Delay(timeout, ct)) != call)
             {
                 Forget(call);
-                return new JevOutcome(null, $"timed out after {timeoutSeconds}s", sw.Elapsed.TotalMilliseconds);
+                return (new JevOutcome(null, $"timed out after {timeoutSeconds}s", sw.Elapsed.TotalMilliseconds), JevCallResult.Failure);
             }
             var (status, body) = await call;
-            return body is null
-                ? new JevOutcome(null, $"rejected ({status})", sw.Elapsed.TotalMilliseconds)
-                : new JevOutcome(body, null, sw.Elapsed.TotalMilliseconds);
+            if (body is null)
+            {
+                // The retry handler's notion of transient decides what counts against Jev, so the two cannot drift apart.
+                var transient = JevRetryHandler.IsTransient((HttpStatusCode)status);
+                return (new JevOutcome(null, $"rejected ({status})", sw.Elapsed.TotalMilliseconds),
+                    transient ? JevCallResult.Failure : JevCallResult.Neutral);
+            }
+            return (new JevOutcome(body, null, sw.Elapsed.TotalMilliseconds), JevCallResult.Success);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            return new JevOutcome(null, $"timed out after {timeoutSeconds}s", sw.Elapsed.TotalMilliseconds);
+            return (new JevOutcome(null, $"timed out after {timeoutSeconds}s", sw.Elapsed.TotalMilliseconds), JevCallResult.Failure);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return new JevOutcome(null, ex.GetType().Name, sw.Elapsed.TotalMilliseconds);
+            // A transport error is Jev being unreachable; anything else (an unreadable body) is not evidence either way.
+            return (new JevOutcome(null, ex.GetType().Name, sw.Elapsed.TotalMilliseconds),
+                ex is HttpRequestException ? JevCallResult.Failure : JevCallResult.Neutral);
         }
     }
 
@@ -125,6 +164,8 @@ public static class JevClientServiceCollectionExtensions
             .SetHandlerLifetime(Timeout.InfiniteTimeSpan)
             .AddHttpMessageHandler<JevRetryHandler>()
             .AddHttpMessageHandler<JevAuthHandler>();
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<JevCircuitBreaker>();
         services.TryAddSingleton<JevClient>();
         services.AddHostedService<JevWarmup>();
         return services;

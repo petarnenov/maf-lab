@@ -42,6 +42,16 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
     public bool EmulateForcing { get; }
     /// <summary>How long each stage of a simulated A2A billing run takes; instant unless a test needs to interrupt one.</summary>
     public int SimulatedStepMs { get; init; } = 1;
+    /// <summary>
+    /// A circuit breaker that opens on the first transient Jev failure and stays open for the test: what a turn does
+    /// when Jev is skipped (add-jev-circuit-breaker).
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string?> OpensOnFirstFailure = new Dictionary<string, string?>
+    {
+        ["Jev:Breaker:FailureThreshold"] = "1",
+        ["Jev:Breaker:OpenSeconds"] = "600",
+    };
+
     /// <summary>Extra configuration for one test, applied over the standard settings.</summary>
     public IReadOnlyDictionary<string, string?> ExtraSettings { get; init; } = new Dictionary<string, string?>();
     /// <summary>Extra service overrides for one test (applied after the standard ones).</summary>
@@ -62,6 +72,9 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
             [JevCredential.EnvironmentVariable] = FakeJev.TestKey,
             // No warm-up request: these tests count what each turn sends to Jev (the warm-up has tests of its own).
             ["Jev:WarmUp"] = "false",
+            // No circuit breaker: these tests script Jev failures turn after turn and count the requests each one sends
+            // (the breaker has tests of its own).
+            ["Jev:Breaker:FailureThreshold"] = "0",
             // One partner, so the A2A surface has something to authenticate.
             ["A2A:Partners:acme-portal:Secret"] = "s3cret",
             ["A2A:Partners:acme-portal:Firms:0"] = "firm-a",

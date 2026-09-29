@@ -219,8 +219,17 @@ judge and the answer check. The client keeps its connection alive between reques
   retry) or the server's `Retry-After`. A transient failure is no response, 408, 429 or a 5xx.
   - A retry never outlasts the caller's timeout.
   - Other 4xx statuses are not retried. `Jev__MaxRetries=0` turns retrying off.
+- **Circuit breaker:** after `Jev:Breaker:FailureThreshold` (3) consecutive timeouts, transport errors or final
+  408/429/5xx, a process skips Jev for `Jev:Breaker:OpenSeconds` (30). Every call then returns at once with reason
+  `circuit open`, sends nothing, and each site does what it does whenever Jev is unavailable.
+  - After the period one real call goes through as a probe: success closes the circuit, failure opens it again.
+  - A missing key, a 401/422 or a caller's own cancellation never counts. Each replica has its own breaker.
+  - `/admin/jev` counts the skipped calls apart from requests. `Jev__Breaker__FailureThreshold=0` turns it off.
 - **Logs:** every attempt is logged with its status code and duration, e.g. `Jev attempt 1/2 → 429 in 180 ms`, then
   `Jev retrying after 429 in 104 ms (attempt 2/2)`, and the warm-up logs `Jev warm-up answered by jev-1.13.0 in 412 ms`.
+  - The breaker logs only its state changes, e.g. `Jev circuit opened after 3 consecutive failures (last: timed out
+    after 2s); skipping Jev for 30s`, `Jev circuit half-open: probing`, `Jev circuit closed after 57214 ms; 22 calls
+    skipped`.
   - Watch them with `make logs SERVICE=api | grep Jev`.
   - The lines hold numbers and type names only: no question, no passage, no key.
 

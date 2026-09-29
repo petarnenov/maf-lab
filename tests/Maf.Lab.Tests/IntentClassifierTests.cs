@@ -18,7 +18,7 @@ public class IntentClassifierTests
 
     private sealed record Harness(JevIntentClassifier Classifier, FakeJev Jev, CapturingLoggerProvider Logs);
 
-    private static Harness Build(FakeJev? jev = null, string? key = FakeJev.TestKey, JevOptions? options = null)
+    private static Harness Build(FakeJev? jev = null, string? key = FakeJev.TestKey, JevOptions? options = null, JevCircuitBreaker? breaker = null)
     {
         jev ??= new FakeJev();
         var logs = new CapturingLoggerProvider();
@@ -29,8 +29,25 @@ public class IntentClassifierTests
         var credential = new JevCredential(configuration, loggers.CreateLogger<JevCredential>());
         var client = new HttpClient(new JevAuthHandler(credential) { InnerHandler = jev }) { BaseAddress = new Uri("https://jev.test/") };
         var o = Options.Create(options ?? new JevOptions());
-        var classifier = new JevIntentClassifier(new JevClient(new SingleClientFactory(client), credential, o), o, loggers);
+        var classifier = new JevIntentClassifier(new JevClient(new SingleClientFactory(client), credential, o, breaker), o, loggers);
         return new Harness(classifier, jev, logs);
+    }
+
+    [Fact]
+    public async Task With_the_circuit_open_the_turn_proceeds_with_no_intent_and_nothing_is_sent()
+    {
+        var h = Build(new FakeJev { Status = HttpStatusCode.ServiceUnavailable }, breaker: JevCircuitBreakerTests.OpensOnFirstFailure());
+        await h.Classifier.ClassifyAsync("what is the procedure when a fee schedule is missing", Ct);
+        var sent = h.Jev.Requests.Count;
+
+        var decision = await h.Classifier.ClassifyAsync("what is the procedure when a fee schedule is missing", Ct);
+
+        Assert.Equal(sent, h.Jev.Requests.Count);
+        Assert.Equal(Intent.Other, decision.Intent);
+        Assert.False(IntentClassifier.ForcesRetrieval(decision.Intent));
+        Assert.Equal("circuit open", decision.Reason);
+        Assert.Equal("jev-1.13.0", decision.Model);
+        Assert.False(decision.OutsideDomains);
     }
 
     [Theory]

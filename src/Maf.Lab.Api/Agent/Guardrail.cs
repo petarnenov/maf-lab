@@ -46,6 +46,9 @@ public sealed record GuardScores(IReadOnlyDictionary<string, double>? Scores, st
 {
     public static GuardScores Failed(string reason, string? model, double durationMs) => new(null, model, durationMs, reason);
 
+    /// <summary>An open circuit skipped Jev: nothing was sent, so no request is counted (add-jev-circuit-breaker).</summary>
+    public bool Skipped => Failure == JevClient.CircuitOpen;
+
     public (double Top, string Question)? Highest =>
         Scores is { Count: > 0 } s ? s.OrderByDescending(kv => kv.Value).Select(kv => (kv.Value, kv.Key)).First() : null;
 }
@@ -160,7 +163,8 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
         var clock = System.Diagnostics.Stopwatch.StartNew();
         var items = await ScreenAllAsync(texts, ct);
         var elapsedMs = clock.Elapsed.TotalMilliseconds;
-        var requests = texts.Count(t => !string.IsNullOrWhiteSpace(t));
+        // One request per item that had text, less the ones an open circuit skipped: those sent nothing.
+        var requests = texts.Count(t => !string.IsNullOrWhiteSpace(t)) - items.Count(i => i.Scores.Skipped);
 
         var withheld = items.Where(i => i.Decision == GuardDecision.Withheld).Select(i => i.Index).ToHashSet();
         var decision = withheld.Count > 0 ? GuardDecision.Withheld
@@ -213,7 +217,7 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
             : top.Top >= threshold ? GuardDecision.Withheld
             : GuardDecision.Pass;
         Trace(trace, CheckReviewer, null, callId, decision, threshold, [new ScreenedItem(0, decision, scores)],
-            decision == GuardDecision.Withheld ? 1 : 0, scores.Failure, requests: 1, elapsedMs: scores.DurationMs);
+            decision == GuardDecision.Withheld ? 1 : 0, scores.Failure, requests: scores.Skipped ? 0 : 1, elapsedMs: scores.DurationMs);
 
         return (decision, result) switch
         {

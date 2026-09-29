@@ -180,7 +180,8 @@ public static class IntentStatistics
             Number(data, "inDomain"),
             probabilities,
             model,
-            Number(data, "durationMs"),
+            // A classification the circuit breaker skipped sent nothing: it has no latency (add-jev-circuit-breaker).
+            reason == Retrieval.Jev.JevClient.CircuitOpen ? null : Number(data, "durationMs"),
             label == "timed out");
     }
 

@@ -88,4 +88,24 @@ public sealed class JevOptions
     /// as the process, so this is what picks up a change of the endpoint's address.
     /// </summary>
     public double PooledConnectionLifetimeMinutes { get; set; } = 10;
+
+    /// <summary>The circuit breaker in front of every Jev request in the process (add-jev-circuit-breaker).</summary>
+    public JevBreakerOptions Breaker { get; set; } = new();
+}
+
+/// <summary>
+/// When the process stops asking Jev for a while. Bound from <c>Jev:Breaker</c>; a threshold of 0 disables the breaker
+/// and every request is sent as before.
+/// </summary>
+public sealed class JevBreakerOptions
+{
+    /// <summary>
+    /// Consecutive transient failures (timeout, transport error, final 408/429/5xx) that open the circuit. Three is less
+    /// than one degraded turn makes (intent, a search, a screening, the answer check), so the next turn never waits; the
+    /// eval traces show no isolated timeouts, so three in a row is an outage, not noise.
+    /// </summary>
+    public int FailureThreshold { get; set; } = 3;
+
+    /// <summary>How long an open circuit skips Jev before one real call goes through as the probe.</summary>
+    public double OpenSeconds { get; set; } = 30;
 }

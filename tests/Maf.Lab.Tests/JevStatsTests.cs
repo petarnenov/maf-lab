@@ -82,6 +82,92 @@ public class JevStatsTests
         Assert.Equal(3, r.Overview.Timeline.Sum(b => b.Unavailable));
     }
 
+    // ---- Calls an open circuit skipped (add-jev-circuit-breaker) ----
+
+    [Fact]
+    public void Skipped_classifications_are_counted_apart_from_requests_and_unavailability()
+    {
+        var events = new List<JsonObject>();
+        for (var i = 0; i < 5; i++)
+        {
+            events.Add(IntentEv("Procedural", forced: true, choice: "procedural", ms: 300));
+        }
+        events.Add(IntentEv("Other", reason: "timed out after 2s", ms: 2000, confidence: null, choice: null));
+        events.Add(IntentEv("Other", reason: "timed out after 2s", ms: 2000, confidence: null, choice: null));
+        for (var i = 0; i < 3; i++)
+        {
+            events.Add(IntentEv("Other", reason: "circuit open", ms: 0, confidence: null, choice: null));
+        }
+        var rows = events.Select((e, i) => Row(-10 - i, Trace(e))).ToArray();
+
+        var r = Aggregate(rows);
+
+        var site = r.Overview.Sites.Single(x => x.Site == "intent");
+        Assert.Equal((7, 2, 3), (site.Requests, site.Unavailable, site.Skipped));
+        Assert.Equal((7, 2, 3), (r.Overview.Requests, r.Overview.Unavailable, r.Overview.Skipped));
+        Assert.Equal(3, r.Overview.Timeline.Sum(b => b.Skipped));
+        Assert.Equal(7, r.Overview.Timeline.Sum(b => b.Requests));
+        Assert.Equal(0.7, r.Overview.RequestsPerTurn);
+        // The skipped ones stay failed classifications with their own reason, and have no latency.
+        Assert.Equal(5, r.Intent.Totals.Failed);
+        Assert.Equal(7, r.Intent.Latency.Count);
+        Assert.Equal(300, site.P50Ms);
+    }
+
+    [Fact]
+    public void A_skipped_answer_check_is_unchecked_and_skipped_not_a_request()
+    {
+        var r = Aggregate(
+            Row(-10, Trace(IntentEv("Procedural", forced: true, choice: "procedural"), AnswerEv("pass", 0.9, 0.9))),
+            Row(-20, Trace(IntentEv("Procedural", forced: true, choice: "procedural"),
+                AnswerEv("unchecked", null, null, ms: 0, reason: "circuit open", requests: 0))));
+
+        var site = r.Overview.Sites.Single(x => x.Site == "answer");
+        Assert.Equal((1, 0, 1), (site.Requests, site.Unavailable, site.Skipped));
+        Assert.Equal(1, r.AnswerCheck!.Unchecked);
+        Assert.Equal(1, r.AnswerCheck!.Unavailable);
+        Assert.Equal(1, r.AnswerCheck!.Latency.Count);
+    }
+
+    [Fact]
+    public void A_skipped_search_stays_ungated_and_is_skipped_at_the_relevance_site()
+    {
+        var r = Aggregate(
+            Row(-10, Trace(IntentEv("Procedural", forced: true, choice: "procedural"), RelevanceEv(max: 0.8))),
+            Row(-20, Trace(IntentEv("Procedural", forced: true, choice: "procedural"), RelevanceEv(reason: "circuit open", ms: 0))));
+
+        var site = r.Overview.Sites.Single(x => x.Site == "relevance");
+        Assert.Equal((1, 0, 1), (site.Requests, site.Unavailable, site.Skipped));
+        Assert.Equal(2, r.Relevance.Searches);
+        Assert.Equal(1, r.Relevance.Unavailable);
+        Assert.Equal(300, site.P50Ms);
+    }
+
+    [Fact]
+    public void Skipped_screenings_are_unscreened_and_skipped_not_requests()
+    {
+        var r = Aggregate(Row(-10, Trace(IntentEv("Procedural", forced: true, choice: "procedural"),
+            GuardEv("tool_result", "unscreened", items: 2, unscreened: 2, unscreenedReason: "circuit open", requests: 0))));
+
+        var site = r.Overview.Sites.Single(x => x.Site == "guardrail");
+        Assert.Equal((0, 0, 2), (site.Requests, site.Unavailable, site.Skipped));
+        Assert.Equal(1, r.Guardrail.Unscreened);
+        Assert.Equal(2, r.Overview.Timeline.Sum(b => b.Skipped));
+    }
+
+    [Fact]
+    public void A_site_whose_calls_were_all_skipped_has_no_latency()
+    {
+        var r = Aggregate(Row(-10, Trace(IntentEv("Procedural", forced: true, choice: "procedural"),
+            RelevanceEv(reason: "circuit open", ms: 0), RelevanceEv(reason: "circuit open", ms: 0))));
+
+        var site = r.Overview.Sites.Single(x => x.Site == "relevance");
+        Assert.Equal((0, 2), (site.Requests, site.Skipped));
+        Assert.Null(site.P50Ms);
+        Assert.Null(site.P90Ms);
+        Assert.Equal(0, r.Relevance.Latency.Count);
+    }
+
     // ---- Guardrail ----
 
     [Fact]
@@ -494,7 +580,7 @@ public class JevStatsTests
     };
 
     private static JsonObject GuardEv(string check, string decision, string? topQuestion = null, int items = 1,
-        int unscreened = 0, double itemMs = 300, string? model = "jev-1.13.0")
+        int unscreened = 0, double itemMs = 300, string? model = "jev-1.13.0", string? unscreenedReason = null, int? requests = null)
     {
         var arr = new JsonArray();
         for (var i = 0; i < items; i++)
@@ -504,8 +590,8 @@ public class JevStatsTests
                 ["index"] = i,
                 ["decision"] = i < unscreened ? "unscreened" : decision,
                 ["scores"] = null,
-                ["durationMs"] = itemMs,
-                ["reason"] = null,
+                ["durationMs"] = i < unscreened && unscreenedReason == "circuit open" ? 0 : itemMs,
+                ["reason"] = i < unscreened ? unscreenedReason : null,
             });
         }
         return Ev("guardrail", new JsonObject
@@ -520,6 +606,7 @@ public class JevStatsTests
             ["withheld"] = decision == "withheld" ? 1 : 0,
             ["items"] = arr,
             ["model"] = model,
+            ["requests"] = requests,
             ["durationMs"] = itemMs,
             ["reason"] = null,
         });

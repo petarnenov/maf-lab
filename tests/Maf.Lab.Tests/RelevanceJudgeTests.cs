@@ -35,7 +35,8 @@ public class RelevanceJudgeTests
 
     private sealed record Harness(JevRelevanceJudge Judge, FakeJev Jev, CapturingLoggerProvider Logs);
 
-    private static Harness Build(FakeJev? jev = null, string? key = FakeJev.TestKey, RetrievalOptions? options = null)
+    private static Harness Build(FakeJev? jev = null, string? key = FakeJev.TestKey, RetrievalOptions? options = null,
+        JevCircuitBreaker? breaker = null)
     {
         jev ??= new FakeJev();
         var logs = new CapturingLoggerProvider();
@@ -45,7 +46,7 @@ public class RelevanceJudgeTests
             .Build();
         var credential = new JevCredential(configuration, loggers.CreateLogger<JevCredential>());
         var client = new HttpClient(new JevAuthHandler(credential) { InnerHandler = jev }) { BaseAddress = new Uri("https://jev.test/") };
-        var judge = new JevRelevanceJudge(new JevClient(new OneClientFactory(client), credential, Options.Create(new JevOptions())),
+        var judge = new JevRelevanceJudge(new JevClient(new OneClientFactory(client), credential, Options.Create(new JevOptions()), breaker),
             Options.Create(options ?? new RetrievalOptions()), loggers.CreateLogger<JevRelevanceJudge>());
         return new Harness(judge, jev, logs);
     }
@@ -133,6 +134,23 @@ public class RelevanceJudgeTests
 
         Assert.Null(judgement.Scores);
         Assert.Equal(reason, judgement.Reason);
+    }
+
+    [Fact]
+    public async Task With_the_circuit_open_nothing_is_sent_and_the_search_keeps_its_fused_order()
+    {
+        var h = Build(new FakeJev { Status = HttpStatusCode.ServiceUnavailable }, breaker: JevCircuitBreakerTests.OpensOnFirstFailure());
+        await h.Judge.JudgeAsync("fee schedule", Candidates, Ct);
+        var sent = h.Jev.Requests.Count;
+
+        var judgement = await h.Judge.JudgeAsync("fee schedule", Candidates, Ct);
+        var ranked = await new JevReranker(h.Judge).RerankAsync("fee schedule", Candidates, Ct);
+
+        Assert.Equal(sent, h.Jev.Requests.Count);
+        Assert.Null(judgement.Scores);
+        Assert.Equal("circuit open", judgement.Reason);
+        Assert.Equal(0, judgement.DurationMs);
+        Assert.Equal(Candidates, ranked);
     }
 
     [Fact]
