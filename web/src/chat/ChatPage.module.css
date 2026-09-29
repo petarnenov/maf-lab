@@ -237,13 +237,13 @@
   margin-bottom: 0.5rem;
   padding: 0.35rem 0.6rem;
   border-radius: 6px;
-  background: #fff7e6;
-  border: 1px solid #f5c26b;
+  background: var(--rewind-bg);
+  border: 1px solid var(--rewind-border);
   font-size: 0.85rem;
 }
 
 .rewindNote {
-  color: #8a5a00;
+  color: var(--rewind-note);
   font-style: italic;
 }
 

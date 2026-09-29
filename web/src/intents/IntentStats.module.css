@@ -4,23 +4,12 @@
  * uses it has a legend, hover values and a table beside it.
  */
 .root {
-  --used: #2a78d6;
-  --gated: #eb6834;
-  --failed: #1baf7a;
-  --single: #2a78d6;
-  --grid: #e7eaef;
-  --axis-line: #c3c8d1;
-}
-
-@media (prefers-color-scheme: dark) {
-  .root {
-    --used: #3987e5;
-    --gated: #d95926;
-    --failed: #199e70;
-    --single: #3987e5;
-    --grid: #262c35;
-    --axis-line: #3a424e;
-  }
+  --used: light-dark(#2a78d6, #3987e5);
+  --gated: light-dark(#eb6834, #d95926);
+  --failed: light-dark(#1baf7a, #199e70);
+  --single: light-dark(#2a78d6, #3987e5);
+  --grid: light-dark(#e7eaef, #262c35);
+  --axis-line: light-dark(#c3c8d1, #3a424e);
 }
 
 .controls {

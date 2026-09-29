@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router';
 import { DevTokenPicker } from './DevTokenPicker';
+import { ThemeButton } from '../theme/ThemeButton';
 import styles from './Layout.module.css';
 
 const LINKS = [
@@ -34,6 +35,7 @@ export function Layout() {
           ))}
         </nav>
         <DevTokenPicker />
+        <ThemeButton />
       </header>
       <main className={styles.main}>
         <Outlet />
