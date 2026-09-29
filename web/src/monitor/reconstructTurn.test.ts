@@ -81,4 +81,25 @@ describe('reconstructTurn', () => {
     expect(turn.reasoning).toBe('');
     expect(turn.reasoningMs).toBeUndefined();
   });
+
+  it('shows a data card only from the step it arrived at', () => {
+    const card = {
+      seq: fixtureTrace.length,
+      atMs: 999,
+      kind: 'card',
+      title: 'Data card maf-lab/holdings',
+      data: {
+        callId: 'c9',
+        messageId: 'card-c9',
+        activityType: 'maf-lab/holdings',
+        content: { accountId: 'A-1043' },
+      },
+      truncated: false,
+    };
+    const trace = [...fixtureTrace, card];
+    expect(reconstructTurn(trace, fixtureTrace.length).cards).toEqual([]);
+    expect(reconstructTurn(trace, trace.length).cards).toEqual([
+      { messageId: 'card-c9', activityType: 'maf-lab/holdings', content: { accountId: 'A-1043' } },
+    ]);
+  });
 });

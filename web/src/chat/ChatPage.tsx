@@ -21,6 +21,7 @@ import type { AssistantTurn } from './chatReducer';
 import styles from './ChatPage.module.css';
 import { idle, step, type RecallState } from './promptHistory';
 import { SourcesPanel } from './SourcesPanel';
+import { CardView } from './cards/CardView';
 import { ConfirmationCard } from './ConfirmationCard';
 import { ToolCallCard } from './ToolCallCard';
 import { TurnFeedback } from './TurnFeedback';
@@ -282,7 +283,7 @@ export function ChatPage() {
               </p>
             )}
             {!loadingConversation &&
-              state.turns.map((turn) =>
+              state.turns.map((turn, index) =>
                 turn.role === 'user' ? (
                   <div key={turn.id} className={`${styles.bubble} ${styles.user}`}>
                     {turn.text}
@@ -291,6 +292,9 @@ export function ChatPage() {
                   <AssistantBubble
                     key={turn.id}
                     turn={turn}
+                    question={
+                      state.turns[index - 1]?.role === 'user' ? state.turns[index - 1].text : ''
+                    }
                     conversationId={state.conversationId}
                     selected={monitorOpen && turn.id === selected?.id}
                     rewound={monitorOpen && turn.id === selected?.id ? rewound : null}
@@ -378,8 +382,11 @@ function AssistantBubble({
   onShow,
   onToggle,
   onAnswer,
+  question,
 }: {
   turn: AssistantTurn;
+  /** The question this turn answers: its cards are written in that question's language. */
+  question: string;
   conversationId?: string;
   selected: boolean;
   /** The reasoning out of this turn's stored trace, for a turn that did not stream in this session. */
@@ -397,6 +404,7 @@ function AssistantBubble({
   const toolCalls = rewound ? rewound.toolCalls : turn.toolCalls;
   const text = rewound ? rewound.text : turn.text;
   const sources = rewound ? rewound.sources : turn.sources;
+  const cards = rewound ? rewound.cards : (turn.cards ?? []);
   // What the turn itself streamed wins; a restored turn has only what its trace kept.
   const reasoning = rewound
     ? { text: rewound.reasoning, ms: rewound.reasoningMs }
@@ -451,6 +459,9 @@ function AssistantBubble({
       )}
       {toolCalls.map((call) => (
         <ToolCallCard key={call.callId} call={call} />
+      ))}
+      {cards.map((card) => (
+        <CardView key={card.messageId} card={card} question={question} />
       ))}
       {text ? (
         <div className={styles.text}>{text}</div>

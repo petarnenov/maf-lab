@@ -1,4 +1,5 @@
 import type {
+  DataCard,
   ChatStreamEvent,
   FeedbackKind,
   HistoryTurn,
@@ -37,6 +38,8 @@ export interface AssistantTurn {
   reasoningSince?: number;
   toolCalls: ToolCallView[];
   sources: SourceRef[];
+  /** Data cards the turn showed, in arrival order (add-activity-cards). */
+  cards?: DataCard[];
   status: 'streaming' | 'done' | 'error';
   /** Server-issued turn id, known once `done` arrives. Feedback needs it. */
   turnId?: string;
@@ -256,6 +259,7 @@ export function hydrateTurn(turn: HistoryTurn): Turn[] {
         sourcePath: s.sourcePath ?? '',
         snippet: s.snippet ?? '',
       })),
+      cards: turn.activities ?? [],
       toolCalls: turn.toolCalls.map((c, i) => ({
         callId: c.callId ?? `${turn.turnId}-${i}`,
         toolName: c.toolName,
@@ -333,6 +337,18 @@ function applyEvent(state: ChatState, event: ChatStreamEvent): ChatState {
 
     case 'sources':
       return updateActiveTurn(state, (turn) => ({ ...turn, sources: event.data.sources }));
+
+    // A snapshot for a card already shown replaces it, as the protocol says; a new one joins the end.
+    case 'card':
+      return updateActiveTurn(state, (turn) => {
+        const cards = turn.cards ?? [];
+        return {
+          ...turn,
+          cards: cards.some((c) => c.messageId === event.data.messageId)
+            ? cards.map((c) => (c.messageId === event.data.messageId ? event.data : c))
+            : [...cards, event.data],
+        };
+      });
 
     // The card that renders this belongs to the next change; the turn keeps it so nothing is lost meanwhile.
     case 'confirmation_required':

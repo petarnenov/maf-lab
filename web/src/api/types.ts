@@ -113,11 +113,23 @@ export interface AguiFrame {
   truncated?: boolean;
 }
 
+/**
+ * A data card (AG-UI `ACTIVITY_SNAPSHOT`): a typed tool result the chat renders as a table. `activityType` is open —
+ * a type this screen does not know renders nothing.
+ */
+export interface DataCard {
+  messageId: string;
+  activityType: string;
+  content: Record<string, unknown>;
+}
+
 export type ChatStreamEvent =
   | { type: 'text_delta'; data: { text: string } }
   | { type: 'tool_call_started'; data: ToolCallStartedData }
   | { type: 'tool_call_finished'; data: ToolCallFinishedData }
   | { type: 'sources'; data: { sources: SourceRef[] } }
+  /** A data card: an AG-UI activity a carded tool result became (add-activity-cards). */
+  | { type: 'card'; data: DataCard }
   | { type: 'reasoning_delta'; data: { text: string } }
   /** The model stopped reasoning. It does not close the block — the answer's first text does. */
   | { type: 'reasoning_end' }
@@ -149,6 +161,7 @@ export type TraceKind =
   | 'adjustment'
   | 'guardrail'
   | 'sources'
+  | 'card'
   | 'signals'
   | 'memory'
   | 'turn.end';
@@ -359,6 +372,8 @@ export interface HistoryTurn {
   sources: SourceRef[];
   feedbackKinds: FeedbackKind[];
   traceAvailable: boolean;
+  /** The data cards the turn showed; absent or empty for turns stored before cards existed. */
+  activities?: DataCard[] | null;
 }
 
 export interface ConversationDetail {

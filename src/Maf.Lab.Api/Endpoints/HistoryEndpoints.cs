@@ -76,7 +76,8 @@ public static class HistoryEndpoints
                     .Select(c => new HistoryToolCall(c.CallId, c.ToolName, c.ArgumentSummary, c.Outcome, c.ResultSummary, c.SourceCount)).ToList(),
                 ReadSources(t.SourcesJson),
                 feedback.Where(f => f.TurnId == t.Id).Select(f => f.Kind).Distinct().ToList(),
-                traced.Contains(t.Id))).ToList();
+                traced.Contains(t.Id),
+                ReadActivities(t.ActivitiesJson))).ToList();
 
             var title = conversation.Title ?? ConversationTitles.FromQuestion(turns.FirstOrDefault()?.Question ?? "");
             return Results.Ok(new ConversationDetail(conversation.Id, title, Utc(conversation.CreatedAt), Utc(conversation.LastActivityAt), history));
@@ -170,6 +171,10 @@ public static class HistoryEndpoints
         return doc.RootElement.EnumerateArray().Select(e => new SourceRef(
             Str(e, "docId"), Str(e, "sectionPath"), Str(e, "sourcePath"), Str(e, "snippet"))).ToList();
     }
+
+    /// <summary>A turn's data cards. A row stored before cards existed holds '' (the added column's default): no cards.</summary>
+    private static List<HistoryActivity> ReadActivities(string json) =>
+        string.IsNullOrWhiteSpace(json) ? [] : JsonSerializer.Deserialize<List<HistoryActivity>>(json, Json) ?? [];
 
     private static string Str(JsonElement e, string name) =>
         e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";

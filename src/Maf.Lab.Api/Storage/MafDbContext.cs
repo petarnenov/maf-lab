@@ -89,6 +89,8 @@ public sealed class TurnRow
     public string ToolCallsJson { get; set; } = "[]";
     /// <summary>(docId, sectionPath) pairs returned by search_documents, for resolving chunk ids at review time.</summary>
     public string SourcesJson { get; set; } = "[]";
+    /// <summary>The data cards the turn showed, as sent (add-activity-cards): numbers and names only.</summary>
+    public string ActivitiesJson { get; set; } = "[]";
     public string SignalsJson { get; set; } = "[]";
     public bool Labeled { get; set; }
     public DateTime CreatedAt { get; set; }

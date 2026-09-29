@@ -1648,3 +1648,56 @@ None of those figures came from a tool.
   table; that is add-system-prompt-v3's job. `selection` run `20260929-154411-selection`: recall 1, exactMatch 0.971,
   negativeAccuracy 1.
 - No package added or moved.
+
+## 49. Data cards: typed tool results as AG-UI activities (add-activity-cards, 2026-09-29)
+
+Portfolio data reached the user only as the model's markdown, which the chat does not render. The exact data was on
+the server, as a typed DTO, and was redacted to a summary before the client (§26). The chat handled 10 of the
+protocol's 30 event types.
+
+- **The protocol has the message kind.** `ACTIVITY_SNAPSHOT` carries `{ messageId, activityType, content }`, and the
+  client renders it as a component; an unknown `activityType` is ignored by rule. `AGUI.Abstractions` 1.0.0
+  (`Content: JsonElement`) and `@ag-ui/core` 1.0.0 already have it, so no package was added.
+- **An allow-list, not a looser redaction.**
+  - `AGUIStream.Cards` names three tools, each with its activity type and result type: `get_household_portfolio` as
+    `maf-lab/holdings`, `get_aum_history` as `maf-lab/aum-history`, `list_my_accounts` as `maf-lab/accounts`.
+  - A test walks every string property of each result type against an explicit list: the names, plus the fixed
+    `tradeSide`. Checked by adding a `Note` string to `AccountSummary`: the test failed naming it.
+  - `TOOL_CALL_RESULT` stays a summary. The numbers travel only in the card.
+  - A failed result, a result that is not structured, or one the guard withheld sends no card. A test withholds A-1043
+    via Jev and sees neither a card nor a `card` trace event.
+- **The runner emits the card, after the result event.**
+  - The tool middleware queues the card after screening. The run loop writes it right after that call's
+    `TOOL_CALL_RESULT`, so the card arrives with its call and before any answer text.
+  - Rejected: an `AGUI.Server` mapping hook. It adds events after the built-in ones and sees the raw update (§26), and
+    the runner already owns the channel and the order.
+  - Frames are recorded as they are written, so a rejoin replays cards with no extra work.
+- **Kept with the turn.**
+  - `TurnRow.ActivitiesJson` is added by the additive column pass.
+  - The pass gives an existing row `''`, not `"[]"`, so reading treats blank as no cards. A test writes `''` and opens
+    the conversation; without that, a pre-change conversation would have failed to open.
+  - `HistoryTurn.activities` restores the cards, and a `card` trace event lets time travel show a card from its step.
+- **Web:**
+  - `chatEvents` maps `EventType.ACTIVITY_SNAPSHOT`. The reducer replaces a card by `messageId`, per the protocol's
+    snapshot rule.
+  - `web/src/chat/cards/` draws a `<table>` with a caption and `scope` headers:
+    - numbers right-aligned in tabular figures;
+    - `Intl` formatting in the question's language (bg-BG when it has Cyrillic: "268 000 $", "20,6 %"; en-US
+      otherwise);
+    - buy and sell as words;
+    - an inline-SVG drift bar with the tolerance band and an "outside tolerance" label;
+    - "Copy as CSV";
+    - horizontal scroll inside the card.
+  - Bulgarian leaves four-digit amounts ungrouped ("8000 $"), which is the locale's rule.
+- **Checked live** at http://localhost:7171/chat as firm-a:
+  - Event order: "Show the quarter-end AUM of A-1043" streamed `TOOL_CALL_RESULT`, then `ACTIVITY_SNAPSHOT`
+    (`maf-lab/aum-history`), then `TEXT_MESSAGE_START`.
+  - "Препоръчай ребалансиране за A-1043" drew the holdings card in Bulgarian: "268 000 $", "20,6 %", Продажба/Покупка,
+    "✓ Не е нужно ребалансиране (толеранс ±5,0 %)". The AUM card was in English ("$1,300,000", "-2.3%").
+  - Both cards came back after a reload. Time travel showed no card at step 0 and the card at step 32 of 32.
+  - At 375 px the card scrolls inside itself, with the asset class pinned. At 1280 px with the monitor open the chat
+    column is about 340 px, so the plan columns start behind the scroll; with the monitor closed the card fits.
+  - The page itself scrolls sideways at 375 px (533 px wide) with or without the cards. The cause is the header's persona
+    selector, which predates this change and is left for its own fix.
+- **Not in this change:** billing cards (their DTOs carry failure detail text), `ACTIVITY_DELTA`, and sorting or other
+  interactivity.

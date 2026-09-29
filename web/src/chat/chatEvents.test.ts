@@ -157,4 +157,24 @@ describe('toChatEvents', () => {
     ).toEqual([]);
     expect(toChatEvents(event(EventType.REASONING_MESSAGE_END, { messageId: 'r1' }))).toEqual([]);
   });
+
+  it('reads a data card from the protocol"s activity snapshot', () => {
+    const events = toChatEvents(
+      event(EventType.ACTIVITY_SNAPSHOT, {
+        messageId: 'card-c1',
+        activityType: 'maf-lab/holdings',
+        content: { accountId: 'A-1043' },
+      }),
+    );
+    expect(events).toEqual([
+      {
+        type: 'card',
+        data: {
+          messageId: 'card-c1',
+          activityType: 'maf-lab/holdings',
+          content: { accountId: 'A-1043' },
+        },
+      },
+    ]);
+  });
 });

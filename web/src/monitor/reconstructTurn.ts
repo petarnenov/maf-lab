@@ -1,4 +1,4 @@
-import type { SourceRef, TraceEvent } from '../api/types';
+import type { DataCard, SourceRef, TraceEvent } from '../api/types';
 import type { ToolCallView } from '../chat/chatReducer';
 import {
   byKind,
@@ -18,6 +18,8 @@ export interface ReconstructedTurn {
   toolCalls: ToolCallView[];
   /** Empty until the `sources` step is reached. */
   sources: SourceRef[];
+  /** The data cards that had arrived by the cursor, in order. */
+  cards: DataCard[];
   stepLabel: string;
   /** False for traces recorded before answer text was traced; `text` is then the final answer. */
   textRecorded: boolean;
@@ -112,12 +114,26 @@ export function reconstructTurn(
       )
     : [];
 
+  const cards: DataCard[] = byKind(visible, 'card').map((e) => {
+    const d = dataOf<{
+      messageId?: string;
+      activityType?: string;
+      content?: Record<string, unknown>;
+    }>(e);
+    return {
+      messageId: d.messageId ?? `seq-${e.seq}`,
+      activityType: d.activityType ?? '',
+      content: d.content ?? {},
+    };
+  });
+
   return {
     text,
     reasoning: thinking.text,
     reasoningMs: thinking.ms,
     toolCalls,
     sources,
+    cards,
     stepLabel: `step ${at} of ${count}`,
     textRecorded,
   };

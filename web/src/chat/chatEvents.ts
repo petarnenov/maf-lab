@@ -1,6 +1,7 @@
 import {
   contentToText,
   EventType,
+  type ActivitySnapshotEvent,
   type BaseEvent,
   type CustomEvent,
   type ReasoningMessageContentEvent,
@@ -27,6 +28,22 @@ const TRACE = 'maf-lab/trace';
  */
 export function toChatEvents(event: BaseEvent): ChatStreamEvent[] {
   switch (event.type) {
+    // A typed tool result the server sent whole (add-activity-cards). Its type is open; the card view decides what
+    // it knows how to draw.
+    case EventType.ACTIVITY_SNAPSHOT: {
+      const typed = event as ActivitySnapshotEvent;
+      return [
+        {
+          type: 'card',
+          data: {
+            messageId: typed.messageId,
+            activityType: typed.activityType,
+            content: (typed.content ?? {}) as Record<string, unknown>,
+          },
+        },
+      ];
+    }
+
     case EventType.TEXT_MESSAGE_CONTENT:
       return [{ type: 'text_delta', data: { text: (event as TextMessageContentEvent).delta } }];
 

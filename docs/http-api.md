@@ -50,6 +50,7 @@ SSE frames are `event: <TYPE>\ndata: <json>\n\n`, where `<TYPE>` is the event's 
 | `RUN_STARTED` | `{ threadId, runId }` — first, exactly once |
 | `TEXT_MESSAGE_START` / `TEXT_MESSAGE_CONTENT` / `TEXT_MESSAGE_END` | the answer, under one `messageId`. A run that produces no answer opens no message |
 | `TOOL_CALL_START` / `TOOL_CALL_ARGS` / `TOOL_CALL_END` / `TOOL_CALL_RESULT` | one tool call, under one `toolCallId`. The start is emitted before the tool runs |
+| `ACTIVITY_SNAPSHOT` | a data card: `{ messageId: "card-<toolCallId>", activityType, content }`, right after the carded call's `TOOL_CALL_RESULT` — see below |
 | `CUSTOM` | this system's own events, by `name` — see below |
 | `RUN_FINISHED` | `{ threadId, runId, outcome, result }` — last. `result.turnId` is the turn, which feedback names |
 | `RUN_ERROR` | `{ message }` — last instead, when the turn failed. Short user-facing text only |
@@ -57,6 +58,19 @@ SSE frames are `event: <TYPE>\ndata: <json>\n\n`, where `<TYPE>` is the event's 
 **Arguments and results are identifiers and summaries, never free text.** `TOOL_CALL_ARGS.delta` carries the
 argument summary (`runId=4417`), not the query a user typed; `TOOL_CALL_RESULT.content` is structured —
 `{ tool, summary, sourceCount, isError }` — not the documents the tool found. The full result is in the trace.
+
+### Data cards
+
+Three read tools' results travel whole, as an AG-UI activity the chat draws as a table (add-activity-cards). Their
+result types have no free-text field (a test enforces it). A failed or guard-withheld result sends no card.
+
+| `activityType` | tool | `content` |
+|---|---|---|
+| `maf-lab/holdings` | `get_household_portfolio` | `{ accountId, accountName, householdId, modelPortfolio, driftTolerancePct, outsideTolerance, rebalanceNeeded, holdings: [{ assetClass, marketValue, targetWeightPct, actualWeightPct, driftPct, outsideTolerance, tradeToTarget, tradeSide, weightAfterPct }], totalMarketValue, currency, asOf }` |
+| `maf-lab/aum-history` | `get_aum_history` | `{ accountId, householdId, currency, valuations: [{ quarterEnd, aum, changePct }] }` |
+| `maf-lab/accounts` | `list_my_accounts` | `{ count, accounts: [{ accountId, name, householdId, modelPortfolio, currency }] }` |
+
+An unknown `activityType` is ignored. A snapshot for a `messageId` already shown replaces that card.
 
 ### The two names this system adds
 
@@ -131,7 +145,8 @@ is per instance, so a stop sent to the replica that is not running the turn answ
 
 `HistoryTurn` = `{ turnId, question, answer, createdAt, toolCalls: [{ callId?, toolName, argumentSummary, outcome,
 resultSummary?, sourceCount }], sources: [{ docId, sectionPath, sourcePath, snippet }], feedbackKinds: [string],
-traceAvailable }`. Turns stored before this change may have empty `sourcePath`/`snippet` and null `callId`/`resultSummary`.
+traceAvailable, activities: [{ messageId, activityType, content }] }` — `activities` are the turn's data cards, empty
+for turns stored before cards existed. Turns stored before this change may have empty `sourcePath`/`snippet` and null `callId`/`resultSummary`.
 The default title is the first question (≤ 80 chars, cut at a word boundary with "…"). `POST /api/chat` with a deleted
 conversation id returns `404`.
 

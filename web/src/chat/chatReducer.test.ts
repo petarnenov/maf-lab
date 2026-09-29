@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChatStreamEvent, HistoryTurn } from '../api/types';
-import { chatReducer, initialChatState, type AssistantTurn, type ChatState } from './chatReducer';
+import {
+  chatReducer,
+  hydrateTurn,
+  initialChatState,
+  type AssistantTurn,
+  type ChatState,
+} from './chatReducer';
 
 const send = (state: ChatState = initialChatState) =>
   chatReducer(state, { type: 'send', userTurnId: 'u1', assistantTurnId: 'a1', text: 'How do I?' });
@@ -408,5 +414,41 @@ describe('a write waiting for a person', () => {
     const state = apply(send(), { type: 'text_delta', data: { text: 'Straight to it.' } });
     expect(assistant(state).reasoning).toBe('');
     expect(assistant(state).reasoningMs).toBeUndefined();
+  });
+
+  it('keeps data cards in arrival order and replaces one sent again', () => {
+    const card = (messageId: string, accountId: string): ChatStreamEvent => ({
+      type: 'card',
+      data: { messageId, activityType: 'maf-lab/holdings', content: { accountId } },
+    });
+    const state = apply(
+      send(),
+      card('card-1', 'A-1042'),
+      card('card-2', 'A-1043'),
+      card('card-1', 'A-1044'),
+    );
+    expect(assistant(state).cards?.map((c) => [c.messageId, c.content.accountId])).toEqual([
+      ['card-1', 'A-1044'],
+      ['card-2', 'A-1043'],
+    ]);
+  });
+
+  it("restores a stored turn's cards, and none for a turn stored before cards", () => {
+    const stored = (activities?: HistoryTurn['activities']): HistoryTurn => ({
+      turnId: 't9',
+      question: 'q',
+      answer: 'a',
+      createdAt: '2026-09-29T10:00:00Z',
+      toolCalls: [],
+      sources: [],
+      feedbackKinds: [],
+      traceAvailable: false,
+      activities,
+    });
+    const withCard = hydrateTurn(
+      stored([{ messageId: 'card-1', activityType: 'maf-lab/accounts', content: { count: 1 } }]),
+    )[1] as AssistantTurn;
+    expect(withCard.cards).toHaveLength(1);
+    expect((hydrateTurn(stored(undefined))[1] as AssistantTurn).cards).toEqual([]);
   });
 });

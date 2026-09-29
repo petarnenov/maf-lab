@@ -41,6 +41,9 @@ public static class TraceKinds
     /// <summary>Jev's check of the final answer: relevant to the question, grounded in what the model read, or unchecked.</summary>
     public const string AnswerCheck = "answer.check";
     public const string Sources = "sources";
+
+    /// <summary>A data card a tool result became (add-activity-cards): its type and its numbers, never free text.</summary>
+    public const string Card = "card";
     public const string Signals = "signals";
     public const string Memory = "memory";
     public const string TurnEnd = "turn.end";

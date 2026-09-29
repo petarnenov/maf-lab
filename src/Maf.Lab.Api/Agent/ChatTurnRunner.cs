@@ -33,7 +33,13 @@ public sealed record TurnResult(string ConversationId, string TurnId, Intent Int
 
     /// <summary>Jev's check of the answer; null for a turn that ran none (refused, waiting for a person, failed, empty).</summary>
     public Jev.AnswerCheck? AnswerCheck { get; init; }
+
+    /// <summary>The data cards the turn showed, in the order they were sent (add-activity-cards).</summary>
+    public IReadOnlyList<TurnCard> Cards { get; init; } = [];
 }
+
+/// <summary>One data card: the AG-UI activity a carded tool result became, keyed by the call it came from.</summary>
+public sealed record TurnCard(string CallId, string MessageId, string ActivityType, JsonElement Content);
 
 /// <summary>
 /// Runs one chat turn through the Microsoft Agent Framework agent and publishes SSE events.
@@ -254,8 +260,20 @@ public sealed class ChatTurnRunner(
                 if (redaction.Apply(e) is { } send)
                 {
                     await events.WriteAsync(send, ct);
+                    // A carded result's card follows its tool-call result, so the card and the call it belongs to
+                    // arrive together — before the model has written a word about them.
+                    if (send is ToolCallResultEvent result && state.PendingCards.Remove(result.ToolCallId, out var card))
+                    {
+                        await events.WriteAsync(AGUIStream.Card(card.CallId, card.ActivityType, card.Content), ct);
+                    }
                 }
             }
+            // A card whose result event never came through (a result the adapter did not render) still belongs to the turn.
+            foreach (var card in state.PendingCards.Values.ToList())
+            {
+                await events.WriteAsync(AGUIStream.Card(card.CallId, card.ActivityType, card.Content), ct);
+            }
+            state.PendingCards.Clear();
 
             if (redaction.Failed)
             {
@@ -333,7 +351,7 @@ public sealed class ChatTurnRunner(
             ["domainsPredicted"] = new JsonArray([.. (decision.Domains?.InScope ?? []).Select(x => (JsonNode)JsonValue.Create(x)!)]),
             ["crossings"] = Math.Max(0, path.Count - 1),
         }, sw.ElapsedMilliseconds);
-        await PersistAsync(principal, conversationId, turnId, message, text, decision.Intent, forced, state.ToolCalls, sources, signals, trace, ct);
+        await PersistAsync(principal, conversationId, turnId, message, text, decision.Intent, forced, state.ToolCalls, sources, signals, state.Cards, trace, ct);
 
         _logger.LogInformation("chat turn done turn={TurnId} intent={Intent} forced={Forced} tools={ToolCount} sources={SourceCount} signals={Signals} answerCheck={AnswerCheck} ms={Elapsed}",
             turnId, decision.Intent, forced, state.ToolCalls.Count, sources.Count, string.Join(",", signals), check?.Verdict ?? "none", sw.ElapsedMilliseconds);
@@ -343,6 +361,7 @@ public sealed class ChatTurnRunner(
         {
             Proposal = state.Proposal,
             ProposalQuestion = state.Interrupt?.Message,
+            Cards = state.Cards,
             AnswerCheck = check,
         };
     }
@@ -584,6 +603,19 @@ public sealed class ChatTurnRunner(
             ? ("withheld by the content guard", new List<SourceRef>())
             : Summarise(name, structured, isError);
         state.Sources.AddRange(sources);
+        // A result the client may see whole becomes a data card: only an allow-listed tool's successful, structured
+        // result the guard let through. It is sent right after this call's result event (see the run loop).
+        if (!isError && screened is not { WholeWithheld: true } && structured is { } data && AGUIStream.Cards.TryGetValue(name, out var carded))
+        {
+            var card = new TurnCard(callId, AGUIStream.CardMessageId(callId), carded.ActivityType, data.Clone());
+            state.Cards.Add(card);
+            state.PendingCards[callId] = card;
+            state.Trace.Add(TraceKinds.Card, $"Data card {carded.ActivityType}", new JsonObject
+            {
+                ["callId"] = callId, ["messageId"] = card.MessageId, ["activityType"] = card.ActivityType,
+                ["content"] = JsonNode.Parse(data.GetRawText()),
+            });
+        }
         if (Domains.IsSearch(name) && !isError)
         {
             // Whether this call found anything is not the question: a turn that searches again and succeeds has
@@ -913,7 +945,8 @@ public sealed class ChatTurnRunner(
     }
 
     private async Task PersistAsync(Principal principal, string conversationId, string turnId, string question, string answer, Intent intent, bool forced,
-        IReadOnlyList<ToolCallRecord> toolCalls, IReadOnlyList<SourceRef> sources, IReadOnlyList<string> signals, TurnTrace trace, CancellationToken ct)
+        IReadOnlyList<ToolCallRecord> toolCalls, IReadOnlyList<SourceRef> sources, IReadOnlyList<string> signals, IReadOnlyList<TurnCard> cards,
+        TurnTrace trace, CancellationToken ct)
     {
         await using var ctx = await db.CreateDbContextAsync(ct);
         ctx.TurnTraces.Add(new TurnTraceRow
@@ -938,6 +971,7 @@ public sealed class ChatTurnRunner(
             ToolCallsJson = JsonSerializer.Serialize(toolCalls, Json),
             // Full source references so the conversation can be restored; the review queue reads docId/sectionPath.
             SourcesJson = JsonSerializer.Serialize(sources, Json),
+            ActivitiesJson = JsonSerializer.Serialize(cards.Select(c => new Maf.Lab.Domain.History.HistoryActivity(c.MessageId, c.ActivityType, c.Content)), Json),
             SignalsJson = JsonSerializer.Serialize(signals, Json),
             CreatedAt = time.GetUtcNow().UtcDateTime,
         });
@@ -1006,5 +1040,9 @@ public sealed class ChatTurnRunner(
 
         /// <summary>Result summaries by tool-call id, for the same reason.</summary>
         public Dictionary<string, string> Summaries { get; } = [];
+
+        /// <summary>The data cards the turn showed, in order; and those still waiting for their call's result event.</summary>
+        public List<TurnCard> Cards { get; } = [];
+        public Dictionary<string, TurnCard> PendingCards { get; } = [];
     }
 }

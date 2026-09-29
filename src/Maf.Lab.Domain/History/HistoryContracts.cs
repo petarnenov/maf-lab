@@ -19,7 +19,14 @@ public sealed record HistoryTurn(
     IReadOnlyList<HistoryToolCall> ToolCalls,
     IReadOnlyList<SourceRef> Sources,
     IReadOnlyList<string> FeedbackKinds,
-    bool TraceAvailable);
+    bool TraceAvailable,
+    IReadOnlyList<HistoryActivity>? Activities = null);
+
+/// <summary>
+/// A data card the turn showed (add-activity-cards): the AG-UI activity as it was sent, so a reopened conversation
+/// shows it again. Turns stored before cards existed have none.
+/// </summary>
+public sealed record HistoryActivity(string MessageId, string ActivityType, System.Text.Json.JsonElement Content);
 
 /// <summary>CallId and ResultSummary are null for turns stored before they were persisted.</summary>
 public sealed record HistoryToolCall(string? CallId, string ToolName, string ArgumentSummary, string Outcome, string? ResultSummary, int SourceCount);

@@ -1,0 +1,152 @@
+.card {
+  margin: 8px 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  max-width: 100%;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 0;
+}
+
+.copy {
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* On a phone the card scrolls inside itself; the page never scrolls sideways. */
+.scroll {
+  overflow-x: auto;
+  padding: 0 0 6px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.table caption {
+  text-align: left;
+  color: var(--muted);
+  font-size: 0.75rem;
+  padding: 6px 10px 4px;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.table thead th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.table tbody th {
+  font-weight: 500;
+}
+
+.table th:first-child {
+  padding-left: 10px;
+}
+
+.table th:last-child,
+.table td:last-child {
+  padding-right: 10px;
+}
+
+/* Scrolled sideways on a narrow screen, the row still says which class it is. The scroll box has no side padding,
+   so nothing shows to the left of the pinned column. */
+.table tbody th,
+.table tfoot th,
+.table thead th:first-child {
+  position: sticky;
+  left: 0;
+  background: var(--surface);
+}
+
+.table tfoot th,
+.table tfoot td {
+  font-weight: 600;
+  border-bottom: none;
+}
+
+.num {
+  text-align: right !important;
+}
+
+.drift {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bar {
+  flex: none;
+}
+
+.band {
+  fill: var(--surface-2);
+  stroke: var(--border);
+}
+
+.zero {
+  stroke: var(--muted);
+}
+
+.mark {
+  fill: var(--accent);
+}
+
+.markOut {
+  fill: var(--danger);
+}
+
+.outside {
+  color: var(--danger);
+  font-size: 0.75rem;
+}
+
+.buy {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.sell {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.badgeOk,
+.badgeWarn {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+
+.badgeOk {
+  color: var(--ok);
+}
+
+.badgeWarn {
+  color: var(--danger);
+}

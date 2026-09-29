@@ -21,6 +21,14 @@ public sealed class FakeToolSource : IToolSource
     /// <summary>Also offer the portfolio domain's tools, each known by its domain and server (add-portfolio-domain).</summary>
     public bool WithPortfolio { get; set; }
 
+    /// <summary>With <see cref="WithPortfolio"/>: what get_household_portfolio returns — A-1043's shape, plan included.</summary>
+    public string PortfolioPayloadJson { get; set; } = """
+        {"accountId":"A-1043","accountName":"Calder Retirement Plan","householdId":"HH-CALDER","modelPortfolio":"ACME-BALANCED-60-40","driftTolerancePct":5,"outsideTolerance":false,"rebalanceNeeded":false,"holdings":[{"assetClass":"US equity","marketValue":268000,"targetWeightPct":20,"actualWeightPct":20.6,"driftPct":0.6,"outsideTolerance":false,"tradeToTarget":-8000,"tradeSide":"sell","weightAfterPct":20},{"assetClass":"Cash","marketValue":121000,"targetWeightPct":10,"actualWeightPct":9.3,"driftPct":-0.7,"outsideTolerance":false,"tradeToTarget":8000,"tradeSide":"buy","weightAfterPct":10}],"totalMarketValue":1300000,"currency":"USD","asOf":"2026-09-30"}
+        """;
+
+    /// <summary>With <see cref="WithPortfolio"/>: get_household_portfolio answers with an error instead.</summary>
+    public bool PortfolioFails { get; set; }
+
     /// <summary>With <see cref="WithPortfolio"/>: the portfolio server is down this turn, so its tools are not offered.</summary>
     public bool PortfolioUnavailable { get; set; }
 
@@ -110,6 +118,11 @@ public sealed class FakeToolSource : IToolSource
             Invocations.Add(Maf.Lab.Domain.Portfolio.PortfolioTools.AumHistory);
             return Mcp($$"""{"accountId":"{{accountId}}","householdId":"HH-RIDGELINE","currency":"USD","valuations":[{"quarterEnd":"2026-06-30","aum":2910000,"changePct":null},{"quarterEnd":"2026-09-30","aum":3240000,"changePct":11.3}]}""");
         }, Maf.Lab.Domain.Portfolio.PortfolioTools.AumHistory, "Quarter-end AUM of one account.");
+        var holdings = AIFunctionFactory.Create((string accountId) =>
+        {
+            Invocations.Add(Maf.Lab.Domain.Portfolio.PortfolioTools.GetPortfolio);
+            return PortfolioFails ? Mcp("""{"error":"Account not found."}""", isError: true) : Mcp(PortfolioPayloadJson);
+        }, Maf.Lab.Domain.Portfolio.PortfolioTools.GetPortfolio, "One account's holdings, drift and rebalance plan.");
         var accounts = AIFunctionFactory.Create(() =>
         {
             Invocations.Add(Maf.Lab.Domain.Portfolio.PortfolioTools.ListAccounts);
@@ -119,7 +132,8 @@ public sealed class FakeToolSource : IToolSource
         origins[Maf.Lab.Domain.Portfolio.PortfolioTools.Search] = portfolio;
         origins[Maf.Lab.Domain.Portfolio.PortfolioTools.AumHistory] = portfolio;
         origins[Maf.Lab.Domain.Portfolio.PortfolioTools.ListAccounts] = portfolio;
-        return Task.FromResult(new ToolSet([search, status, runs, propose, portfolioSearch, history, accounts], null, ConfirmAsync, origins));
+        origins[Maf.Lab.Domain.Portfolio.PortfolioTools.GetPortfolio] = portfolio;
+        return Task.FromResult(new ToolSet([search, status, runs, propose, portfolioSearch, history, holdings, accounts], null, ConfirmAsync, origins));
     }
 
     /// <summary>Adjustments this fake has applied, keyed by the state they were proposed with.</summary>
@@ -164,14 +178,14 @@ public sealed class FakeToolSource : IToolSource
         Content = [new ModelContextProtocol.Protocol.TextContentBlock { Text = structuredJson }],
     };
 
-    private static JsonElement Mcp(string structuredJson, string? metaJson = null)
+    private static JsonElement Mcp(string structuredJson, string? metaJson = null, bool isError = false)
     {
         var structured = JsonDocument.Parse(structuredJson).RootElement;
         var result = new System.Text.Json.Nodes.JsonObject
         {
             ["content"] = new System.Text.Json.Nodes.JsonArray(new System.Text.Json.Nodes.JsonObject { ["type"] = "text", ["text"] = structured.GetRawText() }),
             ["structuredContent"] = System.Text.Json.Nodes.JsonNode.Parse(structuredJson),
-            ["isError"] = false,
+            ["isError"] = isError,
         };
         if (metaJson is not null)
         {
