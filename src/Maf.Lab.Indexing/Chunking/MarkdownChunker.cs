@@ -8,7 +8,7 @@ public sealed class MarkdownChunker : IChunker
 {
     private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder().UsePreciseSourceLocation().Build();
 
-    public IReadOnlyList<RawChunk> Chunk(string content, string relativePath, int maxChars)
+    public IReadOnlyList<RawChunk> Chunk(string content, string relativePath, ChunkBudget budget)
     {
         var document = Markdown.Parse(content, Pipeline);
         var headings = new List<(int Level, string Title)>();
@@ -18,7 +18,7 @@ public sealed class MarkdownChunker : IChunker
         void Flush()
         {
             var sectionPath = string.Join(" > ", headings.Select(h => h.Title));
-            foreach (var piece in ChunkText.SplitToFit(body.ToString(), maxChars))
+            foreach (var piece in ChunkText.SplitToFit(body.ToString(), budget))
             {
                 chunks.Add(new RawChunk(sectionPath, piece));
             }

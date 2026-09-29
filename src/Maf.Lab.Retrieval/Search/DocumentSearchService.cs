@@ -200,7 +200,7 @@ public sealed partial class DocumentSearchService(
             diagnostics.Query["translated"] = translation.Changed;
             diagnostics.Query["translationMs"] = translation.DurationMs;
             diagnostics.Query["translationNote"] = translation.Reason;
-            diagnostics.Query["terms"] = new System.Text.Json.Nodes.JsonArray(Bm25Tokenizer.Tokenize(searchedQuery).Distinct(StringComparer.Ordinal)
+            diagnostics.Query["terms"] = new System.Text.Json.Nodes.JsonArray(model.Tokenize(searchedQuery).Distinct(StringComparer.Ordinal)
                 .Select(t => (System.Text.Json.Nodes.JsonNode)new System.Text.Json.Nodes.JsonObject
                 {
                     ["term"] = t,

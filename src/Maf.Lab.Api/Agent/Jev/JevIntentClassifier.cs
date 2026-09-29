@@ -15,12 +15,14 @@ public sealed class JevIntentClassifier(JevClient jev, IOptions<JevOptions> opti
     internal const string QuestionId = "intent";
     internal const string DomainQuestionId = "in_domain";
     internal const string PortfolioQuestionId = "in_portfolio";
+    internal const string CodebaseQuestionId = "in_codebase";
 
     /// <summary>The domain question for each domain; billing keeps its original id so earlier traces and stats still read.</summary>
     internal static readonly IReadOnlyDictionary<string, string> DomainQuestionIds = new Dictionary<string, string>
     {
         [Domains.Billing] = DomainQuestionId,
         [Domains.Portfolio] = PortfolioQuestionId,
+        [Domains.Codebase] = CodebaseQuestionId,
     };
 
     internal const string Instructions =
@@ -68,6 +70,23 @@ public sealed class JevIntentClassifier(JevClient jev, IOptions<JevOptions> opti
         Languages: Domain.Languages,
         Question: "Is `user_question` about something in `domain`?");
 
+    /// <summary>
+    /// The lab's own software, asked as a third Noul in the same request (add-codebase-domain): a question about where
+    /// something is implemented shares no word with the other two domains, and without its own question it fell outside
+    /// all of them and was refused while the codebase search had the answer. What it is not is spelled out, because Jev
+    /// reads literally: the first wording ("the software system itself … how this system is built") pulled run-failure
+    /// questions (selection s-20..s-23) and complaints about the assistant ("why is the answer so slow") into it.
+    /// </summary>
+    internal static readonly JevDomainInstructions CodebaseDomain = new(
+        Domain: "The maf-lab source code: its classes, methods, files and folders, tests, configuration, build and make targets, "
+            + "MCP servers and their tools, OpenSpec specifications and design decisions — how the software is written and where "
+            + "something is implemented in it. Not in it: questions about billing runs, fees, accounts or portfolios as business "
+            + "operations (why a run failed, how to re-run it, what a fee is), even when they mention errors or failures; "
+            + "questions about how the assistant behaves or performs in use (it is slow, it does not autocomplete); and general "
+            + "programming that is not about this code.",
+        Languages: Domain.Languages,
+        Question: "Is `user_question` about something in `domain`?");
+
     private static readonly IReadOnlyDictionary<string, Intent> Intents = new Dictionary<string, Intent>(StringComparer.OrdinalIgnoreCase)
     {
         ["procedural"] = Intent.Procedural,
@@ -96,6 +115,7 @@ public sealed class JevIntentClassifier(JevClient jev, IOptions<JevOptions> opti
             [QuestionId] = new JevChoiceQuestion(Instructions, Criteria),
             [DomainQuestionId] = new JevNoulQuestion(Domain),
             [PortfolioQuestionId] = new JevNoulQuestion(PortfolioDomain),
+            [CodebaseQuestionId] = new JevNoulQuestion(CodebaseDomain),
         };
         // The prompt-screening battery rides in the same request: questions are answered in parallel, so screening
         // costs neither a request nor latency of its own (injection-defense; DECISIONS.md §34).

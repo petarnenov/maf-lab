@@ -46,8 +46,12 @@ export DOTNET_NOLOGO := 1
 HOST_ENV := Models__OllamaEndpoint=http://localhost:11435
 # The portfolio domain is indexed by the same indexer into its own collection and BM25 vocabulary.
 PORTFOLIO_ENV := Indexing__CorpusRoot=$(ROOT)/data-portfolio Qdrant__Collection=maf_portfolio_chunks Qdrant__MetaCollection=maf_portfolio_meta
+# The codebase is indexed from the repository itself, by structure, into its own collection: chunks sized in embedding
+# tokens (well under embeddinggemma's 2048), BM25 over identifiers split into their words (add-codebase-search).
+CODE_ENV := Indexing__Layout=repository Indexing__CorpusRoot=$(ROOT) Indexing__MaxChunkTokens=1024 Indexing__Bm25Tokenizer=code \
+            Qdrant__Collection=maf_code_chunks Qdrant__MetaCollection=maf_code_meta
 
-.PHONY: all help up down restart ps logs clean index index-portfolio reindex ask drift migrate test test-dotnet test-web lint verify \
+.PHONY: all help up down restart ps logs clean index index-portfolio index-code reindex ask drift migrate test test-dotnet test-web lint verify \
         eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-a2a dev doctor banner index-if-empty \
         specs lint-dotnet lint-web build-web ci ci-e2e setup \
         require-docker require-dotnet require-npm
@@ -98,16 +102,21 @@ banner:
 index-if-empty: require-dotnet
 	@$(HOST_ENV) scripts/index_if_empty.sh
 
-index: require-dotnet ## Index both domains' corpora (unchanged documents are skipped)
+index: require-dotnet ## Index both domains' corpora and the codebase (unchanged documents are skipped)
 	$(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- index
 	$(HOST_ENV) $(PORTFOLIO_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- index
+	$(HOST_ENV) $(CODE_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- index
 
 index-portfolio: require-dotnet ## Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only
 	$(HOST_ENV) $(PORTFOLIO_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- index
 
+index-code: require-dotnet ## Index the repository itself (→ maf_code_chunks, served by mcp-code) only; unchanged files are skipped
+	$(HOST_ENV) $(CODE_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- index
+
 reindex: require-dotnet ## Re-embed every document of both domains (--force)
 	$(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- index --force
 	$(HOST_ENV) $(PORTFOLIO_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- index --force
+	$(HOST_ENV) $(CODE_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- index --force
 
 drift: require-dotnet ## Report stale documents (source newer than index)
 	$(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- drift
@@ -151,9 +160,9 @@ verify: ## Verify the running stack through the load balancer (17 checks)
 	scripts/verify_lb.sh $(BASE_URL)
 
 eval: require-dotnet ## Run evals (SUITE=all|selection|retrieval|generation|injection|confirmation|intent|domain|presentation) against the stack's MCP servers
-	Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval -- --suite $(SUITE)
+	Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval -- --suite $(SUITE)
 
-EVAL_HOST = Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval --
+EVAL_HOST = Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval --
 EVAL = $(EVAL_HOST) --suite
 
 ask: require-dotnet ## Ask one question through the agent and print its trace (Q="…" FIRM=firm-a), e.g. a cross-domain one

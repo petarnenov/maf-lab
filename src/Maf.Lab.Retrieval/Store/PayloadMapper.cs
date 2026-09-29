@@ -32,6 +32,11 @@ internal static class PayloadMapper
         {
             payload[ChunkSchema.Context] = c.Context;
         }
+        if (c.StartLine is { } start && c.EndLine is { } end)
+        {
+            payload[ChunkSchema.StartLine] = start;
+            payload[ChunkSchema.EndLine] = end;
+        }
         return payload;
     }
 
@@ -49,6 +54,8 @@ internal static class PayloadMapper
         Text = Str(p, ChunkSchema.Text),
         Context = p.TryGetValue(ChunkSchema.Context, out var ctx) ? ctx.StringValue : null,
         ContentHash = Str(p, ChunkSchema.ContentHash),
+        StartLine = p.TryGetValue(ChunkSchema.StartLine, out var sl) && sl.HasIntegerValue ? (int)sl.IntegerValue : null,
+        EndLine = p.TryGetValue(ChunkSchema.EndLine, out var el) && el.HasIntegerValue ? (int)el.IntegerValue : null,
         DenseModelVersions = p.Where(kv => kv.Key.StartsWith(ChunkSchema.ModelVersionPrefix, StringComparison.Ordinal))
             .ToDictionary(kv => kv.Key[ChunkSchema.ModelVersionPrefix.Length..], kv => kv.Value.StringValue, StringComparer.Ordinal),
     };

@@ -30,4 +30,6 @@ public sealed class McpServerOptions
 {
     public string Domain { get; set; } = "";
     public string Endpoint { get; set; } = "";
+    /// <summary>The server's tools the agent is offered; empty offers every tool it lists (add-codebase-domain).</summary>
+    public List<string> Tools { get; set; } = [];
 }

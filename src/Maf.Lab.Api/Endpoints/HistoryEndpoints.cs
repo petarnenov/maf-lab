@@ -169,8 +169,8 @@ public static class HistoryEndpoints
     private static List<SourceRef> ReadSources(string json)
     {
         using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "[]" : json);
-        return doc.RootElement.EnumerateArray().Select(e => new SourceRef(
-            Str(e, "docId"), Str(e, "sectionPath"), Str(e, "sourcePath"), Str(e, "snippet"))).ToList();
+        // A stored code source keeps its place; one stored before add-codebase-domain reads as it always did.
+        return doc.RootElement.EnumerateArray().Select(SourceRef.FromSearchItem).ToList();
     }
 
     /// <summary>A turn's data cards. A row stored before cards existed holds '' (the added column's default): no cards.</summary>

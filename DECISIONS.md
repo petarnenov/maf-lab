@@ -1835,3 +1835,123 @@ said which account the conversation was about.
   - Choosing A-1044 then "What does it hold?" read A-1044.
   - A sent B-200, never shown, was refused and A-1044 stayed.
   - `selection` (`20260929-174831`) and `presentation` (`20260929-174958`) passed at their baselines.
+
+## 53. The codebase as a corpus, in chunks the embedding model can read (add-codebase-search, 2026-09-29)
+
+- **Its own corpus and server.** The repository itself is indexed into `maf_code_chunks` / `maf_code_meta` by the same
+  indexer, in a `repository` layout. The corpus is what git tracks under `src/`, `web/src/`, `tests/`, `tools/`,
+  `scripts/`, `openspec/specs/`, `docs/` and the root READMEs and decisions. It is served by `mcp-code`
+  (`Maf.Lab.CodeSearch`) at `/code/mcp`. The codebase belongs to no firm, so every document is `shared`. The tenant
+  still comes from the layout and the principal: no tool has a tenant argument, and the one query method is unchanged.
+- **The window is 2048 tokens, and Ollama cuts silently.**
+  - `api/show` reports `gemma3.context_length` 2048.
+  - `api/embed` with the default `truncate: true` returned `prompt_eval_count` 2048 for a longer input and no
+    error: the vector stood for a prefix of the text.
+  - With `truncate: false` it answers 400 "the input length exceeds the context length".
+  - `EmbeddingProfile.MaxInputTokens` records the window.
+  - Document embedding uses OllamaSharp's native `EmbedAsync` with `Truncate = false`, because OllamaSharp 5.4.30
+    ignores `EmbeddingGenerationOptions.RawRepresentationFactory` for embeddings (probed: still cut).
+  - Queries keep the truncating M.E.AI path, since a cut query still searches.
+- **An estimate, not a tokenizer.** `TokenEstimator` counts by character class:
+  - ASCII letter runs ⌈n/4⌉;
+  - other letters ⌈n/2⌉;
+  - a single space 0;
+  - indentation 1;
+  - other characters 1, or 2 for other non-ASCII.
+
+  Against embeddinggemma's own count on 160 random windows of this repository (C#, TS, Markdown, SQL, shell, CSS,
+  YAML), it over-counted every one: min 1.13×, median 1.39×. Measured rates: C# about 3.9 characters a token,
+  Bulgarian about 3.2. Over-counting only makes chunks smaller. The refusal is the guarantee.
+- **Budget and ceiling.**
+  - The codebase is cut to a **budget** of 1024 estimated tokens (≈740 real), so a method stays whole and one chunk
+    still means one thing to the dense model.
+  - Every corpus is held under a **ceiling**: the smallest window less the document prefix, and less 160 with
+    contextual retrieval. That is 2041 for embeddinggemma, checked on section path + text.
+  - The repository gives 479 files and 4881 chunks, at median 172, p95 842 and max 1075 estimated tokens.
+  - Billing chunks (1500 characters) never reach the ceiling. Their ids and texts are unchanged, and the eval
+    chunk-id test holds.
+- **Structural code chunks, opt-in.** `CodeChunker(structural: true)` is used only for repository files:
+  - leading `///`, `//`, `[attributes]` and `@decorators` go with their symbol;
+  - a type's header gives its first member's comment back;
+  - lines no symbol claims (properties, one-line records, usings) become chunks of their type or `(file)` instead of
+    being dropped.
+
+  Section paths start with the repository path, and every chunk gets its 1-based line span (`start_line`/`end_line`
+  in the payload), placed back in the file by `ChunkBuilder` for every chunker. The billing corpus keeps the old cut.
+- **Identifiers in BM25.**
+  - The vocabulary now records its tokenizer. Queries use the same one, and a vocabulary saved without one reads as
+    `words`, as before.
+  - The `code` tokenizer emits each identifier whole and then its camel/Pascal/acronym/digit parts, so "dense
+    encoder" meets `IDenseEncoder`, and an exact name still ranks first on its rare whole token.
+- **Two tools, and a tab.**
+  - `search_codebase` returns places: path, lines, symbol, kind and language.
+  - `ask_codebase` answers only from the retrieved snippets, which are tagged as data with `</snippet>` defused, and
+    cites `path:start-end`. With nothing retrieved it does not call the model.
+  - The chat's right pane has **Behind the scenes** (the monitor, unchanged) and **Code snippets**. The Code snippets
+    tab calls `POST /api/code/snippets`, which calls `search_codebase` as the user, and fetches only while the tab is
+    shown.
+- **Not done here.** The billing agent does not get the codebase tools, and Jev gets no "code" domain: that is a
+  selection-eval change of its own. The gate's floor (0.3) and embeddinggemma's dense floor (0.22) are the defaults
+  calibrated on prose; a codebase retrieval eval is the follow-up that would move them. No package version moved.
+
+## 54. The codebase is a domain, and a turn loads only its domains' tools (add-codebase-domain, 2026-09-29)
+
+- **Why.** After §53 a code question got two answers on one screen:
+  - The chat refused: Jev put it outside every domain, and v3 listed "coding" as out of scope.
+  - The Code snippets tab beside it showed the files that answered it.
+- **A third Noul, not a new request.**
+  - `in_codebase` rides in the classification request with the same `{ user_question }` state and the same
+    `JevDomainInstructions` shape. It is a closed yes/no that needs language understanding: "идемпотентност на тул"
+    shares no keyword with "tool call idempotency".
+  - The domain names general programming as outside it.
+  - Thresholds are unchanged (gate 0.2, scope 0.5), because the risk is read-only.
+  - The model stays pinned `jev-1.13.0`, and a missing answer means no verdict, as before.
+- **A codebase question searches the codebase whatever its intent** (not chitchat). Code questions read as "show me X"
+  (data) or match no intent, and the codebase has no read tools, so without the search there is nothing to answer
+  from.
+- **Tools by the conversation's domains.**
+  - `IToolSource.GetToolsAsync` takes the domains. Only their servers are contacted, and a turn that did not select
+    billing does not fail when billing is down.
+  - The domains are: the verdict's in scope; else, for a follow-up in no domain, the conversation's
+    (`ConversationRow.Domains`, written on every in-scope turn); else all.
+  - The routed read tool's domain is always added, because routing can name `list_my_accounts` when the portfolio
+    Noul missed. A test caught it: "Which accounts do I have?" lost its tool until the router's domain was loaded.
+  - Confirmations and probes still load everything.
+  - The `domain` trace event records `loaded`, `loadReason` and `storedDomains`.
+- **Only `search_codebase` for the agent.** `McpServerOptions.Tools` is an allow-list. `ask_codebase` writes an answer
+  of its own and would put a second LLM inside the turn. It stays for other MCP clients.
+- **Code sources.**
+  - `SourceRef` gains optional `kind`, `startLine`, `endLine`, `symbol` and `language`. One reader
+    (`SourceRef.FromSearchItem`) serves the stream, the answer check and history for both result shapes.
+  - The review queue does not resolve code in the billing collection.
+- **system.v4** adds the codebase tools, the scope, and "cite path:start-end, never invent a path or line". v3 is a
+  setting away.
+- **The tab follows the answer.**
+  - A turn that searched the code shows the snippets the answer used ("Used in this answer", a count on the tab), with
+    no second search.
+  - A live turn with code switches the pane once. A code source in Sources opens and highlights its snippet.
+  - Other turns show related code, labelled as not used.
+  - Sources read as file:lines with folder › symbol beneath. They are cut with an ellipsis and never widen the answer,
+    after a live check where a long test-method name pushed the list out of the bubble. More than five collapse behind
+    "Show all N".
+- **Evals.**
+  - Domain labels are sets: one domain, `both` (billing+portfolio, kept for comparability), `a+b`, or `none`.
+  - 13 codebase and 4 general-programming questions were added to `domain.jsonl`, 5 codebase cases to
+    `selection.jsonl`, and the code server to the eval host.
+  - Results: see the addendum below.
+- **Eval addendum (2026-09-30).**
+  - **First run.** The first codebase wording ("the software system itself … how this system is built") pulled
+    operational questions into the codebase:
+    - run-failure questions (selection `s-20`..`s-23` also called `search_codebase`);
+    - complaints about the assistant (`i-off-meta-en-01`/`04` forced a search).
+  - **The fix.** The domain now states what is not in it (business questions about runs, fees and accounts, how the
+    assistant behaves, general programming), as rule §4.2 asks for boundary cases.
+  - **Rerun** (`20260929-2101…2103`):
+    - `intent`: passes the gate, accuracy 0.99, with no forcing where it should not force.
+    - `selection`: passes the gate. Precision is 0.956 (baseline 0.943), exactMatch 0.949 (0.931), recall 1.
+      `s-70`..`s-74` pass. `s-04` and `s-16` fail as they did before this change.
+    - `domain`: accuracy 0.951 (0.938), codebaseRecall 1.0, and 4 of 4 general-programming questions get none. The
+      gate still fails on crossingRecall 0.857 and crossingPrecision 0.9. The cause is the new crossing case
+      `d-codebase-13`: portfolio lands at 0.53, just over the scope floor, and adds a third domain. The three other
+      misses are the §41 cases.
+  - The baseline was not moved: accepting it is the owner's call (`make eval-accept`).

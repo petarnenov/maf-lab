@@ -9,7 +9,8 @@ COLLECTION="${Qdrant__Collection:-maf_chunks}"
 DOTNET="${DOTNET:-dotnet}"
 export Models__OllamaEndpoint="${Models__OllamaEndpoint:-http://localhost:11435}"
 
-# One corpus and one collection per domain: billing (data/ → maf_chunks) and portfolio (data-portfolio/ → maf_portfolio_chunks).
+# One corpus and one collection per domain: billing (data/ → maf_chunks), portfolio (data-portfolio/ → maf_portfolio_chunks)
+# and the codebase (the repository → maf_code_chunks).
 index_domain() {
   local collection="$1" corpus="$2" meta="$3"
   local points
@@ -25,3 +26,6 @@ index_domain() {
 
 index_domain "$COLLECTION" "${Indexing__CorpusRoot:-$ROOT/data}" "${Qdrant__MetaCollection:-maf_meta}"
 index_domain maf_portfolio_chunks "$ROOT/data-portfolio" maf_portfolio_meta
+# The codebase: the repository itself, cut by structure, in embedding tokens (see CODE_ENV in the Makefile).
+Indexing__Layout=repository Indexing__MaxChunkTokens=1024 Indexing__Bm25Tokenizer=code \
+  index_domain maf_code_chunks "$ROOT" maf_code_meta

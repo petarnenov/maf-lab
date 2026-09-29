@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ApiError } from '../api/client';
+import type { SourceRef } from '../api/types';
 import { useAuth } from '../auth/useAuth';
 import { useConversation, useUserKey } from '../history/historyApi';
 import { HistorySidebar } from '../history/HistorySidebar';
@@ -21,6 +22,8 @@ import type { AssistantTurn, ChatState } from './chatReducer';
 import styles from './ChatPage.module.css';
 import { idle, step, type RecallState } from './promptHistory';
 import { SourcesPanel } from './SourcesPanel';
+import { CodeSnippetsPanel } from './CodeSnippetsPanel';
+import { codeSnippetsOf, snippetKey } from './codeSnippets';
 import { CardView } from './cards/CardView';
 import { langOf, words, type Lang } from './cards/format';
 import { ConfirmationCard } from './ConfirmationCard';
@@ -30,6 +33,13 @@ import { TurnFeedback } from './TurnFeedback';
 import { useChatStream } from './useChatStream';
 
 export const TRACE_EXPIRED = 'Trace expired (kept 7 days).';
+
+/** The right pane's two views (add-codebase-search). The monitor keeps its state while the other is shown. */
+const PANE_TABS = [
+  { id: 'scenes', label: 'Behind the scenes' },
+  { id: 'code', label: 'Code snippets' },
+] as const;
+type PaneTab = (typeof PANE_TABS)[number]['id'];
 
 export function ChatPage() {
   const { session } = useAuth();
@@ -44,6 +54,12 @@ export function ChatPage() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   /** The monitor is a panel a person opens and closes; it follows the latest turn while it is open. */
   const [monitorOpen, setMonitorOpen] = useState(true);
+  /** Which view the right pane shows: the turn's trace, or the code that answers its question. */
+  const [paneTab, setPaneTab] = useState<PaneTab>('scenes');
+  /** The code snippet a source in an answer pointed at (add-codebase-domain). */
+  const [highlight, setHighlight] = useState<string | null>(null);
+  /** Turns whose code already switched the pane once: after that the person's choice of tab stands. */
+  const autoSwitched = useRef(new Set<string>());
   const [historyCollapsed, setHistoryCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
@@ -158,6 +174,22 @@ export function ChatPage() {
     if (latestFinishedTurnId) void queryClient.invalidateQueries({ queryKey: ['conversations'] });
   }, [latestFinishedTurnId, queryClient]);
   const selected = assistantTurns.find((t) => t.id === selectedKey) ?? latest;
+  const selectedIndex = selected ? state.turns.indexOf(selected) : -1;
+  const usedCode = selected ? codeSnippetsOf(selected.sources) : [];
+  // An answer given in this session that searched the codebase brings its code into view, once per turn; a turn
+  // reopened from history does not move the pane.
+  const streamingCodeTurn =
+    selected && !selected.restored && usedCode.length > 0 ? selected.id : undefined;
+  useEffect(() => {
+    if (streamingCodeTurn && !autoSwitched.current.has(streamingCodeTurn)) {
+      autoSwitched.current.add(streamingCodeTurn);
+      setPaneTab('code');
+    }
+  }, [streamingCodeTurn]);
+  const selectedQuestion =
+    selectedIndex > 0 && state.turns[selectedIndex - 1].role === 'user'
+      ? state.turns[selectedIndex - 1].text
+      : '';
   const liveEvents = selected ? traceFor(state.traces, selected.id) : [];
   const liveFrames = selected ? framesFor(state.traces, selected.id) : [];
   const isStreaming = selected?.status === 'streaming';
@@ -283,7 +315,8 @@ export function ChatPage() {
               <p className={styles.empty}>
                 Ask a procedural question, e.g. “What is the procedure when a fee schedule is
                 missing?” — or one that crosses into the portfolio domain: “Why did the fee on
-                A-1042 go up this quarter? Did its AUM cross a tier?”
+                A-1042 go up this quarter? Did its AUM cross a tier?” — or ask about this lab’s
+                code: “How does the code make a tool call idempotent?”
               </p>
             )}
             {!loadingConversation &&
@@ -319,6 +352,17 @@ export function ChatPage() {
                       setMonitorOpen(true);
                     }}
                     onAnswer={answer}
+                    onOpenCode={(source) => {
+                      setSelectedKey(turn.id === latest?.id ? null : turn.id);
+                      setMonitorOpen(true);
+                      setPaneTab('code');
+                      setHighlight(
+                        snippetKey({
+                          path: source.sourcePath || source.docId,
+                          startLine: source.startLine ?? null,
+                        }),
+                      );
+                    }}
                     focus={state.focus?.accountId ?? null}
                     onFocus={(accountId) => setFocus({ accountId })}
                   />
@@ -341,7 +385,7 @@ export function ChatPage() {
             aria-label="Message"
             value={draft}
             rows={2}
-            placeholder="Ask about billing or portfolios: procedures, runs, fees, holdings, AUM…"
+            placeholder="Ask about billing, portfolios or the lab’s code: procedures, runs, fees, holdings, AUM, where something is implemented…"
             onChange={(e) => {
               // An edit makes the text a new draft: the next ArrowUp starts again from the newest prompt.
               recall.current = idle;
@@ -363,21 +407,64 @@ export function ChatPage() {
 
       {monitorOpen && (
         <aside className={styles.monitorPane}>
-          <MonitorPanel
-            events={events}
-            frames={frames}
-            framesRecorded={framesRecorded}
-            live={isStreaming}
-            timeTravel={timeTravel}
-            loading={!traceExpired && stored.isFetching && events.length === 0}
-            error={
-              traceExpired
-                ? TRACE_EXPIRED
-                : stored.isError && events.length === 0
-                  ? 'Could not load the trace for this turn.'
-                  : null
-            }
-          />
+          <div className={styles.paneTabs} role="tablist" aria-label="Right pane">
+            {PANE_TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                id={`pane-tab-${t.id}`}
+                aria-selected={paneTab === t.id}
+                aria-controls={`pane-${t.id}`}
+                className={`${styles.paneTab} ${paneTab === t.id ? styles.paneTabActive : ''}`}
+                onClick={() => setPaneTab(t.id)}
+              >
+                {t.label}
+                {t.id === 'code' && usedCode.length > 0 && (
+                  <span className={styles.paneCount} aria-label={`${usedCode.length} used`}>
+                    {usedCode.length}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+          <div
+            className={styles.paneBody}
+            role="tabpanel"
+            id="pane-code"
+            aria-labelledby="pane-tab-code"
+            hidden={paneTab !== 'code'}
+          >
+            <CodeSnippetsPanel
+              question={selectedQuestion}
+              active={paneTab === 'code'}
+              used={usedCode}
+              highlight={highlight}
+            />
+          </div>
+          <div
+            className={styles.paneBody}
+            role="tabpanel"
+            id="pane-scenes"
+            aria-labelledby="pane-tab-scenes"
+            hidden={paneTab !== 'scenes'}
+          >
+            <MonitorPanel
+              events={events}
+              frames={frames}
+              framesRecorded={framesRecorded}
+              live={isStreaming}
+              timeTravel={timeTravel}
+              loading={!traceExpired && stored.isFetching && events.length === 0}
+              error={
+                traceExpired
+                  ? TRACE_EXPIRED
+                  : stored.isError && events.length === 0
+                    ? 'Could not load the trace for this turn.'
+                    : null
+              }
+            />
+          </div>
         </aside>
       )}
     </div>
@@ -395,6 +482,7 @@ function AssistantBubble({
   onShow,
   onToggle,
   onAnswer,
+  onOpenCode,
   question,
   focus,
   onFocus,
@@ -415,6 +503,8 @@ function AssistantBubble({
   /** The button opens the monitor on this turn, or closes it when this turn is the one showing. */
   onToggle: () => void;
   onAnswer: (adjustmentId: string, approve: boolean) => void;
+  /** A code source was chosen: show it in the Code snippets tab (add-codebase-domain). */
+  onOpenCode: (source: SourceRef) => void;
   /** The account in focus, and how to choose another (add-focus-state). */
   focus: string | null;
   onFocus: (accountId: string) => void;
@@ -512,7 +602,7 @@ function AssistantBubble({
           onAnswer={(approve) => onAnswer(turn.confirmation!.adjustmentId, approve)}
         />
       )}
-      <SourcesPanel sources={sources} />
+      <SourcesPanel sources={sources} onOpenCode={onOpenCode} />
       {turn.status !== 'streaming' && turn.turnId && conversationId && (
         <TurnFeedback
           hasConfirmation={turn.confirmation !== undefined}

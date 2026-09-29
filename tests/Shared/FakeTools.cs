@@ -46,7 +46,38 @@ public sealed class FakeToolSource : IToolSource
     /// <summary>When the fake's proposals stop being answerable.</summary>
     public DateTimeOffset ProposalExpiresAt { get; set; } = DateTimeOffset.UtcNow.AddMinutes(30);
 
-    public Task<ToolSet> GetToolsAsync(string bearerToken, ConfirmationSink? confirmations, CancellationToken ct)
+    /// <summary>Also offer the codebase server's search (add-codebase-domain).</summary>
+    public bool WithCodebase { get; set; }
+
+    public string CodebasePayloadJson { get; set; } = """
+        {"results":[
+          {"path":"src/Maf.Lab.Api/Agent/ToolSource.cs","startLine":17,"endLine":27,"symbol":"ConfirmedCall","section":"src/Maf.Lab.Api/Agent/ToolSource.cs > ConfirmedCall","kind":"code","language":"csharp","score":0.9,"snippet":"/// <param name=\"idempotencyKey\">The caller's own key.</param>\npublic delegate Task<CallToolResult> ConfirmedCall(string tool, string? idempotencyKey);"}
+        ],"totalMatches":1,"truncated":false,"refineHint":null}
+        """;
+
+    /// <summary>The domains each GetToolsAsync call asked for; null for "every server".</summary>
+    public List<IReadOnlySet<string>?> RequestedDomains { get; } = [];
+
+    public Task<ToolSet> GetToolsAsync(string bearerToken, ConfirmationSink? confirmations, CancellationToken ct,
+        IReadOnlySet<string>? domains = null)
+    {
+        RequestedDomains.Add(domains);
+        return Task.FromResult(Filter(AllTools(confirmations), domains));
+    }
+
+    /// <summary>What a real source would offer for those domains: only their servers' tools; null keeps them all.</summary>
+    private static ToolSet Filter(ToolSet all, IReadOnlySet<string>? domains)
+    {
+        if (domains is null)
+        {
+            return all;
+        }
+        var kept = all.Tools.Where(t => domains.Contains(all.DomainOf(t.Name))).ToList();
+        var origins = kept.ToDictionary(t => t.Name, t => new ToolOrigin(all.DomainOf(t.Name), all.ServerOf(t.Name)));
+        return new ToolSet(kept, null, all.Confirm, origins, all.Unavailable.Where(domains.Contains).ToList());
+    }
+
+    private ToolSet AllTools(ConfirmationSink? confirmations)
     {
         var search = AIFunctionFactory.Create(async (string query, string[]? sourceTypes = null, int? maxResults = null) =>
         {
@@ -94,19 +125,29 @@ public sealed class FakeToolSource : IToolSource
         }, Maf.Lab.Domain.Billing.FeeAdjustmentTool.Name,
            "Proposes an adjustment to one account's fee and asks for confirmation. It changes nothing on its own.");
 
-        if (!WithPortfolio)
-        {
-            return Task.FromResult(new ToolSet([search, status, runs, propose], null, ConfirmAsync));
-        }
         var billing = new ToolOrigin("billing", "maf-lab-retrieval");
         var origins = new Dictionary<string, ToolOrigin>
         {
             ["search_documents"] = billing, ["get_billing_run_status"] = billing, ["search_billing_runs"] = billing,
             [Maf.Lab.Domain.Billing.FeeAdjustmentTool.Name] = billing,
         };
+        List<AITool> offered = [search, status, runs, propose];
+        if (WithCodebase)
+        {
+            offered.Add(AIFunctionFactory.Create((string query, string? kind = null, string? pathPrefix = null, int? maxResults = null) =>
+            {
+                Invocations.Add(Maf.Lab.Domain.Code.CodeTools.Search);
+                return Mcp(CodebasePayloadJson);
+            }, Maf.Lab.Domain.Code.CodeTools.Search, "Searches the maf-lab repository."));
+            origins[Maf.Lab.Domain.Code.CodeTools.Search] = new ToolOrigin("codebase", "maf-lab-code");
+        }
+        if (!WithPortfolio)
+        {
+            return new ToolSet(offered, null, ConfirmAsync, origins);
+        }
         if (PortfolioUnavailable)
         {
-            return Task.FromResult(new ToolSet([search, status, runs, propose], null, ConfirmAsync, origins, ["portfolio"]));
+            return new ToolSet(offered, null, ConfirmAsync, origins, ["portfolio"]);
         }
         var portfolioSearch = AIFunctionFactory.Create((string query, string[]? sourceTypes = null, int? maxResults = null) =>
         {
@@ -133,7 +174,8 @@ public sealed class FakeToolSource : IToolSource
         origins[Maf.Lab.Domain.Portfolio.PortfolioTools.AumHistory] = portfolio;
         origins[Maf.Lab.Domain.Portfolio.PortfolioTools.ListAccounts] = portfolio;
         origins[Maf.Lab.Domain.Portfolio.PortfolioTools.GetPortfolio] = portfolio;
-        return Task.FromResult(new ToolSet([search, status, runs, propose, portfolioSearch, history, holdings, accounts], null, ConfirmAsync, origins));
+        offered.AddRange([portfolioSearch, history, holdings, accounts]);
+        return new ToolSet(offered, null, ConfirmAsync, origins);
     }
 
     /// <summary>Adjustments this fake has applied, keyed by the state they were proposed with.</summary>

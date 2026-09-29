@@ -11,7 +11,11 @@ public interface IToolSource
     /// The tools for one turn. <paramref name="confirmations"/> catches a server's request for a person's
     /// approval; without one, such a request would be answered by the client on the person's behalf.
     /// </summary>
-    Task<ToolSet> GetToolsAsync(string bearerToken, ConfirmationSink? confirmations, CancellationToken ct);
+    /// <param name="domains">
+    /// The domains whose servers this turn needs (add-codebase-domain); only those are contacted. Null — a confirmation, a
+    /// probe, a turn with no domain verdict — contacts every configured server.
+    /// </param>
+    Task<ToolSet> GetToolsAsync(string bearerToken, ConfirmationSink? confirmations, CancellationToken ct, IReadOnlySet<string>? domains = null);
 }
 
 /// <summary>
@@ -66,9 +70,12 @@ public sealed class McpToolSource(IOptions<AgentOptions> options, ILoggerFactory
 {
     private readonly ILogger _logger = loggers.CreateLogger<McpToolSource>();
 
-    public async Task<ToolSet> GetToolsAsync(string bearerToken, ConfirmationSink? confirmations, CancellationToken ct)
+    public async Task<ToolSet> GetToolsAsync(string bearerToken, ConfirmationSink? confirmations, CancellationToken ct,
+        IReadOnlySet<string>? domains = null)
     {
-        var servers = options.Value.AllServers();
+        var servers = options.Value.AllServers().Where(s => domains is null || domains.Contains(s.Domain)).ToList();
+        // The billing server failing fails the turn only when the turn needs it: it is the first server only if selected.
+        var billingFirst = servers.Count > 0 && servers[0].Domain == Domains.Billing;
         var connected = await Task.WhenAll(servers.Select(async (server, index) =>
         {
             try
@@ -76,7 +83,7 @@ public sealed class McpToolSource(IOptions<AgentOptions> options, ILoggerFactory
                 return (server, Client: ((McpClient Client, IList<McpClientTool> Tools)?)await ConnectAsync(server, bearerToken, confirmations, ct),
                     Error: (Exception?)null);
             }
-            catch (Exception ex) when (index > 0 && ex is not OperationCanceledException)
+            catch (Exception ex) when ((index > 0 || !billingFirst) && ex is not OperationCanceledException)
             {
                 return (server, Client: ((McpClient Client, IList<McpClientTool> Tools)?)null, Error: (Exception?)ex);
             }
@@ -98,6 +105,11 @@ public sealed class McpToolSource(IOptions<AgentOptions> options, ILoggerFactory
             var serverName = c.Client.ServerInfo?.Name is { Length: > 0 } n ? n : server.Domain;
             foreach (var tool in c.Tools)
             {
+                if (server.Tools.Count > 0 && !server.Tools.Contains(tool.Name, StringComparer.Ordinal))
+                {
+                    // Not offered to the agent: the server keeps it for its other clients (ask_codebase writes its own answer).
+                    continue;
+                }
                 if (!origins.TryAdd(tool.Name, new ToolOrigin(server.Domain, serverName)))
                 {
                     _logger.LogWarning("tool {Tool} of domain {Domain} dropped: {Owner} already offers it", tool.Name, server.Domain,

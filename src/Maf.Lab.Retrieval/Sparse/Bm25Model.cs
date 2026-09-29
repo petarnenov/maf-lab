@@ -17,10 +17,35 @@ public sealed class Bm25Model
     [JsonInclude] public Dictionary<uint, int> DocumentFrequency { get; private set; } = new();
     [JsonInclude] public int DocumentCount { get; private set; }
     [JsonInclude] public long TotalLength { get; private set; }
+    /// <summary>
+    /// The tokenizer the vocabulary was built with (<see cref="Bm25Tokenizers"/>). Queries are tokenized the same way,
+    /// so it travels with the model. A vocabulary saved before it existed was built with words.
+    /// </summary>
+    [JsonInclude] public string Tokenizer { get; private set; } = Bm25Tokenizers.Words;
 
     public double AverageLength => DocumentCount == 0 ? 1 : (double)TotalLength / DocumentCount;
 
     public static Bm25Model Empty() => new();
+
+    /// <summary>
+    /// Switches the tokenizer. The term ids of the other tokenizer mean different things, so the vocabulary starts
+    /// over; only a full rebuild of the corpus (as <see cref="Rebuild"/> is, on every index run) may do this.
+    /// </summary>
+    public void UseTokenizer(string tokenizer)
+    {
+        if (!Bm25Tokenizers.IsKnown(tokenizer))
+        {
+            throw new ArgumentException($"'{tokenizer}' is not a BM25 tokenizer ({Bm25Tokenizers.Words}, {Bm25Tokenizers.Code}).", nameof(tokenizer));
+        }
+        if (tokenizer == Tokenizer)
+        {
+            return;
+        }
+        Tokenizer = tokenizer;
+        Terms.Clear();
+    }
+
+    public IEnumerable<string> Tokenize(string text) => Bm25Tokenizer.Tokenize(text, Tokenizer);
 
     /// <summary>Rebuilds statistics from the full set of chunk texts. Existing term ids are kept stable.</summary>
     public void Rebuild(IEnumerable<string> chunkTexts)
@@ -30,7 +55,7 @@ public sealed class Bm25Model
         TotalLength = 0;
         foreach (var text in chunkTexts)
         {
-            var tokens = Bm25Tokenizer.Tokenize(text).ToList();
+            var tokens = Tokenize(text).ToList();
             DocumentCount++;
             TotalLength += tokens.Count;
             foreach (var term in tokens.Distinct(StringComparer.Ordinal))

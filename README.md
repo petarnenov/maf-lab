@@ -2,9 +2,9 @@
 
 [![CI](https://github.com/petarnenov/maf-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/petarnenov/maf-lab/actions/workflows/ci.yml)
 
-A learning lab: a RAG-backed assistant for a TAMP, over two domains — **billing** and **portfolio** — each served by
-its own **MCP server** with its own retrieval **tool** (`search_documents`, `search_portfolio_documents`) over its own
-**multi-tenant Qdrant** collection, consumed by a **Microsoft Agent Framework** agent, with a React chat UI, an eval
+A learning lab: a RAG-backed assistant for a TAMP, over three domains — **billing**, **portfolio** and the lab's own
+**codebase** — each served by its own **MCP server** with its own retrieval **tool** (`search_documents`,
+`search_portfolio_documents`, `search_codebase`) over its own **multi-tenant Qdrant** collection, consumed by a **Microsoft Agent Framework** agent, with a React chat UI, an eval
 harness and tested prompt-injection defences. TypeSafe's Jev decides which domains a question belongs to, and the
 monitor shows where a turn crosses from one into the other.
 
@@ -65,6 +65,16 @@ and answers. Open a conversation to restore every turn exactly as it looked (ans
 and the behind-the-scenes trace with time travel while it is kept), then continue it. The active conversation is in
 the URL (`/chat/{id}`), so a reload reopens it. Rename or delete from the item's menu. Delete hides the conversation
 and stops it being continued; its turns stay for the review queue and evals.
+
+## Asking about the code
+
+The repository itself is a corpus (`make index-code`). It is indexed by structure: each type and member with its doc
+comment, sized under embeddinggemma's 2048-token window, and searchable by identifier as well as by meaning. Ask in the
+chat, "how does the code make a tool call idempotent?" or "покажи ми дефиницията на code mcp сървъра". Jev puts the
+question in the codebase domain, the turn loads only the codebase server's `search_codebase`, and the answer cites
+`path:start-end`. The right pane switches to **Code snippets**, which shows exactly the snippets the answer used. For
+a question that did not search the code, the tab shows related code, labelled as not used. Other MCP clients can call
+`search_codebase` and `ask_codebase` at `http://localhost:7171/code/mcp` with a dev token.
 
 ## Asking in another language
 
@@ -197,8 +207,9 @@ call — the probability that the question is about fee billing at all. Retrieva
 question inside the domain (`Jev:MinInDomain`, 0.2), so "how do I cook carbonara?" is not sent to the documentation.
 The intent event shows all of it, e.g. "Intent Other (jev 0.99, outside the domain 0.00, 282 ms)".
 
-**Domains:** the same Jev request asks, per domain, whether the question belongs to it: billing (`in_domain`) and
-portfolio (`in_portfolio`). A domain at or above `Jev:MinDomainScope` (0.5) is in scope, and two in scope means the
+**Domains:** the same Jev request asks, per domain, whether the question belongs to it: billing (`in_domain`),
+portfolio (`in_portfolio`) and the codebase (`in_codebase`). A turn loads only the tools of its domains in scope. A
+follow-up that Jev puts in no domain keeps its conversation's domains, and with no verdict every server is loaded. A domain at or above `Jev:MinDomainScope` (0.5) is in scope, and two in scope means the
 question **crosses** the boundary: a procedural question then searches both domains' documentation, each on its own
 server, before the model's first call. The trace records a `domain` event (the verdict), `domain`/`server` on every tool
 event, a `boundary` event whenever a call enters the other domain, and the domain path on `turn.end`; the monitor's
@@ -256,6 +267,7 @@ ollama pull embeddinggemma && ollama pull qwen3:4b
 dotnet run --project src/Maf.Lab.Indexing                     # index data/ (index | drift | status | rebuild --yes | migrate --to <vector>)
 dotnet run --project src/Maf.Lab.Retrieval                    # billing MCP server on :5090
 dotnet run --project src/Maf.Lab.Portfolio                    # portfolio MCP server on :5091
+dotnet run --project src/Maf.Lab.CodeSearch                   # codebase MCP server on :5092 (make index-code first)
 dotnet run --project src/Maf.Lab.Api                          # agent host on :5080
 cd web && npm install && npm run dev                          # UI on :5174
 ```

@@ -17,6 +17,7 @@
     <InternalsVisibleTo Include="Maf.Lab.IntegrationTests" />
     <!-- The portfolio server reuses the search tool's result shaping, the seed paths and the bootstrap loop. -->
     <InternalsVisibleTo Include="Maf.Lab.Portfolio" />
+    <InternalsVisibleTo Include="Maf.Lab.CodeSearch" />
   </ItemGroup>
   <ItemGroup>
     <Content Update="retrieval.json" CopyToOutputDirectory="PreserveNewest" />

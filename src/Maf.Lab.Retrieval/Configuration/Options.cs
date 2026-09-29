@@ -55,6 +55,8 @@ public sealed class ModelOptions
             // without a floor) with recall@5 up in every language and recall@20 down 0.012, inside the suite's noise.
             // nomic-embed-text's floor was 0.65; this model scores the same closeness far lower.
             DenseFloor = 0.22f,
+            // gemma3.context_length as Ollama reports it (api/show); longer input is cut, or refused with truncate=false.
+            MaxInputTokens = 2048,
         },
     };
 }
@@ -72,6 +74,13 @@ public sealed class EmbeddingProfile
     /// Null means this model has no floor.
     /// </summary>
     public float? DenseFloor { get; set; }
+
+    /// <summary>
+    /// The model's context window in its own tokens, document prefix included. Input past it is not embedded: Ollama
+    /// cuts it silently by default, so the indexer sizes chunks to stay under it and asks the provider to refuse
+    /// rather than cut (add-codebase-search). Null means unknown: no ceiling is enforced.
+    /// </summary>
+    public int? MaxInputTokens { get; set; }
 }
 
 public sealed class RetrievalOptions

@@ -1,0 +1,10 @@
+{
+  "Logging": { "LogLevel": { "Default": "Information", "Microsoft.AspNetCore": "Warning" } },
+  "Urls": "http://localhost:5092",
+  "CodeSearch": {
+    "Collection": "maf_code_chunks",
+    "MetaCollection": "maf_code_meta",
+    "SnippetMaxChars": 1200,
+    "AnswerSnippets": 8
+  }
+}

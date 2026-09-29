@@ -66,6 +66,11 @@ public sealed class ConversationRow
     public DateTime? DeletedAt { get; set; }
     /// <summary>The account in focus (add-focus-state): set by a single-account portfolio read or by the user's choice.</summary>
     public string? FocusAccountId { get; set; }
+    /// <summary>
+    /// The domains of the conversation's last turn that had any in scope, comma-separated (add-codebase-domain): the tools a
+    /// follow-up that names no domain is offered.
+    /// </summary>
+    public string? Domains { get; set; }
 }
 
 public sealed class MessageRow

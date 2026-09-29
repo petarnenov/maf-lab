@@ -40,14 +40,16 @@ public sealed class IndexingPipeline(
         await bootstrapper.EnsureAsync(ct);
 
         // Corpus statistics come from the whole corpus so IDF does not depend on which tenants a run writes.
-        var corpus = CorpusLoader.Load(_options.ResolveCorpusRoot());
-        var prepared = corpus.Documents.ToDictionary(d => d.DocId, d => ChunkBuilder.Build(d, _options.MaxChunkChars), StringComparer.Ordinal);
+        var corpus = _options.LoadCorpus();
+        var contextual = request.Contextual ?? _options.ContextualRetrieval;
+        var ceiling = InputCeiling(models.Value, contextual);
+        var prepared = corpus.Documents.ToDictionary(d => d.DocId, d => ChunkBuilder.Build(d, _options.ChunkBudget, ceiling), StringComparer.Ordinal);
 
         var model = await bm25Store.LoadAsync(ct, bypassCache: true);
+        model.UseTokenizer(_options.Bm25Tokenizer);
         model.Rebuild(prepared.Values.SelectMany(c => c).Select(c => c.SparseText));
 
         var tenants = request.Tenants ?? corpus.LayoutTenants;
-        var contextual = request.Contextual ?? _options.ContextualRetrieval;
         var enricher = enrichers.Create(contextual);
         var modelVersion = dense.ModelVersion(_options.DenseVector);
         // Every configured dense vector is written on every chunk, so no write can drop the vector a rollback needs.
@@ -95,6 +97,23 @@ public sealed class IndexingPipeline(
         return new IndexRunSummary(indexed, unchanged, written, (int)deleted, corpus.Rejected);
     }
 
+    /// <summary>
+    /// The most estimated tokens a chunk's text (with its section path) may have: the smallest context window of the
+    /// configured embedding models, less the document prefix the encoder puts in front and, with contextual retrieval,
+    /// room for the situating sentence. Null when no model states its window.
+    /// </summary>
+    public static int? InputCeiling(Retrieval.Configuration.ModelOptions models, bool contextual)
+    {
+        var ceilings = models.Embeddings.Values
+            .Where(p => p.MaxInputTokens is not null)
+            .Select(p => p.MaxInputTokens!.Value - TokenEstimator.Estimate(p.DocumentPrefix) - (contextual ? ContextSentenceTokens : 0))
+            .ToList();
+        return ceilings.Count == 0 ? null : ceilings.Min();
+    }
+
+    /// <summary>Room left for a contextual-retrieval sentence (the enricher asks for one or two sentences).</summary>
+    public const int ContextSentenceTokens = 160;
+
     private async Task<List<ChunkWrite>> EncodeAsync(
         IReadOnlyList<PreparedChunk> chunks, Bm25Model model, IContextualEnricher enricher, string modelVersion,
         IReadOnlyDictionary<string, string> vectorModels, CancellationToken ct)
@@ -132,6 +151,8 @@ public sealed class IndexingPipeline(
                     Text = chunk.Text,
                     Context = context,
                     ContentHash = chunk.Document.ContentHash,
+                    StartLine = chunk.StartLine,
+                    EndLine = chunk.EndLine,
                 };
                 writes.Add(new ChunkWrite(record, vectors.ToDictionary(v => v.Key, v => v.Value[i], StringComparer.Ordinal),
                     Bm25Encoder.EncodeDocument(model, chunk.SparseText)));

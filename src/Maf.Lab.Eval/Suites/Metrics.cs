@@ -129,6 +129,9 @@ public static class Metrics
     /// cross (and how many that were said to cross really do), how often a question in neither domain was left alone, and
     /// accuracy per language and split.
     /// </summary>
+    /// <summary>A label naming two or more domains: <c>both</c>, or domains joined with "+".</summary>
+    private static bool Crossing(string label) => label == "both" || label.Contains('+');
+
     public static Dictionary<string, double> Domain(IEnumerable<(string Expected, string Actual, string Language, string Split)> cases)
     {
         var all = cases.ToList();
@@ -140,12 +143,14 @@ public static class Metrics
         var metrics = new Dictionary<string, double>
         {
             ["accuracy"] = Share(all.Select(c => c.Expected == c.Actual)),
-            ["crossingRecall"] = Share(all.Where(c => c.Expected == "both").Select(c => c.Actual == "both")),
-            ["crossingPrecision"] = Share(all.Where(c => c.Actual == "both").Select(c => c.Expected == "both")),
+            ["crossingRecall"] = Share(all.Where(c => Crossing(c.Expected)).Select(c => c.Actual == c.Expected)),
+            ["crossingPrecision"] = Share(all.Where(c => Crossing(c.Actual)).Select(c => c.Expected == c.Actual)),
             ["noneAccuracy"] = Share(all.Where(c => c.Expected == "none").Select(c => c.Actual == "none")),
             // A single-domain question put in the other domain alone is the costly error: the wrong server is searched.
-            ["notConfused"] = Share(all.Where(c => c.Expected is "billing" or "portfolio")
-                .Select(c => !(c.Actual is "billing" or "portfolio" && c.Actual != c.Expected))),
+            ["notConfused"] = Share(all.Where(c => c.Expected is "billing" or "portfolio" or "codebase")
+                .Select(c => !(c.Actual is "billing" or "portfolio" or "codebase" && c.Actual != c.Expected))),
+            // add-codebase-domain: how often a question about the lab's own code puts the codebase in scope at all.
+            ["codebaseRecall"] = Share(all.Where(c => c.Expected.Split('+').Contains("codebase")).Select(c => c.Actual.Split('+').Contains("codebase"))),
         };
         foreach (var group in all.GroupBy(c => c.Language).OrderBy(g => g.Key, StringComparer.Ordinal))
         {

@@ -7,6 +7,12 @@ namespace Maf.Lab.Indexing.Corpus;
 /// <summary>A corpus file with its tenant (from the layout, never defaulted) and stable identity.</summary>
 public sealed record SourceDocument(TenantId Tenant, string SourceType, string RelativePath, string FullPath, string Content, DateTimeOffset UpdatedAt)
 {
+    /// <summary>
+    /// A file of the repository itself (add-codebase-search): its section paths start with its path from the repository
+    /// root rather than its bare file name, and its code is cut structurally.
+    /// </summary>
+    public bool FromRepository { get; init; }
+
     /// <summary>Stable and human-readable: "{tenant}/{path within tenant}". Eval datasets reference it.</summary>
     public string DocId => $"{Tenant.Value}/{RelativePath}";
 

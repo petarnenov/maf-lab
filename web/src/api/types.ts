@@ -37,6 +37,12 @@ export interface SourceRef {
   sectionPath: string;
   sourcePath: string;
   snippet: string;
+  /** "code" for a place in the repository (add-codebase-domain); absent for documentation. */
+  kind?: string;
+  startLine?: number;
+  endLine?: number;
+  symbol?: string;
+  language?: string;
 }
 
 export interface ToolCallStartedData {
@@ -841,4 +847,24 @@ export interface JevStatsReport {
   domains?: DomainStats | null;
   /** Absent from an api older than the answer check. */
   answerCheck?: AnswerCheckStats | null;
+}
+
+/** One place in the repository matching a question (search_codebase, via /api/code/snippets). */
+export interface CodeSnippet {
+  path: string;
+  startLine: number | null;
+  endLine: number | null;
+  symbol: string | null;
+  section: string;
+  kind: 'code' | 'docs';
+  language: string;
+  score: number;
+  snippet: string;
+}
+
+export interface CodeSearchResult {
+  results: CodeSnippet[];
+  totalMatches: number;
+  truncated: boolean;
+  refineHint: string | null;
 }

@@ -3,20 +3,34 @@ using Microsoft.Extensions.Configuration;
 
 namespace Maf.Lab.Tests;
 
-/// <summary>Which system prompt the agent runs with (add-system-prompt-v3), and that the previous one is a setting away.</summary>
+/// <summary>Which system prompt the agent runs with (add-system-prompt-v3, add-codebase-domain), and that the previous one is a setting away.</summary>
 public class SystemPromptTests
 {
     private static SystemPrompt Load(string? version) => new(new ConfigurationBuilder()
         .AddInMemoryCollection(new Dictionary<string, string?> { ["Agent:SystemPrompt"] = version }).Build());
 
     [Fact]
-    public void The_default_is_v3_and_it_builds_on_the_data_cards()
+    public void The_default_is_v4_with_the_codebase_and_v3s_data_cards()
     {
         var prompt = Load(null);
 
-        Assert.Equal("system.v3", prompt.Version);
+        Assert.Equal("system.v4", prompt.Version);
         Assert.Contains("## Data cards", prompt.Text);
         Assert.Contains("never calculate trades", prompt.Text);
+        // add-codebase-domain: the codebase is a domain with its search, code is cited by place, general programming stays out.
+        Assert.Contains("search_codebase", prompt.Text);
+        Assert.Contains("path:start-end", prompt.Text);
+        Assert.Contains("general programming that is not about this system", prompt.Text);
+        Assert.DoesNotContain("travel, coding,", prompt.Text);
+    }
+
+    [Fact]
+    public void Configuration_rolls_back_to_v3()
+    {
+        var prompt = Load("system.v3");
+
+        Assert.Equal("system.v3", prompt.Version);
+        Assert.DoesNotContain("search_codebase", prompt.Text);
     }
 
     [Fact]

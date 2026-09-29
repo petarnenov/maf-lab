@@ -11,15 +11,18 @@ public static class Domains
 {
     public const string Billing = "billing";
     public const string Portfolio = "portfolio";
+    /// <summary>The lab's own software, served by the codebase server's search (add-codebase-domain).</summary>
+    public const string Codebase = "codebase";
 
     /// <summary>Every domain, in the order the trace lists them.</summary>
-    public static readonly IReadOnlyList<string> All = [Billing, Portfolio];
+    public static readonly IReadOnlyList<string> All = [Billing, Portfolio, Codebase];
 
     /// <summary>Each domain's documentation search: the tool a forcing intent calls in that domain.</summary>
     public static readonly IReadOnlyDictionary<string, string> SearchTool = new Dictionary<string, string>
     {
         [Billing] = SearchDocumentsTool.Name,
         [Portfolio] = PortfolioTools.Search,
+        [Codebase] = Maf.Lab.Domain.Code.CodeTools.Search,
     };
 
     /// <summary>True for a documentation search of any domain: its result carries snippets and sources.</summary>

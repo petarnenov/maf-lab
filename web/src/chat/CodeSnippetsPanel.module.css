@@ -1,0 +1,144 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.header {
+  padding: 10px 12px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.question {
+  margin: 4px 0 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.body {
+  flex: 1;
+  overflow: auto;
+  padding: 10px 12px;
+  font-size: 0.8rem;
+}
+
+.note {
+  color: var(--muted);
+}
+
+.hint {
+  display: block;
+  margin-top: 4px;
+}
+
+.error {
+  color: var(--danger);
+}
+
+.files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.file {
+  min-width: 0;
+}
+
+.path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  margin-bottom: 6px;
+}
+
+.snippet {
+  margin: 0 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.caption {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 3px 8px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.lines {
+  white-space: nowrap;
+}
+
+.symbol {
+  color: var(--text);
+}
+
+.code {
+  margin: 0;
+  padding: 6px 0;
+  overflow-x: auto;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.line {
+  display: block;
+  padding-right: 8px;
+}
+
+.number {
+  display: inline-block;
+  min-width: 3.2em;
+  padding-right: 10px;
+  text-align: right;
+  color: var(--muted);
+  user-select: none;
+}
+
+.text {
+  white-space: pre;
+}
+
+.provenance {
+  display: inline-block;
+  margin: 6px 0 0;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  border: 1px solid var(--border);
+}
+
+.used {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.related {
+  color: var(--muted);
+}
+
+.highlighted {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

@@ -76,7 +76,8 @@ public static class FeedbackEndpoints
                 var resolved = new List<ToolCallRecord>();
                 foreach (var c in toolCalls)
                 {
-                    if (!Domains.IsSearch(c.ToolName))
+                    // A codebase search's sources are places in files, not chunks of a labelled corpus: nothing to resolve.
+                    if (!Domains.IsSearch(c.ToolName) || c.ToolName == Domains.SearchTool[Domains.Codebase])
                     {
                         resolved.Add(c);
                         continue;

@@ -32,6 +32,10 @@ services:
     environment:
       <<: *ci-model-env
 
+  mcp-code:
+    environment:
+      <<: *ci-model-env
+
   api:
     environment:
       <<: *ci-model-env

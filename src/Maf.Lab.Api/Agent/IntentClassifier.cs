@@ -97,13 +97,14 @@ public static class IntentClassifier
 public static class OutOfScope
 {
     public const string ReplyEnglish =
-        "I can only help with your firm's billing (fees, fee schedules, billing runs, fee adjustments) and portfolios "
-        + "(holdings, model portfolios, drift, rebalancing, quarter-end AUM). Please ask about one of those.";
+        "I can only help with your firm's billing (fees, fee schedules, billing runs, fee adjustments), portfolios "
+        + "(holdings, model portfolios, drift, rebalancing, quarter-end AUM) and questions about this lab's own code. "
+        + "Please ask about one of those.";
 
     public const string ReplyBulgarian =
-        "Мога да помагам само с таксуването на Вашата фирма (такси, тарифи, билинг цикли, корекции на такси) и с "
-        + "портфейлите (позиции, моделни портфейли, отклонение, ребалансиране, AUM към края на тримесечието). "
-        + "Моля, задайте въпрос по една от тези теми.";
+        "Мога да помагам само с таксуването на Вашата фирма (такси, тарифи, билинг цикли, корекции на такси), с "
+        + "портфейлите (позиции, моделни портфейли, отклонение, ребалансиране, AUM към края на тримесечието) и с въпроси "
+        + "за собствения код на лабораторията. Моля, задайте въпрос по една от тези теми.";
 
     /// <summary>In Bulgarian when the question is written in Cyrillic, as the guard's refusal is.</summary>
     public static string Reply(string question) =>

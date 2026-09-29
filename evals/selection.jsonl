@@ -32,3 +32,8 @@
 {"id": "s-57", "question": "What households do I manage?", "expectedTools": ["list_my_accounts"], "category": "portfolio", "firmId": "firm-b"}
 {"id": "s-58", "question": "Кои акаунти мога да виждам?", "expectedTools": ["list_my_accounts"], "category": "portfolio", "firmId": "firm-a"}
 {"id": "s-59", "question": "What is the model portfolio and current allocation of my account A-1043?", "expectedTools": ["get_household_portfolio"], "category": "portfolio", "firmId": "firm-a"}
+{"id": "s-70", "question": "Where is the tenant filter applied to Qdrant queries in the code?", "expectedTools": ["search_codebase"], "category": "codebase", "firmId": "firm-a"}
+{"id": "s-71", "question": "How does the code make a tool call idempotent?", "expectedTools": ["search_codebase"], "category": "codebase", "firmId": "firm-a"}
+{"id": "s-72", "question": "как в кода се прави идемпотентност на тул?", "expectedTools": ["search_codebase"], "category": "codebase", "firmId": "firm-a"}
+{"id": "s-73", "question": "покажи ми дефиницията на code mcp сървъра", "expectedTools": ["search_codebase"], "category": "codebase", "firmId": "firm-a"}
+{"id": "s-74", "question": "Which class splits Markdown documents by headings?", "expectedTools": ["search_codebase"], "category": "codebase", "firmId": "firm-a"}

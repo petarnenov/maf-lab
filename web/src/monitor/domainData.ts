@@ -61,6 +61,8 @@ export function domainColor(domain: string | undefined): string {
       return 'var(--kind-model)';
     case 'portfolio':
       return 'var(--kind-domain)';
+    case 'codebase':
+      return 'var(--kind-tool)';
     default:
       return 'var(--kind-neutral)';
   }

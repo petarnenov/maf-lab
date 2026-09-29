@@ -21,6 +21,9 @@ public static class ChunkSchema
     public const string Text = "text";
     public const string Context = "context";
     public const string ContentHash = "content_hash";
+    /// <summary>1-based first and last line of the chunk in its source file, where the indexer could place it.</summary>
+    public const string StartLine = "start_line";
+    public const string EndLine = "end_line";
 
     public const string SparseVector = "bm25";
 
@@ -44,6 +47,9 @@ public sealed record ChunkRecord
     public required string Text { get; init; }
     public string? Context { get; init; }
     public required string ContentHash { get; init; }
+    /// <summary>1-based lines of the source file the chunk spans; null where they are not known.</summary>
+    public int? StartLine { get; init; }
+    public int? EndLine { get; init; }
 
     /// <summary>Deterministic point id so re-upserting the same chunk overwrites it.</summary>
     public Guid PointId => PointIds.FromChunkId(ChunkId);

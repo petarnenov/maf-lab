@@ -123,7 +123,15 @@ public sealed partial class ChatTurnRunner(
             // A refused prompt reaches no model, so this turn reads no tools over MCP and builds no prompt: the tool
             // schemas and the system prompt — what an injection may be trying to extract — are neither fetched nor traced.
             // A question outside every domain is not an attack, but it has nothing for the model either.
-            await using var tools = screen.Blocked || outOfScope ? null : await toolSource.GetToolsAsync(bearerToken, state.Confirmations, ct);
+            // Only the servers of the domains this conversation is about (add-codebase-domain): the question's own, a
+            // follow-up's conversation's, or — with no verdict to go on — all of them, as before.
+            var (loadDomains, loadReason) = SelectDomains(decision.Domains, state.StoredDomains, decision.Route?.Tool);
+            state.LoadedDomains = (loadDomains, loadReason);
+            if (decision.Domains is { InScope.Count: > 0 } inScope && !screen.Blocked)
+            {
+                await SaveDomainsAsync(conversationId, inScope.InScope, ct);
+            }
+            await using var tools = screen.Blocked || outOfScope ? null : await toolSource.GetToolsAsync(bearerToken, state.Confirmations, ct, loadDomains);
             Jev.ToolRoute? route = null;
             IReadOnlyList<string> forcedSearches = [];
             IReadOnlyList<Jev.ToolRoute> alongside = [];
@@ -133,7 +141,8 @@ public sealed partial class ChatTurnRunner(
                 state.KnownTools = tools.Names;
                 state.Tools = tools;
                 // A forcing intent searches every domain Jev put the question in, each through its own server's search.
-                forcedSearches = IntentClassifier.ForcesRetrieval(decision.Intent) ? ForcedSearches(decision.Domains, tools) : [];
+                forcedSearches = IntentClassifier.ForcesRetrieval(decision.Intent) ? ForcedSearches(decision.Domains, tools)
+                    : CodebaseSearch(decision, tools);
                 forced = forcedSearches.Count > 0;
                 alongside = forced ? Alongside(decision, message, tools) : [];
                 // A data turn Jev routed to a read tool this server offers: the call is issued without the model's first
@@ -169,7 +178,7 @@ public sealed partial class ChatTurnRunner(
                 ["outsideDomains"] = decision.OutsideDomains,
                 ["outOfScopeReply"] = outOfScope,
             });
-            TraceDomains(trace, decision.Domains, forcedSearches, tools);
+            TraceDomains(trace, decision.Domains, forcedSearches, tools, state);
             guardrail.Trace(trace, Guardrail.CheckPrompt, null, null, screen.Decision, screen.Threshold,
                 [new ScreenedItem(0, screen.Decision, screen.Scores)], 0, screen.Reason);
 
@@ -409,6 +418,62 @@ public sealed partial class ChatTurnRunner(
             .Where(tools.Names.Contains)];
     }
 
+    public const string LoadInScope = "in scope";
+    public const string LoadConversation = "conversation";
+    public const string LoadAll = "all";
+
+    private static readonly IComparer<string> DomainOrder =
+        Comparer<string>.Create((a, b) => Order(a).CompareTo(Order(b)));
+
+    private static int Order(string domain) => Domains.All.ToList().IndexOf(domain) is var i && i < 0 ? int.MaxValue : i;
+
+    /// <summary>
+    /// Which domains' servers a turn loads (add-codebase-domain): the domains in scope; for a follow-up Jev put in none,
+    /// the conversation's; with no domain verdict at all, every server (null), as before the selection existed.
+    /// </summary>
+    /// <param name="routedTool">
+    /// The read tool Jev routed a data question to, if any: its domain is always loaded, since the router may name a tool
+    /// whose domain is not in scope (list_my_accounts is routed on its own answer).
+    /// </param>
+    internal static (IReadOnlySet<string>? Domains, string Reason) SelectDomains(DomainVerdict? verdict, IReadOnlyList<string> stored,
+        string? routedTool = null)
+    {
+        var (domains, reason) = verdict is { InScope.Count: > 0 }
+            ? (verdict.InScope.ToHashSet(StringComparer.Ordinal), LoadInScope)
+            : verdict is not null && stored.Count > 0
+                ? (stored.ToHashSet(StringComparer.Ordinal), LoadConversation)
+                : ((HashSet<string>?)null, LoadAll);
+        if (domains is not null && routedTool is not null && Jev.DataToolRouter.ToolDomain.TryGetValue(routedTool, out var routed))
+        {
+            domains.Add(routed);
+        }
+        return (domains, reason);
+    }
+
+    internal static IReadOnlyList<string> ParseDomains(string? stored) =>
+        string.IsNullOrWhiteSpace(stored) ? [] : [.. stored.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(Domains.All.Contains)];
+
+    private async Task SaveDomainsAsync(string conversationId, IReadOnlyList<string> domains, CancellationToken ct)
+    {
+        await using var ctx = await db.CreateDbContextAsync(ct);
+        var value = string.Join(',', domains.Order(DomainOrder));
+        await ctx.Conversations.Where(c => c.Id == conversationId)
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.Domains, value), ct);
+    }
+
+    /// <summary>
+    /// A question whose primary domain is the codebase searches it whatever its intent but small talk
+    /// (add-codebase-domain): the codebase has no read tools, so "show me the definition of X" — data, or no intent at
+    /// all — has nothing to answer from without its search.
+    /// </summary>
+    internal static IReadOnlyList<string> CodebaseSearch(IntentDecision decision, ToolSet tools)
+    {
+        var search = Domains.SearchTool[Domains.Codebase];
+        return decision.Domains?.Primary == Domains.Codebase && decision.Intent != Intent.ChitChat && tools.Names.Contains(search)
+            ? [search]
+            : [];
+    }
+
     /// <summary>
     /// The read call a mixed question needs beside its documentation: the status of the one run it names, when billing is
     /// in scope and the server offers the tool. The run id comes from the question through the router's fixed pattern,
@@ -430,7 +495,7 @@ public sealed partial class ChatTurnRunner(
     /// Where Jev put the question among the domains: each domain's probability against the scope floor, the domains in
     /// scope, and whether the question crosses the boundary between them. Nothing when Jev gave no domain answer.
     /// </summary>
-    private static void TraceDomains(TurnTrace trace, DomainVerdict? domains, IReadOnlyList<string> forcedSearches, ToolSet? tools)
+    private static void TraceDomains(TurnTrace trace, DomainVerdict? domains, IReadOnlyList<string> forcedSearches, ToolSet? tools, TurnState state)
     {
         if (domains is null)
         {
@@ -452,6 +517,10 @@ public sealed partial class ChatTurnRunner(
             ["forcedSearches"] = new JsonArray([.. forcedSearches.Select(x => (JsonNode)JsonValue.Create(x)!)]),
             ["offered"] = tools is null ? null : new JsonArray([.. tools.OfferedDomains.Select(x => (JsonNode)JsonValue.Create(x)!)]),
             ["unavailable"] = tools is null ? null : new JsonArray([.. tools.Unavailable.Select(x => (JsonNode)JsonValue.Create(x)!)]),
+            // Whose tools were loaded and why: the question's domains, the conversation's for a follow-up, or all of them.
+            ["loaded"] = state.LoadedDomains.Domains is { } loaded ? new JsonArray([.. loaded.Order(DomainOrder).Select(x => (JsonNode)JsonValue.Create(x)!)]) : null,
+            ["loadReason"] = state.LoadedDomains.Reason,
+            ["storedDomains"] = new JsonArray([.. state.StoredDomains.Select(x => (JsonNode)JsonValue.Create(x)!)]),
         });
     }
 
@@ -713,7 +782,8 @@ public sealed partial class ChatTurnRunner(
         {
             foreach (var r in results.EnumerateArray())
             {
-                state.Read.Add($"{Str(r, "docId")} › {Str(r, "sectionPath")}: {Str(r, "snippet")}");
+                var item = SourceRef.FromSearchItem(r);
+                state.Read.Add(item.Kind == SourceRef.CodeKind ? $"{item.SectionPath}: {item.Snippet}" : $"{item.DocId} › {item.SectionPath}: {item.Snippet}");
             }
             return;
         }
@@ -899,9 +969,11 @@ public sealed partial class ChatTurnRunner(
             case var search when Domains.IsSearch(search) && s.TryGetProperty("results", out var results):
                 foreach (var r in results.EnumerateArray())
                 {
-                    sources.Add(new SourceRef(Str(r, "docId"), Str(r, "sectionPath"), Str(r, "sourcePath"), Str(r, "snippet")));
+                    // Documentation and codebase results alike (add-codebase-domain): a code snippet keeps its place.
+                    sources.Add(SourceRef.FromSearchItem(r));
                 }
-                return (sources.Count == 0 ? "no matching documentation" : $"{sources.Count} snippet(s)", sources);
+                return (sources.Count == 0 ? (tool == Domains.SearchTool[Domains.Codebase] ? "no matching code" : "no matching documentation")
+                    : $"{sources.Count} snippet(s)", sources);
             case "get_billing_run_status":
                 return ($"run {Str(s, "runId")}: {Str(s, "status")}", sources);
             case "search_billing_runs" when s.TryGetProperty("runs", out var runs):
@@ -1076,6 +1148,7 @@ public sealed partial class ChatTurnRunner(
     {
         await using var ctx = await db.CreateDbContextAsync(ct);
         var conversation = await ctx.Conversations.FirstOrDefaultAsync(c => c.Id == state.ConversationId, ct);
+        state.StoredDomains = ParseDomains(conversation?.Domains);
         var stored = conversation?.FocusAccountId;
         var focus = stored;
         var source = stored is null ? "none" : "stored";
@@ -1218,6 +1291,10 @@ public sealed partial class ChatTurnRunner(
 
         /// <summary>The account in focus, as the turn resolved it and as reads moved it (add-focus-state).</summary>
         public string? Focus { get; set; }
+        /// <summary>The conversation's domains as stored before this turn (add-codebase-domain).</summary>
+        public IReadOnlyList<string> StoredDomains { get; set; } = [];
+        /// <summary>The domains whose servers this turn loaded, and why.</summary>
+        public (IReadOnlySet<string>? Domains, string Reason) LoadedDomains { get; set; } = (null, LoadAll);
         public bool FocusMoved { get; set; }
 
         /// <summary>Set on the turn the user cleared a focus the conversation had.</summary>

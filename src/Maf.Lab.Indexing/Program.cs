@@ -12,7 +12,7 @@ namespace Maf.Lab.Indexing;
 
 /// <summary>
 /// dotnet run --project src/Maf.Lab.Indexing [-- command] [--tenants firm-a,shared] [--force] [--contextual on|off]
-/// Commands: index (default) | drift | status | migrate --to <vector> [--batch 64] | rebuild --yes | chunks [--doc text] [--match text]
+/// Commands: index (default) | drift | status | migrate --to <vector> [--batch 64] | rebuild --yes | chunks [--doc text] [--match text] [--tokens]
 /// </summary>
 public static class Program
 {
@@ -53,21 +53,35 @@ public static class Program
                 case "chunks":
                 {
                     // Lists chunk ids from the chunkers (no store needed) — for authoring eval datasets.
+                    // --tokens adds each chunk's estimated token count and line span, and a summary against the ceiling.
                     var options = services.GetRequiredService<IOptions<IndexingOptions>>().Value;
+                    var ceiling = IndexingPipeline.InputCeiling(services.GetRequiredService<IOptions<Retrieval.Configuration.ModelOptions>>().Value, options.ContextualRetrieval);
+                    var withTokens = flags.ContainsKey("tokens");
                     var match = flags.GetValueOrDefault("match");
-                    foreach (var doc in CorpusLoader.Load(options.ResolveCorpusRoot(), tenants).Documents)
+                    var estimates = new List<int>();
+                    foreach (var doc in options.LoadCorpus(tenants).Documents)
                     {
                         if (flags.TryGetValue("doc", out var docFilter) && !doc.DocId.Contains(docFilter, StringComparison.OrdinalIgnoreCase))
                         {
                             continue;
                         }
-                        foreach (var chunk in Chunking.ChunkBuilder.Build(doc, options.MaxChunkChars))
+                        foreach (var chunk in Chunking.ChunkBuilder.Build(doc, options.ChunkBudget, ceiling))
                         {
                             if (match is null || chunk.Text.Contains(match, StringComparison.OrdinalIgnoreCase) || chunk.SectionPath.Contains(match, StringComparison.OrdinalIgnoreCase))
                             {
-                                Console.WriteLine($"{chunk.ChunkId}\t{chunk.SectionPath}");
+                                var tokens = Chunking.TokenEstimator.Estimate(chunk.SparseText);
+                                estimates.Add(tokens);
+                                Console.WriteLine(withTokens
+                                    ? $"{chunk.ChunkId}\t{chunk.SectionPath}\t{tokens}\t{chunk.StartLine}-{chunk.EndLine}"
+                                    : $"{chunk.ChunkId}\t{chunk.SectionPath}");
                             }
                         }
+                    }
+                    if (withTokens && estimates.Count > 0)
+                    {
+                        estimates.Sort();
+                        Console.Error.WriteLine($"chunks={estimates.Count} estimated tokens: median={estimates[estimates.Count / 2]} " +
+                            $"p95={estimates[(int)(estimates.Count * 0.95)]} max={estimates[^1]} ceiling={(ceiling?.ToString() ?? "none")} budget={options.ChunkBudget}");
                     }
                     return 0;
                 }
@@ -130,8 +144,7 @@ public static class Program
 
     private static HashSet<TenantId> AllTenants(IServiceProvider services)
     {
-        var root = services.GetRequiredService<IOptions<IndexingOptions>>().Value.ResolveCorpusRoot();
-        return CorpusLoader.Load(root).LayoutTenants.ToHashSet();
+        return services.GetRequiredService<IOptions<IndexingOptions>>().Value.LoadCorpus().LayoutTenants.ToHashSet();
     }
 
     private static TenantId ParseTenant(string value) =>

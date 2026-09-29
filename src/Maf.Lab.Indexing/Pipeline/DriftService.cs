@@ -11,7 +11,7 @@ public sealed class DriftService(TenantScopedMaintenance store, IOptions<Indexin
 {
     public async Task<DriftReport> ComputeAsync(IReadOnlySet<TenantId>? tenants, CancellationToken ct)
     {
-        var corpus = CorpusLoader.Load(options.Value.ResolveCorpusRoot(), tenants);
+        var corpus = options.Value.LoadCorpus(tenants);
         var scope = tenants ?? corpus.LayoutTenants;
 
         var indexed = new Dictionary<string, IndexedDocument>(StringComparer.Ordinal);

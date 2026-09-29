@@ -271,6 +271,11 @@ export function hydrateTurn(turn: HistoryTurn): Turn[] {
         sectionPath: s.sectionPath,
         sourcePath: s.sourcePath ?? '',
         snippet: s.snippet ?? '',
+        kind: s.kind,
+        startLine: s.startLine,
+        endLine: s.endLine,
+        symbol: s.symbol,
+        language: s.language,
       })),
       cards: turn.activities ?? [],
       toolCalls: turn.toolCalls.map((c, i) => ({

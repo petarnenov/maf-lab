@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Local development without the balancer: Qdrant + Ollama in compose, mcp-retrieval (:5090), mcp-portfolio (:5091),
-# api (:5080) and the Vite dev server (:5174) as foreground processes with prefixed output. Ctrl-C stops all four.
+# mcp-code (:5092), api (:5080) and the Vite dev server (:5174) as foreground processes with prefixed output. Ctrl-C stops all.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FILE="$ROOT/compose/docker-compose.yml"
@@ -9,7 +9,7 @@ NPM="${NPM:-npm}"
 export Models__OllamaEndpoint="${Models__OllamaEndpoint:-http://localhost:11435}"
 
 docker compose -f "$FILE" up -d qdrant ollama ollama-init
-docker compose -f "$FILE" stop lb api mcp-retrieval mcp-portfolio web >/dev/null 2>&1 || true
+docker compose -f "$FILE" stop lb api mcp-retrieval mcp-portfolio mcp-code web >/dev/null 2>&1 || true
 
 pids=()
 kill_tree() { # dotnet run and npm start child processes: stop the whole tree
@@ -35,7 +35,8 @@ run() { # name dir command...
 "$DOTNET" build "$ROOT/maf-lab.sln" -v q -nologo
 run mcp "$ROOT/src/Maf.Lab.Retrieval" "$DOTNET" run --no-build
 run portfolio "$ROOT/src/Maf.Lab.Portfolio" "$DOTNET" run --no-build
+run code "$ROOT/src/Maf.Lab.CodeSearch" "$DOTNET" run --no-build
 run api "$ROOT/src/Maf.Lab.Api" "$DOTNET" run --no-build
 run web "$ROOT/web" "$NPM" run dev
-echo "dev: web http://localhost:5174 · api http://localhost:5080 · mcp http://localhost:5090/mcp · portfolio http://localhost:5091/mcp (Ctrl-C to stop)"
+echo "dev: web http://localhost:5174 · api http://localhost:5080 · mcp http://localhost:5090/mcp · portfolio http://localhost:5091/mcp · code http://localhost:5092/mcp (Ctrl-C to stop)"
 wait

@@ -7,42 +7,161 @@ namespace Maf.Lab.Indexing.Chunking;
 /// Python uses indentation. Anything that cannot be attributed to a symbol falls back to fixed windows.
 /// Section path is "file > Symbol"; the symbol name is stored separately.
 /// </summary>
-public sealed partial class CodeChunker : IChunker
+/// <param name="structural">
+/// The codebase's own index (add-codebase-search) asks for more than the billing samples ever needed: each symbol also
+/// takes the doc comments, attributes and decorators written directly above it, and the lines no symbol claims —
+/// properties, one-line records, fields, usings, top-level statements — become chunks of their enclosing type (or of
+/// the file) instead of being dropped. Off, the chunker cuts exactly as it always has, so the billing corpus keeps its
+/// chunks.
+/// </param>
+public sealed partial class CodeChunker(bool structural = false) : IChunker
 {
-    public IReadOnlyList<RawChunk> Chunk(string content, string relativePath, int maxChars)
+    /// <summary>Section name of the lines outside every type and function of a file.</summary>
+    public const string FileScope = "(file)";
+
+    public IReadOnlyList<RawChunk> Chunk(string content, string relativePath, ChunkBudget budget)
     {
         var lines = content.Replace("\r\n", "\n").Split('\n');
         var fileName = Path.GetFileName(relativePath);
-        var symbols = Path.GetExtension(relativePath).ToLowerInvariant() switch
+        var extension = Path.GetExtension(relativePath).ToLowerInvariant();
+        var types = new List<(string Name, int Start, int End)>();
+        var symbols = extension switch
         {
             ".py" => PythonSymbols(lines),
             ".sql" => SqlSymbols(lines),
-            _ => BraceSymbols(lines),
+            ".cs" or ".ts" or ".tsx" or ".js" or ".jsx" or ".java" or ".go" or ".rs" or ".c" or ".cpp" or ".h" or ".kt" or ".swift" => BraceSymbols(lines, types),
+            _ when structural => [],
+            _ => BraceSymbols(lines, types),
         };
 
         var chunks = new List<RawChunk>();
         if (symbols.Count == 0)
         {
-            foreach (var piece in ChunkText.SplitToFit(content, maxChars))
+            foreach (var piece in ChunkText.SplitToFit(content, budget))
             {
                 chunks.Add(new RawChunk(fileName, piece));
             }
             return chunks;
         }
 
+        if (structural)
+        {
+            symbols = WithLeadingTrivia(lines, symbols, extension);
+            symbols = [.. symbols, .. Unclaimed(lines, symbols, types)];
+            symbols = [.. symbols.OrderBy(s => s.Start)];
+        }
+
         foreach (var (name, start, end) in symbols)
         {
             var text = string.Join('\n', lines[start..(end + 1)]);
-            foreach (var piece in ChunkText.SplitToFit(text, maxChars))
+            var symbol = name == FileScope ? null : name;
+            foreach (var piece in ChunkText.SplitToFit(text, budget))
             {
-                chunks.Add(new RawChunk($"{fileName} > {name}", piece, name));
+                chunks.Add(new RawChunk($"{fileName} > {name}", piece, symbol));
             }
         }
         return chunks;
     }
 
+    /// <summary>Moves each symbol's start up over the comment, attribute and decorator lines directly above it.</summary>
+    private static List<(string Name, int Start, int End)> WithLeadingTrivia(string[] lines, List<(string Name, int Start, int End)> symbols, string extension)
+    {
+        // A type's header runs up to its first member, so it holds that member's doc comment: give it back first.
+        var starts = symbols.Select(x => x.Start).ToHashSet();
+        symbols = symbols.Select(x =>
+        {
+            var e = x.End;
+            if (starts.Contains(e + 1))
+            {
+                while (e > x.Start && (lines[e].Trim().Length == 0 || IsLeadingTrivia(lines[e], extension)))
+                {
+                    e--;
+                }
+            }
+            return (x.Name, x.Start, e);
+        }).ToList();
+
+        var claimed = Claimed(lines.Length, symbols);
+        var result = new List<(string, int, int)>(symbols.Count);
+        foreach (var (name, start, end) in symbols)
+        {
+            var s = start;
+            while (s > 0 && !claimed[s - 1] && IsLeadingTrivia(lines[s - 1], extension))
+            {
+                s--;
+                claimed[s] = true;
+            }
+            result.Add((name, s, end));
+        }
+        return result;
+    }
+
+    private static bool IsLeadingTrivia(string line, string extension)
+    {
+        var t = line.TrimStart();
+        if (t.Length == 0)
+        {
+            return false;
+        }
+        return extension switch
+        {
+            ".py" => t.StartsWith('#') || t.StartsWith('@'),
+            ".sql" => t.StartsWith("--"),
+            _ => t.StartsWith("//") || t.StartsWith("/*") || t.StartsWith('*') || t.StartsWith('[') || t.StartsWith('@'),
+        };
+    }
+
+    /// <summary>
+    /// Runs of lines no symbol claims that hold more than braces, grouped per enclosing type (innermost), or per file
+    /// outside every type. A run ends at a claimed line, so it never spans a method.
+    /// </summary>
+    private static IEnumerable<(string Name, int Start, int End)> Unclaimed(string[] lines, List<(string Name, int Start, int End)> symbols, List<(string Name, int Start, int End)> types)
+    {
+        var claimed = Claimed(lines.Length, symbols);
+        string Owner(int line) => types.Where(t => t.Start <= line && line <= t.End).OrderBy(t => t.End - t.Start).Select(t => t.Name).FirstOrDefault() ?? FileScope;
+
+        var i = 0;
+        while (i < lines.Length)
+        {
+            if (claimed[i] || lines[i].Trim().Length == 0)
+            {
+                i++;
+                continue;
+            }
+            var owner = Owner(i);
+            var start = i;
+            var end = i;
+            while (i < lines.Length && !claimed[i] && Owner(i) == owner)
+            {
+                if (lines[i].Trim().Length > 0)
+                {
+                    end = i;
+                }
+                i++;
+            }
+            var body = lines[start..(end + 1)];
+            if (body.Any(l => l.Trim().Trim('{', '}', ')', ';', ',', ' ').Length > 0))
+            {
+                yield return (owner, start, end);
+            }
+        }
+    }
+
+    private static bool[] Claimed(int count, List<(string Name, int Start, int End)> symbols)
+    {
+        var claimed = new bool[count];
+        foreach (var (_, start, end) in symbols)
+        {
+            for (var i = Math.Max(0, start); i <= end && i < count; i++)
+            {
+                claimed[i] = true;
+            }
+        }
+        return claimed;
+    }
+
     /// <summary>Top-level functions and types; members of a type become "Type.Member" chunks, the type header keeps fields.</summary>
-    private static List<(string Name, int Start, int End)> BraceSymbols(string[] lines)
+    private static List<(string Name, int Start, int End)> BraceSymbols(string[] lines, List<(string Name, int Start, int End)> types)
     {
         var result = new List<(string, int, int)>();
         var i = 0;
@@ -81,6 +200,7 @@ public sealed partial class CodeChunker : IChunker
                 }
                 j++;
             }
+            types.Add((name, i, end));
             var headerEnd = members.Count > 0 ? members[0].Item2 - 1 : end;
             result.Add((name, i, Math.Max(i, headerEnd)));
             result.AddRange(members);

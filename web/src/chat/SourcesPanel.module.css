@@ -1,4 +1,5 @@
 .panel {
+  min-width: 0;
   margin-top: 8px;
   border-top: 1px solid var(--border);
   padding-top: 8px;
@@ -37,11 +38,71 @@
 
 .sectionPath {
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .path {
   font-size: 0.75rem;
   color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* A code source: the file and its lines, then its folder and symbol — never wider than the answer (add-codebase-domain). */
+.code {
+  min-width: 0;
+  gap: 1px;
+}
+
+.codeHead {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.codeFile {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.section:hover .codeFile {
+  text-decoration: underline;
+}
+
+.codeLines {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.codeOpen {
+  flex: none;
+  font-size: 0.8rem;
+}
+
+.codeDetail {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.more {
+  margin-top: 2px;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  color: var(--link);
+  font-size: 0.8rem;
+  cursor: pointer;
 }
 
 .snippet {

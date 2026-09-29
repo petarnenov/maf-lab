@@ -25,15 +25,18 @@ public sealed class EvalAgentHost : IAsyncDisposable
 {
     private readonly WebApplication? _retrieval;
     private readonly WebApplication? _portfolio;
+    private readonly WebApplication? _code;
     private readonly string _workDir;
 
     private readonly bool _keepWorkDir;
 
-    private EvalAgentHost(ServiceProvider services, WebApplication? retrieval, WebApplication? portfolio, string workDir, bool keepWorkDir = false)
+    private EvalAgentHost(ServiceProvider services, WebApplication? retrieval, WebApplication? portfolio, WebApplication? code, string workDir,
+        bool keepWorkDir = false)
     {
         Services = services;
         _retrieval = retrieval;
         _portfolio = portfolio;
+        _code = code;
         _workDir = workDir;
         _keepWorkDir = keepWorkDir;
     }
@@ -73,6 +76,21 @@ public sealed class EvalAgentHost : IAsyncDisposable
             portfolioEndpoint = portfolio.Urls.First().TrimEnd('/') + "/mcp";
         }
 
+        // The codebase's server, the third domain (add-codebase-domain), the same way.
+        WebApplication? code = null;
+        var codeEndpoint = options.CodeMcpEndpoint;
+        if (string.IsNullOrWhiteSpace(codeEndpoint))
+        {
+            code = Maf.Lab.CodeSearch.Program.BuildApp([], b =>
+            {
+                b.Configuration.AddConfiguration(configuration);
+                b.Configuration["Urls"] = "http://127.0.0.1:0";
+                b.Logging.SetMinimumLevel(LogLevel.Warning);
+            });
+            await code.StartAsync(ct);
+            codeEndpoint = code.Urls.First().TrimEnd('/') + "/mcp";
+        }
+
         var workDir = Directory.CreateTempSubdirectory("maf-eval-").FullName;
         if (options.KeepWorkDir)
         {
@@ -88,7 +106,11 @@ public sealed class EvalAgentHost : IAsyncDisposable
         services.PostConfigure<AgentOptions>(o =>
         {
             o.McpEndpoint = endpoint;
-            o.Servers = [new McpServerOptions { Domain = Domains.Portfolio, Endpoint = portfolioEndpoint }];
+            o.Servers =
+            [
+                new McpServerOptions { Domain = Domains.Portfolio, Endpoint = portfolioEndpoint },
+                new McpServerOptions { Domain = Domains.Codebase, Endpoint = codeEndpoint, Tools = [Maf.Lab.Domain.Code.CodeTools.Search] },
+            ];
         });
         services.AddDbContextFactory<MafDbContext>(o => o.UseSqlite($"Data Source={Path.Combine(workDir, "eval.db")}"));
         services.AddSingleton<SystemPrompt>();
@@ -113,7 +135,7 @@ public sealed class EvalAgentHost : IAsyncDisposable
         {
             await DatabaseInitializer.InitializeAsync(db, ct);
         }
-        return new EvalAgentHost(provider, retrieval, portfolio, workDir, options.KeepWorkDir);
+        return new EvalAgentHost(provider, retrieval, portfolio, code, workDir, options.KeepWorkDir);
     }
 
     public static Principal EvalPrincipal(string firmId) => new($"eval-{firmId}", TenantId.Firm(firmId), Role.ADVISOR, []);
@@ -135,7 +157,7 @@ public sealed class EvalAgentHost : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await Services.DisposeAsync();
-        foreach (var server in new[] { _retrieval, _portfolio }.OfType<WebApplication>())
+        foreach (var server in new[] { _retrieval, _portfolio, _code }.OfType<WebApplication>())
         {
             await server.StopAsync();
             await server.DisposeAsync();

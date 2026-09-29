@@ -45,6 +45,18 @@ public sealed partial class FakeJev : HttpMessageHandler
     public Func<string, double>? Portfolio { get; set; }
 
     /// <summary>
+    /// The codebase domain question's answer (<c>in_codebase</c>). Default: <see cref="CodebaseWords"/> — high for questions
+    /// about the lab's code, zero otherwise — so no earlier test becomes a codebase crossing by accident.
+    /// </summary>
+    public Func<string, double>? Codebase { get; set; }
+
+    /// <summary>Questions naming code, a class, a method, a file or an MCP server count as the codebase's.</summary>
+    public static double CodebaseWords(string question) =>
+        System.Text.RegularExpressions.Regex.IsMatch(question,
+            @"\b(codebase|source code|in the code|the code base|class|method|mcp server)\b|в кода|клас|метод",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase) ? 0.9 : 0.0;
+
+    /// <summary>
     /// What every screening Noul (<c>guard_*</c>) is answered with, given the screened text and the question id. Null —
     /// the default — answers 0, so a test that is not about the content guard never trips it.
     /// </summary>
@@ -152,6 +164,13 @@ public sealed partial class FakeJev : HttpMessageHandler
                     answers[id] = new { type = "noul", noul = portfolio(question) };
                 }
             }
+            else if (id == "in_codebase")
+            {
+                if ((Codebase ?? (InDomain is null ? null : CodebaseWords)) is { } codebase)
+                {
+                    answers[id] = new { type = "noul", noul = codebase(question) };
+                }
+            }
             else if (id.StartsWith("answer_", StringComparison.Ordinal))
             {
                 var answer = root["state"]!["answer"]?.GetValue<string>() ?? "";
@@ -210,7 +229,9 @@ public sealed partial class FakeJev : HttpMessageHandler
     public static double PortfolioWords(string question) =>
         PortfolioVocabulary().IsMatch(question.ToLowerInvariant()) ? 0.9 : 0.0;
 
-    [GeneratedRegex(@"\b(holdings?|hold|drift\w*|rebalanc\w*|allocation|model portfolio|aum|tolerance|portfolio)\b|(?<!\p{L})(портфейл\p{L}*|ребаланс\p{L}*)(?!\p{L})")]
+    // "Which accounts do I have?" is the portfolio's too: its tools list them, and since add-codebase-domain a turn loads
+    // only the tools of its domains.
+    [GeneratedRegex(@"\b(holdings?|hold|drift\w*|rebalanc\w*|allocation|model portfolio|aum|tolerance|portfolio)\b|\b(my|which) (accounts|households)\b|\b(accounts|households) (do|can) i\b|(?<!\p{L})(портфейл\p{L}*|ребаланс\p{L}*|акаунт\p{L}*|сметк\p{L}*)(?!\p{L})")]
     private static partial Regex PortfolioVocabulary();
 
     [GeneratedRegex(@"\b(credit|reduce|increase|adjust|refund)\b.*\ba-\d+")]

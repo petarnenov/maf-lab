@@ -9,7 +9,7 @@ namespace Maf.Lab.Indexing.Chunking;
 /// </summary>
 public sealed partial class ProcedureChunker : IChunker
 {
-    public IReadOnlyList<RawChunk> Chunk(string content, string relativePath, int maxChars)
+    public IReadOnlyList<RawChunk> Chunk(string content, string relativePath, ChunkBudget budget)
     {
         var lines = content.Replace("\r\n", "\n").Split('\n');
         var title = lines.FirstOrDefault(l => l.Trim().Length > 0)?.Trim().TrimStart('#', ' ') ?? Path.GetFileNameWithoutExtension(relativePath);
@@ -22,7 +22,7 @@ public sealed partial class ProcedureChunker : IChunker
         void Flush()
         {
             var path = string.Join(" > ", new[] { title, section, step }.Where(s => !string.IsNullOrEmpty(s)));
-            foreach (var piece in ChunkText.SplitToFit(buffer.ToString(), maxChars))
+            foreach (var piece in ChunkText.SplitToFit(buffer.ToString(), budget))
             {
                 chunks.Add(new RawChunk(path, piece));
             }

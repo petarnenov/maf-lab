@@ -11,7 +11,7 @@ public static class Bm25Encoder
     /// <summary>Document side: saturated term frequency, length-normalised. Adds unseen terms to the vocabulary.</summary>
     public static SparseVectorData EncodeDocument(Bm25Model model, string text)
     {
-        var tokens = Bm25Tokenizer.Tokenize(text).ToList();
+        var tokens = model.Tokenize(text).ToList();
         if (tokens.Count == 0)
         {
             return new SparseVectorData([], []);
@@ -33,7 +33,7 @@ public static class Bm25Encoder
     /// <summary>Query side: IDF weight per known query term. Unknown terms cannot match and are dropped.</summary>
     public static SparseVectorData EncodeQuery(Bm25Model model, string text)
     {
-        var weights = Bm25Tokenizer.Tokenize(text)
+        var weights = model.Tokenize(text)
             .Distinct(StringComparer.Ordinal)
             .Select(t => model.TryGetTermId(t, out var id) ? (Id: id, Weight: (float)model.Idf(id)) : (Id: uint.MaxValue, Weight: 0f))
             .Where(x => x.Id != uint.MaxValue && x.Weight > 0)

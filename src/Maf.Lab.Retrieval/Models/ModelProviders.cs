@@ -131,9 +131,34 @@ public sealed class DenseEncoder(ModelProviders providers) : IDenseEncoder
     public async Task<IReadOnlyList<float[]>> EmbedDocumentsAsync(string vectorName, IReadOnlyList<string> texts, CancellationToken ct)
     {
         var profile = providers.GetProfile(vectorName);
-        var result = await providers.GetEmbedder(vectorName).GenerateAsync(texts.Select(t => profile.DocumentPrefix + t), cancellationToken: ct);
+        var embedder = providers.GetEmbedder(vectorName);
+        var inputs = texts.Select(t => profile.DocumentPrefix + t).ToList();
+        // Ollama cuts a document past the context window without a word, and the index would then hold a vector for
+        // text it never read. With a known window the request asks Ollama to refuse instead, so a chunk the indexer
+        // sized wrong fails the run. Microsoft.Extensions.AI has no option for it (OllamaSharp ignores the raw request
+        // factory for embeddings), hence the native call. Queries keep the default: a cut query still searches.
+        if (profile.MaxInputTokens is not null && embedder is OllamaSharp.IOllamaApiClient ollama)
+        {
+            try
+            {
+                var response = await ollama.EmbedAsync(new OllamaSharp.Models.EmbedRequest { Model = profile.Model, Input = inputs, Truncate = false }, ct);
+                return response.Embeddings.ToArray();
+            }
+            catch (OllamaSharp.Models.Exceptions.OllamaException ex) when (ex.Message.Contains("context length", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InputTooLongException(profile.Model, profile.MaxInputTokens.Value, ex);
+            }
+        }
+        var result = await embedder.GenerateAsync(inputs, cancellationToken: ct);
         return result.Select(e => e.Vector.ToArray()).ToArray();
     }
 
     public string ModelVersion(string vectorName) => providers.GetProfile(vectorName).Model;
+}
+
+/// <summary>A document longer than the embedding model's context window, which the provider refused to cut.</summary>
+public sealed class InputTooLongException(string model, int maxInputTokens, Exception inner)
+    : Exception($"A document exceeds {model}'s context window of {maxInputTokens} tokens; the chunker must split it smaller.", inner)
+{
+    public int MaxInputTokens { get; } = maxInputTokens;
 }

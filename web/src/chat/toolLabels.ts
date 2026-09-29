@@ -13,6 +13,8 @@ export function toolCallLabel(call: Pick<ToolCallView, 'toolName' | 'argumentSum
     }
     case 'search_billing_runs':
       return running ? 'Searching billing runs…' : 'Searched billing runs';
+    case 'search_codebase':
+      return running ? 'Searching the codebase…' : 'Searched the codebase';
     case 'search_portfolio_documents':
       return running ? 'Searching portfolio documentation…' : 'Searched portfolio documentation';
     case 'get_household_portfolio':

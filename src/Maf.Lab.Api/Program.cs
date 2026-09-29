@@ -1,3 +1,4 @@
+using Maf.Lab.Api.Code;
 using Maf.Lab.A2A;
 using Maf.Lab.Api.A2A;
 using Maf.Lab.Api.Admin;
@@ -61,6 +62,8 @@ public partial class Program
         builder.Services.AddSingleton<ToolAudit>();
         builder.Services.AddHttpClient("mcp");
         builder.Services.AddSingleton<IToolSource, McpToolSource>();
+        builder.Services.Configure<Code.CodeSearchClientOptions>(builder.Configuration.GetSection(Code.CodeSearchClientOptions.Section));
+        builder.Services.AddSingleton<Code.ICodeSnippetSource, Code.McpCodeSnippetSource>();
         builder.Services.AddSingleton<ConversationService>();
         builder.Services.AddJevIntentClassifier(builder.Configuration);
         builder.Services.Configure<Agent.FeeAdjustmentOptions>(builder.Configuration.GetSection("FeeAdjustments"));
@@ -137,6 +140,7 @@ public partial class Program
         app.MapCompliance();
         app.MapIntentStats();
         app.MapJevStats();
+        app.MapCodeSnippets();
         app.MapA2AAdmin();
         app.MapA2ASurface();
         app.MapA2AProtocol();

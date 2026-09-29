@@ -49,8 +49,10 @@ public static class DatasetLoader
     public static readonly string[] Tools =
         ["search_documents", "get_billing_run_status", "search_billing_runs", Maf.Lab.Domain.Billing.FeeAdjustmentTool.Name,
             Maf.Lab.Domain.Portfolio.PortfolioTools.Search, Maf.Lab.Domain.Portfolio.PortfolioTools.GetPortfolio,
-            Maf.Lab.Domain.Portfolio.PortfolioTools.AumHistory, Maf.Lab.Domain.Portfolio.PortfolioTools.ListAccounts];
-    public static readonly string[] SelectionCategories = ["obvious-docs", "obvious-data", "boundary", "negative", "feedback", "portfolio", "cross-domain"];
+            Maf.Lab.Domain.Portfolio.PortfolioTools.AumHistory, Maf.Lab.Domain.Portfolio.PortfolioTools.ListAccounts,
+            Maf.Lab.Domain.Code.CodeTools.Search];
+    public static readonly string[] SelectionCategories =
+        ["obvious-docs", "obvious-data", "boundary", "negative", "feedback", "portfolio", "cross-domain", "codebase"];
 
     public static IReadOnlyList<SelectionCase> Selection(string root) => Load(root, "selection.jsonl", (e, where) =>
     {
@@ -134,7 +136,15 @@ public static class DatasetLoader
         return new IntentCase(Str(e, "id", where), Str(e, "question", where), f.GetBoolean(), category, language, split);
     });
 
-    public static readonly string[] DomainExpectations = ["billing", "portfolio", "both", "none"];
+    /// <summary>
+    /// One domain, <c>none</c>, <c>both</c> (billing and portfolio, as the dataset has always said it), or several domains
+    /// joined with "+" in the trace's order, e.g. <c>billing+codebase</c> (add-codebase-domain).
+    /// </summary>
+    public static readonly string[] DomainExpectations = ["billing", "portfolio", "codebase", "both", "none"];
+
+    public static bool IsDomainExpectation(string expected) =>
+        DomainExpectations.Contains(expected)
+        || expected.Split('+') is { Length: > 1 } parts && parts.All(p => p is "billing" or "portfolio" or "codebase") && parts.Distinct().Count() == parts.Length;
 
     /// <summary>Questions for Jev's domain verdict alone, each labelled with the domains it belongs to.</summary>
     public static IReadOnlyList<DomainCase> Domain(string root) => Load(root, "domain.jsonl", (e, where) =>
@@ -142,7 +152,7 @@ public static class DatasetLoader
         var expected = Str(e, "expected", where);
         var language = Str(e, "language", where);
         var split = Str(e, "split", where);
-        if (!DomainExpectations.Contains(expected) || !IntentLanguages.Contains(language) || split is not ("design" or "holdout"))
+        if (!IsDomainExpectation(expected) || !IntentLanguages.Contains(language) || split is not ("design" or "holdout"))
         {
             throw new InvalidDataException($"{where}: unknown expected domain, language or split.");
         }

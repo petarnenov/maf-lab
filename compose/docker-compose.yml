@@ -122,6 +122,25 @@ services:
       ollama-init:
         condition: service_completed_successfully
 
+  # The codebase: the repository indexed by structure into its own collection (make index-code), searched and asked
+  # about through its own MCP server. Read-only; the chunks carry their text, so the repository is not mounted.
+  mcp-code:
+    build:
+      context: ..
+      dockerfile: src/Maf.Lab.CodeSearch/Dockerfile
+    deploy:
+      replicas: 1
+    environment:
+      <<: *app-env
+      Urls: http://+:8080
+      CodeSearch__Collection: maf_code_chunks
+      CodeSearch__MetaCollection: maf_code_meta
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
+
   compliance:
     build:
       context: ..
@@ -154,6 +173,13 @@ services:
       # The second domain's server, also through the balancer. The billing server above keeps the domain "billing".
       Agent__Servers__0__Domain: portfolio
       Agent__Servers__0__Endpoint: http://lb/portfolio/mcp
+      # The codebase as the agent's third domain (add-codebase-domain): only its search is offered to the agent;
+      # ask_codebase writes an answer of its own and stays for other MCP clients.
+      Agent__Servers__1__Domain: codebase
+      Agent__Servers__1__Endpoint: http://lb/code/mcp
+      Agent__Servers__1__Tools__0: search_codebase
+      # The Code snippets tab asks the codebase server, as the user, through the balancer.
+      CodeSearch__Endpoint: http://lb/code/mcp
       Storage__ConnectionString: Data Source=/app-data/maf-lab.db
       Indexing__CorpusRoot: /data
       Evals__Root: /evals
@@ -180,6 +206,8 @@ services:
       mcp-retrieval:
         condition: service_healthy
       mcp-portfolio:
+        condition: service_healthy
+      mcp-code:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -264,6 +292,8 @@ services:
       mcp-retrieval:
         condition: service_healthy
       mcp-portfolio:
+        condition: service_healthy
+      mcp-code:
         condition: service_healthy
       compliance:
         condition: service_healthy
