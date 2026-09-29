@@ -1701,3 +1701,54 @@ protocol's 30 event types.
     selector, which predates this change and is left for its own fix.
 - **Not in this change:** billing cards (their DTOs carry failure detail text), `ACTIVITY_DELTA`, and sorting or other
   interactivity.
+
+## 50. system.v3: answers build on the data cards (add-system-prompt-v3, 2026-09-29)
+
+With the cards (§49) in the chat, answers still restated their data as markdown tables. That was duplication at best,
+and the one place the model could get a number wrong.
+
+- **The `presentation` suite** (`evals/presentation.jsonl`: 8 portfolio questions, EN and BG, firm-a and firm-b)
+  reports five metrics, all read off the answer except the verdict:
+  - `noTable`: no markdown table (two or more `|…|` lines);
+  - `noRowList`: the card's rows are not listed one by one (three or more list lines naming different rows);
+  - `figuresGrounded`: each amount next to a currency marker, a k/M/хил./млн. scale included, appears in that turn's
+    card;
+  - `verdictCorrect`: the plan's rebalance verdict is stated, judged yes/no/neither by the chat model;
+  - `languageMatch`: the answer is in the question's script.
+- **Before:** on `system.v2`, noTable was 0.375 and 0.5 (`20260929-160332`, `-160852`). On the final dataset
+  (`20260929-163355`): noTable 0.5, noRowList 0.857, figuresGrounded 1, verdictCorrect 1, languageMatch 1. The plan
+  (§48) had already stopped invented figures.
+- **What v3 adds to v2**, reached by measuring each step:
+  1. A `## Data cards` section: the three carded tools' data is already on screen, so say what it means and quote the
+     plan's figures, never compute them. Alone it gave noTable 0.5–0.625: gpt-oss:120b kept writing tables.
+  2. A rule in `## Rules`: never a markdown table after those tools. That brought noTable to 1 three times out of three.
+  3. After the first live check answered with one bullet per class, and offered to "prepare the orders" although
+     nothing executes trades:
+     - the rule extends to listing rows one by one, unless the user explicitly asks about every class or account (the
+       owner's call);
+     - a new rule says trades cannot be placed and must never be offered.
+
+     An example that repeated a dataset question word for word was replaced with one about another account, so the
+     prompt does not learn the test.
+  4. After the next live check answered a Bulgarian question in English (2 of 3): a rule to answer in the question's
+     language. v2 had none outside Scope. `languageMatch` was added so the suite catches this.
+- **After** (final prompt): three runs at 1 / 1 / 1 / 1 / 1 (`20260929-163423`, `-163449`, `-163518`). Baseline
+  accepted from `20260929-163946-presentation`.
+- **The other suites:**
+  - `selection`: recall 1, exactMatch 0.941 (`20260929-163545`).
+  - `injection`: 8/8 (`20260929-163745`).
+  - `generation`: noisy.
+    - One run passed at 1 / 1 (`20260929-163821`).
+    - Two runs were marked FAILED against the baseline at faithfulness 0.969, or relevance 0.938, because the rubric
+      judge scored g-02 or g-04 lower. The same judge noise hit v2 runs today (§46).
+    - One run lost two cases to `judge failed: HttpRequestException`, the Ollama Cloud call, not the answer.
+    - Baselines not re-accepted.
+- **Checked live** after the final build: "Препоръчай ребалансиране за A-1043" three times. Each answer was in
+  Bulgarian, two sentences, no table, "няма нужда от ребалансиране", and the card beside it.
+- **The prompt was pinned in settings.** `src/Maf.Lab.Api/appsettings.json` still named `system.v2`, so the stack ran
+  v2 after the default moved while the eval host, which does not read that file, ran v3. The key is removed:
+  `SystemPrompt.DefaultVersion` is the one place the default lives, and a test asserts the shipped settings do not
+  set it. Rollback stays `Agent:SystemPrompt=system.v2`.
+- **Aside, not caused by this change:** the web suite's parallel workers crashed intermittently (V8 "Fatal process out
+  of memory: Zone", SIGSEGV/SIGTRAP at worker start, a JSON file reading back corrupted) on a loaded machine with 40 GB
+  free. The same tests pass run serially (`vitest run --no-file-parallelism`: 49 files, 341 tests).

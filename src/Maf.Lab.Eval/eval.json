@@ -28,6 +28,13 @@
       "injection": {
         "passRate": 1.0
       },
+      "presentation": {
+        "noTable": 0.9,
+        "noRowList": 0.9,
+        "figuresGrounded": 0.95,
+        "verdictCorrect": 0.9,
+        "languageMatch": 0.9
+      },
       "confirmation": {
         "faithfulness": 1.0
       },

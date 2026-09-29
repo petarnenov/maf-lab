@@ -14,7 +14,7 @@ using Microsoft.Extensions.Options;
 namespace Maf.Lab.Eval;
 
 /// <summary>
-/// dotnet run --project src/Maf.Lab.Eval -- --suite selection|retrieval|generation|injection|confirmation|intent|guardrail|domain|all
+/// dotnet run --project src/Maf.Lab.Eval -- --suite selection|retrieval|generation|injection|confirmation|intent|guardrail|domain|presentation|all
 ///   [--rerank [--reranker llm,jev]] [--contextual] [--limit N] [--import-feedback [--api-db "Data Source=..."]]
 /// dotnet run --project src/Maf.Lab.Eval -- --ask "question" [--firm firm-a] [--trace-json path]   (one turn, its trace printed)
 /// Run on demand, and always after changing prompts, tool descriptions, the model, the tool set or chunking.
@@ -53,7 +53,7 @@ public static class Program
         }
 
         var suite = flags.GetValueOrDefault("suite") ?? "all";
-        var suites = suite == "all" ? new[] { "selection", "retrieval", "generation", "injection", "confirmation", "intent", "guardrail", "domain" } : suite.Split(',');
+        var suites = suite == "all" ? new[] { "selection", "retrieval", "generation", "injection", "confirmation", "intent", "guardrail", "domain", "presentation" } : suite.Split(',');
         var ctx = new SuiteContext(root, options, flags.TryGetValue("limit", out var l) ? int.Parse(l) : null, m => Console.WriteLine($"  {m}"),
             configuration["Retrieval:CorpusLanguage"] ?? "en");
         var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss");
@@ -79,7 +79,7 @@ public static class Program
                 ["denseVector"] = retrieval.DenseVector,
                 ["embeddingModel"] = models.Embeddings.TryGetValue(retrieval.DenseVector, out var p) ? p.Model : "?",
                 ["collection"] = qdrant.Collection,
-                ["systemPrompt"] = configuration["Agent:SystemPrompt"] ?? "system.v2",
+                ["systemPrompt"] = configuration["Agent:SystemPrompt"] ?? Maf.Lab.Api.Agent.SystemPrompt.DefaultVersion,
                 ["retrievalMode"] = retrieval.Mode,
             };
             IReadOnlyList<EvalVariantResult> variants = name switch
@@ -92,6 +92,7 @@ public static class Program
                 "intent" => await new IntentSuite(host).RunAsync(ctx, ct),
                 "guardrail" => await new GuardrailSuite(host).RunAsync(ctx, ct),
                 "domain" => await new DomainSuite(host).RunAsync(ctx, ct),
+                "presentation" => await new PresentationSuite(host, host.Services.GetRequiredService<IChatClientFactory>()).RunAsync(ctx, ct),
                 _ => throw new ArgumentException($"Unknown suite '{name}'."),
             };
             var comparisons = RegressionGate.Compare(baseline.Suites.GetValueOrDefault(name), variants, metric => options.ToleranceFor(name, metric));

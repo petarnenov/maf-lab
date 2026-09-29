@@ -48,7 +48,7 @@ HOST_ENV := Models__OllamaEndpoint=http://localhost:11435
 PORTFOLIO_ENV := Indexing__CorpusRoot=$(ROOT)/data-portfolio Qdrant__Collection=maf_portfolio_chunks Qdrant__MetaCollection=maf_portfolio_meta
 
 .PHONY: all help up down restart ps logs clean index index-portfolio reindex ask drift migrate test test-dotnet test-web lint verify \
-        eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-a2a dev doctor banner index-if-empty \
+        eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-a2a dev doctor banner index-if-empty \
         specs lint-dotnet lint-web build-web ci ci-e2e setup \
         require-docker require-dotnet require-npm
 
@@ -150,7 +150,7 @@ ci-e2e: require-docker require-dotnet ## Model-free end-to-end: stack with the O
 verify: ## Verify the running stack through the load balancer (17 checks)
 	scripts/verify_lb.sh $(BASE_URL)
 
-eval: require-dotnet ## Run evals (SUITE=all|selection|retrieval|generation|injection|confirmation|intent|domain) against the stack's MCP servers
+eval: require-dotnet ## Run evals (SUITE=all|selection|retrieval|generation|injection|confirmation|intent|domain|presentation) against the stack's MCP servers
 	Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval -- --suite $(SUITE)
 
 EVAL_HOST = Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval --
@@ -182,6 +182,9 @@ eval-intent: require-dotnet ## Eval: intent classifier alone — would each ques
 
 eval-guardrail: require-dotnet ## Eval: content guard alone — are malicious prompts/tool results flagged and benign ones not? (needs JEV_MAF_LAB)
 	$(EVAL) guardrail
+
+eval-presentation: require-dotnet ## Eval: do portfolio answers build on their data cards instead of restating them?
+	$(EVAL) presentation
 
 eval-a2a: require-dotnet ## Conformance: an outside client drives the agents through evals/a2a-conformance.jsonl
 	@# Not $(EVAL): this one is deliberately not run by the harness, which links against the service. See DECISIONS.md.

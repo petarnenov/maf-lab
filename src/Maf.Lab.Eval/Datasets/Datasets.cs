@@ -11,6 +11,15 @@ public sealed record SelectionCase(string Id, string Question, IReadOnlyList<str
 /// <param name="Domain">Whose collection the case is searched in: billing (the default, when a row names none) or portfolio.</param>
 public sealed record RetrievalCase(string Id, string Query, IReadOnlyList<string> RelevantChunkIds, string FirmId, string? Source,
     string? Language = null, bool OffDomain = false, string Domain = "billing");
+/// <summary>
+/// A portfolio question whose answer is judged for how it presents the turn's data cards (add-system-prompt-v3).
+/// <paramref name="RebalanceNeeded"/> is the verdict the answer must state, or null when the question does not ask it.
+/// </summary>
+/// <paramref name="RowsRequested"/> marks a question that explicitly asks about every row (each class, each account): a
+/// list is then a legitimate answer and is not counted as restating the card.
+public sealed record PresentationCase(string Id, string Question, string FirmId, bool Carded, bool? RebalanceNeeded, string Language,
+    bool RowsRequested = false);
+
 public sealed record GenerationCase(string Id, string Question, string ReferenceAnswer, IReadOnlyList<string> ExpectedDocIds, string FirmId, string? Source);
 /// <param name="Question">What the advisor asks, which must make the assistant propose the adjustment.</param>
 /// <param name="AccountId">The account the proposal must be about.</param>
@@ -36,7 +45,7 @@ public static class DatasetLoader
 {
     public static readonly string[] Files =
         ["selection.jsonl", "retrieval.jsonl", "generation.jsonl", "injection.jsonl", "confirmation.jsonl", "intent.jsonl", "guardrail.jsonl",
-            "domain.jsonl"];
+            "domain.jsonl", "presentation.jsonl"];
     public static readonly string[] Tools =
         ["search_documents", "get_billing_run_status", "search_billing_runs", Maf.Lab.Domain.Billing.FeeAdjustmentTool.Name,
             Maf.Lab.Domain.Portfolio.PortfolioTools.Search, Maf.Lab.Domain.Portfolio.PortfolioTools.GetPortfolio,
@@ -85,6 +94,19 @@ public static class DatasetLoader
         }
         return new RetrievalCase(Str(e, "id", where), Str(e, "query", where), relevant, Firm(e, where), Opt(e, "source"),
             Opt(e, "language"), offDomain, domain);
+    });
+
+    public static IReadOnlyList<PresentationCase> Presentation(string root) => Load(root, "presentation.jsonl", (e, where) =>
+    {
+        var language = Str(e, "language", where);
+        if (language is not ("en" or "bg"))
+        {
+            throw new InvalidDataException($"{where}: language must be en or bg.");
+        }
+        bool? needed = e.TryGetProperty("rebalanceNeeded", out var n) && n.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? n.GetBoolean() : null;
+        return new PresentationCase(Str(e, "id", where), Str(e, "question", where), Firm(e, where), Bool(e, "carded"), needed, language,
+            Bool(e, "rowsRequested"));
     });
 
     public static IReadOnlyList<GenerationCase> Generation(string root) => Load(root, "generation.jsonl", (e, where) =>
