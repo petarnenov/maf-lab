@@ -1,15 +1,15 @@
-/** Colour per trace kind family, used by the timeline. */
+/** Colour per trace kind family, used by the timeline: a theme token, so it follows light and dark. */
 export function kindColor(kind: string): string {
-  if (kind.startsWith('turn.')) return '#5d6673';
-  if (kind.startsWith('model.')) return '#2f5bd3';
-  if (kind === 'tool.unknown' || kind === 'guardrail') return '#b42318';
-  if (kind.startsWith('tool.') || kind === 'envelope') return '#8e44ad';
-  if (kind === 'retrieval' || kind === 'relevance') return '#1d7a3c';
+  if (kind.startsWith('turn.')) return 'var(--kind-neutral)';
+  if (kind.startsWith('model.')) return 'var(--kind-model)';
+  if (kind === 'tool.unknown' || kind === 'guardrail') return 'var(--kind-danger)';
+  if (kind.startsWith('tool.') || kind === 'envelope') return 'var(--kind-tool)';
+  if (kind === 'retrieval' || kind === 'relevance') return 'var(--kind-retrieval)';
   // Jev's check of the final answer: a judgment, like relevance, of what came out rather than what was found.
-  if (kind === 'answer.check') return '#3f7d20';
+  if (kind === 'answer.check') return 'var(--kind-check)';
   // The domain boundary: where Jev put the question, and where a turn crossed from one domain into another.
-  if (kind === 'domain' || kind === 'boundary') return '#0f7b5f';
+  if (kind === 'domain' || kind === 'boundary') return 'var(--kind-domain)';
   if (kind === 'intent' || kind === 'prompt' || kind === 'history' || kind === 'memory')
-    return '#8a6d3b';
-  return '#0e7490';
+    return 'var(--kind-context)';
+  return 'var(--kind-other)';
 }

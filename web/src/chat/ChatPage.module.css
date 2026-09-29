@@ -249,7 +249,7 @@
 
 /* Three faces for three failures: something down, something not yours, something else. */
 .unavailable {
-  border-left: 3px solid var(--warn, #b06f00);
+  border-left: 3px solid var(--warn);
 }
 
 .refused {
@@ -257,7 +257,7 @@
 }
 
 .unexpected {
-  border-left: 3px solid var(--danger, #b3261e);
+  border-left: 3px solid var(--danger);
 }
 
 /* The account in focus (add-focus-state), just above the message box. */

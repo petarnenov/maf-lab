@@ -16,10 +16,10 @@
 }
 
 .panel {
-  border: 1px solid var(--border, #e4e7ec);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px 14px;
-  background: var(--surface, #fff);
+  background: var(--surface);
 }
 
 .title {
@@ -28,13 +28,13 @@
 }
 
 .period {
-  color: var(--muted, #667085);
+  color: var(--muted);
   font-size: 0.75rem;
   margin-bottom: 8px;
 }
 
 .noData {
-  color: var(--muted, #667085);
+  color: var(--muted);
   font-size: 0.85rem;
   font-style: italic;
   margin: 8px 0 0;
@@ -68,7 +68,7 @@
   height: 10px;
   min-width: 2px;
   border-radius: 3px;
-  background: #2f5bd3;
+  background: var(--accent);
   opacity: 0.8;
 }
 
@@ -80,6 +80,6 @@
 }
 
 .unit {
-  color: var(--muted, #667085);
+  color: var(--muted);
   font-size: 0.72rem;
 }

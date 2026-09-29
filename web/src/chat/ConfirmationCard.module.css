@@ -1,6 +1,6 @@
 .card {
   border: 1px solid var(--border);
-  border-left: 3px solid var(--accent, #b06f00);
+  border-left: 3px solid var(--accent);
   border-radius: 8px;
   padding: 12px 14px;
   margin: 10px 0;
@@ -48,8 +48,8 @@
 }
 
 .approve {
-  background: var(--accent, #b06f00);
-  color: #fff;
+  background: var(--accent);
+  color: var(--on-accent);
   border-color: transparent;
 }
 
@@ -67,7 +67,7 @@
 }
 
 .applied .outcome {
-  color: var(--ok, #2e7d32);
+  color: var(--ok);
 }
 
 .expired .outcome,

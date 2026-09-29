@@ -58,10 +58,10 @@ export function domainPath(events: TraceEvent[]): string[] {
 export function domainColor(domain: string | undefined): string {
   switch (domain) {
     case 'billing':
-      return '#2f5bd3';
+      return 'var(--kind-model)';
     case 'portfolio':
-      return '#0f7b5f';
+      return 'var(--kind-domain)';
     default:
-      return '#5d6673';
+      return 'var(--kind-neutral)';
   }
 }

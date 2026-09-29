@@ -692,10 +692,10 @@ export function AguiTab({
 
 /** The protocol's families, coloured the way the timeline colours trace kinds. */
 function frameColor(frame: AguiFrame): string {
-  if (frame.unparsed !== undefined) return '#b42318';
-  if (frame.type.startsWith('RUN_')) return '#5d6673';
-  if (frame.type.startsWith('TEXT_MESSAGE')) return '#2f5bd3';
-  if (frame.type.startsWith('TOOL_CALL')) return '#8e44ad';
-  if (frame.type.startsWith('STEP_')) return '#8a6d3b';
-  return '#0e7490';
+  if (frame.unparsed !== undefined) return 'var(--kind-danger)';
+  if (frame.type.startsWith('RUN_')) return 'var(--kind-neutral)';
+  if (frame.type.startsWith('TEXT_MESSAGE')) return 'var(--kind-model)';
+  if (frame.type.startsWith('TOOL_CALL')) return 'var(--kind-tool)';
+  if (frame.type.startsWith('STEP_')) return 'var(--kind-context)';
+  return 'var(--kind-other)';
 }

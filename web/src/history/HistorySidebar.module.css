@@ -196,6 +196,6 @@
 
 .danger {
   background: var(--danger);
-  color: #fff;
+  color: var(--on-accent);
   border-color: var(--danger);
 }

@@ -10,6 +10,20 @@
   --link: light-dark(#2448ab, #8fabf5);
   --ok: light-dark(#1d7a3c, #4cc27a);
   --danger: light-dark(#b42318, #f07167);
+  --warn: light-dark(#8a5a00, #e0b25c);
+  /*
+   * Category colours for the monitor (trace kinds, AG-UI frame families, domains): the same hue in both themes, each
+   * at least 3:1 on the surface and 4.5:1 with --on-accent text on it (fix-theme-colors, design §2).
+   */
+  --kind-neutral: light-dark(#5d6673, #9aa4b2);
+  --kind-model: light-dark(#2f5bd3, #6b8ff0);
+  --kind-danger: light-dark(#b42318, #f07167);
+  --kind-tool: light-dark(#8e44ad, #c08ae0);
+  --kind-retrieval: light-dark(#1d7a3c, #4cc27a);
+  --kind-check: light-dark(#3f7d20, #9ccc65);
+  --kind-domain: light-dark(#0f7b5f, #3cc4a0);
+  --kind-context: light-dark(#8a6d3b, #d0ad6e);
+  --kind-other: light-dark(#0e7490, #4fb8d4);
   /* Time-travel banner: a warm note that reads in both themes. */
   --rewind-bg: light-dark(#fff7e6, #2e2412);
   --rewind-border: light-dark(#f5c26b, #7a5a1c);
