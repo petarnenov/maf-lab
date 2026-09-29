@@ -182,6 +182,8 @@ export interface AnswerCheckData {
   /** Why there is no verdict (disabled, no key, timed out, rejected). */
   reason?: string | null;
   sources?: number;
+  /** How many of the previous turn's sources were sent beside this turn's, for a follow-up. */
+  previousSources?: number;
   sourceChars?: number;
   requests?: number;
 }

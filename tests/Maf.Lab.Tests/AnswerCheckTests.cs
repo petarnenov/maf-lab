@@ -54,7 +54,7 @@ public class AnswerCheckTests
         Assert.DoesNotContain("FS-REQUIRED", questions.GetRawText());
         string Asked(string id) => questions.GetProperty(id).GetProperty("instructions").GetProperty("question").GetString()!;
         Assert.Equal("Does `answer` address what `user_question` asks?", Asked(JevAnswerCheck.RelevantId));
-        Assert.Equal("Is every factual claim in `answer` supported by `sources`?", Asked(JevAnswerCheck.GroundedId));
+        Assert.Equal("Is every factual claim in `answer` supported by `sources` or `previous_sources`?", Asked(JevAnswerCheck.GroundedId));
 
         var trace = Trace(events);
         var kinds = trace.Select(t => t.Kind).ToList();
@@ -85,7 +85,7 @@ public class AnswerCheckTests
         var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
 
         var first = await ApiFactory.ChatAsync(client, Procedural);
-        await ApiFactory.ChatAsync(client, "and what if it happens again next quarter?", ApiFactory.ThreadOf(first));
+        var second = await ApiFactory.ChatAsync(client, "and what if it happens again next quarter?", ApiFactory.ThreadOf(first));
 
         var checks = CheckRequests(api);
         Assert.Equal(2, checks.Count);
@@ -93,6 +93,15 @@ public class AnswerCheckTests
         Assert.Equal("", checks[0].GetProperty("state").GetProperty("previous_question").GetString());
         Assert.Equal(Procedural, checks[1].GetProperty("state").GetProperty("previous_question").GetString());
         Assert.Contains("previous_question", checks[1].GetProperty("questions").GetProperty(JevAnswerCheck.RelevantId).GetRawText());
+
+        // What the model read for that question travels too: a follow-up answered from it is still grounded.
+        Assert.Empty(checks[0].GetProperty("state").GetProperty("previous_sources").EnumerateArray());
+        var before = checks[1].GetProperty("state").GetProperty("previous_sources").EnumerateArray().Select(e => e.GetString()!).ToList();
+        Assert.Contains(before, b => b.Contains("FS-REQUIRED"));
+        Assert.Contains("previous_sources", checks[1].GetProperty("questions").GetProperty(JevAnswerCheck.GroundedId).GetRawText());
+        var check = Trace(second).Single(t => t.Kind == TraceKinds.AnswerCheck);
+        Assert.Equal(before.Count, check.Data.GetProperty("previousSources").GetInt32());
+        Assert.DoesNotContain("FS-REQUIRED", check.Data.GetRawText());
     }
 
     [Fact]

@@ -1413,6 +1413,12 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
   first turn), and the relevance criterion reads `user_question` together with it when it follows up. A follow-up such
   as "and the second one?" would otherwise read as irrelevant and fill the review queue. Only the previous question is
   sent: not the whole history, and not the previous answer, which the current sources may not support.
+  - It also carries `previous_sources`: what the model read for that question, meaning the data envelopes of the
+    previous turn's stored trace, already screened by the content guard.
+  - On the live stack, "and is it outside its tolerance?" after "What does A-1042 hold?" called no tool, answered from
+    the first turn's holdings, and was flagged not grounded (0.01) against an empty `sources`.
+  - The grounding question now accepts either list. This turn's sources come first under the one 12,000-character cap.
+  - The previous answer is still never a source: a claim is supported only by data the model was handed.
 - **CI stays secret-free:** `FakeJev` answers both Nouls 0.95 by default (settable per test); the CI stub answers 1.0.
   No package added or moved; no model setting changed.
 - **Rollback:** `Jev__AnswerCheck__Enabled=false` — no request; eligible turns record `unchecked (check disabled)`. A

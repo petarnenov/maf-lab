@@ -13,7 +13,8 @@ same client, endpoint, pinned model and credential as every other Jev call, carr
 fields of the request's state:
 - `answer_relevant`: whether `answer` addresses `user_question`, read together with `previous_question` (the
   conversation's previous question, empty on its first turn) when it follows up on it;
-- `answer_grounded`: whether every factual claim in `answer` is supported by `sources`.
+- `answer_grounded` (against `sources` and `previous_sources`, what the model read for the previous question, taken
+  from that turn's data envelopes): whether every factual claim in `answer` is supported by `sources`.
 
 The state SHALL hold the user's question, the answer and the sources as data. The question, the answer and the sources
 SHALL NOT be placed in any question's instructions or criteria, and the instructions SHALL name the fields they judge.

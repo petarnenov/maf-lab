@@ -91,7 +91,7 @@ public sealed class ChatTurnRunner(
 
         try
         {
-            state.PreviousQuestion = await MarkRephraseAsync(conversationId, message, ct);
+            (state.PreviousQuestion, state.PreviousTurnId) = await MarkRephraseAsync(conversationId, message, ct);
             state.UserMessage = message;
 
             decision = await intents.ClassifyAsync(message, ct);
@@ -283,7 +283,8 @@ public sealed class ChatTurnRunner(
         Jev.AnswerCheck? check = null;
         if (reachedModel && error is null && !state.AwaitingConfirmation && text.Length > 0)
         {
-            check = await answerCheck.CheckAsync(message, text, state.Read, ct, state.PreviousQuestion);
+            check = await answerCheck.CheckAsync(message, text, state.Read, ct, state.PreviousQuestion,
+                await PreviousReadAsync(state.PreviousTurnId, ct));
             Jev.JevAnswerCheck.Trace(trace, check);
         }
         // A refused turn ran no tool on purpose: that is the guard's signal, not "how/why answered without a tool".
@@ -844,15 +845,15 @@ public sealed class ChatTurnRunner(
 
     /// <summary>
     /// Marks the conversation's previous turn as rephrased when this message restates it, and returns that turn's question
-    /// (null on a first turn) — what the answer check reads a follow-up against.
+    /// and id (nulls on a first turn) — what the answer check reads a follow-up against.
     /// </summary>
-    private async Task<string?> MarkRephraseAsync(string conversationId, string message, CancellationToken ct)
+    private async Task<(string? Question, string? TurnId)> MarkRephraseAsync(string conversationId, string message, CancellationToken ct)
     {
         await using var ctx = await db.CreateDbContextAsync(ct);
         var previous = await ctx.Turns.Where(t => t.ConversationId == conversationId).OrderByDescending(t => t.CreatedAt).FirstOrDefaultAsync(ct);
         if (previous is null || !TurnSignals.IsRephrase(previous.Question, message, time.GetUtcNow().UtcDateTime - previous.CreatedAt))
         {
-            return previous?.Question;
+            return (previous?.Question, previous?.Id);
         }
         var signals = JsonSerializer.Deserialize<List<string>>(previous.SignalsJson, Json) ?? [];
         if (!signals.Contains(TurnSignal.Rephrased))
@@ -861,7 +862,38 @@ public sealed class ChatTurnRunner(
             previous.SignalsJson = JsonSerializer.Serialize(signals, Json);
             await ctx.SaveChangesAsync(ct);
         }
-        return previous.Question;
+        return (previous.Question, previous.Id);
+    }
+
+    /// <summary>
+    /// What the model was handed in the previous turn: the text of its data envelopes, from that turn's stored trace. An
+    /// envelope holds what the content guard let through, so a withheld item is not here either. Empty on a first turn,
+    /// and when the trace is gone (retention) or unreadable — the check then judges against this turn's sources alone.
+    /// </summary>
+    private async Task<IReadOnlyList<string>> PreviousReadAsync(string? turnId, CancellationToken ct)
+    {
+        if (turnId is null)
+        {
+            return [];
+        }
+        await using var ctx = await db.CreateDbContextAsync(ct);
+        var row = await ctx.TurnTraces.Where(t => t.TurnId == turnId).Select(t => t.Json).FirstOrDefaultAsync(ct);
+        if (row is null)
+        {
+            return [];
+        }
+        try
+        {
+            return JsonSerializer.Deserialize<List<TraceEvent>>(row, TurnTrace.Json)?
+                .Where(e => e.Kind == TraceKinds.Envelope && e.Data.ValueKind == JsonValueKind.Object
+                    && e.Data.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String)
+                .Select(e => e.Data.GetProperty("text").GetString()!)
+                .ToList() ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
     }
 
     private async Task PersistAsync(Principal principal, string conversationId, string turnId, string question, string answer, Intent intent, bool forced,
@@ -934,6 +966,9 @@ public sealed class ChatTurnRunner(
 
         /// <summary>The conversation's previous question, for reading a follow-up; null on a first turn.</summary>
         public string? PreviousQuestion { get; set; }
+
+        /// <summary>The previous turn, whose stored trace says what the model read for that question.</summary>
+        public string? PreviousTurnId { get; set; }
 
         /// <summary>The user's words this turn, which is what a reviewer's question gets answered with.</summary>
         public string UserMessage { get; set; } = "";
