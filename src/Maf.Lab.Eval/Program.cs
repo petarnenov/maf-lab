@@ -79,7 +79,7 @@ public static class Program
                 ["denseVector"] = retrieval.DenseVector,
                 ["embeddingModel"] = models.Embeddings.TryGetValue(retrieval.DenseVector, out var p) ? p.Model : "?",
                 ["collection"] = qdrant.Collection,
-                ["systemPrompt"] = configuration["Agent:SystemPrompt"] ?? "system.v1",
+                ["systemPrompt"] = configuration["Agent:SystemPrompt"] ?? "system.v2",
                 ["retrievalMode"] = retrieval.Mode,
             };
             IReadOnlyList<EvalVariantResult> variants = name switch

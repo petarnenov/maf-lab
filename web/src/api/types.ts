@@ -198,6 +198,7 @@ export type TurnSignal =
   | 'zero_retrieval_results'
   | 'long_answer_without_sources'
   | 'guardrail_blocked'
+  | 'out_of_scope'
   | 'guardrail_withheld'
   | 'answer_not_grounded'
   | 'answer_not_relevant';

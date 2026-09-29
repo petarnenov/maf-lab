@@ -23,6 +23,8 @@ public enum Intent
 /// on, <paramref name="Routing"/> is Jev's answer to the routing questions, <paramref name="Route"/> the read call to
 /// issue on the model's behalf, and <paramref name="RouteReason"/> why there is none. <paramref name="Domains"/> is Jev's
 /// verdict on which domains the question belongs to — null when Jev gave no usable domain answer.
+/// <paramref name="OutsideDomains"/> is true when Jev put the question in no domain and did not read it as small talk; it
+/// is never true on a missing answer, so a failed classification never refuses a question.
 /// </summary>
 public readonly record struct IntentDecision(
     Intent Intent,
@@ -37,7 +39,8 @@ public readonly record struct IntentDecision(
     Jev.RoutingAnswer? Routing = null,
     Jev.ToolRoute? Route = null,
     string? RouteReason = null,
-    DomainVerdict? Domains = null);
+    DomainVerdict? Domains = null,
+    bool OutsideDomains = false);
 
 /// <summary>
 /// Which domains a question belongs to, as Jev answered: each domain's probability, the floor a domain must reach to be
@@ -81,4 +84,24 @@ public static class IntentClassifier
     public static bool ForcesRetrieval(Intent intent) => intent is Intent.Procedural or Intent.Mixed;
 
     public static bool IsHowWhy(Intent intent) => intent is Intent.Procedural or Intent.Mixed;
+}
+
+/// <summary>
+/// The fixed reply to a question outside every domain (refuse-off-domain-questions). Like the guard's refusal it repeats
+/// nothing of the question, and it says what the assistant does answer, so the user can ask that instead.
+/// </summary>
+public static class OutOfScope
+{
+    public const string ReplyEnglish =
+        "I can only help with your firm's billing (fees, fee schedules, billing runs, fee adjustments) and portfolios "
+        + "(holdings, model portfolios, drift, rebalancing, quarter-end AUM). Please ask about one of those.";
+
+    public const string ReplyBulgarian =
+        "Мога да помагам само с таксуването на Вашата фирма (такси, тарифи, билинг цикли, корекции на такси) и с "
+        + "портфейлите (позиции, моделни портфейли, отклонение, ребалансиране, AUM към края на тримесечието). "
+        + "Моля, задайте въпрос по една от тези теми.";
+
+    /// <summary>In Bulgarian when the question is written in Cyrillic, as the guard's refusal is.</summary>
+    public static string Reply(string question) =>
+        question.Any(c => c is >= 'Ѐ' and <= 'ӿ') ? ReplyBulgarian : ReplyEnglish;
 }

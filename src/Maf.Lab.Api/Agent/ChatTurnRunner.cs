@@ -70,6 +70,8 @@ public sealed class ChatTurnRunner(
         var reasoning = state.Reasoning;
         var decision = new IntentDecision(Intent.Other);
         PromptScreen? screen = null;
+        // A first question Jev put in no domain: answered with the fixed reply, like a refused prompt, with no model call.
+        var outOfScope = false;
         trace.Add(TraceKinds.TurnStart, $"Turn started on {InstanceIdentity.Name}", new JsonObject
         {
             ["conversationId"] = conversationId,
@@ -97,10 +99,14 @@ public sealed class ChatTurnRunner(
             decision = await intents.ClassifyAsync(message, ct);
             // The prompt's screening answered in the same request; a refused prompt forces nothing and runs nothing.
             screen = guardrail.JudgePrompt(decision);
+            // Only a conversation's first question: a follow-up ("and June?", "why?") can be about the domain without
+            // naming it, so from the second turn on the system prompt's scope rule is what keeps the model on topic.
+            outOfScope = !screen.Blocked && decision.OutsideDomains && state.PreviousQuestion is null;
 
             // A refused prompt reaches no model, so this turn reads no tools over MCP and builds no prompt: the tool
             // schemas and the system prompt — what an injection may be trying to extract — are neither fetched nor traced.
-            await using var tools = screen.Blocked ? null : await toolSource.GetToolsAsync(bearerToken, state.Confirmations, ct);
+            // A question outside every domain is not an attack, but it has nothing for the model either.
+            await using var tools = screen.Blocked || outOfScope ? null : await toolSource.GetToolsAsync(bearerToken, state.Confirmations, ct);
             Jev.ToolRoute? route = null;
             IReadOnlyList<string> forcedSearches = [];
             IReadOnlyList<Jev.ToolRoute> alongside = [];
@@ -123,7 +129,8 @@ public sealed class ChatTurnRunner(
                 : "";
             var jev = decision.Confidence is { } confidence ? $" (jev {confidence:F2}{outside}, {decision.DurationMs:F0} ms)" : "";
             var routed = route is null ? "" : $" → routing {route.Tool} (jev {route.Probability:F2})";
-            trace.Add(TraceKinds.Intent, $"Intent {decision.Intent}{jev}{(forced ? $" → forcing {string.Join(" + ", forcedSearches.Concat(alongside.Select(a => a.Tool)))}" : "")}{routed}", new JsonObject
+            var refusedScope = outOfScope ? $" → outside every domain ({decision.Domains?.Highest ?? 0:F2}), fixed reply" : "";
+            trace.Add(TraceKinds.Intent, $"Intent {decision.Intent}{jev}{(forced ? $" → forcing {string.Join(" + ", forcedSearches.Concat(alongside.Select(a => a.Tool)))}" : "")}{routed}{refusedScope}", new JsonObject
             {
                 ["intent"] = decision.Intent.ToString(),
                 ["forcedRetrieval"] = forced,
@@ -142,6 +149,8 @@ public sealed class ChatTurnRunner(
                 ["domains"] = decision.Domains is { } d
                     ? new JsonObject(d.Probabilities.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value)))
                     : null,
+                ["outsideDomains"] = decision.OutsideDomains,
+                ["outOfScopeReply"] = outOfScope,
             });
             TraceDomains(trace, decision.Domains, forcedSearches, tools);
             guardrail.Trace(trace, Guardrail.CheckPrompt, null, null, screen.Decision, screen.Threshold,
@@ -236,8 +245,8 @@ public sealed class ChatTurnRunner(
             else
             {
                 // A refused prompt never reaches the model — not this turn, and not the next one's history, which is
-                // written only by a run of the agent.
-                stream = Refused(Guardrail.Refusal(message), answer, chunker);
+                // written only by a run of the agent. The same holds for a question outside every domain.
+                stream = Refused(outOfScope ? OutOfScope.Reply(message) : Guardrail.Refusal(message), answer, chunker);
             }
 
             await foreach (var e in stream.AsAGUIEventStreamAsync(context, ct))
@@ -288,8 +297,13 @@ public sealed class ChatTurnRunner(
             Jev.JevAnswerCheck.Trace(trace, check);
         }
         // A refused turn ran no tool on purpose: that is the guard's signal, not "how/why answered without a tool".
-        var signals = TurnSignals.Compute(screen?.Blocked == true ? Intent.Other : decision.Intent, state.ToolCalls.Count, state.Searched,
+        var signals = TurnSignals.Compute(screen?.Blocked == true || outOfScope ? Intent.Other : decision.Intent, state.ToolCalls.Count, state.Searched,
             text.Length, sources.Count, options.Value.LongAnswerChars);
+        if (outOfScope)
+        {
+            // In the review queue, so a question wrongly judged off-domain is found and labelled.
+            signals.Add(TurnSignal.OutOfScope);
+        }
         signals.AddRange(Guardrail.Signals(trace.Events).Distinct().Where(s => !signals.Contains(s)).ToList());
         signals.AddRange((check?.Signals ?? []).Where(s => !signals.Contains(s)).ToList());
         trace.Add(TraceKinds.Sources, $"{sources.Count} source(s)", new JsonObject

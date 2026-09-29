@@ -129,13 +129,16 @@ public sealed class JevIntentClassifier(JevClient jev, IOptions<JevOptions> opti
             return Failed("no answer", model, ms) with { Screen = screen, Domains = domains };
         }
         var inDomain = response.Answers.GetValueOrDefault(DomainQuestionId)?.Noul;
+        // Read from the domain answers alone, whatever the intent's confidence: only small talk is exempt, since a
+        // greeting belongs to no domain and is still ours to answer.
+        var outside = OutsideDomains(domains, choice, o);
         if (!Intents.TryGetValue(choice, out var intent))
         {
-            return Unused(answer, inDomain, model, ms, "answer is not one of the known intents") with { Screen = screen, Domains = domains };
+            return Unused(answer, inDomain, model, ms, "answer is not one of the known intents") with { Screen = screen, Domains = domains, OutsideDomains = outside };
         }
         if (answer.Confidence is not { } confidence || confidence < o.MinConfidence)
         {
-            return Unused(answer, inDomain, model, ms, $"low confidence ({answer.Confidence?.ToString("F2") ?? "none"})") with { Screen = screen, Domains = domains };
+            return Unused(answer, inDomain, model, ms, $"low confidence ({answer.Confidence?.ToString("F2") ?? "none"})") with { Screen = screen, Domains = domains, OutsideDomains = outside };
         }
         // Only an intent that would force retrieval is gated: a data question about run 4417 is not second-guessed
         // by a domain answer. A missing domain answer fails closed, like anything else unusable. The gate reads the most
@@ -143,10 +146,19 @@ public sealed class JevIntentClassifier(JevClient jev, IOptions<JevOptions> opti
         var highest = domains?.Highest;
         if (IntentClassifier.ForcesRetrieval(intent) && o.MinInDomain > 0 && (highest ?? 0) < o.MinInDomain)
         {
-            return Unused(answer, inDomain, model, ms, $"outside the domain ({highest?.ToString("F2") ?? "none"})") with { Screen = screen, Domains = domains };
+            return Unused(answer, inDomain, model, ms, $"outside the domain ({highest?.ToString("F2") ?? "none"})") with { Screen = screen, Domains = domains, OutsideDomains = outside };
         }
-        return new IntentDecision(intent, choice, answer.Probabilities, confidence, model, ms, InDomain: inDomain, Screen: screen, Domains: domains);
+        return new IntentDecision(intent, choice, answer.Probabilities, confidence, model, ms, InDomain: inDomain, Screen: screen, Domains: domains,
+            OutsideDomains: outside);
     }
+
+    /// <summary>
+    /// No domain reaches the gate's floor and the question is not small talk. A missing domain answer is never outside:
+    /// the refusal it would lead to has to rest on an answer.
+    /// </summary>
+    internal static bool OutsideDomains(DomainVerdict? domains, string choice, JevOptions o) =>
+        o.RefuseOutsideDomains && o.MinInDomain > 0 && domains is { } d && d.Highest < o.MinInDomain
+        && !string.Equals(choice, "chitchat", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Each domain's probability as Jev gave it; null when Jev answered none of the domain questions.</summary>
     internal static DomainVerdict? ReadDomains(IReadOnlyDictionary<string, JevAnswer>? answers, JevOptions o)

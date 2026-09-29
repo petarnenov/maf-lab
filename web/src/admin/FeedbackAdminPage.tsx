@@ -14,6 +14,7 @@ const SIGNAL_LABELS: Record<string, string> = {
   zero_retrieval_results: 'zero retrieval results',
   long_answer_without_sources: 'long answer without sources',
   guardrail_blocked: 'prompt refused by the content guard',
+  out_of_scope: 'question outside every domain, fixed reply',
   guardrail_withheld: 'content withheld by the content guard',
   answer_not_grounded: 'answer not grounded in what the model read (Jev)',
   answer_not_relevant: 'answer does not address the question (Jev)',

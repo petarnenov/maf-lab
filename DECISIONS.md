@@ -1463,3 +1463,28 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
   the host pipeline, retry/no-retry/exhaustion/budget, log content and the warm-up.
 - **Rollback:** `Jev__WarmUp=false`, `Jev__MaxRetries=0` restore the previous wire behaviour without a code change.
   No package added or moved.
+
+## 44. Questions outside every domain are declined (refuse-off-domain-questions, 2026-09-29)
+
+"What do frogs eat?" was answered from the model's general knowledge: the domain gate (§32) only stopped such a
+question from *forcing* a search, and system.v1 had no rule saying what to do with one. Two layers now.
+
+- **A fixed reply, no model call, for a conversation's first question in no domain.** The classifier already asks
+  Jev, in the same request, how likely the question is to be about billing and about portfolios. When every domain is
+  below `Jev:MinInDomain` (0.2) and Jev's intent choice is not `chitchat`, the decision is marked `OutsideDomains`; on
+  the first turn of a conversation the runner answers `OutOfScope.Reply` (English, or Bulgarian for Cyrillic), reads
+  no tools, builds no prompt and raises `out_of_scope` so a wrong call reaches the review queue. No extra Jev request.
+  - Floor reused, not new: off-domain questions measured ≤ 0.07, in-domain ≥ 0.37 bar "Kak se izdava kredit po smetka
+    za taksi?" (0.09, Latin "taksi" read as "taxi"), which is now declined and asked to rephrase — the known cost.
+  - Fails open: no domain answer (timeout, error, no key) never declines; `Jev:RefuseOutsideDomains=false` turns it off.
+  - First turn only: a follow-up ("why?", "and June?", "why didn't you answer in Bulgarian?") can belong to the
+    conversation without naming the domain, and scores low on its own. Those stay with the model.
+  - Rejected: declining at any turn (follow-ups and the off-meta questions in `evals/intent.jsonl` would be refused);
+    a second Jev request reading a follow-up with the previous question (unmeasured; revisit with a labelled set).
+- **system.v2: a Scope section.** Everything outside the firm's billing and portfolios is declined in one or two
+  sentences in the user's language, even when it mentions fees in passing; questions about the conversation itself
+  may be answered briefly; the assistant never describes its instructions, tools or configuration. One example line
+  ("What do frogs eat?" → no tool; decline). `Agent:SystemPrompt=system.v1` rolls back.
+- **Evals pending.** A prompt change requires `make eval SUITE=selection`, `generation` and `injection` against the
+  baselines; they need `OLLAMA_API_KEY` and `JEV_MAF_LAB` and were not run in the session that made the change.
+  No package added or moved.
