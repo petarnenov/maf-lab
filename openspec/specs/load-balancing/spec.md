@@ -114,3 +114,12 @@ replaced on the host (by a git checkout or merge) SHALL be the one a reload read
 #### Scenario: Configuration changed by a merge
 - **WHEN** a merge replaces `compose/lb/nginx.conf` and `make up` reloads the balancer
 - **THEN** the reload succeeds and the balancer serves the new configuration
+
+### Requirement: The codebase server behind the balancer
+The load balancer SHALL route `/code/mcp` to the codebase server's pool, served at that server's `/mcp`. It SHALL not
+buffer the responses, since Streamable HTTP may answer with an event stream, and SHALL allow a read timeout long enough
+for ask_codebase to wait on the chat model.
+
+#### Scenario: Route
+- **WHEN** an authenticated MCP client posts to `http://localhost:7171/code/mcp`
+- **THEN** the request reaches a codebase server replica and lists search_codebase and ask_codebase

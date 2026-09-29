@@ -330,3 +330,15 @@ sources' text. A turn that ran no check SHALL record no `answer.check` event.
 #### Scenario: Unchecked is recorded with its reason
 - **WHEN** the answer check times out
 - **THEN** the `answer.check` event's verdict is `unchecked` and its reason says it timed out
+
+### Requirement: The trace says which domains' tools were loaded
+The `domain` event SHALL record the domains whose tools the turn loaded. It SHALL also record the reason:
+- `in scope`: the classification's domains;
+- `conversation`: the conversation's stored domains, for a follow-up;
+- `all`: no domain verdict.
+
+It SHALL record the conversation's stored domains before the turn.
+
+#### Scenario: A follow-up
+- **WHEN** a follow-up in no domain loads the conversation's portfolio tools
+- **THEN** the `domain` event records `loaded: [portfolio]` with the reason `conversation`
