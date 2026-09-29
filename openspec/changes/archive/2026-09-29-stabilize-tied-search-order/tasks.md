@@ -8,4 +8,4 @@
 ## 2. Verification
 
 - [x] 2.1 Run the full unit suite (`dotnet test --project tests/Maf.Lab.Tests`) and `openspec validate --all --strict`; both green
-- [ ] 2.2 Confirm on CI that `.NET build and tests` (which runs `RelevanceGateAcceptanceTests` against a real Qdrant) passes on both the push and the pull_request run
+- [x] 2.2 Confirm on CI that `.NET build and tests` (which runs `RelevanceGateAcceptanceTests` against a real Qdrant) passes on both the push and the pull_request run
