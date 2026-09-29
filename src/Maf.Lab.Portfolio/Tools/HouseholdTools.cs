@@ -16,7 +16,11 @@ public sealed class HouseholdTools(PortfolioStore store, IPrincipalAccessor prin
         OpenWorld = false, UseStructuredContent = true, OutputSchemaType = typeof(HouseholdPortfolio))]
     [Description(
         "Returns one account's current portfolio: its household, model portfolio, holdings by asset class with target and actual " +
-        "weights, the drift of each against the model, whether any drift is outside the model's tolerance, and the total market value.\n" +
+        "weights, the drift of each against the model, whether any drift is outside the model's tolerance, and the total market value. " +
+        "It also carries a rebalance plan: for each asset class the trade that brings it to its target (tradeToTarget, positive to buy, " +
+        "negative to sell, whole currency units that net to zero), its side and the weight after (weightAfterPct), and whether a " +
+        "rebalance is needed at all (rebalanceNeeded). Quote the plan's figures; never compute trades or weights yourself. When " +
+        "rebalanceNeeded is false, say that no rebalance is needed.\n" +
         "Use when: the user asks what an account holds, how it is allocated, or whether it has drifted and needs a rebalance.\n" +
         "Do not use for: fees or billing runs (use the billing tools), for how rebalancing works in general (use search_portfolio_documents), " +
         "or for which accounts the user has (use list_my_accounts).")]

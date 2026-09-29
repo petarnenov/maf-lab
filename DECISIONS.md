@@ -1620,3 +1620,31 @@ Found live on 2026-09-29: two credits took A-1042 from 812.00 to -3,304.00 and t
   then an oversized credit is refused, and the message says so.
 
 No package added or moved.
+
+## 48. The portfolio server computes the rebalance plan (add-rebalance-plan, 2026-09-29)
+
+Asked to rebalance A-1043, the model worked out every trade and the weights after them itself, and recommended selling
+8,000 $ of US equity from an account where every class was inside its ±5 % band (US equity 20.6 % against 20 %).
+None of those figures came from a tool.
+
+- **`get_household_portfolio` carries the plan.**
+  - For each class it gives `outsideTolerance`, `tradeToTarget`, `tradeSide` (`buy`, `sell` or `none`) and
+    `weightAfterPct`.
+  - For the account it gives `rebalanceNeeded`, which is true exactly when a class is outside the tolerance.
+  - The trades come back either way, so the distance to target shows even when nothing needs doing.
+  - Rejected: a separate `plan_rebalance` tool. It would add a selection target, a Jev routing question and eval rows
+    for data the portfolio read has already fetched.
+- **The arithmetic, in `decimal`:**
+  - exact trade = total × target / 100 − value, rounded half-to-even to whole currency units;
+  - the rounding remainder goes to the largest exact trade (the first on a tie), so the trades net to exactly zero;
+  - weight after = (value + trade) / total, to 1 dp.
+  - An empty account trades nothing. Its drift is still computed as before, so it still reads as outside tolerance.
+- **The description tells the model** to quote the plan's figures, never compute its own, and say "no rebalance needed"
+  when `rebalanceNeeded` is false. How far answers follow that is measured in add-system-prompt-v3.
+- **No new free text.** A test lists every string property of the output schema: the names plus the fixed
+  `tradeSide`. The activity card (add-activity-cards) relies on that.
+- **Checked live** ("Препоръчай ребалансиране за A-1043"): the answer said no rebalance is needed, and quoted
+  −8,000 / −1,000 / 0 / +9,000 and 20 / 10 / 60 / 10 %, the plan's figures exactly. It still wrote them as a markdown
+  table; that is add-system-prompt-v3's job. `selection` run `20260929-154411-selection`: recall 1, exactMatch 0.971,
+  negativeAccuracy 1.
+- No package added or moved.

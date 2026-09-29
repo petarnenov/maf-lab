@@ -56,6 +56,67 @@ public class PortfolioDomainTests
         Assert.True(portfolio.OutsideTolerance);
     }
 
+    // ---- the rebalance plan (add-rebalance-plan) -------------------------------------------------------------------
+
+    /// <summary>A store holding one firm-a account with the given holdings (class, value, target) and tolerance.</summary>
+    private static PortfolioStore StoreWith(decimal tolerance, params (string AssetClass, decimal Value, decimal Target)[] holdings) =>
+        new(JsonSerializer.Serialize(new[]
+        {
+            new
+            {
+                firmId = "firm-a", accountId = "A-9001", name = "Test", householdId = "HH-1", modelPortfolio = "TEST",
+                driftTolerancePct = tolerance, currency = "USD", asOf = "2026-09-30",
+                holdings = holdings.Select(h => new { assetClass = h.AssetClass, marketValue = h.Value, targetWeightPct = h.Target }),
+                aumHistory = Array.Empty<object>(), note = "never leaves",
+            },
+        }, Json));
+
+    [Fact]
+    public void A_plan_within_tolerance_brings_every_class_to_target_and_says_no_rebalance_is_needed()
+    {
+        var portfolio = Store().Portfolio(FirmA, "A-1043")!;
+
+        Assert.Equal([-8_000m, -1_000m, 0m, 9_000m], portfolio.Holdings.Select(h => h.TradeToTarget));
+        Assert.Equal(["sell", "sell", "none", "buy"], portfolio.Holdings.Select(h => h.TradeSide));
+        Assert.Equal([20m, 10m, 60m, 10m], portfolio.Holdings.Select(h => h.WeightAfterPct));
+        Assert.All(portfolio.Holdings, h => Assert.False(h.OutsideTolerance));
+        Assert.False(portfolio.RebalanceNeeded);
+    }
+
+    [Fact]
+    public void A_plan_outside_tolerance_marks_the_drifted_class_and_says_a_rebalance_is_needed()
+    {
+        var portfolio = Store().Portfolio(FirmA, "A-1042")!;
+
+        Assert.True(portfolio.RebalanceNeeded);
+        Assert.True(portfolio.Holdings.Single(h => h.AssetClass == "US equity").OutsideTolerance);
+        Assert.Equal(0m, portfolio.Holdings.Sum(h => h.TradeToTarget));
+        Assert.All(portfolio.Holdings, h => Assert.Equal(h.TargetWeightPct, h.WeightAfterPct));
+    }
+
+    [Fact]
+    public void Trades_are_whole_amounts_that_net_to_zero_with_the_remainder_on_the_largest()
+    {
+        // Exact trades −0.667, −0.667, +1.334 round to −1, −1, +1; the missing unit goes to the largest.
+        var portfolio = StoreWith(5, ("A", 1_000m, 33.3m), ("B", 1_000m, 33.3m), ("C", 1_001m, 33.4m)).Portfolio(FirmA, "A-9001")!;
+
+        Assert.Equal([-1m, -1m, 2m], portfolio.Holdings.Select(h => h.TradeToTarget));
+        Assert.Equal(0m, portfolio.Holdings.Sum(h => h.TradeToTarget));
+    }
+
+    [Fact]
+    public void An_empty_account_has_a_plan_of_nothing()
+    {
+        var portfolio = StoreWith(5, ("A", 0m, 60m), ("B", 0m, 40m)).Portfolio(FirmA, "A-9001")!;
+
+        Assert.All(portfolio.Holdings, h =>
+        {
+            Assert.Equal(0m, h.TradeToTarget);
+            Assert.Equal("none", h.TradeSide);
+            Assert.Equal(0m, h.WeightAfterPct);
+        });
+    }
+
     [Fact]
     public void Aum_history_is_oldest_first_with_each_quarters_change()
     {
@@ -150,6 +211,34 @@ public class PortfolioDomainTests
         // The account list takes nothing at all: its scope is the caller's own.
         var list = tools.Single(t => t.Name == PortfolioTools.ListAccounts).ProtocolTool.InputSchema;
         Assert.False(list.TryGetProperty("properties", out var properties) && properties.EnumerateObject().Any());
+    }
+
+    [Fact]
+    public async Task The_portfolio_tool_carries_the_rebalance_plan_and_no_new_free_text()
+    {
+        await using var factory = PortfolioServer();
+        await using var client = await ClientAsync(factory, "firm-a");
+
+        var tool = (await client.ListToolsAsync(cancellationToken: Ct)).Single(t => t.Name == PortfolioTools.GetPortfolio);
+        var schema = tool.ProtocolTool.OutputSchema!.Value;
+        static IEnumerable<string> Strings(JsonElement properties) => properties.EnumerateObject()
+            .Where(p => p.Value.TryGetProperty("type", out var t) && (t.ValueKind == JsonValueKind.String ? t.GetString() == "string"
+                : t.EnumerateArray().Any(x => x.GetString() == "string")))
+            .Select(p => p.Name);
+        var top = schema.GetProperty("properties");
+        var holding = top.GetProperty("holdings").GetProperty("items").GetProperty("properties");
+        Assert.True(top.TryGetProperty("rebalanceNeeded", out _));
+        Assert.All(["outsideTolerance", "tradeToTarget", "tradeSide", "weightAfterPct"], name => Assert.True(holding.TryGetProperty(name, out _), name));
+        // The only strings are the ones that name things, and the trade's fixed side: no field a note could hide in.
+        Assert.Equal(["accountId", "accountName", "asOf", "currency", "householdId", "modelPortfolio"], Strings(top).Order(StringComparer.Ordinal));
+        Assert.Equal(["assetClass", "tradeSide"], Strings(holding).Order(StringComparer.Ordinal));
+        Assert.Contains("never compute trades", tool.Description);
+
+        var result = await client.CallToolAsync(PortfolioTools.GetPortfolio, new Dictionary<string, object?> { ["accountId"] = "A-1043" }, cancellationToken: Ct);
+        var content = result.StructuredContent!.Value;
+        Assert.False(content.GetProperty("rebalanceNeeded").GetBoolean());
+        Assert.Equal(-8000m, content.GetProperty("holdings")[0].GetProperty("tradeToTarget").GetDecimal());
+        Assert.Equal("sell", content.GetProperty("holdings")[0].GetProperty("tradeSide").GetString());
     }
 
     [Fact]

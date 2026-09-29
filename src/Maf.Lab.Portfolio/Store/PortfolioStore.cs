@@ -50,13 +50,43 @@ public sealed partial class PortfolioStore
             return null;
         }
         var total = r.Holdings.Sum(h => h.MarketValue);
-        var holdings = r.Holdings.Select(h =>
+        var trades = TradesToTarget(r.Holdings, total);
+        var holdings = r.Holdings.Select((h, i) =>
         {
             var actual = total == 0 ? 0 : Math.Round(h.MarketValue / total * 100, 1);
-            return new HoldingView(h.AssetClass, h.MarketValue, h.TargetWeightPct, actual, Math.Round(actual - h.TargetWeightPct, 1));
+            var drift = Math.Round(actual - h.TargetWeightPct, 1);
+            var after = total == 0 ? 0 : Math.Round((h.MarketValue + trades[i]) / total * 100, 1);
+            return new HoldingView(h.AssetClass, h.MarketValue, h.TargetWeightPct, actual, drift,
+                Math.Abs(drift) > r.DriftTolerancePct, trades[i], TradeSides.Of(trades[i]), after);
         }).ToList();
         return new HouseholdPortfolio(r.AccountId, r.Name, r.HouseholdId, r.ModelPortfolio, r.DriftTolerancePct,
-            holdings.Any(h => Math.Abs(h.DriftPct) > r.DriftTolerancePct), holdings, total, r.Currency, r.AsOf);
+            holdings.Any(h => h.OutsideTolerance), holdings, total, r.Currency, r.AsOf);
+    }
+
+    /// <summary>
+    /// The trade that brings each class to its target weight at the current total, in whole currency units. Rounding
+    /// can leave the trades a unit or two off zero; that remainder goes to the largest exact trade (the first on a
+    /// tie), so the plan only ever moves money between classes.
+    /// </summary>
+    private static decimal[] TradesToTarget(IReadOnlyList<HoldingRecord> holdings, decimal total)
+    {
+        var exact = holdings.Select(h => total * h.TargetWeightPct / 100 - h.MarketValue).ToArray();
+        var trades = exact.Select(e => Math.Round(e, 0, MidpointRounding.ToEven)).ToArray();
+        var remainder = -trades.Sum();
+        if (remainder != 0 && trades.Length > 0)
+        {
+            var largest = 0;
+            for (var i = 1; i < exact.Length; i++)
+            {
+                if (Math.Abs(exact[i]) > Math.Abs(exact[largest]))
+                {
+                    largest = i;
+                }
+            }
+            trades[largest] += remainder;
+        }
+        // A rounded −0 is still zero, and says "none".
+        return [.. trades.Select(t => t == 0 ? 0m : t)];
     }
 
     /// <summary>Quarter-end AUM, oldest first, with each quarter's change; null when the account is not this firm's.</summary>
