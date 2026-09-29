@@ -25,7 +25,9 @@ deadline=$((SECONDS + TIMEOUT))
 while :; do
   pending=()
   failed=()
+  count=0
   while read -r name service state health code; do
+    count=$((count + 1))
     if [[ "$state" == "exited" ]]; then
       [[ "$code" == "0" ]] || failed+=("$name (exited $code)")
     elif [[ "$state" != "running" ]]; then
@@ -35,6 +37,10 @@ while :; do
     fi
   done < <(status)
 
+  if (( count == 0 )); then
+    echo "✗ no services are running (did the build fail? see the output above)" >&2
+    exit 1
+  fi
   if (( ${#failed[@]} > 0 )) || { (( ${#pending[@]} > 0 )) && (( SECONDS >= deadline )); }; then
     echo "✗ services not ready:" >&2
     for s in ${failed[@]+"${failed[@]}"} ${pending[@]+"${pending[@]}"}; do

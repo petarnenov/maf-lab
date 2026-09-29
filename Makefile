@@ -33,7 +33,8 @@ export CHAT_MODEL OLLAMA_MODELS_DIR
 # OLLAMA_API_KEY and JEV_MAF_LAB are only ever read from the environment (never written to a file or echoed).
 
 # ── tools ────────────────────────────────────────────────────────────────────────────────────────────────────────
-DOTNET ?= $(shell command -v dotnet 2>/dev/null || echo $(HOME)/.dotnet/dotnet)
+# Prefer ~/.dotnet (where `make setup` installs the SDK global.json pins) over a system dotnet that may lack it.
+DOTNET ?= $(shell test -x $(HOME)/.dotnet/dotnet && echo $(HOME)/.dotnet/dotnet || command -v dotnet 2>/dev/null || echo $(HOME)/.dotnet/dotnet)
 NPM    ?= $(shell command -v npm 2>/dev/null || echo npm)
 ifeq ($(DOTNET),$(HOME)/.dotnet/dotnet)
 export DOTNET_ROOT := $(HOME)/.dotnet
