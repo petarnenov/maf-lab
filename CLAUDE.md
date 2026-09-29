@@ -26,3 +26,5 @@ Commands (see `make help`):
 - `make down` · `make ps` · `make logs SERVICE=api`
 - `make test` · `make lint` · `make verify` · `make eval SUITE=selection`
 - `make index` · `make drift` · `make dev` (local, no Docker for app services) · `make doctor`
+
+- Before touching any TypeSafe Jev call, read docs/rules/jev-usage.md.
