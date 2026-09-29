@@ -194,6 +194,7 @@ public sealed partial class FakeJev : HttpMessageHandler
             "propose_fee_adjustment" => WriteWords().IsMatch(q) ? 0.8 : 0.02,
             "get_household_portfolio" => Regex.IsMatch(q, @"\b(holdings?|hold|allocation|drift)\b") ? 0.9 : 0.05,
             "get_aum_history" => Regex.IsMatch(q, @"\baum\b.*\b(history|quarter|quarters|year)\b|quarter-end") ? 0.9 : 0.05,
+            "list_my_accounts" => Regex.IsMatch(q, @"\b(my|which) (accounts|households)\b|\b(accounts|households) (do|can) i\b|(?<!\p{L})(акаунт|сметк)\p{L}*") ? 0.9 : 0.05,
             _ => 0.0,
         };
     }

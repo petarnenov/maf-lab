@@ -23,6 +23,15 @@ describe('toolCallLabel', () => {
     expect(label).toMatch(/30s/);
   });
 
+  it('says it is listing the accounts, then that it listed them', () => {
+    expect(
+      toolCallLabel({ toolName: 'list_my_accounts', argumentSummary: '', status: 'running' }),
+    ).toBe('Listing your accounts…');
+    expect(
+      toolCallLabel({ toolName: 'list_my_accounts', argumentSummary: '', status: 'finished' }),
+    ).toBe('Listed your accounts');
+  });
+
   it('speaks in the past once a call has finished', () => {
     expect(
       toolCallLabel({ toolName: 'search_documents', argumentSummary: '', status: 'finished' }),

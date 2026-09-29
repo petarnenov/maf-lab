@@ -18,7 +18,7 @@ public static partial class DataToolRouter
 
     /// <summary>The read tools a data question may be routed to. <see cref="WriteTool"/> is asked about only as a veto.</summary>
     public static readonly IReadOnlyList<string> ReadTools =
-        [BillingTools.GetStatusName, BillingTools.SearchRunsName, PortfolioTools.GetPortfolio, PortfolioTools.AumHistory];
+        [BillingTools.GetStatusName, BillingTools.SearchRunsName, PortfolioTools.GetPortfolio, PortfolioTools.AumHistory, PortfolioTools.ListAccounts];
 
     /// <summary>The domain each read tool belongs to: a question is routed only among the tools of its domains in scope.</summary>
     internal static readonly IReadOnlyDictionary<string, string> ToolDomain = new Dictionary<string, string>
@@ -27,6 +27,7 @@ public static partial class DataToolRouter
         [BillingTools.SearchRunsName] = Domains.Billing,
         [PortfolioTools.GetPortfolio] = Domains.Portfolio,
         [PortfolioTools.AumHistory] = Domains.Portfolio,
+        [PortfolioTools.ListAccounts] = Domains.Portfolio,
     };
 
     public const string WriteTool = Maf.Lab.Domain.Billing.FeeAdjustmentTool.Name;
@@ -41,6 +42,7 @@ public static partial class DataToolRouter
         [WriteTool] = "Proposes a change to one account's fee (a credit or an increase), for a person to confirm.",
         [PortfolioTools.GetPortfolio] = "Returns one account's current portfolio by its account id: holdings, allocation against its model, drift and total value.",
         [PortfolioTools.AumHistory] = "Returns one account's quarter-end AUM valuations by its account id, oldest first, with each quarter's change.",
+        [PortfolioTools.ListAccounts] = "Lists the accounts the signed-in user can access: id, name, household, model portfolio and currency. Takes no account id.",
     };
 
     internal const string StatusInstructions = "Which billing run status does `user_question` ask about?";
@@ -96,6 +98,15 @@ public static partial class DataToolRouter
         if (p < o.MinRouteProbability)
         {
             return (null, $"no read tool is clear ({tool} {p:F2})");
+        }
+
+        if (tool == PortfolioTools.ListAccounts)
+        {
+            // A question that names an account is about that account: the list is not the answer, so the model chooses.
+            var named = AccountIds(question).Count;
+            return named == 0
+                ? (new ToolRoute(tool, new Dictionary<string, object?>(), p), null)
+                : (null, $"{tool} takes no account id, the question names {named}");
         }
 
         if (ToolDomain[tool] == Domains.Portfolio)

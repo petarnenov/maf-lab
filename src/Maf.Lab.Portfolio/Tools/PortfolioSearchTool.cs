@@ -27,7 +27,7 @@ public sealed class PortfolioSearchTool(DocumentSearchService search, IPrincipal
         "Use when: the user asks how or why something works on the investment side, e.g. what triggers a rebalance, how quarter-end " +
         "AUM is struck, what a model portfolio holds, or how performance is reported.\n" +
         "Do not use for: billing procedures, fee schedules or billing runs — use search_documents. For one account's holdings use " +
-        "get_household_portfolio; for its quarter-end AUM use get_aum_history.\n" +
+        "get_household_portfolio; for its quarter-end AUM use get_aum_history; for which accounts the user has use list_my_accounts.\n" +
         "Pass a natural-language phrase as query, not a bare identifier.";
 
     [McpServerTool(Name = Name, Title = "Search portfolio documentation", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false,

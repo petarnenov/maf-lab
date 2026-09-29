@@ -19,6 +19,8 @@ export function toolCallLabel(call: Pick<ToolCallView, 'toolName' | 'argumentSum
       return running ? 'Reading the portfolio…' : 'Read the portfolio';
     case 'get_aum_history':
       return running ? 'Reading quarter-end AUM…' : 'Read quarter-end AUM';
+    case 'list_my_accounts':
+      return running ? 'Listing your accounts…' : 'Listed your accounts';
     // The reviewer is another system and takes its time; saying so beats looking stuck for half a minute.
     case 'propose_fee_adjustment':
       return running

@@ -822,6 +822,8 @@ public sealed class ChatTurnRunner(
                     + (s.TryGetProperty("outsideTolerance", out var drift) && drift.ValueKind == JsonValueKind.True ? ", outside tolerance" : ""), sources);
             case Maf.Lab.Domain.Portfolio.PortfolioTools.AumHistory when s.TryGetProperty("valuations", out var valuations):
                 return ($"{Str(s, "accountId")}: {valuations.GetArrayLength()} quarter-end valuation(s)", sources);
+            case Maf.Lab.Domain.Portfolio.PortfolioTools.ListAccounts when s.TryGetProperty("count", out var count):
+                return ($"{count.GetInt32()} account(s)", sources);
             case FeeAdjustmentTool.Name:
                 return (Str(s, "status") switch
                 {

@@ -89,17 +89,54 @@ public class PortfolioDomainTests
         Assert.DoesNotContain("instructions", json, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void The_account_list_is_the_callers_firm_ordered_by_id()
+    {
+        var store = Store();
+
+        var mine = store.List(FirmA);
+        var theirs = store.List(FirmB);
+
+        Assert.Equal(["A-1042", "A-1043", "A-1044"], mine.Accounts.Select(a => a.AccountId));
+        Assert.Equal(3, mine.Count);
+        Assert.Equal("HH-RIDGELINE", mine.Accounts[0].HouseholdId);
+        Assert.Equal(["B-200", "B-201"], theirs.Accounts.Select(a => a.AccountId));
+        // Every listed id is one the per-account tools answer for the same caller.
+        Assert.All(mine.Accounts, a => Assert.NotNull(store.Portfolio(FirmA, a.AccountId)));
+    }
+
+    [Fact]
+    public void A_firm_without_accounts_gets_an_empty_list()
+    {
+        var list = Store().List(new Principal("zed", TenantId.Firm("firm-z"), Role.ADVISOR, []));
+
+        Assert.Equal(0, list.Count);
+        Assert.Empty(list.Accounts);
+    }
+
+    [Fact]
+    public void The_account_list_carries_no_note_and_no_holdings()
+    {
+        var json = JsonSerializer.Serialize(Store().List(FirmA), Json);
+
+        Assert.DoesNotContain("note", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("CANARY", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"holdings\"", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("marketValue", json, StringComparison.OrdinalIgnoreCase);
+    }
+
     // ---- the portfolio MCP server ---------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task The_portfolio_server_lists_three_read_only_tools_without_tenant_inputs()
+    public async Task The_portfolio_server_lists_four_read_only_tools_without_tenant_inputs()
     {
         await using var factory = PortfolioServer();
         await using var client = await ClientAsync(factory, "firm-a");
 
         var tools = await client.ListToolsAsync(cancellationToken: Ct);
 
-        Assert.Equal([PortfolioTools.AumHistory, PortfolioTools.GetPortfolio, PortfolioTools.Search], tools.Select(t => t.Name).Order());
+        Assert.Equal([PortfolioTools.AumHistory, PortfolioTools.GetPortfolio, PortfolioTools.ListAccounts, PortfolioTools.Search],
+            tools.Select(t => t.Name).Order(StringComparer.Ordinal));
         foreach (var tool in tools.Select(t => t.ProtocolTool))
         {
             Assert.True(tool.Annotations!.ReadOnlyHint);
@@ -110,6 +147,26 @@ public class PortfolioDomainTests
         }
         // Each tool points across the boundary to the domain that owns what it does not.
         Assert.Contains("search_documents", tools.Single(t => t.Name == PortfolioTools.Search).Description);
+        // The account list takes nothing at all: its scope is the caller's own.
+        var list = tools.Single(t => t.Name == PortfolioTools.ListAccounts).ProtocolTool.InputSchema;
+        Assert.False(list.TryGetProperty("properties", out var properties) && properties.EnumerateObject().Any());
+    }
+
+    [Fact]
+    public async Task The_account_list_tool_returns_only_the_callers_firm()
+    {
+        await using var factory = PortfolioServer();
+        await using var own = await ClientAsync(factory, "firm-a");
+        await using var other = await ClientAsync(factory, "firm-b");
+
+        var mine = await own.CallToolAsync(PortfolioTools.ListAccounts, cancellationToken: Ct);
+        var theirs = await other.CallToolAsync(PortfolioTools.ListAccounts, cancellationToken: Ct);
+
+        Assert.NotEqual(true, mine.IsError);
+        Assert.Equal(3, mine.StructuredContent!.Value.GetProperty("count").GetInt32());
+        Assert.Equal(["B-200", "B-201"],
+            theirs.StructuredContent!.Value.GetProperty("accounts").EnumerateArray().Select(a => a.GetProperty("accountId").GetString()));
+        Assert.DoesNotContain("A-10", theirs.StructuredContent!.Value.GetRawText(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -266,6 +323,27 @@ public class PortfolioDomainTests
 
         Assert.Null(decision.Route);
         Assert.Contains("needs one account id, the question has 2", decision.RouteReason);
+    }
+
+    [Theory]
+    [InlineData("Which accounts do I have access to?")]
+    [InlineData("Покажи ми сметките, до които имам достъп")]
+    public async Task A_question_for_my_accounts_is_routed_to_the_list_with_no_arguments(string question)
+    {
+        var decision = await Classifier(new FakeJev { Choose = _ => "data", InDomain = 0.1 }).ClassifyAsync(question, Ct);
+
+        Assert.Equal(PortfolioTools.ListAccounts, decision.Route!.Tool);
+        Assert.Empty(decision.Route.Arguments);
+    }
+
+    [Fact]
+    public async Task The_list_is_not_routed_when_the_question_names_an_account()
+    {
+        var decision = await Classifier(new FakeJev { Choose = _ => "data", InDomain = 0.1 })
+            .ClassifyAsync("Is A-1042 one of my accounts?", Ct);
+
+        Assert.Null(decision.Route);
+        Assert.Contains("list_my_accounts takes no account id, the question names 1", decision.RouteReason);
     }
 
     [Theory]

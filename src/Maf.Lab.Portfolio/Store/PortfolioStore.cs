@@ -76,11 +76,24 @@ public sealed partial class PortfolioStore
         return new AumHistory(r.AccountId, r.HouseholdId, r.Currency, points);
     }
 
+    /// <summary>Every account of the caller's firm, ordered by account id: exactly the ids <see cref="Find"/> accepts.</summary>
+    public AccountList List(Principal principal)
+    {
+        var accounts = _records.Where(r => Owns(principal, r))
+            .OrderBy(r => r.AccountId, StringComparer.Ordinal)
+            .Select(r => new AccountSummary(r.AccountId, r.Name, r.HouseholdId, r.ModelPortfolio, r.Currency))
+            .ToList();
+        return new AccountList(accounts.Count, accounts);
+    }
+
     private PortfolioRecord? Find(Principal principal, string accountId)
     {
         var id = Normalize(accountId);
-        return _records.FirstOrDefault(r => r.FirmId == principal.FirmId.Value && Normalize(r.AccountId) == id);
+        return _records.FirstOrDefault(r => Owns(principal, r) && Normalize(r.AccountId) == id);
     }
+
+    /// <summary>The one firm rule of this store: a record is visible only to its own firm.</summary>
+    private static bool Owns(Principal principal, PortfolioRecord record) => record.FirmId == principal.FirmId.Value;
 
     /// <summary>"account A-1042", "a-1042" and "A1042" all mean the same account, as in billing.</summary>
     internal static string Normalize(string accountId) =>

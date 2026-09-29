@@ -110,10 +110,16 @@ public sealed class FakeToolSource : IToolSource
             Invocations.Add(Maf.Lab.Domain.Portfolio.PortfolioTools.AumHistory);
             return Mcp($$"""{"accountId":"{{accountId}}","householdId":"HH-RIDGELINE","currency":"USD","valuations":[{"quarterEnd":"2026-06-30","aum":2910000,"changePct":null},{"quarterEnd":"2026-09-30","aum":3240000,"changePct":11.3}]}""");
         }, Maf.Lab.Domain.Portfolio.PortfolioTools.AumHistory, "Quarter-end AUM of one account.");
+        var accounts = AIFunctionFactory.Create(() =>
+        {
+            Invocations.Add(Maf.Lab.Domain.Portfolio.PortfolioTools.ListAccounts);
+            return Mcp("""{"count":1,"accounts":[{"accountId":"A-1042","name":"Ridgeline Family Trust","householdId":"HH-RIDGELINE","modelPortfolio":"ACME-BALANCED-60-40","currency":"USD"}]}""");
+        }, Maf.Lab.Domain.Portfolio.PortfolioTools.ListAccounts, "Lists the caller's accounts.");
         var portfolio = new ToolOrigin("portfolio", "maf-lab-portfolio");
         origins[Maf.Lab.Domain.Portfolio.PortfolioTools.Search] = portfolio;
         origins[Maf.Lab.Domain.Portfolio.PortfolioTools.AumHistory] = portfolio;
-        return Task.FromResult(new ToolSet([search, status, runs, propose, portfolioSearch, history], null, ConfirmAsync, origins));
+        origins[Maf.Lab.Domain.Portfolio.PortfolioTools.ListAccounts] = portfolio;
+        return Task.FromResult(new ToolSet([search, status, runs, propose, portfolioSearch, history, accounts], null, ConfirmAsync, origins));
     }
 
     /// <summary>Adjustments this fake has applied, keyed by the state they were proposed with.</summary>

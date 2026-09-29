@@ -14,7 +14,7 @@ Pinned versions and the architectural decisions of maf-lab. **If a version moves
 | Test runner | Microsoft.Testing.Platform (required by `dotnet test` on .NET 10 SDK) | `global.json` `test.runner` |
 | Qdrant | `qdrant/qdrant:v1.19.1` (compose and Testcontainers) | `compose/docker-compose.yml`, `tests/.../QdrantFixture.cs` |
 | Ollama | `ollama/ollama:0.34.2` | `compose/docker-compose.yml` |
-| Node (build) | `node:24.21.0-alpine` (local dev: Node 24.11.0) | `web/Dockerfile` |
+| Node (build) | `node:24.21.0-alpine` (local dev: Node 24.21.0) | `web/Dockerfile` |
 | nginx (web runtime and load balancer) | `nginx:1.30.5-alpine` | `web/Dockerfile`, `compose/docker-compose.yml` (`lb`) |
 | OpenTelemetry Collector | `otel/opentelemetry-collector-contrib:0.161.0` | `compose/docker-compose.yml` |
 | Prometheus | `prom/prometheus:v3.14.0` | `compose/docker-compose.yml` |
@@ -1236,6 +1236,8 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
   - The two read tools, `get_household_portfolio` and `get_aum_history`, read `compose/seed/portfolio-households.json`,
     keyed by billing's account ids. Another firm's account gets the not-found answer, and a record's note never leaves
     the store (the seed carries canaries).
+  - A third read tool, `list_my_accounts`, lists the caller's accounts from the same seed, with the same firm rule
+    (§45).
 - **The api reads every domain's server.**
   - `Agent:McpEndpoint` stays billing's, and `Agent:Servers` adds the others.
   - `McpToolSource` connects to each server with the user's bearer token and offers the union of their tools. Each tool
@@ -1487,4 +1489,35 @@ question from *forcing* a search, and system.v1 had no rule saying what to do wi
   ("What do frogs eat?" → no tool; decline). `Agent:SystemPrompt=system.v1` rolls back.
 - **Evals pending.** A prompt change requires `make eval SUITE=selection`, `generation` and `injection` against the
   baselines; they need `OLLAMA_API_KEY` and `JEV_MAF_LAB` and were not run in the session that made the change.
+  No package added or moved.
+
+## 45. The accounts a user can see (add-list-my-accounts, 2026-09-29)
+
+Every per-account tool takes an account id, and nothing told the user or the model which ids exist: "which accounts
+can I see?" fell to a documentation search that cannot answer it.
+
+- **`list_my_accounts` on the portfolio server.** No arguments; the tenant comes from the token. Each row carries the
+  account id, name, household id, model portfolio and currency, ordered by account id (ordinal), plus a count. The
+  DTOs (`AccountSummary`, `AccountList`) are built field by field, so a record's note and holdings cannot leak. An
+  empty list is a result, not a not-found error. Logs carry the count only.
+  - Portfolio server, not billing: its records hold the household and model, and both seeds share the account ids.
+    One tool on one server avoids two tools with one answer and a selection problem.
+  - Named "my" so the model reads the scope as the caller's own and never tries to pass a firm or a user.
+- **Access is the firm scope.** `PortfolioStore.Owns(principal, record)` is the one firm predicate, used by `Find` and
+  `List`, so an account appears in the list if and only if `get_household_portfolio` and `get_aum_history` answer for
+  it. `AllowedAdvisorIds` is still enforced nowhere; narrowing only the list would make it lie about access.
+  Per-advisor access is its own change, across every tool.
+- **Routing.** Jev is asked one more Noul question per classification (`tool_list_my_accounts`). The list routes with
+  no arguments only when the question names no account id; with one named, the turn is left to the model ("takes no
+  account id, the question names N"). The per-account tools keep the exactly-one-id rule.
+- **Prompt.** system.v2 and system.v1 name the tool in the Portfolio list, with one example: no account named → list
+  first, then the per-account tool. The other portfolio tools' "Do not use for" point "which accounts" to it.
+- **Evals (gpt-oss:120b, `jev-1.13.0`).** `selection.jsonl` gains s-55…s-59 (English and Bulgarian list questions,
+  one control that names A-1043 and must stay with `get_household_portfolio`).
+  - `selection`, three runs, against the baseline (recall 1, precision 0.943, exactMatch 0.931, negativeAccuracy 1):
+    recall 1 / negativeAccuracy 1 in all three; exactMatch 0.971, 0.971, 0.941; precision 0.974, 0.974, 0.95. All five
+    new rows selected correctly in every run.
+  - `intent`, three runs, against the baseline (accuracy 0.99, bg-latn 0.964): 0.99 / 0.964 twice; once 0.98 / 0.929,
+    the extra miss being "koi runove se provaliha" (mixed at 0.52), which missed the same way in a run before this
+    change. Not a regression; baselines not re-accepted.
   No package added or moved.
