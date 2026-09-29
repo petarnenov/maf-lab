@@ -91,7 +91,7 @@ public sealed class ChatTurnRunner(
 
         try
         {
-            await MarkRephraseAsync(conversationId, message, ct);
+            state.PreviousQuestion = await MarkRephraseAsync(conversationId, message, ct);
             state.UserMessage = message;
 
             decision = await intents.ClassifyAsync(message, ct);
@@ -283,7 +283,7 @@ public sealed class ChatTurnRunner(
         Jev.AnswerCheck? check = null;
         if (reachedModel && error is null && !state.AwaitingConfirmation && text.Length > 0)
         {
-            check = await answerCheck.CheckAsync(message, text, state.Read, ct);
+            check = await answerCheck.CheckAsync(message, text, state.Read, ct, state.PreviousQuestion);
             Jev.JevAnswerCheck.Trace(trace, check);
         }
         // A refused turn ran no tool on purpose: that is the guard's signal, not "how/why answered without a tool".
@@ -842,13 +842,17 @@ public sealed class ChatTurnRunner(
         state.ToolCalls.Add(new ToolCallRecord(name, "", "unknown_tool", 0, [], [], call.CallId, "tool does not exist"));
     }
 
-    private async Task MarkRephraseAsync(string conversationId, string message, CancellationToken ct)
+    /// <summary>
+    /// Marks the conversation's previous turn as rephrased when this message restates it, and returns that turn's question
+    /// (null on a first turn) — what the answer check reads a follow-up against.
+    /// </summary>
+    private async Task<string?> MarkRephraseAsync(string conversationId, string message, CancellationToken ct)
     {
         await using var ctx = await db.CreateDbContextAsync(ct);
         var previous = await ctx.Turns.Where(t => t.ConversationId == conversationId).OrderByDescending(t => t.CreatedAt).FirstOrDefaultAsync(ct);
         if (previous is null || !TurnSignals.IsRephrase(previous.Question, message, time.GetUtcNow().UtcDateTime - previous.CreatedAt))
         {
-            return;
+            return previous?.Question;
         }
         var signals = JsonSerializer.Deserialize<List<string>>(previous.SignalsJson, Json) ?? [];
         if (!signals.Contains(TurnSignal.Rephrased))
@@ -857,6 +861,7 @@ public sealed class ChatTurnRunner(
             previous.SignalsJson = JsonSerializer.Serialize(signals, Json);
             await ctx.SaveChangesAsync(ct);
         }
+        return previous.Question;
     }
 
     private async Task PersistAsync(Principal principal, string conversationId, string turnId, string question, string answer, Intent intent, bool forced,
@@ -926,6 +931,9 @@ public sealed class ChatTurnRunner(
         /// <summary>The data the model was handed this turn, after the guard — what the answer check calls its sources.</summary>
         public List<string> Read { get; } = [];
         public bool Searched { get; set; }
+
+        /// <summary>The conversation's previous question, for reading a follow-up; null on a first turn.</summary>
+        public string? PreviousQuestion { get; set; }
 
         /// <summary>The user's words this turn, which is what a reviewer's question gets answered with.</summary>
         public string UserMessage { get; set; } = "";

@@ -11,7 +11,8 @@ recorded and can flag the turn for review; it never changes or blocks the answer
 When a chat turn reached the model and ended with a non-empty answer, the api SHALL send one Jev request, through the
 same client, endpoint, pinned model and credential as every other Jev call, carrying two yes/no questions about named
 fields of the request's state:
-- `answer_relevant`: whether `answer` addresses `user_question`;
+- `answer_relevant`: whether `answer` addresses `user_question`, read together with `previous_question` (the
+  conversation's previous question, empty on its first turn) when it follows up on it;
 - `answer_grounded`: whether every factual claim in `answer` is supported by `sources`.
 
 The state SHALL hold the user's question, the answer and the sources as data. The question, the answer and the sources

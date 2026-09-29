@@ -1409,8 +1409,10 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
   `jevChecked`, `jevGroundedAgreement` and `jevRelevantAgreement` (Jev at its floors vs the rubric passing at 0.75,
   over checked cases; omitted when none was checked, so a Jev outage cannot read as disagreement). No thresholds. They
   appear as new metrics in the regression gate; accept them into the baseline only after reading a few runs.
-- **Known limit.** The check reads this turn's question, not the conversation: a follow-up ("and the second one?")
-  may read as less relevant than it is. The review queue is where that shows.
+- **Follow-ups.** The state also carries `previous_question`, the conversation's question before this one (empty on the
+  first turn), and the relevance criterion reads `user_question` together with it when it follows up. A follow-up such
+  as "and the second one?" would otherwise read as irrelevant and fill the review queue. Only the previous question is
+  sent: not the whole history, and not the previous answer, which the current sources may not support.
 - **CI stays secret-free:** `FakeJev` answers both Nouls 0.95 by default (settable per test); the CI stub answers 1.0.
   No package added or moved; no model setting changed.
 - **Rollback:** `Jev__AnswerCheck__Enabled=false` — no request; eligible turns record `unchecked (check disabled)`. A

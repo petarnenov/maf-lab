@@ -25,8 +25,8 @@ model was given; a review signal when it did not; numbers in the Jev statistics;
 **Non-Goals:**
 - Blocking, rewriting or retracting an answer (it has streamed; a later "correction" would be a second, unreviewed
   answer).
-- Conversation context: the check reads this turn's question, not the history. A follow-up ("and the second one?") may
-  read as less relevant than it is; the review queue is where that is seen.
+- The whole conversation: the check reads this turn's question and the one before it (`previous_question`), so a
+  follow-up is read as the user meant it. Earlier turns and the previous answer are not sent.
 - Checking the A2A partner path, the confirmation continuation run, or the compliance reviewer's words.
 - Tuning the floors in this change: that needs the generation eval's agreement numbers from paid runs.
 

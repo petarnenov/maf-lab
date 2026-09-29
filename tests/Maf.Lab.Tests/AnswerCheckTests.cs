@@ -79,6 +79,23 @@ public class AnswerCheckTests
     }
 
     [Fact]
+    public async Task A_follow_up_is_checked_against_the_question_before_it()
+    {
+        using var api = new ApiFactory(ApiFactory.ProceduralModel(Marker));
+        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+
+        var first = await ApiFactory.ChatAsync(client, Procedural);
+        await ApiFactory.ChatAsync(client, "and what if it happens again next quarter?", ApiFactory.ThreadOf(first));
+
+        var checks = CheckRequests(api);
+        Assert.Equal(2, checks.Count);
+        // The first question has nothing before it; the follow-up is read together with what it follows up on.
+        Assert.Equal("", checks[0].GetProperty("state").GetProperty("previous_question").GetString());
+        Assert.Equal(Procedural, checks[1].GetProperty("state").GetProperty("previous_question").GetString());
+        Assert.Contains("previous_question", checks[1].GetProperty("questions").GetProperty(JevAnswerCheck.RelevantId).GetRawText());
+    }
+
+    [Fact]
     public async Task The_stored_trace_carries_the_check_and_the_run_ends_after_it()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel(Marker));
