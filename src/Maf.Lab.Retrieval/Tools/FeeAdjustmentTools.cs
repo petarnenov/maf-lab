@@ -90,6 +90,10 @@ public sealed class FeeAdjustmentTools(
         {
             return ToolErrors.Error("An adjustment needs a reason. Ask the advisor why it is being made.");
         }
+        if (amount < 0m && account.Fee + amount < 0m)
+        {
+            return ToolErrors.Error(BelowZero(account.AccountId, account.Fee, account.Fee + amount, account.Currency));
+        }
 
         var now = time.GetUtcNow();
         var summary = new FeeAdjustmentSummary(
@@ -205,14 +209,23 @@ public sealed class FeeAdjustmentTools(
             }
         }
 
-        var applied = ledger.Apply(
-            principal,
-            proposal.AdjustmentId,
-            proposal.AccountId,
-            proposal.Amount,
-            seededFee.Value,
-            proposal.Currency,
-            time.GetUtcNow());
+        FeeAdjustmentApplied applied;
+        try
+        {
+            applied = ledger.Apply(
+                principal,
+                proposal.AdjustmentId,
+                proposal.AccountId,
+                proposal.Amount,
+                seededFee.Value,
+                proposal.Currency,
+                time.GetUtcNow());
+        }
+        catch (FeeWouldGoBelowZeroException refused)
+        {
+            // The fee moved while this waited for a person. Not recorded under the key: a retry asks the ledger again.
+            return ToolErrors.Error(BelowZero(refused.AccountId, refused.PreviousFee, refused.ResultingFee, refused.Currency));
+        }
 
         var answer = System.Text.Json.JsonSerializer.Serialize(new FeeAdjustmentOutcome(
             applied.AlreadyApplied ? "already_applied" : "applied",
@@ -269,6 +282,10 @@ public sealed class FeeAdjustmentTools(
         $"Apply a fee adjustment of {Amount(s.Amount, s.Currency)} to {s.AccountId} ({s.AccountName})? " +
         $"The fee for {s.PeriodStart:yyyy-MM-dd} to {s.PeriodEnd:yyyy-MM-dd} would change from " +
         $"{Amount(s.CurrentFee, s.Currency)} to {Amount(s.ResultingFee, s.Currency)}.";
+
+    private static string BelowZero(string accountId, decimal currentFee, decimal resultingFee, string currency) =>
+        $"That would take the fee on {accountId} below zero ({Amount(currentFee, currency)} to " +
+        $"{Amount(resultingFee, currency)}). Nothing was changed.";
 
     private static string Amount(decimal value, string currency) =>
         $"{value.ToString("N2", CultureInfo.InvariantCulture)} {currency}";

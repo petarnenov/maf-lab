@@ -152,6 +152,30 @@ public class ComplianceAgentTests
     }
 
     [Fact]
+    public async Task A_credit_over_the_threshold_is_refused_like_an_increase()
+    {
+        await using var agent = new ComplianceFactory { RefuseAbove = 1_000m };
+        var client = await CallerAsync(agent);
+
+        var task = await RpcAsync(client, "message/send", Review(amount: -4_116m, adjustmentId: "ADJ-CREDIT"));
+
+        var verdict = Verdict(task);
+        Assert.Equal("refused", verdict.GetProperty("decision").GetString());
+        Assert.Contains("1000", verdict.GetProperty("reason").GetString()!);
+    }
+
+    [Fact]
+    public async Task A_credit_at_the_threshold_is_not_refused_for_its_size()
+    {
+        await using var agent = new ComplianceFactory { RefuseAbove = 1_000m };
+        var client = await CallerAsync(agent);
+
+        var task = await RpcAsync(client, "message/send", Review(amount: -1_000m, adjustmentId: "ADJ-EDGE"));
+
+        Assert.Equal("approved", Verdict(task).GetProperty("decision").GetString());
+    }
+
+    [Fact]
     public async Task Anything_that_is_not_a_fee_adjustment_is_declined_without_a_verdict()
     {
         await using var agent = new ComplianceFactory();

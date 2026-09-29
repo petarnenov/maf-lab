@@ -82,6 +82,23 @@ public class FeeAdjustmentToolTests : IDisposable
         Assert.Contains("different request", Text(refused));
     }
 
+    [Fact]
+    public async Task A_confirmation_the_ledger_refuses_is_an_error_that_writes_nothing()
+    {
+        var state = Propose(Adam).Result.RequestState!;
+        // Another adjustment lands while this one waits for a person: 1,200 is now 100, and -200 would cross zero.
+        Ledger().Apply(Adam, "adj-meanwhile", "A-1042", -1100m, 1200m, "USD", Noon);
+
+        var refused = Tools(Adam).Propose("A-1042", -200m, "confirmed", Context(state, true, idempotencyKey: "k-3"));
+
+        Assert.True(refused.IsError);
+        Assert.Contains("below zero", Text(refused));
+        Assert.Equal(100m, Fees().Current(Adam, "A-1042")!.Fee);
+        // A refusal is not an answer to replay: a retry reaches the ledger again.
+        var (outcome, _) = await _idempotency.CheckAsync("firm-a", "k-3", "anything", TestContext.Current.CancellationToken);
+        Assert.Equal(Maf.Lab.Domain.SharedState.IdempotencyOutcome.Fresh, outcome);
+    }
+
     // ---- helpers -------------------------------------------------------------------------------------
 
     /// <summary>A first call, which never returns: it asks for input.</summary>
@@ -200,6 +217,7 @@ public class FeeAdjustmentToolTests : IDisposable
     [InlineData("A-9999", -200, "moved schedule", "was not found")]
     [InlineData("A-1042", 0, "moved schedule", "would change nothing")]
     [InlineData("A-1042", -200, "  ", "needs a reason")]
+    [InlineData("A-1042", -1300, "moved schedule", "below zero")]
     public void A_proposal_that_cannot_stand_is_an_error_that_says_what_is_wrong(string account, decimal amount, string reason, string expected)
     {
         var result = Tools(Adam).Propose(account, amount, reason, Context(null, null));

@@ -120,6 +120,63 @@ public class FeeAdjustmentLedgerTests : IDisposable
         Assert.Equal(3120.74m, applied.CurrentFee);
         Assert.Equal(-0.01m, Ledger().AppliedTotal(FirmA, "A-1044"));
     }
+
+    // ---- a reduction never takes the fee below zero --------------------------------------------------
+
+    [Fact]
+    public void A_reduction_below_zero_is_refused_and_writes_nothing()
+    {
+        var ledger = Ledger();
+
+        var refused = Assert.Throws<FeeWouldGoBelowZeroException>(() =>
+            ledger.Apply(FirmA, "adj-1", "A-1042", -4116m, 812m, "USD", At));
+
+        Assert.Equal(812m, refused.PreviousFee);
+        Assert.Equal(-3304m, refused.ResultingFee);
+        Assert.Equal(0m, ledger.AppliedTotal(FirmA, "A-1042"));
+    }
+
+    [Fact]
+    public void A_reduction_to_exactly_zero_is_applied()
+    {
+        var applied = Ledger().Apply(FirmA, "adj-1", "A-1042", -812m, 812m, "USD", At);
+
+        Assert.Equal(0m, applied.CurrentFee);
+    }
+
+    [Fact]
+    public void Two_reductions_fine_alone_apply_only_while_the_fee_stays_at_or_above_zero()
+    {
+        var ledger = Ledger();
+        ledger.Apply(FirmA, "adj-1", "A-1042", -500m, 812m, "USD", At);
+
+        Assert.Throws<FeeWouldGoBelowZeroException>(() =>
+            ledger.Apply(FirmA, "adj-2", "A-1042", -500m, 812m, "USD", At.AddMinutes(1)));
+
+        Assert.Equal(-500m, ledger.AppliedTotal(FirmA, "A-1042"));
+    }
+
+    [Fact]
+    public void Raising_a_fee_already_below_zero_is_applied()
+    {
+        var applied = Ledger().Apply(FirmA, "adj-1", "A-1042", 1000m, -6048m, "USD", At);
+
+        Assert.Equal(-5048m, applied.CurrentFee);
+    }
+
+    [Fact]
+    public void A_repeated_confirmation_after_the_fee_moved_reports_already_applied()
+    {
+        var ledger = Ledger();
+        var first = ledger.Apply(FirmA, "adj-1", "A-1042", -500m, 812m, "USD", At);
+        ledger.Apply(FirmA, "adj-2", "A-1042", -312m, 812m, "USD", At.AddMinutes(1));
+
+        var again = ledger.Apply(FirmA, "adj-1", "A-1042", -500m, 812m, "USD", At.AddMinutes(2));
+
+        Assert.True(again.AlreadyApplied);
+        Assert.Equal(first.CurrentFee, again.CurrentFee);
+        Assert.Equal(-812m, ledger.AppliedTotal(FirmA, "A-1042"));
+    }
 }
 
 public class AccountFeesTests : IDisposable

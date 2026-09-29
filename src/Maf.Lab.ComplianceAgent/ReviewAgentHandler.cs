@@ -69,7 +69,8 @@ public sealed class ReviewAgentHandler(
             await System.Threading.Tasks.Task.Delay(step, time, cancellationToken);
         }
 
-        var refused = adjustment.Amount > options.Value.RefuseAboveAmount;
+        // Size, not direction: a credit that large is as much a reason to refuse as an increase that large.
+        var refused = Math.Abs(adjustment.Amount) > options.Value.RefuseAboveAmount;
         var reason = refused
             ? $"The adjustment exceeds the {options.Value.RefuseAboveAmount:0.##} review threshold and needs a human reviewer."
             : "Within the review threshold and consistent with the firm's recent adjustments.";

@@ -100,6 +100,14 @@ public sealed class FeeAdjustmentLedger
         var previousFee = seededFee + Total(connection, transaction, principal.FirmId.Value, accountId);
         var resultingFee = previousFee + amount;
 
+        // Checked here, not only at proposal: this is the one place the fee cannot move underneath us, so two
+        // reductions that were each fine alone cannot together take it below zero. Raising a fee is never refused.
+        if (amount < 0m && resultingFee < 0m)
+        {
+            transaction.Rollback();
+            throw new FeeWouldGoBelowZeroException(accountId, previousFee, resultingFee, currency);
+        }
+
         using (var insert = connection.CreateCommand())
         {
             insert.Transaction = transaction;

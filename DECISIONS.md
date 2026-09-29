@@ -1593,3 +1593,30 @@ an outage every turn waited out every site's timeout in turn, for the same fail-
   - Baselines not re-accepted.
 
 No package added or moved.
+
+## 47. A reduction never takes a fee below zero (guard-fee-adjustment-sign, 2026-09-29)
+
+Found live on 2026-09-29: two credits took A-1042 from 812.00 to -3,304.00 and then to -6,048.00 USD.
+
+- **The compliance threshold is a size.** `ReviewAgentHandler` compared the signed amount
+  (`Amount > RefuseAboveAmount`), so a credit of any size was approved. The API already asked for a review by
+  `Math.Abs(amount)`, which is why the reviewer was consulted at all. It now compares `Math.Abs` as well.
+- **The rule is checked twice, and the ledger's check is the authoritative one.**
+  - The check at proposal (`propose_fee_adjustment`, against `AccountFees.Current`) answers the advisor before a
+    reviewer or a person is troubled.
+  - The check at apply runs inside `FeeAdjustmentLedger.Apply`'s immediate transaction, the only place both
+    replicas see the same fee. Without it, two -500 proposals on 812 would each pass alone and both apply.
+- **"Already applied" comes before "below zero".** A repeated confirmation is a replay of a fact, and it must not
+  turn into a refusal because the fee has moved since.
+- **The refusal is an exception internal to the MCP server** (`FeeWouldGoBelowZeroException`), turned into a tool
+  error with the same wording as at proposal. `FeeAdjustmentApplied` is a Domain DTO the API and the model read,
+  and it was not widened for an error case. A refusal is not recorded under the caller's idempotency key: a
+  retry asks the ledger again, and if the fee has since risen, applying is the right answer.
+- **Only reductions are refused** (`amount < 0 && resulting < 0`). Refusing on the result alone would leave an
+  account that is already negative, such as A-1042 in the local ledger, impossible to correct upward.
+- **Rejected:** a SQL `CHECK` constraint. Fees are stored as text through `Money.Format`, and a constraint
+  violation could not be told apart from the UNIQUE violation that already means "applied".
+- **Deferred:** carrying an excess credit forward to the next period, as `invoice-generation.md` describes. Until
+  then an oversized credit is refused, and the message says so.
+
+No package added or moved.
