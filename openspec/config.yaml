@@ -49,12 +49,14 @@ context: |
     src/
       Maf.Lab.Api/            ASP.NET Core host: agent, chat endpoints (SSE), feedback, admin
       Maf.Lab.Retrieval/      MCP server exposing search_documents; Qdrant access; BM25
+      Maf.Lab.Portfolio/      MCP server for the portfolio domain: search_portfolio_documents (own collection), household read tools
       Maf.Lab.Indexing/       Console app: source loaders, chunkers, embedding, upsert
       Maf.Lab.Eval/           Console app: eval datasets, runners, metrics, report
       Maf.Lab.Domain/         Shared contracts ONLY (principal, tenant, result shapes)
     web/                      Vite + React app
     compose/                  docker-compose.yml, ollama model pull script, seed data
     data/                     Sample corpus: docs/, procedures/, code/ per tenant + shared
+    data-portfolio/           Portfolio domain corpus, same tenant layout, indexed into its own collection
     evals/                    JSONL datasets: selection, retrieval, generation, injection
     openspec/
     DECISIONS.md
@@ -75,3 +77,36 @@ context: |
     a confirmation dialog in the UI).
   - Evals run on demand and on change of prompt, tool description, model, or
     tool set — not on every commit.
+
+  ## Jev (TypeSafe System One)
+
+  Used for typed decisions: intent routing, guardrails, RAG passage
+  filtering, tool-call verification. Full rule: docs/rules/jev-usage.md.
+
+  - Core: Jev decides, code controls, LLM writes.
+  - Closed answer spaces only; one atomic question each.
+  - All questions over one state go in ONE request.
+  - No math, dates, or counting in Jev.
+  - Gate every answer on confidence scaled to risk.
+  - Jev is never a security boundary.
+
+rules:
+  proposal:
+    - If the change adds or modifies a Jev call, state why Jev (not code or
+      an LLM) is the right tool, per docs/rules/jev-usage.md §2 and §5.
+  specs:
+    - For Jev-backed behavior, write scenarios for high-, medium- and
+      low-confidence outcomes, including the fallback path.
+  design:
+    - For every Jev request, list state fields, questions (type,
+      instructions, criteria), thresholds per action risk, fallback, and
+      pinned model version.
+  tasks:
+    - Add a task to run the Jev review checklist (docs/rules/jev-usage.md §7)
+      and to test on labeled inputs, including Bulgarian ones.
+
+operations:
+  apply:
+    guidance:
+      - Read docs/rules/jev-usage.md before implementing or changing any call
+        to /v1/systemone.

@@ -72,3 +72,15 @@ maf-lab/
   a confirmation dialog in the UI).
 - Evals run on demand and on change of prompt, tool description, model, or
   tool set — not on every commit.
+
+## Jev (TypeSafe System One)
+
+Used for typed decisions: intent routing, guardrails, RAG passage
+filtering, tool-call verification. Full rule: docs/rules/jev-usage.md.
+
+- Core: Jev decides, code controls, LLM writes.
+- Closed answer spaces only; one atomic question each.
+- All questions over one state go in ONE request.
+- No math, dates, or counting in Jev.
+- Gate every answer on confidence scaled to risk.
+- Jev is never a security boundary.
