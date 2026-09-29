@@ -208,6 +208,22 @@ measures the classifier alone over 101 labelled questions in English, Bulgarian 
 (`Jev:TimeoutSeconds`, 2; 0 disables it), a rejected call or a missing key leaves the turn unforced, and the event
 says why.
 
+**Reaching Jev:** these calls all go through one HTTP client per process: classification, screening, the relevance
+judge and the answer check. The client keeps its connection alive between requests and replaces it after
+`Jev:PooledConnectionLifetimeMinutes` (10), so a DNS change is still picked up.
+- **Warm-up:** once a service has started, it sends one fixed-text request (`Jev:WarmUp`, on; `Jev:WarmUpTimeoutSeconds`, 5).
+  This way the first turn does not pay for TLS set-up.
+  - Every api, mcp-retrieval and mcp-portfolio replica does this.
+  - It runs in the background, is skipped without a key, and is not counted in the Jev statistics.
+- **Retries:** a transient failure is retried `Jev:MaxRetries` (1) times, after `Jev:RetryDelayMs` (100, doubled per
+  retry) or the server's `Retry-After`. A transient failure is no response, 408, 429 or a 5xx.
+  - A retry never outlasts the caller's timeout.
+  - Other 4xx statuses are not retried. `Jev__MaxRetries=0` turns retrying off.
+- **Logs:** every attempt is logged with its status code and duration, e.g. `Jev attempt 1/2 → 429 in 180 ms`, then
+  `Jev retrying after 429 in 104 ms (attempt 2/2)`, and the warm-up logs `Jev warm-up answered by jev-1.13.0 in 412 ms`.
+  - Watch them with `make logs SERVICE=api | grep Jev`.
+  - The lines hold numbers and type names only: no question, no passage, no key.
+
 **Time travel:** scrub, step (←/→), jump (Home/End) or replay (Space; 1×–10×, long waits compressed) through any
 turn. Every tab shows the state as of the chosen step, and the chat rewinds with it: the answer text, tool cards and
 sources appear as they were at that moment. While a turn streams, the monitor follows it; drag back to pause and use

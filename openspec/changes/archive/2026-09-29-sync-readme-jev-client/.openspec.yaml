@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-09-29
+# Documentation only: the README catches up with jev-client-reuse; the jev-client
+# spec already describes the behaviour and nothing about it changes.
+skip_specs: true
