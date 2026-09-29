@@ -21,6 +21,12 @@ export function readTheme(): ThemeMode {
   }
 }
 
+/** The mode the page shows now, read from <html>: always current, even between a press and the next render. */
+export function currentTheme(): ThemeMode {
+  const forced = document.documentElement.getAttribute('data-theme');
+  return forced === 'light' || forced === 'dark' ? forced : 'system';
+}
+
 /** Applies the mode to the page and remembers it; "system" forgets it. Storage that refuses only loses the memory. */
 export function applyTheme(mode: ThemeMode) {
   const root = document.documentElement;

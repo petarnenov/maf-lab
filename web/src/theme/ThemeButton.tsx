@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import styles from '../components/Layout.module.css';
-import { applyTheme, nextTheme, readTheme, type ThemeMode } from './theme';
+import { applyTheme, currentTheme, nextTheme, readTheme, type ThemeMode } from './theme';
 
 const LABEL: Record<ThemeMode, string> = { system: 'System', light: 'Light', dark: 'Dark' };
 const ICON: Record<ThemeMode, string> = { system: '◐', light: '☀', dark: '☾' };
@@ -10,7 +10,8 @@ export function ThemeButton() {
   const [mode, setMode] = useState<ThemeMode>(readTheme);
 
   function cycle() {
-    const next = nextTheme(mode);
+    // From the page, not from `mode`: two presses before a render would both read the same stale `mode`.
+    const next = nextTheme(currentTheme());
     applyTheme(next);
     setMode(next);
   }

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { THEME_KEY } from './theme';
@@ -58,5 +58,18 @@ describe('ThemeButton', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Theme: System' }));
     expect(theme()).toBe('light');
     expect(screen.getByRole('button')).toHaveAccessibleName('Theme: Light');
+  });
+
+  it('moves one mode per press, even for two presses before React renders', () => {
+    render(<ThemeButton />);
+    const button = screen.getByRole('button', { name: 'Theme: System' });
+    // One act batches both clicks into a single render, as a fast double-click can.
+    act(() => {
+      button.click();
+      button.click();
+    });
+    expect(theme()).toBe('dark');
+    expect(button).toHaveAccessibleName('Theme: Dark');
+    expect(localStorage.getItem(THEME_KEY)).toBe('dark');
   });
 });
