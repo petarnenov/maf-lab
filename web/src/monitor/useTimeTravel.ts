@@ -1,4 +1,4 @@
-import { useEffect, useReducer, type Dispatch } from 'react';
+import { useEffect, useReducer, useState, type Dispatch } from 'react';
 import type { TraceEvent } from '../api/types';
 import {
   effectiveCursor,
@@ -22,20 +22,24 @@ export interface TimeTravel {
  */
 export function useTimeTravel(events: TraceEvent[], resetKey: string | undefined): TimeTravel {
   const [state, dispatch] = useReducer(timeTravelReducer, events.length, initialTimeTravel);
+  const [turn, setTurn] = useState(resetKey);
 
-  useEffect(() => {
+  // Catch up during the render, not in an effect: an effect runs one render late, and for that render a following
+  // cursor would sit one step behind the newest event — the chat would flash the turn as rewound
+  // (fix-rewind-banner-flash). This render already resolves against the caught-up state.
+  let current = state;
+  if (turn !== resetKey) {
+    current = initialTimeTravel(events.length);
+    setTurn(resetKey);
     dispatch({ type: 'reset', count: events.length });
-    // Only when the turn changes; event growth is handled below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resetKey]);
-
-  useEffect(() => {
+  } else if (state.count !== events.length) {
+    current = timeTravelReducer(state, { type: 'eventsChanged', count: events.length });
     dispatch({ type: 'eventsChanged', count: events.length });
-  }, [events.length]);
+  }
 
-  usePlayback(state, dispatch, events);
+  usePlayback(current, dispatch, events);
 
-  return { state, dispatch, cursor: effectiveCursor(state) };
+  return { state: current, dispatch, cursor: effectiveCursor(current) };
 }
 
 /** Advances the cursor at the recorded timing while playing; pausing or unmounting cancels the pending step. */

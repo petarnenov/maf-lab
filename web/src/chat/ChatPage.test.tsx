@@ -322,6 +322,55 @@ describe('ChatPage', () => {
     stream.push(run.done('conv-1', 't1'));
   });
 
+  it('never flashes the rewind banner while a turn streams its reasoning', async () => {
+    const stream = controlled();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.startsWith('/api/conversations')
+          ? jsonResponse(emptyHistory)
+          : url.startsWith('/api/turns')
+            ? jsonResponse({ events: [] })
+            : stream.response,
+      ),
+    );
+    // Any render that commits the banner, however briefly, is recorded.
+    let flashed = false;
+    const observer = new MutationObserver(() => {
+      if (document.querySelector('[data-testid="rewind-banner"]')) flashed = true;
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    renderWithProviders(<ChatPage />);
+    await userEvent.type(screen.getByLabelText('Message'), 'What if a fee schedule is missing?');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    stream.push(run.started());
+    // Each chunk arrives with its trace event, as the server sends them: the trace grows with the reasoning.
+    const template = fixtureTrace.find((e) => e.kind === 'reasoning.delta')!;
+    let reasoned = '';
+    for (const [i, chunk] of ['The run ', 'failed ', 'on a ', 'missing schedule.'].entries()) {
+      stream.push(
+        run.trace({
+          ...template,
+          seq: i + 1,
+          atMs: i * 100,
+          data: { offset: reasoned.length, text: chunk },
+        }),
+        ...run.reasoning(chunk),
+      );
+      reasoned += chunk;
+      await screen.findByText(reasoned.trim());
+    }
+    stream.push(...run.text('Assign the schedule.'));
+    await screen.findByText('Assign the schedule.');
+    stream.push(run.done('conv-1', 't1'));
+    await new Promise((r) => setTimeout(r, 0));
+    observer.disconnect();
+
+    expect(flashed).toBe(false);
+  });
+
   it('keeps the reasoning open once a person opens it, and shows none for a turn without any', async () => {
     const stream = controlled();
     vi.stubGlobal(

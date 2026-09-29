@@ -182,7 +182,8 @@ export function ChatPage() {
   // Shared with the monitor: rewinding the trace also rewinds the selected answer in the chat.
   const timeTravel = useTimeTravel(events, selected?.id);
   const rewound: ReconstructedTurn | null =
-    selected && events.length > 0 && timeTravel.cursor < events.length
+    // Only a cursor the user moved rewinds the chat; one that follows the newest step never does.
+    selected && timeTravel.state.cursor !== 'live' && timeTravel.cursor < events.length
       ? reconstructTurn(events, timeTravel.cursor, {
           text: selected.text,
           sources: selected.sources,

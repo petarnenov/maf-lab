@@ -73,4 +73,38 @@ describe('usePlayback', () => {
     expect(result.current.state.cursor).toBe('live');
     expect(result.current.cursor).toBe(2);
   });
+
+  it('a following cursor is the newest step on the very render the events grow', () => {
+    const seen: [number, number][] = [];
+    let events = make([0, 10]);
+    const { rerender } = renderHook(() => {
+      const tt = useTimeTravel(events, 't1');
+      seen.push([tt.cursor, events.length]);
+      return tt;
+    });
+    for (const n of [3, 4, 5]) {
+      events = make(Array.from({ length: n }, (_, i) => i * 10));
+      rerender();
+    }
+    // Every render that React commits or not: none resolves the cursor behind the events it was given.
+    expect(seen.filter(([cursor, count]) => cursor !== count)).toEqual([]);
+  });
+
+  it('a cursor pinned on one turn is never applied to the next', () => {
+    const events = make([0, 10, 20]);
+    const seen: [string, number | 'live'][] = [];
+    const { result, rerender } = renderHook(
+      ({ key }) => {
+        const tt = useTimeTravel(events, key);
+        seen.push([key, tt.state.cursor]);
+        return tt;
+      },
+      { initialProps: { key: 'a' } },
+    );
+    act(() => result.current.dispatch({ type: 'start' }));
+    seen.length = 0;
+    rerender({ key: 'b' });
+    expect(result.current.state.cursor).toBe('live');
+    expect(seen.filter(([key, cursor]) => key === 'b' && cursor !== 'live')).toEqual([]);
+  });
 });
