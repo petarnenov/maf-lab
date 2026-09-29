@@ -160,7 +160,8 @@ public class DataToolRoutingTests
             .AddInMemoryCollection(new Dictionary<string, string?> { [JevCredential.EnvironmentVariable] = FakeJev.TestKey }).Build();
         var credential = new JevCredential(configuration, loggers.CreateLogger<JevCredential>());
         var client = new HttpClient(new JevAuthHandler(credential) { InnerHandler = jev }) { BaseAddress = new Uri("https://jev.test/") };
-        return (new JevIntentClassifier(new RoutingClientFactory(client), credential, Options.Create(options ?? Routing), loggers), jev);
+        var o = Options.Create(options ?? Routing);
+        return (new JevIntentClassifier(new JevClient(new RoutingClientFactory(client), credential, o), o, loggers), jev);
     }
 
     [Fact]

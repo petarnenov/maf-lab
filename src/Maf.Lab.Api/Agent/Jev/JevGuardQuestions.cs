@@ -20,9 +20,6 @@ internal sealed record JevCriteriaNoul(JevGuardInstructions Instructions, JevNou
 /// <summary>Text another system produced, carried as data to judge: a tool's result, another agent's words.</summary>
 internal sealed record JevContentState([property: JsonPropertyName("untrusted_text")] string UntrustedText);
 
-/// <summary>A screening request; the state is a <see cref="JevState"/> or a <see cref="JevContentState"/>.</summary>
-internal sealed record JevGuardRequest(string Model, object State, IReadOnlyDictionary<string, object> Questions);
-
 /// <summary>
 /// The two batteries of atomic Nouls — one hazard each, the code decides what the combination means. Measured on
 /// <c>evals/guardrail.jsonl</c> (DECISIONS.md §34): with the context beside each question the prompt battery separated

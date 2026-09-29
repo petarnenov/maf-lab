@@ -55,4 +55,28 @@ public sealed class JevOptions
     /// questions, the other read tool up to 0.83 on run-id questions — the run id, not the probability, separates those.
     /// </summary>
     public double MinRouteProbability { get; set; } = 0.8;
+
+    /// <summary>
+    /// One fixed-text request at start-up, in the background, so the first turn finds an open connection
+    /// (jev-client-reuse). Never delays or fails start-up; skipped without a key.
+    /// </summary>
+    public bool WarmUp { get; set; } = true;
+
+    /// <summary>Budget for the warm-up: longer than a turn's, since a cold TLS and model hop is slower and nobody waits on it.</summary>
+    public double WarmUpTimeoutSeconds { get; set; } = 5;
+
+    /// <summary>
+    /// Retries after a transient failure (no response, 408, 429, 5xx), always inside the caller's budget; 0 disables.
+    /// One by default: with a 2 s classification budget one quick retry fits, a second rarely would.
+    /// </summary>
+    public int MaxRetries { get; set; } = 1;
+
+    /// <summary>Delay before the first retry, doubled for each further one (±20 % jitter); a Retry-After header wins.</summary>
+    public int RetryDelayMs { get; set; } = 100;
+
+    /// <summary>
+    /// How long a pooled, kept-alive connection to Jev is reused before it is replaced — the client itself lives as long
+    /// as the process, so this is what picks up a change of the endpoint's address.
+    /// </summary>
+    public double PooledConnectionLifetimeMinutes { get; set; } = 10;
 }

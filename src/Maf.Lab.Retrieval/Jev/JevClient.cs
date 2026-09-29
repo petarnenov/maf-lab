@@ -13,12 +13,18 @@ public sealed record JevOutcome(JevResponse? Response, string? Failure, double D
 /// <summary>
 /// One request to Jev's System One endpoint, bounded by a budget and never throwing: a timeout, an error status, a
 /// transport failure or a missing key comes back as a <see cref="JevOutcome.Failure"/> the caller can act on and record.
-/// Shared by everything that asks Jev (intent classification in the api, the relevance judge in retrieval), so the key,
-/// the wire shape and the timeout race exist once.
+/// Shared by everything that asks Jev (intent classification, screening and the answer check in the api, the relevance
+/// judge in retrieval), so the key, the wire shape and the timeout race exist once. It is a singleton holding one
+/// <see cref="HttpClient"/> for the life of the process, whose kept-alive connection every request reuses
+/// (jev-client-reuse).
 /// </summary>
 public sealed class JevClient(IHttpClientFactory http, JevCredential credential, IOptions<JevOptions> options)
 {
     public const string HttpClientName = "jev";
+
+    // Created once: the named client's handler is never rotated (see AddJevClient), so this instance and its pooled
+    // connections are what every request goes through.
+    private readonly HttpClient _http = http.CreateClient(HttpClientName);
 
     public bool IsConfigured => credential.IsConfigured;
 
@@ -66,7 +72,7 @@ public sealed class JevClient(IHttpClientFactory http, JevCredential credential,
         // Buffered with a Content-Length rather than streamed chunked: not every server in the path (the CI stub, for
         // one) reads a chunked request.
         using var content = new StringContent(JsonSerializer.Serialize(request, JevRequest.Json), Encoding.UTF8, "application/json");
-        using var response = await http.CreateClient(HttpClientName).PostAsync("v1/systemone", content, ct);
+        using var response = await _http.PostAsync("v1/systemone", content, ct);
         if (!response.IsSuccessStatusCode)
         {
             return ((int)response.StatusCode, null);
@@ -81,10 +87,17 @@ public sealed class JevClient(IHttpClientFactory http, JevCredential credential,
 public static class JevClientServiceCollectionExtensions
 {
     /// <summary>
-    /// Options, the credential, and the named client that alone carries the key. Idempotent: the api registers both
-    /// the retrieval core and the intent classifier, and each asks for this. The credential reads the configuration it
-    /// is given here, so a host that does not put <see cref="IConfiguration"/> in its container still gets the key.
+    /// Options, the credential, the named client that alone carries the key, and the start-up warm-up. Idempotent: the
+    /// api registers both the retrieval core and the intent classifier, and each asks for this. The credential reads the
+    /// configuration it is given here, so a host that does not put <see cref="IConfiguration"/> in its container still
+    /// gets the key.
     /// </summary>
+    /// <remarks>
+    /// The named client's handler is pinned (infinite factory lifetime) and pooled by <see cref="SocketsHttpHandler"/>
+    /// itself: kept alive between requests, recycled after <see cref="JevOptions.PooledConnectionLifetimeMinutes"/> so a
+    /// DNS change is still seen. The retry handler sits outside the auth handler, so every attempt is authorised, logged
+    /// and traced on its own.
+    /// </remarks>
     public static IServiceCollection AddJevClient(this IServiceCollection services, IConfiguration configuration)
     {
         if (services.Any(d => d.ServiceType == typeof(JevCredential)))
@@ -94,13 +107,26 @@ public static class JevClientServiceCollectionExtensions
         services.Configure<JevOptions>(configuration.GetSection(JevOptions.Section));
         services.AddSingleton(sp => new JevCredential(configuration, sp.GetRequiredService<ILogger<JevCredential>>()));
         services.TryAddTransient<JevAuthHandler>();
+        services.TryAddTransient<JevRetryHandler>();
         services.AddHttpClient(JevClient.HttpClientName, (sp, client) =>
             {
                 var endpoint = sp.GetRequiredService<IOptions<JevOptions>>().Value.Endpoint;
                 client.BaseAddress = new Uri(endpoint.TrimEnd('/') + "/");
             })
+            .ConfigurePrimaryHttpMessageHandler(sp => new SocketsHttpHandler
+            {
+                PooledConnectionLifetime = TimeSpan.FromMinutes(sp.GetRequiredService<IOptions<JevOptions>>().Value.PooledConnectionLifetimeMinutes),
+                PooledConnectionIdleTimeout = TimeSpan.FromMinutes(5),
+                KeepAlivePingDelay = TimeSpan.FromSeconds(30),
+                KeepAlivePingTimeout = TimeSpan.FromSeconds(10),
+                KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
+                EnableMultipleHttp2Connections = true,
+            })
+            .SetHandlerLifetime(Timeout.InfiniteTimeSpan)
+            .AddHttpMessageHandler<JevRetryHandler>()
             .AddHttpMessageHandler<JevAuthHandler>();
         services.TryAddSingleton<JevClient>();
+        services.AddHostedService<JevWarmup>();
         return services;
     }
 }

@@ -1,0 +1,92 @@
+# jev-client Specification
+
+## Purpose
+How every service reaches TypeSafe's Jev at the transport level: one reused, kept-alive connection per process, a
+warm-up at start-up, bounded retries inside the caller's budget, and structured logging of every attempt.
+
+## Requirements
+
+### Requirement: One kept-alive connection for every Jev request
+Within one process, every request to Jev — intent classification, content screening, the relevance judgment and the
+answer check — SHALL be sent through the same long-lived HTTP client, whose connections are pooled and kept alive
+between requests. Callers SHALL NOT create a client of their own per request. Pooled connections SHALL be recycled
+after a configured lifetime, so that a change of the endpoint's address is picked up without a restart.
+
+#### Scenario: Consecutive requests share a client
+- **WHEN** a process sends two Jev requests, from the same caller or from two different callers
+- **THEN** both are sent through the same client instance, and the second reuses an open connection when the first left one
+
+#### Scenario: Every caller uses the shared client
+- **WHEN** the intent classifier, the content guard, the relevance judge and the answer check each send a request
+- **THEN** all four go through the one shared client, and each still carries the bearer credential and nothing else changes on the wire
+
+### Requirement: Warm-up at start-up
+Each service that can call Jev SHALL send one warm-up request to Jev after it starts, so that the first real request
+finds an established connection. The warm-up SHALL run in the background: it MUST NOT delay the service becoming ready
+and MUST NOT fail start-up, whatever its outcome. It SHALL carry fixed text only — no user content — and SHALL be bounded
+by a timeout. It SHALL be skipped when the Jev key is missing or when warm-up is disabled by configuration, and its
+outcome (status code or failure, and duration) SHALL be logged once. A warm-up SHALL NOT be counted as a turn's Jev call
+in the Jev statistics.
+
+#### Scenario: Warm-up on start
+- **WHEN** a service starts with the Jev key set and warm-up enabled
+- **THEN** exactly one warm-up request is sent to Jev, and one log line records its status code and duration
+
+#### Scenario: Jev unreachable at start-up
+- **WHEN** the warm-up request fails or times out
+- **THEN** the service still starts and serves requests, and the failure is logged once without a stack trace
+
+#### Scenario: No key
+- **WHEN** a service starts without `JEV_MAF_LAB`
+- **THEN** no warm-up request is sent
+
+#### Scenario: Warm-up disabled
+- **WHEN** warm-up is disabled by configuration
+- **THEN** no warm-up request is sent
+
+### Requirement: Bounded retries inside the caller's budget
+A Jev request that fails transiently — a transport error, or a 408, 429 or 5xx status (529 included) — SHALL be retried
+up to a configured number of times, after a short delay. Any other status (for example 400, 401, 403 or 422) SHALL NOT
+be retried. Retries SHALL happen inside the caller's existing budget: the caller's wait SHALL remain bounded by its
+timeout, and a retry SHALL NOT start once the budget is spent. When every attempt fails, the caller SHALL receive the
+last failure, with the same consequences it has today. The number of retries SHALL be configuration, and zero SHALL
+disable retrying.
+
+#### Scenario: Transient failure then success
+- **WHEN** Jev answers 503 and then, on the retry, 200
+- **THEN** the caller receives the 200 answer
+
+#### Scenario: Non-transient status
+- **WHEN** Jev answers 401 or 422
+- **THEN** the request is sent once and not retried
+
+#### Scenario: Retries exhausted
+- **WHEN** Jev answers 529 to every attempt
+- **THEN** the caller receives a rejection carrying status 529 after one attempt plus the configured number of retries
+
+#### Scenario: Budget spent
+- **WHEN** the caller's timeout elapses while a retry is pending
+- **THEN** no further attempt is sent and the caller's wait ends at its timeout
+
+### Requirement: Every attempt logged with its status code
+Every attempt of a Jev request SHALL produce one structured log line carrying the attempt number, the HTTP status code
+— or, when there is no response, the transport error's type — and the attempt's duration. A retry SHALL additionally be
+logged with the reason it is retried and the delay before the next attempt. A successful attempt SHALL be logged at
+information level, a failed attempt or a retry at warning level. These log lines MUST NOT contain the request or
+response body, the user's question, any passage text or the Jev key.
+
+#### Scenario: Status code logged
+- **WHEN** a Jev request is answered 200 on the first attempt
+- **THEN** one log line records attempt 1, status 200 and its duration
+
+#### Scenario: Retry logged
+- **WHEN** a Jev request is answered 429 and then 200
+- **THEN** the log records attempt 1 with status 429, a retry with reason 429 and its delay, and attempt 2 with status 200
+
+#### Scenario: Transport failure logged
+- **WHEN** a Jev attempt fails without a response
+- **THEN** the log line records the error's type instead of a status code, and no stack trace or host name reaches any model-facing text
+
+#### Scenario: No content in the log
+- **WHEN** any Jev attempt is logged
+- **THEN** the log line contains neither the key value nor any text from the request or response body
