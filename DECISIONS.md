@@ -1752,3 +1752,28 @@ and the one place the model could get a number wrong.
 - **Aside, not caused by this change:** the web suite's parallel workers crashed intermittently (V8 "Fatal process out
   of memory: Zone", SIGSEGV/SIGTRAP at worker start, a JSON file reading back corrupted) on a loaded machine with 40 GB
   free. The same tests pass run serially (`vitest run --no-file-parallelism`: 49 files, 341 tests).
+
+## 51. Answers render as markdown (add-markdown-rendering, 2026-09-29)
+
+The chat showed the model's markdown as raw text (`white-space: pre-wrap`): `**`, `1.`, `|---|` on every procedure
+answer.
+
+- **`react-markdown` 10.1.0 + `remark-gfm` 4.0.1, pinned exactly.** The owner chose them over a small in-house parser.
+  - They render to React elements, never an HTML string, and cover GFM completely: lists, emphasis, code, tables,
+    links.
+  - `npm install` reported 0 vulnerabilities. Install size: 88 KB and 52 KB for the two packages, plus the
+    unified/remark/mdast stack they bring.
+  - The production bundle went from 552,313 B to 708,089 B (166,759 → 213,173 B gzipped). That is +46 KB on the wire,
+    accepted for a chat that is mostly answers. It can be split out with a lazy import if that ever matters.
+- **Locked down in one component, `web/src/chat/Markdown.tsx`:**
+  - A remark plugin turns every raw-HTML node into text, so `<script>` or `<img onerror>` reads as characters and
+    never becomes an element. This does not depend on the library's default.
+  - `urlTransform` keeps only `http`, `https` and `mailto` (`safeUrl.ts`). Any other link renders as a `<span>`, and
+    safe links get `target="_blank"` and `rel="noopener noreferrer"`.
+  - Images render their alt text and load nothing.
+  - Tables sit in their own scroll box, and number, amount and percentage cells are right-aligned in tabular figures,
+    like the data cards.
+- **Scope:** the answer only, live, restored and in time travel. User messages, reasoning and the monitor stay plain
+  text.
+- **Checked live:** "What is the procedure when a fee schedule is missing?" rendered as a three-step ordered list with
+  bold terms and no raw markers.

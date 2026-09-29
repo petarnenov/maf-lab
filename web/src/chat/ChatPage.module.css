@@ -160,8 +160,8 @@
   margin: 0 0 4px 8px;
 }
 
+/* The answer is markdown (add-markdown-rendering): whitespace is the renderer's, pre-wrap stays with code blocks. */
 .text {
-  white-space: pre-wrap;
   line-height: 1.5;
 }
 

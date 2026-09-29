@@ -23,6 +23,7 @@ import { idle, step, type RecallState } from './promptHistory';
 import { SourcesPanel } from './SourcesPanel';
 import { CardView } from './cards/CardView';
 import { ConfirmationCard } from './ConfirmationCard';
+import { Markdown } from './Markdown';
 import { ToolCallCard } from './ToolCallCard';
 import { TurnFeedback } from './TurnFeedback';
 import { useChatStream } from './useChatStream';
@@ -464,7 +465,9 @@ function AssistantBubble({
         <CardView key={card.messageId} card={card} question={question} />
       ))}
       {text ? (
-        <div className={styles.text}>{text}</div>
+        <div className={styles.text}>
+          <Markdown text={text} />
+        </div>
       ) : (
         (turn.status === 'streaming' || rewound) && <div className={styles.thinking}>Thinking…</div>
       )}

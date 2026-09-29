@@ -1,0 +1,85 @@
+.markdown {
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.markdown > :first-child {
+  margin-top: 0;
+}
+
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown p {
+  margin: 0 0 0.6em;
+}
+
+.markdown ul,
+.markdown ol {
+  margin: 0 0 0.6em;
+  padding-left: 1.4em;
+}
+
+.markdown li + li {
+  margin-top: 0.2em;
+}
+
+.markdown code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  background: var(--surface-2);
+  border-radius: 4px;
+  padding: 0.1em 0.3em;
+}
+
+.markdown pre {
+  background: var(--surface-2);
+  border-radius: 6px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.markdown pre code {
+  background: none;
+  padding: 0;
+}
+
+.markdown a {
+  color: var(--link);
+}
+
+/* A table scrolls inside the answer; the page never scrolls sideways because of it. */
+.tableScroll {
+  overflow-x: auto;
+  margin: 0 0 0.6em;
+}
+
+.tableScroll table {
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.tableScroll th,
+.tableScroll td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.tableScroll th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.num {
+  text-align: right !important;
+}
+
+.imageAlt {
+  font-style: italic;
+  color: var(--muted);
+}
