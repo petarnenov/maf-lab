@@ -1392,6 +1392,20 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
   - `TimeoutSeconds` **3**, above the guard's 2 s: the state is the largest any Jev site sends (the answer plus up to
     12k characters), and the whole budget is added to a turn only when Jev hangs.
   - `Enabled` **true**.
+- **Measured (2026-09-29), three runs of `make eval SUITE=generation`, 8 questions each:**
+  - The runs were identical.
+  - Relevance agrees with the rubric judge on 8 of 8 (`jevRelevantAgreement` 1.0).
+  - Grounding agrees on 6 of 8 (`jevGroundedAgreement` 0.75). The judge scored all 8 faithful; Jev flagged g-01 and
+    g-04 in every run.
+  - g-04 ("why did run 4417 fail and how do I fix it") is Jev being right. The answer adds steps no source holds (an
+    "account-maintenance screen or bulk-update tool", a "preview/validate" run, "click Re-run"), and the rubric judge
+    missed them.
+  - g-01 ("procedure when a fee schedule is missing") is Jev being strict about an answer that follows the procedure.
+  - No floor separates them: g-01 scored 0.33–0.45 and g-04 0.28–0.40. The floors stay 0.5, still provisional. A false
+    flag costs one review, and a real unsupported step is worth one.
+  - The check's latency was 220–520 ms per turn, against a median turn of about 4.9 s: about 8% added to the end of a
+    run, never to the streamed answer.
+  - The generation baseline now includes the three Jev metrics.
 - **Fails open.** Disabled, no key, a timeout, an error status, a transport failure or a missing Noul record
   `unchecked` with the reason and add no signal; the turn completes exactly as before.
 - **Trace event, no content.** `{ verdict, relevant, grounded, relevantFloor, groundedFloor, model, durationMs, reason,
