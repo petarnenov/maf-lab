@@ -1437,3 +1437,29 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
   No package added or moved; no model setting changed.
 - **Rollback:** `Jev__AnswerCheck__Enabled=false` — no request; eligible turns record `unchecked (check disabled)`. A
   plain revert leaves stored `answer.check` events readable (unknown kinds are ignored).
+
+## 43. One kept-alive Jev client, a warm-up, and logged retries (jev-client-reuse, 2026-09-29)
+
+- **One client per process.** Every Jev request — classification, screening, the relevance judge, the answer check —
+  goes through the `JevClient` singleton, which creates its `HttpClient` once. The classifier and the guard no longer
+  build their own (the guard's copy of the POST and `JevGuardRequest` are gone). The named client's handler is a
+  `SocketsHttpHandler` pinned with `SetHandlerLifetime(Infinite)`: connections are kept alive (idle 5 min, HTTP/2
+  pings every 30 s) and recycled after `Jev:PooledConnectionLifetimeMinutes` (10) so a DNS change is still seen. Before
+  this, the factory's two-minute handler rotation made a turn after a quiet spell pay DNS + TCP + TLS inside its 2 s
+  budget.
+- **Warm-up.** `JevWarmup` sends one System One request (fixed state `{ "text": "warm-up" }`, one Noul) once the host
+  has started, bounded by `Jev:WarmUpTimeoutSeconds` (5). Background only; never delays or fails start-up; skipped
+  without a key or with `Jev:WarmUp=false`; one log line with the model or the failure. It bypasses turn traces, so the
+  Jev statistics do not count it. A real request rather than `GET /`, so the auth header and the model path are warm too.
+- **Retries, bounded by the caller's budget.** `JevRetryHandler` (outermost, before the auth handler) retries no
+  response, 408, 429 and 5xx other than 501/505, `Jev:MaxRetries` times (1), after `Jev:RetryDelayMs` (100) doubled per
+  retry with ±20 % jitter, or the server's `Retry-After`. The delay waits on the request token the caller cancels at
+  its timeout, so a retry never extends a turn's wait. Other 4xx are never retried. No Polly: one handler, no package.
+- **Logs.** Category `Maf.Lab.Retrieval.Jev.JevRetryHandler` (the hosts keep `System.Net.Http.HttpClient` at Warning):
+  `Jev attempt 1/2 → 429 in 180 ms` (Information on 2xx, Warning otherwise), `Jev attempt 1/2 failed:
+  HttpRequestException after 12 ms` (type name only), `Jev retrying after 429 in 104 ms (attempt 2/2)`. Numbers and
+  type names only — no body, question, passage or key.
+- **Tests.** `ApiFactory` sets `Jev:WarmUp=false` so request-counting tests stay exact; `JevClientTests` covers reuse,
+  the host pipeline, retry/no-retry/exhaustion/budget, log content and the warm-up.
+- **Rollback:** `Jev__WarmUp=false`, `Jev__MaxRetries=0` restore the previous wire behaviour without a code change.
+  No package added or moved.

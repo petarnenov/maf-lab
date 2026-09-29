@@ -194,7 +194,8 @@ public class PortfolioDomainTests
             .AddInMemoryCollection(new Dictionary<string, string?> { [JevCredential.EnvironmentVariable] = FakeJev.TestKey }).Build();
         var credential = new JevCredential(configuration, loggers.CreateLogger<JevCredential>());
         var client = new HttpClient(new JevAuthHandler(credential) { InnerHandler = jev }) { BaseAddress = new Uri("https://jev.test/") };
-        return new JevIntentClassifier(new SingleClientFactory(client), credential, Options.Create(new JevOptions()), loggers);
+        var o = Options.Create(new JevOptions());
+        return new JevIntentClassifier(new JevClient(new SingleClientFactory(client), credential, o), o, loggers);
     }
 
     [Fact]

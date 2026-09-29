@@ -60,6 +60,8 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
             ["Qdrant:GrpcPort"] = "1",
             ["Agent:EmulateRequiredToolMode"] = EmulateForcing.ToString(),
             [JevCredential.EnvironmentVariable] = FakeJev.TestKey,
+            // No warm-up request: these tests count what each turn sends to Jev (the warm-up has tests of its own).
+            ["Jev:WarmUp"] = "false",
             // One partner, so the A2A surface has something to authenticate.
             ["A2A:Partners:acme-portal:Secret"] = "s3cret",
             ["A2A:Partners:acme-portal:Firms:0"] = "firm-a",

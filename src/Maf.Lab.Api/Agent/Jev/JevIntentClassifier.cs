@@ -9,8 +9,7 @@ namespace Maf.Lab.Api.Agent.Jev;
 /// nothing to parse. A choice below the confidence floor, a timeout, an error status, a failure or a missing key all
 /// leave the turn with <see cref="Intent.Other"/>, which forces no tool.
 /// </summary>
-public sealed class JevIntentClassifier(
-    IHttpClientFactory http, JevCredential credential, IOptions<JevOptions> options, ILoggerFactory loggers) : IIntentClassifier
+public sealed class JevIntentClassifier(JevClient jev, IOptions<JevOptions> options, ILoggerFactory loggers) : IIntentClassifier
 {
     public const string HttpClientName = JevClient.HttpClientName;
     internal const string QuestionId = "intent";
@@ -79,7 +78,6 @@ public sealed class JevIntentClassifier(
     };
 
     private readonly ILogger _logger = loggers.CreateLogger<JevIntentClassifier>();
-    private readonly JevClient _jev = new(http, credential, options);
 
     public async Task<IntentDecision> ClassifyAsync(string question, CancellationToken ct)
     {
@@ -88,7 +86,7 @@ public sealed class JevIntentClassifier(
         {
             return new IntentDecision(Intent.Other, Model: o.Model, Reason: "classification disabled");
         }
-        if (!credential.IsConfigured)
+        if (!jev.IsConfigured)
         {
             return new IntentDecision(Intent.Other, Model: o.Model, Reason: "no key");
         }
@@ -114,7 +112,7 @@ public sealed class JevIntentClassifier(
                 questions[id] = q;
             }
         }
-        var outcome = await _jev.AskAsync(new JevState(question), questions, o.TimeoutSeconds, ct);
+        var outcome = await jev.AskAsync(new JevState(question), questions, o.TimeoutSeconds, ct);
         return outcome.Response is { } response
             ? WithRoute(Decide(response, o, outcome.DurationMs), question, response, o)
             : Failed(outcome.Failure ?? "no answer", o.Model, outcome.DurationMs);

@@ -28,8 +28,8 @@ public class IntentClassifierTests
             .Build();
         var credential = new JevCredential(configuration, loggers.CreateLogger<JevCredential>());
         var client = new HttpClient(new JevAuthHandler(credential) { InnerHandler = jev }) { BaseAddress = new Uri("https://jev.test/") };
-        var classifier = new JevIntentClassifier(new SingleClientFactory(client), credential,
-            Options.Create(options ?? new JevOptions()), loggers);
+        var o = Options.Create(options ?? new JevOptions());
+        var classifier = new JevIntentClassifier(new JevClient(new SingleClientFactory(client), credential, o), o, loggers);
         return new Harness(classifier, jev, logs);
     }
 

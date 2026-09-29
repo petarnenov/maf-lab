@@ -108,6 +108,11 @@ public sealed partial class FakeJev : HttpMessageHandler
             }
             return Answer(answers);
         }
+        if (root["state"]!["text"] is not null)
+        {
+            // The start-up warm-up: fixed text, one Noul, no user content (jev-client-reuse).
+            return Answer(asked.Keys.ToDictionary(id => id, object (_) => new { type = "noul", noul = 0.0 }));
+        }
         // A classification or a prompt screening carries the user's question; a content screening, the text it judges.
         var question = (root["state"]!["user_question"] ?? root["state"]!["untrusted_text"])!.GetValue<string>();
         var choice = (Choose ?? Classify)(question);
