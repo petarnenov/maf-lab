@@ -1002,7 +1002,8 @@ The header SHALL offer a theme button with three modes:
 - **Light**;
 - **Dark**.
 
-Each press SHALL move to the next mode, in the order System, Light, Dark, then System again. The button SHALL say
+Each press SHALL move to the next mode, in the order System, Light, Dark, then System again. Presses that come faster
+than the page redraws SHALL each count. The button SHALL say
 which mode is on, in text and in its accessible name, not only with an icon.
 
 **Remembering the choice.**
@@ -1030,6 +1031,10 @@ banner.
 #### Scenario: Storage blocked
 - **WHEN** the browser refuses storage and the user chooses Light
 - **THEN** the page is light, and nothing fails
+
+#### Scenario: A fast double press
+- **WHEN** the mode is System and the user presses the button twice before the page redraws
+- **THEN** the mode is Dark, not Light
 
 ### Requirement: Every colour follows the theme
 Every colour the app draws SHALL come from the active theme, in the light theme and in the dark theme alike. This
