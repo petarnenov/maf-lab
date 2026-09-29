@@ -19,6 +19,7 @@ describe('readChatStream', () => {
 
     expect(sawDone).toBe(true);
     expect(events.map((e) => e.type)).toEqual([
+      'run_started',
       'tool_call_started',
       'tool_call_started',
       'tool_call_finished',
@@ -41,7 +42,10 @@ describe('readChatStream', () => {
     );
 
     expect(sawDone).toBe(false);
-    expect(events).toEqual([{ type: 'text_delta', data: { text: 'a' } }]);
+    expect(events).toEqual([
+      { type: 'run_started', data: { conversationId: 'conv-1' } },
+      { type: 'text_delta', data: { text: 'a' } },
+    ]);
   });
 
   it('hands every frame to onFrame, including the ones it maps to nothing', async () => {

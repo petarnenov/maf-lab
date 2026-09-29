@@ -140,6 +140,48 @@ describe('ChatPage with history', () => {
     expect(body.messages[0].content).toBe('more');
   });
 
+  it('keeps a failed turn on screen with its error, in the same conversation', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.startsWith('/api/conversations?')) return jsonResponse(page('conv-7'));
+      if (url === '/api/conversations/conv-7') return jsonResponse(detail);
+      return jsonResponse({}, 404);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderChat('/chat/conv-7');
+    expect(await screen.findAllByTestId('assistant-turn')).toHaveLength(2);
+
+    fetchMock.mockImplementationOnce(async () =>
+      streamResponse([
+        run.started('conv-7'),
+        run.error('The assistant could not complete this answer. Please try again.'),
+      ]),
+    );
+    await userEvent.type(screen.getByLabelText('Message'), 'tell me about frogs');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    const error = await screen.findByTestId('turn-error');
+    expect(error).toHaveTextContent('could not complete this answer');
+    expect(screen.getByText('tell me about frogs')).toBeInTheDocument();
+    expect(screen.getAllByTestId('assistant-turn')).toHaveLength(3);
+    expect(screen.getByTestId('location')).toHaveTextContent('/chat/conv-7');
+    // The stored conversation is not loaded again over the live turn.
+    expect(fetchMock.mock.calls.filter(([u]) => u === '/api/conversations/conv-7')).toHaveLength(1);
+
+    // The next message continues the same conversation.
+    fetchMock.mockImplementationOnce(async () =>
+      streamResponse([run.started('conv-7'), run.delta('Only billing.'), run.done('conv-7', 't4')]),
+    );
+    await userEvent.type(screen.getByLabelText('Message'), 'again');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByText('Only billing.');
+    const chats = fetchMock.mock.calls.filter(([u]) => u === '/api/chat') as unknown as [
+      string,
+      RequestInit,
+    ][];
+    expect(JSON.parse(chats[1][1].body as string).threadId).toBe('conv-7');
+  });
+
   it('shows "Conversation not found" for an unknown or deleted id', async () => {
     vi.stubGlobal(
       'fetch',

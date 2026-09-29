@@ -73,8 +73,13 @@ describe('toChatEvents', () => {
   });
 
   it('ignores an event the protocol has and this screen does not render', () => {
-    expect(toChatEvents(event(EventType.RUN_STARTED, { threadId: 't1', runId: 'r1' }))).toEqual([]);
     expect(toChatEvents(event(EventType.STEP_STARTED, { stepName: 'x' }))).toEqual([]);
+  });
+
+  it('names the conversation when the run starts', () => {
+    expect(toChatEvents(event(EventType.RUN_STARTED, { threadId: 't1', runId: 'r1' }))).toEqual([
+      { type: 'run_started', data: { conversationId: 't1' } },
+    ]);
   });
 
   it('ends the turn when the run finishes, carrying the thread and the turn', () => {

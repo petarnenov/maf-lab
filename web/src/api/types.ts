@@ -124,6 +124,8 @@ export type ChatStreamEvent =
   | { type: 'trace'; data: TraceEvent }
   | { type: 'agui_frame'; data: AguiFrame }
   | { type: 'confirmation_required'; data: ConfirmationRequiredData }
+  /** The run has begun, in this conversation: the server names it before anything can go wrong. */
+  | { type: 'run_started'; data: { conversationId: string } }
   | { type: 'done'; data: DoneData };
 
 // ---- Turn trace (behind the scenes). See docs/trace-events.md. ----

@@ -122,6 +122,44 @@ describe('chatReducer', () => {
     });
   });
 
+  it('keeps the conversation when a failed run names none', () => {
+    let state = apply(send(), done);
+    state = chatReducer(state, {
+      type: 'send',
+      userTurnId: 'u2',
+      assistantTurnId: 'a2',
+      text: 'next',
+    });
+    state = apply(state, {
+      type: 'done',
+      data: {
+        conversationId: '',
+        turnId: '',
+        error: 'The assistant could not complete this answer.',
+      },
+    });
+    expect(state.conversationId).toBe('conv-1');
+    expect(state.streaming).toBe(false);
+    expect(assistant(state)).toMatchObject({
+      status: 'error',
+      error: 'The assistant could not complete this answer.',
+    });
+  });
+
+  it('takes the conversation from the start of the run, so a failed first turn keeps it', () => {
+    let state = apply(send(), { type: 'run_started', data: { conversationId: 'conv-9' } });
+    expect(state.conversationId).toBe('conv-9');
+    state = apply(state, {
+      type: 'done',
+      data: {
+        conversationId: '',
+        turnId: '',
+        error: 'The assistant could not complete this answer.',
+      },
+    });
+    expect(state.conversationId).toBe('conv-9');
+  });
+
   it('stream_error ends the turn and stops running tool cards', () => {
     let state = apply(send(), started);
     state = chatReducer(state, { type: 'stream_error', message: 'Connection lost.' });

@@ -365,6 +365,9 @@ function applyEvent(state: ChatState, event: ChatStreamEvent): ChatState {
       };
     }
 
+    case 'run_started':
+      return { ...state, conversationId: event.data.conversationId };
+
     case 'done': {
       const active = activeTurn(state);
       const traces = active
@@ -376,7 +379,13 @@ function applyEvent(state: ChatState, event: ChatStreamEvent): ChatState {
         status: event.data.error ? 'error' : 'done',
         error: event.data.error ?? undefined,
       }));
-      return { ...next, streaming: false, conversationId: event.data.conversationId };
+      // A run that failed names no conversation; it is still the one on screen. Clearing it would reload the
+      // stored conversation over the live turn and lose the error.
+      return {
+        ...next,
+        streaming: false,
+        conversationId: event.data.conversationId || state.conversationId,
+      };
     }
   }
 }

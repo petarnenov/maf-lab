@@ -6,6 +6,7 @@ import {
   type ReasoningMessageContentEvent,
   type RunErrorEvent,
   type RunFinishedEvent,
+  type RunStartedEvent,
   type TextMessageContentEvent,
   type ToolCallArgsEvent,
   type ToolCallResultEvent,
@@ -93,6 +94,12 @@ export function toChatEvents(event: BaseEvent): ChatStreamEvent[] {
 
     case EventType.CUSTOM:
       return custom(event as CustomEvent);
+
+    // The thread is the conversation. A run that then fails names none, so this is where a new one learns its id.
+    case EventType.RUN_STARTED: {
+      const threadId = (event as RunStartedEvent).threadId;
+      return threadId ? [{ type: 'run_started', data: { conversationId: threadId } }] : [];
+    }
 
     case EventType.RUN_FINISHED:
       return finished(event as RunFinishedEvent);
