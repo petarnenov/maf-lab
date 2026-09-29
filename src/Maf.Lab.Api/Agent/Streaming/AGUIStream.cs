@@ -54,6 +54,16 @@ public static class AGUIStream
 
     public static string CardMessageId(string callId) => $"card-{callId}";
 
+    /// <summary>
+    /// The run's shared state (add-focus-state): the conversation's account in focus, as an id or null. Nothing else
+    /// travels in it — no name, no holdings, no text.
+    /// </summary>
+    public static StateSnapshotEvent State(string? focusAccountId) => new()
+    {
+        Snapshot = JsonSerializer.SerializeToElement(
+            new { focus = focusAccountId is null ? null : new { accountId = focusAccountId } }, Json),
+    };
+
     public static CustomEvent Sources(IReadOnlyList<SourceRef> sources) => new()
     {
         Name = SourcesEvent,

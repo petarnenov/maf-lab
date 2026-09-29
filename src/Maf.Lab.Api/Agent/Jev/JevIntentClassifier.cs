@@ -79,7 +79,7 @@ public sealed class JevIntentClassifier(JevClient jev, IOptions<JevOptions> opti
 
     private readonly ILogger _logger = loggers.CreateLogger<JevIntentClassifier>();
 
-    public async Task<IntentDecision> ClassifyAsync(string question, CancellationToken ct)
+    public async Task<IntentDecision> ClassifyAsync(string question, CancellationToken ct, string? focusAccountId = null)
     {
         var o = options.Value;
         if (o.TimeoutSeconds <= 0)
@@ -114,7 +114,7 @@ public sealed class JevIntentClassifier(JevClient jev, IOptions<JevOptions> opti
         }
         var outcome = await jev.AskAsync(new JevState(question), questions, o.TimeoutSeconds, ct);
         return outcome.Response is { } response
-            ? WithRoute(Decide(response, o, outcome.DurationMs), question, response, o)
+            ? WithRoute(Decide(response, o, outcome.DurationMs), question, response, o, focusAccountId)
             : Failed(outcome.Failure ?? "no answer", o.Model, outcome.DurationMs);
     }
 
@@ -178,7 +178,7 @@ public sealed class JevIntentClassifier(JevClient jev, IOptions<JevOptions> opti
     /// Routing is a second reading of the same answer: only a data intent that was used can be routed, and anything the
     /// router cannot pin down leaves the turn exactly as it would be without routing — with the reason kept.
     /// </summary>
-    private IntentDecision WithRoute(IntentDecision decision, string question, JevResponse response, JevOptions o)
+    private IntentDecision WithRoute(IntentDecision decision, string question, JevResponse response, JevOptions o, string? focusAccountId)
     {
         if (!o.RouteDataTools || response.Answers is null)
         {
@@ -193,7 +193,7 @@ public sealed class JevIntentClassifier(JevClient jev, IOptions<JevOptions> opti
             return decision with { Routing = routing, RouteReason = $"intent is {decision.Intent}, not Data" };
         }
         // Routed only among the tools of the domains Jev put the question in.
-        var (route, reason) = DataToolRouter.Route(question, routing, o, decision.Domains);
+        var (route, reason) = DataToolRouter.Route(question, routing, o, decision.Domains, focusAccountId);
         return decision with { Routing = routing, Route = route, RouteReason = reason };
     }
 

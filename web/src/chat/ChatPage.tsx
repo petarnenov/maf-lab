@@ -17,11 +17,12 @@ import { reasoningOf, reconstructTurn, type ReconstructedTurn } from '../monitor
 import { useTimeTravel } from '../monitor/useTimeTravel';
 import { framesFor, traceFor } from '../monitor/traceReducer';
 import { useTurnTrace } from '../monitor/useTurnTrace';
-import type { AssistantTurn } from './chatReducer';
+import type { AssistantTurn, ChatState } from './chatReducer';
 import styles from './ChatPage.module.css';
 import { idle, step, type RecallState } from './promptHistory';
 import { SourcesPanel } from './SourcesPanel';
 import { CardView } from './cards/CardView';
+import { langOf, words, type Lang } from './cards/format';
 import { ConfirmationCard } from './ConfirmationCard';
 import { Markdown } from './Markdown';
 import { ToolCallCard } from './ToolCallCard';
@@ -36,7 +37,8 @@ export function ChatPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const userKey = useUserKey();
-  const { state, send, reset, hydrate, answer, loadPending, toggleReasoning } = useChatStream();
+  const { state, send, reset, hydrate, answer, loadPending, toggleReasoning, setFocus } =
+    useChatStream();
   const [draft, setDraft] = useState('');
   /** Assistant turn the monitor shows; null = follow the latest turn. */
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -316,6 +318,8 @@ export function ChatPage() {
                       setMonitorOpen(true);
                     }}
                     onAnswer={answer}
+                    focus={state.focus?.accountId ?? null}
+                    onFocus={(accountId) => setFocus({ accountId })}
                   />
                 ),
               )}
@@ -323,6 +327,13 @@ export function ChatPage() {
           </div>
         )}
 
+        {state.focus && (
+          <FocusChip
+            accountId={state.focus.accountId}
+            lang={langOf(lastQuestion(state.turns))}
+            onClear={() => setFocus(null)}
+          />
+        )}
         <form className={styles.composer} onSubmit={submit}>
           <textarea
             ref={composerRef}
@@ -384,6 +395,8 @@ function AssistantBubble({
   onToggle,
   onAnswer,
   question,
+  focus,
+  onFocus,
 }: {
   turn: AssistantTurn;
   /** The question this turn answers: its cards are written in that question's language. */
@@ -401,6 +414,9 @@ function AssistantBubble({
   /** The button opens the monitor on this turn, or closes it when this turn is the one showing. */
   onToggle: () => void;
   onAnswer: (adjustmentId: string, approve: boolean) => void;
+  /** The account in focus, and how to choose another (add-focus-state). */
+  focus: string | null;
+  onFocus: (accountId: string) => void;
 }) {
   const toolCalls = rewound ? rewound.toolCalls : turn.toolCalls;
   const text = rewound ? rewound.text : turn.text;
@@ -462,7 +478,14 @@ function AssistantBubble({
         <ToolCallCard key={call.callId} call={call} />
       ))}
       {cards.map((card) => (
-        <CardView key={card.messageId} card={card} question={question} />
+        <CardView
+          key={card.messageId}
+          card={card}
+          question={question}
+          focus={focus}
+          // A rewound turn shows what was; choosing from it would act on the past.
+          onFocus={rewound ? undefined : onFocus}
+        />
       ))}
       {text ? (
         <div className={styles.text}>
@@ -535,6 +558,38 @@ function ReasoningBlock({
         <span aria-hidden="true">{open ? '▾' : '▸'}</span> {label}
       </button>
       {open && <div className={styles.reasoningText}>{text}</div>}
+    </div>
+  );
+}
+
+/** The question the latest turn answered: the chip speaks its language. */
+function lastQuestion(turns: ChatState['turns']): string {
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const turn = turns[i];
+    if (turn.role === 'user') return turn.text;
+  }
+  return '';
+}
+
+/** The account the conversation is about (add-focus-state), with a way to let go of it. */
+function FocusChip({
+  accountId,
+  lang,
+  onClear,
+}: {
+  accountId: string;
+  lang: Lang;
+  onClear: () => void;
+}) {
+  const w = words[lang];
+  return (
+    <div className={styles.focusChip} data-testid="focus-chip">
+      <span>
+        {w.focus}: <strong>{accountId}</strong>
+      </span>
+      <button type="button" aria-label={w.clearFocus} onClick={onClear}>
+        ✕
+      </button>
     </div>
   );
 }

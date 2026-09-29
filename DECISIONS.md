@@ -1777,3 +1777,61 @@ answer.
   text.
 - **Checked live:** "What is the procedure when a fee schedule is missing?" rendered as a three-step ordered list with
   bold terms and no raw markers.
+
+## 52. The account in focus as AG-UI shared state (add-focus-state, 2026-09-29)
+
+Portfolio follow-ups ("а AUM-ът?", "what does it hold?") worked only if the model carried the account over from history
+by itself. Data routing gave up on them outright ("needs one account id, the question has 0"), and nothing on screen
+said which account the conversation was about.
+
+- **The server owns the focus**, in `ConversationRow.FocusAccountId` (an additive, nullable column).
+  - A successful single-account `get_household_portfolio` or `get_aum_history` read sets it. `list_my_accounts`, a
+    failure and a withheld result do not.
+  - It travels as AG-UI shared state: `STATE_SNAPSHOT { focus: { accountId } | null }` right after `RUN_STARTED`,
+    before any trace event, and again right after the card of a read that moved it. The client sends it back as
+    `RunAgentInput.state`.
+  - The owner chose focus with change from the UI, over read-only focus or a wider shared context.
+- **What the client may send.**
+  - `focus: null` clears it.
+  - An id is accepted only if it matches `^[A-Z]-\d{2,}$` and a data card in this conversation showed it (read from the
+    stored `ActivitiesJson`). A crafted request can therefore only pick an account the user was already shown under
+    their own principal. The read stays firm-scoped by the token anyway.
+  - A rejected choice is traced as `accepted: false` without the value. A test sends `B-200` into a firm-a
+    conversation and checks the id is nowhere in the trace.
+  - Rejected: validating with a live `list_my_accounts` call on every turn. It is an extra MCP round trip for the
+    guarantee the principal already gives.
+- **Two consumers:**
+  - The model gets a fixed section appended to `Instructions`: `## Conversation focus` / "If the question names no
+    account, it is about account {id}". The validated id is the only thing interpolated.
+    - Rejected: a synthetic user message, which history would keep as if the user had said it.
+  - `DataToolRouter` routes an account-less portfolio question (not `list_my_accounts`) to the focus. A named id
+    always wins, and two or more still give up.
+- **Jev is untouched.** `IIntentClassifier.ClassifyAsync` takes the focus only to pass it to the router. A test checks
+  that the Jev request body is byte-identical with and without it. Which account a question means is a value code
+  resolves, not a closed set to ask Jev (docs/rules/jev-usage.md §2.1 E).
+- **Trace:** a `focus` kind (`stored` / `client` / `none` / `read`), added after `turn.start`, which still opens every
+  trace. An earlier cut put it first, and two trace tests caught it.
+- **Web:**
+  - `STATE_SNAPSHOT` feeds `ChatState.focus`, and every request carries `state: { focus }`.
+  - A chip above the message box shows the focus in the last question's language, with ✕ to clear.
+  - Holdings, AUM and accounts cards get "Focus" / "Фокус" (not on a rewound turn).
+  - Choosing starts no run. The server's next snapshot replaces the chip, so a refused choice does not stay on
+    screen.
+- **✕ means "do not assume".** This was the owner's call after the first live check.
+  - With the focus cleared, the model still read A-1044 from the conversation history.
+  - A note in `Instructions` did not move it. The prompt trace now records the instructions actually sent, which is
+    how that showed.
+  - So on the turn a stored focus is cleared, a system message right before the question tells the model to ask
+    instead of assuming. The history provider stores only user and assistant messages, so the note does not persist.
+  - Code enforces the part it can. On that turn a holdings or AUM call is not made unless the question names an
+    account: the middleware returns "ask which account they mean" and traces `focus` with `source: cleared`.
+  - Live, twice: the first time the call was stopped and the model asked "Which account would you like details for?".
+    The second time the model made no call and restated A-1044 from its own earlier answer, which is text no code
+    path can stop. No read was made either time.
+- **Checked live** (firm-a):
+  - "Препоръчай ребалансиране за A-1043" put A-1043 in focus.
+  - "а AUM-ът по тримесечия?" then read A-1043's AUM.
+  - "Which accounts do I have?" was routed to the list and left the focus alone.
+  - Choosing A-1044 then "What does it hold?" read A-1044.
+  - A sent B-200, never shown, was refused and A-1044 stayed.
+  - `selection` (`20260929-174831`) and `presentation` (`20260929-174958`) passed at their baselines.

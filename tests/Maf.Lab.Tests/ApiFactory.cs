@@ -108,15 +108,20 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
     }
 
     /// <summary>Runs a turn the way a client does: a run of the agent on a thread, carrying the user's message.</summary>
+    /// <param name="state">The run's AG-UI state as the client sends it (add-focus-state); omitted when null.</param>
     public static async Task<List<SseEvent>> ChatAsync(HttpClient client, string message, string? conversationId = null,
-        Action<SseEvent>? onEvent = null, string? runId = null)
+        Action<SseEvent>? onEvent = null, string? runId = null, object? state = null)
     {
-        var input = new
+        var input = new Dictionary<string, object?>
         {
-            threadId = conversationId,
-            runId = runId ?? $"r_{Guid.NewGuid():N}",
-            messages = new[] { new { id = $"u_{Guid.NewGuid():N}", role = "user", content = message } },
+            ["threadId"] = conversationId,
+            ["runId"] = runId ?? $"r_{Guid.NewGuid():N}",
+            ["messages"] = new[] { new { id = $"u_{Guid.NewGuid():N}", role = "user", content = message } },
         };
+        if (state is not null)
+        {
+            input["state"] = state;
+        }
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/chat") { Content = JsonContent.Create(input) };
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
         response.EnsureSuccessStatusCode();

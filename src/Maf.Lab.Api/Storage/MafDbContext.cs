@@ -64,6 +64,8 @@ public sealed class ConversationRow
     public DateTime LastActivityAt { get; set; }
     /// <summary>Soft delete: hidden from history and cannot be continued; turns stay for review and evals.</summary>
     public DateTime? DeletedAt { get; set; }
+    /// <summary>The account in focus (add-focus-state): set by a single-account portfolio read or by the user's choice.</summary>
+    public string? FocusAccountId { get; set; }
 }
 
 public sealed class MessageRow

@@ -14,6 +14,7 @@ using Maf.Lab.Hosting;
 using Maf.Lab.Domain.Billing;
 using Maf.Lab.Domain.Chat;
 using Maf.Lab.Domain.Feedback;
+using Maf.Lab.Domain.Portfolio;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Retrieval.Models;
 using Microsoft.Agents.AI;
@@ -45,7 +46,7 @@ public sealed record TurnCard(string CallId, string MessageId, string ActivityTy
 /// Runs one chat turn through the Microsoft Agent Framework agent and publishes SSE events.
 /// Retrieval happens only when the model calls search_documents over MCP; this class never queries the store.
 /// </summary>
-public sealed class ChatTurnRunner(
+public sealed partial class ChatTurnRunner(
     IChatClientFactory models,
     IIntentClassifier intents,
     IToolSource toolSource,
@@ -64,14 +65,20 @@ public sealed class ChatTurnRunner(
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private readonly ILogger _logger = loggers.CreateLogger<ChatTurnRunner>();
 
+    /// <param name="clientState">
+    /// The run's AG-UI state as the client sent it (add-focus-state). Only its <c>focus</c> is read, and only an account
+    /// this conversation's cards have shown is accepted.
+    /// </param>
     public async Task<TurnResult> RunAsync(Principal principal, string bearerToken, string conversationId, string message,
-        string runId, ChannelWriter<BaseEvent> events, CancellationToken ct)
+        string runId, ChannelWriter<BaseEvent> events, CancellationToken ct, JsonElement? clientState = null)
     {
         var turnId = $"t_{Guid.NewGuid():N}";
         await events.WriteAsync(new RunStartedEvent { ThreadId = conversationId, RunId = runId }, ct);
         var traceId = Activity.Current?.TraceId.ToHexString();
         var trace = new TurnTrace(events);
         var state = new TurnState(principal, conversationId, turnId, events, trace);
+        // The state the turn starts with goes out first, right after the run starts (add-focus-state).
+        await ResolveFocusAsync(state, clientState, ct);
         var chunker = state.Answer;
         var reasoning = state.Reasoning;
         var decision = new IntentDecision(Intent.Other);
@@ -89,6 +96,10 @@ public sealed class ChatTurnRunner(
             ["traceUrl"] = telemetry.Value.TraceUrlFor(traceId),
             ["question"] = message,
         });
+        if (state.StartingFocus is { } startingFocus)
+        {
+            trace.Add(TraceKinds.Focus, startingFocus.Title, startingFocus.Data);
+        }
         var forced = false;
         // Whether the turn's answer came from the model — a refused prompt's came from the guard.
         var reachedModel = false;
@@ -102,7 +113,7 @@ public sealed class ChatTurnRunner(
             (state.PreviousQuestion, state.PreviousTurnId) = await MarkRephraseAsync(conversationId, message, ct);
             state.UserMessage = message;
 
-            decision = await intents.ClassifyAsync(message, ct);
+            decision = await intents.ClassifyAsync(message, ct, state.Focus);
             // The prompt's screening answered in the same request; a refused prompt forces nothing and runs nothing.
             screen = guardrail.JudgePrompt(decision);
             // Only a conversation's first question: a follow-up ("and June?", "why?") can be about the domain without
@@ -181,7 +192,7 @@ public sealed class ChatTurnRunner(
             if (tools is not null)
             {
                 var chatOptions = models.BaseChatOptions();
-                chatOptions.Instructions = prompt.Text;
+                chatOptions.Instructions = prompt.Text + FocusNote(state.Focus);
                 chatOptions.Tools = [.. tools.Tools];
                 chatOptions.ToolMode = forced ? ChatToolMode.RequireSpecific(forcedSearches[0])
                     : route is not null ? ChatToolMode.RequireSpecific(route.Tool)
@@ -189,7 +200,9 @@ public sealed class ChatTurnRunner(
                 trace.Add(TraceKinds.Prompt, $"System prompt {prompt.Version} + {tools.Tools.Count} tool(s) from {string.Join(" + ", tools.OfferedDomains)}", new JsonObject
                 {
                     ["version"] = prompt.Version,
-                    ["systemPrompt"] = prompt.Text,
+                    // What the model is actually given, the focus note included.
+                    ["systemPrompt"] = chatOptions.Instructions,
+                    ["focusNote"] = state.FocusCleared ? ClearedFocusNote : null,
                     ["toolMode"] = TraceMapping.ToolMode(chatOptions.ToolMode),
                     ["domains"] = new JsonArray([.. tools.OfferedDomains.Select(x => (JsonNode)JsonValue.Create(x)!)]),
                     ["unavailableDomains"] = new JsonArray([.. tools.Unavailable.Select(x => (JsonNode)JsonValue.Create(x)!)]),
@@ -265,6 +278,11 @@ public sealed class ChatTurnRunner(
                     if (send is ToolCallResultEvent result && state.PendingCards.Remove(result.ToolCallId, out var card))
                     {
                         await events.WriteAsync(AGUIStream.Card(card.CallId, card.ActivityType, card.Content), ct);
+                        // The focus the read moved follows its card, so the client learns both together.
+                        if (state.PendingFocus.Remove(result.ToolCallId, out var moved))
+                        {
+                            await events.WriteAsync(AGUIStream.State(moved), ct);
+                        }
                     }
                 }
             }
@@ -274,6 +292,11 @@ public sealed class ChatTurnRunner(
                 await events.WriteAsync(AGUIStream.Card(card.CallId, card.ActivityType, card.Content), ct);
             }
             state.PendingCards.Clear();
+            if (state.PendingFocus.Count > 0)
+            {
+                await events.WriteAsync(AGUIStream.State(state.Focus), ct);
+                state.PendingFocus.Clear();
+            }
 
             if (redaction.Failed)
             {
@@ -352,6 +375,10 @@ public sealed class ChatTurnRunner(
             ["crossings"] = Math.Max(0, path.Count - 1),
         }, sw.ElapsedMilliseconds);
         await PersistAsync(principal, conversationId, turnId, message, text, decision.Intent, forced, state.ToolCalls, sources, signals, state.Cards, trace, ct);
+        if (state.FocusMoved)
+        {
+            await SaveFocusAsync(conversationId, state.Focus, ct);
+        }
 
         _logger.LogInformation("chat turn done turn={TurnId} intent={Intent} forced={Forced} tools={ToolCount} sources={SourceCount} signals={Signals} answerCheck={AnswerCheck} ms={Elapsed}",
             turnId, decision.Intent, forced, state.ToolCalls.Count, sources.Count, string.Join(",", signals), check?.Verdict ?? "none", sw.ElapsedMilliseconds);
@@ -460,7 +487,12 @@ public sealed class ChatTurnRunner(
         StringBuilder answer, AnswerChunker chunker, AnswerChunker reasoning,
         [EnumeratorCancellation] CancellationToken ct)
     {
-        await foreach (var update in agent.RunStreamingAsync(message, session, cancellationToken: ct))
+        // A cleared focus is said right before the question, where it outweighs the account the history keeps
+        // mentioning. It is a system message, which the history provider does not store (add-focus-state).
+        IEnumerable<ChatMessage> request = state.FocusCleared
+            ? [new ChatMessage(ChatRole.System, ClearedFocusNote), new ChatMessage(ChatRole.User, message)]
+            : [new ChatMessage(ChatRole.User, message)];
+        await foreach (var update in agent.RunStreamingAsync(request, session, cancellationToken: ct))
         {
             foreach (var content in update.Contents)
             {
@@ -540,6 +572,19 @@ public sealed class ChatTurnRunner(
             return ToolDataEnvelope.Wrap(name, "An adjustment is waiting for the advisor to confirm. Nothing further happens until they answer.");
         }
 
+        // The user let go of the account in focus and this question names none: code, not the model's reading of the
+        // history, decides that no account is assumed (add-focus-state). The model is told to ask instead.
+        if (state.FocusCleared && name is PortfolioTools.GetPortfolio or PortfolioTools.AumHistory
+            && Jev.DataToolRouter.AccountIds(state.UserMessage).Count == 0)
+        {
+            state.Trace.Add(TraceKinds.Focus, $"{name} not called: the user cleared the account in focus", new JsonObject
+            {
+                ["callId"] = callId, ["tool"] = name, ["source"] = "cleared",
+            });
+            return ToolDataEnvelope.Wrap(name,
+                "Not called: the user cleared the account in focus and this question names no account. Ask which account they mean.");
+        }
+
         state.Answer.Flush();
         state.Reasoning.Flush();
         state.Arguments[callId] = args;
@@ -610,6 +655,18 @@ public sealed class ChatTurnRunner(
             var card = new TurnCard(callId, AGUIStream.CardMessageId(callId), carded.ActivityType, data.Clone());
             state.Cards.Add(card);
             state.PendingCards[callId] = card;
+            // A read of one account's portfolio or AUM puts that account in focus; the list of accounts does not.
+            if (name is PortfolioTools.GetPortfolio or PortfolioTools.AumHistory
+                && data.TryGetProperty("accountId", out var read) && read.GetString() is { } readId && readId != state.Focus)
+            {
+                state.Trace.Add(TraceKinds.Focus, $"Focus moved to {readId} by {name}", new JsonObject
+                {
+                    ["accountId"] = readId, ["source"] = "read", ["previous"] = state.Focus, ["callId"] = callId,
+                });
+                state.Focus = readId;
+                state.FocusMoved = true;
+                state.PendingFocus[callId] = readId;
+            }
             state.Trace.Add(TraceKinds.Card, $"Data card {carded.ActivityType}", new JsonObject
             {
                 ["callId"] = callId, ["messageId"] = card.MessageId, ["activityType"] = card.ActivityType,
@@ -989,6 +1046,124 @@ public sealed class ChatTurnRunner(
         await ctx.SaveChangesAsync(ct);
     }
 
+    // ---- The account in focus (add-focus-state) ----------------------------------------------------------------------
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^[A-Z]-\d{2,}$")]
+    private static partial System.Text.RegularExpressions.Regex AccountIdPattern();
+
+    /// <summary>What the client's state says about the focus: nothing, a clear, or an account it asks for.</summary>
+    private static (bool Sent, string? AccountId) ClientFocus(JsonElement? clientState)
+    {
+        if (clientState is not { ValueKind: JsonValueKind.Object } s || !s.TryGetProperty("focus", out var focus))
+        {
+            return (false, null);
+        }
+        return focus.ValueKind switch
+        {
+            JsonValueKind.Null => (true, null),
+            JsonValueKind.Object when focus.TryGetProperty("accountId", out var id) && id.ValueKind == JsonValueKind.String => (true, id.GetString()),
+            // Anything else is not a focus the client can mean: rejected like an account it was never shown.
+            _ => (true, ""),
+        };
+    }
+
+    /// <summary>
+    /// The turn's starting focus: the client's choice when it cleared the focus or picked an account this conversation's
+    /// cards have shown, else what the conversation stored. A rejected choice is traced without its value. The focus is
+    /// sent as the run's first state snapshot.
+    /// </summary>
+    private async Task ResolveFocusAsync(TurnState state, JsonElement? clientState, CancellationToken ct)
+    {
+        await using var ctx = await db.CreateDbContextAsync(ct);
+        var conversation = await ctx.Conversations.FirstOrDefaultAsync(c => c.Id == state.ConversationId, ct);
+        var stored = conversation?.FocusAccountId;
+        var focus = stored;
+        var source = stored is null ? "none" : "stored";
+        bool? accepted = null;
+        var (sent, asked) = ClientFocus(clientState);
+        if (sent && asked is null)
+        {
+            (focus, source, accepted) = (null, "client", true);
+            // Letting go of an account is an instruction, not only an absence: the model must not take it back from history.
+            state.FocusCleared = stored is not null;
+        }
+        else if (sent)
+        {
+            var offered = asked!.Length > 0 && AccountIdPattern().IsMatch(asked)
+                && (await OfferedAccountsAsync(ctx, state.ConversationId, ct)).Contains(asked);
+            if (offered)
+            {
+                (focus, source, accepted) = (asked, "client", true);
+            }
+            else
+            {
+                accepted = false;
+            }
+        }
+        if (conversation is not null && focus != stored)
+        {
+            conversation.FocusAccountId = focus;
+            await ctx.SaveChangesAsync(ct);
+        }
+        state.Focus = focus;
+        // The snapshot first: it is the run's state as of its start, and nothing may come between the two. Its trace
+        // event waits for turn.start, which opens every trace.
+        await state.Events.WriteAsync(AGUIStream.State(focus), ct);
+        state.StartingFocus = (
+            accepted == false ? $"Focus from the client rejected; {focus ?? "no account"} stays" : $"Focus: {focus ?? "none"} ({source})",
+            new JsonObject { ["accountId"] = focus, ["source"] = source, ["accepted"] = accepted });
+    }
+
+    /// <summary>Every account id a card in this conversation has shown: what the user may put in focus.</summary>
+    private static async Task<HashSet<string>> OfferedAccountsAsync(MafDbContext ctx, string conversationId, CancellationToken ct)
+    {
+        var offered = new HashSet<string>(StringComparer.Ordinal);
+        var stored = await ctx.Turns.AsNoTracking().Where(t => t.ConversationId == conversationId).Select(t => t.ActivitiesJson).ToListAsync(ct);
+        foreach (var json in stored.Where(j => !string.IsNullOrWhiteSpace(j)))
+        {
+            using var doc = JsonDocument.Parse(json);
+            foreach (var activity in doc.RootElement.EnumerateArray())
+            {
+                if (!activity.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+                if (content.TryGetProperty("accountId", out var id) && id.GetString() is { } one)
+                {
+                    offered.Add(one);
+                }
+                if (content.TryGetProperty("accounts", out var accounts) && accounts.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var a in accounts.EnumerateArray())
+                    {
+                        if (a.TryGetProperty("accountId", out var aid) && aid.GetString() is { } listed)
+                        {
+                            offered.Add(listed);
+                        }
+                    }
+                }
+            }
+        }
+        return offered;
+    }
+
+    /// <summary>The note the model gets with a focus: the validated id, and nothing else interpolated.</summary>
+    internal static string FocusNote(string? focus) => focus is null
+        ? ""
+        : $"\n\n## Conversation focus\nIf the question names no account, it is about account {focus}.";
+
+    /// <summary>Said right before the question on the turn the user cleared the focus.</summary>
+    internal const string ClearedFocusNote =
+        "The user has just cleared the account in focus. If this question names no account, ask which account they mean. "
+        + "Do not assume an account from earlier in the conversation, and do not call a per-account tool until they name one.";
+
+    private async Task SaveFocusAsync(string conversationId, string? focus, CancellationToken ct)
+    {
+        await using var ctx = await db.CreateDbContextAsync(ct);
+        await ctx.Conversations.Where(c => c.Id == conversationId)
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.FocusAccountId, focus), ct);
+    }
+
     private sealed class TurnState(Principal principal, string conversationId, string turnId, ChannelWriter<BaseEvent> events, TurnTrace trace)
     {
         public TurnTrace Trace { get; } = trace;
@@ -1040,6 +1215,19 @@ public sealed class ChatTurnRunner(
 
         /// <summary>Result summaries by tool-call id, for the same reason.</summary>
         public Dictionary<string, string> Summaries { get; } = [];
+
+        /// <summary>The account in focus, as the turn resolved it and as reads moved it (add-focus-state).</summary>
+        public string? Focus { get; set; }
+        public bool FocusMoved { get; set; }
+
+        /// <summary>Set on the turn the user cleared a focus the conversation had.</summary>
+        public bool FocusCleared { get; set; }
+
+        /// <summary>How the turn's focus was resolved, traced once turn.start has opened the trace.</summary>
+        public (string Title, JsonObject Data)? StartingFocus { get; set; }
+
+        /// <summary>A focus a read moved, waiting to be sent after that call's card.</summary>
+        public Dictionary<string, string> PendingFocus { get; } = [];
 
         /// <summary>The data cards the turn showed, in order; and those still waiting for their call's result event.</summary>
         public List<TurnCard> Cards { get; } = [];

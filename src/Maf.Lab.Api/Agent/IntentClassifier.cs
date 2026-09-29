@@ -75,7 +75,11 @@ public sealed record DomainVerdict(IReadOnlyDictionary<string, double> Probabili
 /// <summary>Classifies the question of a turn before the first model call, in any language.</summary>
 public interface IIntentClassifier
 {
-    Task<IntentDecision> ClassifyAsync(string question, CancellationToken ct);
+    /// <param name="focusAccountId">
+    /// The conversation's account in focus (add-focus-state). It never changes what is asked; routing uses it when a
+    /// portfolio question names no account.
+    /// </param>
+    Task<IntentDecision> ClassifyAsync(string question, CancellationToken ct, string? focusAccountId = null);
 }
 
 /// <summary>What an intent means for the turn. Only Procedural and Mixed force search_documents, and only for that turn.</summary>

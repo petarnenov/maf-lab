@@ -83,6 +83,9 @@ export const words = {
     model: 'Модел',
     currency: 'Валута',
     myAccounts: 'Моите сметки',
+    focus: 'Фокус',
+    inFocus: 'Във фокус',
+    clearFocus: 'Изчисти фокуса',
   },
   en: {
     assetClass: 'Asset class',
@@ -113,5 +116,8 @@ export const words = {
     model: 'Model',
     currency: 'Currency',
     myAccounts: 'My accounts',
+    focus: 'Focus',
+    inFocus: 'In focus',
+    clearFocus: 'Clear focus',
   },
 } as const;

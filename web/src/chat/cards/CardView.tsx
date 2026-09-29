@@ -7,18 +7,69 @@ import { date, langOf, money, percent, toCsv, words, type Lang } from './format'
  * A data card (add-activity-cards): a typed tool result drawn as a table, in the language of the question it answers.
  * A type this screen does not know draws nothing, as the protocol asks of an open activity type.
  */
-export function CardView({ card, question }: { card: DataCard; question: string }) {
+export function CardView({
+  card,
+  question,
+  focus = null,
+  onFocus,
+}: {
+  card: DataCard;
+  question: string;
+  /** The account in focus, so a card can say it is the one (add-focus-state). */
+  focus?: string | null;
+  /** Puts an account in focus; absent where choosing makes no sense (time travel). */
+  onFocus?: (accountId: string) => void;
+}) {
   const lang = langOf(question);
+  const focusing = { focus, onFocus };
   switch (card.activityType) {
     case 'maf-lab/holdings':
-      return <HoldingsCard content={card.content as unknown as Holdings} lang={lang} />;
+      return (
+        <HoldingsCard content={card.content as unknown as Holdings} lang={lang} {...focusing} />
+      );
     case 'maf-lab/aum-history':
-      return <AumHistoryCard content={card.content as unknown as AumHistory} lang={lang} />;
+      return (
+        <AumHistoryCard content={card.content as unknown as AumHistory} lang={lang} {...focusing} />
+      );
     case 'maf-lab/accounts':
-      return <AccountsCard content={card.content as unknown as Accounts} lang={lang} />;
+      return (
+        <AccountsCard content={card.content as unknown as Accounts} lang={lang} {...focusing} />
+      );
     default:
       return null;
   }
+}
+
+interface Focusing {
+  focus?: string | null;
+  onFocus?: (accountId: string) => void;
+}
+
+/** "Focus" on an account, or "In focus" when it already is. */
+function FocusButton({
+  accountId,
+  lang,
+  focus,
+  onFocus,
+}: Focusing & { accountId: string; lang: Lang }) {
+  const w = words[lang];
+  if (!onFocus) return null;
+  const current = focus === accountId;
+  return (
+    <button
+      type="button"
+      className={styles.copy}
+      aria-pressed={current}
+      aria-label={`${w.focus} ${accountId}`}
+      disabled={current}
+      onClick={(e) => {
+        e.stopPropagation();
+        onFocus(accountId);
+      }}
+    >
+      {current ? w.inFocus : w.focus}
+    </button>
+  );
 }
 
 interface Holding {
@@ -67,12 +118,14 @@ function Card({
   csv,
   lang,
   badge,
+  action,
   children,
 }: {
   caption: string;
   csv: string;
   lang: Lang;
   badge?: ReactNode;
+  action?: ReactNode;
   children: ReactNode;
 }) {
   const [copied, setCopied] = useState(false);
@@ -81,6 +134,7 @@ function Card({
     <section className={styles.card} data-testid="data-card">
       <div className={styles.head}>
         {badge}
+        {action}
         <button
           type="button"
           className={styles.copy}
@@ -123,7 +177,11 @@ function DriftBar({ drift, tolerance }: { drift: number; tolerance: number }) {
   );
 }
 
-function HoldingsCard({ content: c, lang }: { content: Holdings; lang: Lang }) {
+function HoldingsCard({
+  content: c,
+  lang,
+  ...focusing
+}: { content: Holdings; lang: Lang } & Focusing) {
   const w = words[lang];
   const needed = c.rebalanceNeeded ?? c.outsideTolerance;
   const side = (h: Holding) =>
@@ -157,6 +215,7 @@ function HoldingsCard({ content: c, lang }: { content: Holdings; lang: Lang }) {
       caption={`${c.accountId} · ${c.accountName} · ${w.asOf} ${date(c.asOf, lang)}`}
       csv={csv}
       lang={lang}
+      action={<FocusButton accountId={c.accountId} lang={lang} {...focusing} />}
       badge={
         <span className={needed ? styles.badgeWarn : styles.badgeOk} data-testid="rebalance-badge">
           {needed ? `⚠ ${w.rebalanceNeeded}` : `✓ ${w.rebalanceNotNeeded}`} ({w.tolerance} ±
@@ -226,7 +285,11 @@ function HoldingsCard({ content: c, lang }: { content: Holdings; lang: Lang }) {
   );
 }
 
-function AumHistoryCard({ content: c, lang }: { content: AumHistory; lang: Lang }) {
+function AumHistoryCard({
+  content: c,
+  lang,
+  ...focusing
+}: { content: AumHistory; lang: Lang } & Focusing) {
   const w = words[lang];
   return (
     <Card
@@ -236,6 +299,7 @@ function AumHistoryCard({ content: c, lang }: { content: AumHistory; lang: Lang 
         c.valuations.map((v) => [v.quarterEnd, v.aum, v.changePct]),
       )}
       lang={lang}
+      action={<FocusButton accountId={c.accountId} lang={lang} {...focusing} />}
     >
       <thead>
         <tr>
@@ -263,7 +327,11 @@ function AumHistoryCard({ content: c, lang }: { content: AumHistory; lang: Lang 
   );
 }
 
-function AccountsCard({ content: c, lang }: { content: Accounts; lang: Lang }) {
+function AccountsCard({
+  content: c,
+  lang,
+  ...focusing
+}: { content: Accounts; lang: Lang } & Focusing) {
   const w = words[lang];
   return (
     <Card
@@ -281,6 +349,11 @@ function AccountsCard({ content: c, lang }: { content: Accounts; lang: Lang }) {
           <th scope="col">{w.household}</th>
           <th scope="col">{w.model}</th>
           <th scope="col">{w.currency}</th>
+          {focusing.onFocus && (
+            <th scope="col">
+              <span className={styles.visuallyHidden}>{w.focus}</span>
+            </th>
+          )}
         </tr>
       </thead>
       <tbody>
@@ -291,6 +364,11 @@ function AccountsCard({ content: c, lang }: { content: Accounts; lang: Lang }) {
             <td>{a.householdId}</td>
             <td>{a.modelPortfolio}</td>
             <td>{a.currency}</td>
+            {focusing.onFocus && (
+              <td>
+                <FocusButton accountId={a.accountId} lang={lang} {...focusing} />
+              </td>
+            )}
           </tr>
         ))}
       </tbody>

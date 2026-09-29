@@ -8,6 +8,7 @@ import {
   type RunErrorEvent,
   type RunFinishedEvent,
   type RunStartedEvent,
+  type StateSnapshotEvent,
   type TextMessageContentEvent,
   type ToolCallArgsEvent,
   type ToolCallResultEvent,
@@ -39,6 +40,21 @@ export function toChatEvents(event: BaseEvent): ChatStreamEvent[] {
             messageId: typed.messageId,
             activityType: typed.activityType,
             content: (typed.content ?? {}) as Record<string, unknown>,
+          },
+        },
+      ];
+    }
+
+    // The run's shared state (add-focus-state). Only the account in focus is read; anything else in it is ignored.
+    case EventType.STATE_SNAPSHOT: {
+      const snapshot = (event as StateSnapshotEvent).snapshot as { focus?: unknown } | undefined;
+      const focus = snapshot?.focus as { accountId?: unknown } | null | undefined;
+      return [
+        {
+          type: 'state',
+          data: {
+            focus:
+              focus && typeof focus.accountId === 'string' ? { accountId: focus.accountId } : null,
           },
         },
       ];

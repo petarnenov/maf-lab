@@ -44,6 +44,9 @@ public static class TraceKinds
 
     /// <summary>A data card a tool result became (add-activity-cards): its type and its numbers, never free text.</summary>
     public const string Card = "card";
+
+    /// <summary>The account in focus (add-focus-state): where the turn's came from, and any move a read made.</summary>
+    public const string Focus = "focus";
     public const string Signals = "signals";
     public const string Memory = "memory";
     public const string TurnEnd = "turn.end";

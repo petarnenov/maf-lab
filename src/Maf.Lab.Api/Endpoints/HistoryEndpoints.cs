@@ -80,7 +80,8 @@ public static class HistoryEndpoints
                 ReadActivities(t.ActivitiesJson))).ToList();
 
             var title = conversation.Title ?? ConversationTitles.FromQuestion(turns.FirstOrDefault()?.Question ?? "");
-            return Results.Ok(new ConversationDetail(conversation.Id, title, Utc(conversation.CreatedAt), Utc(conversation.LastActivityAt), history));
+            return Results.Ok(new ConversationDetail(conversation.Id, title, Utc(conversation.CreatedAt), Utc(conversation.LastActivityAt), history,
+                conversation.FocusAccountId is { } focus ? new ConversationFocus(focus) : null));
         });
 
         // What this conversation is waiting on, so a proposal outlives the page that made it. The run is gone;

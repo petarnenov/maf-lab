@@ -79,7 +79,8 @@ public static partial class DataToolRouter
     }
 
     /// <summary>The route for a question Jev classified as data, or why there is none.</summary>
-    public static (ToolRoute? Route, string? Reason) Route(string question, RoutingAnswer answer, JevOptions o, DomainVerdict? domains = null)
+    public static (ToolRoute? Route, string? Reason) Route(string question, RoutingAnswer answer, JevOptions o, DomainVerdict? domains = null,
+        string? focusAccountId = null)
     {
         if (answer.Tools.GetValueOrDefault(WriteTool) >= 0.5)
         {
@@ -112,6 +113,12 @@ public static partial class DataToolRouter
         if (ToolDomain[tool] == Domains.Portfolio)
         {
             var accounts = AccountIds(question);
+            // A question that names no account is about the one in focus (add-focus-state). Which account is code's
+            // call, not Jev's: an id is a value, not a closed set (docs/rules/jev-usage.md §2.1 E).
+            if (accounts.Count == 0 && focusAccountId is not null)
+            {
+                return (new ToolRoute(tool, new Dictionary<string, object?> { ["accountId"] = focusAccountId }, p), null);
+            }
             return accounts.Count == 1
                 ? (new ToolRoute(tool, new Dictionary<string, object?> { ["accountId"] = accounts[0] }, p), null)
                 : (null, $"{tool} needs one account id, the question has {accounts.Count}");

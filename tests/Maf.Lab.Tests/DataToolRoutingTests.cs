@@ -153,6 +153,66 @@ public class DataToolRoutingTests
         Assert.Equal(0.93, DataToolRouter.Read(answers)!.Tools["get_billing_run_status"]);
     }
 
+    // ── the account in focus (add-focus-state) ─────────────────────────────────────────────────────────────────
+
+    private static RoutingAnswer PortfolioAnswer(string tool) =>
+        new(new Dictionary<string, double>
+        {
+            ["get_billing_run_status"] = 0.05, ["search_billing_runs"] = 0.05, ["propose_fee_adjustment"] = 0.02,
+            ["get_household_portfolio"] = tool == "get_household_portfolio" ? 0.92 : 0.05,
+            ["get_aum_history"] = tool == "get_aum_history" ? 0.92 : 0.05,
+            ["list_my_accounts"] = tool == "list_my_accounts" ? 0.92 : 0.05,
+        }, "none", 1.0);
+
+    [Fact]
+    public void A_portfolio_question_that_names_no_account_routes_to_the_one_in_focus()
+    {
+        var (route, _) = DataToolRouter.Route("what does it hold?", PortfolioAnswer("get_household_portfolio"), Routing, null, "A-1043");
+
+        Assert.Equal("get_household_portfolio", route!.Tool);
+        Assert.Equal("A-1043", route.Arguments["accountId"]);
+    }
+
+    [Fact]
+    public void An_account_the_question_names_wins_over_the_focus()
+    {
+        var (route, _) = DataToolRouter.Route("what does A-1042 hold?", PortfolioAnswer("get_household_portfolio"), Routing, null, "A-1043");
+
+        Assert.Equal("A-1042", route!.Arguments["accountId"]);
+    }
+
+    [Fact]
+    public void Without_a_focus_an_account_less_question_still_gives_up()
+    {
+        var (route, reason) = DataToolRouter.Route("and its AUM?", PortfolioAnswer("get_aum_history"), Routing);
+
+        Assert.Null(route);
+        Assert.Contains("needs one account id, the question has 0", reason);
+    }
+
+    [Fact]
+    public void The_account_list_ignores_the_focus()
+    {
+        var (route, _) = DataToolRouter.Route("which accounts do I have?", PortfolioAnswer("list_my_accounts"), Routing, null, "A-1043");
+
+        Assert.Equal("list_my_accounts", route!.Tool);
+        Assert.Empty(route.Arguments);
+    }
+
+    [Fact]
+    public async Task The_focus_never_changes_what_jev_is_asked()
+    {
+        var (classifier, jev) = Classifier();
+
+        await classifier.ClassifyAsync("what does it hold?", Ct);
+        await classifier.ClassifyAsync("what does it hold?", Ct, "A-1043");
+
+        var bodies = jev.Requests.Select(r => r.Body).ToList();
+        Assert.Equal(2, bodies.Count);
+        Assert.Equal(bodies[0], bodies[1]);
+        Assert.DoesNotContain("A-1043", bodies[1]);
+    }
+
     // ── the classifier ───────────────────────────────────────────────────────────────────────────────────────────
 
     private static (JevIntentClassifier Classifier, FakeJev Jev) Classifier(FakeJev? jev = null, JevOptions? options = null)

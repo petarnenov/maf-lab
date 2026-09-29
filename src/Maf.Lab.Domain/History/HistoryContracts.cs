@@ -9,7 +9,11 @@ public sealed record ConversationSummary(string ConversationId, string Title, Da
 public sealed record ConversationPage(IReadOnlyList<ConversationSummary> Conversations, string? NextCursor);
 
 /// <summary>GET /api/conversations/{id}.</summary>
-public sealed record ConversationDetail(string ConversationId, string Title, DateTimeOffset CreatedAt, DateTimeOffset LastActivityAt, IReadOnlyList<HistoryTurn> Turns);
+public sealed record ConversationDetail(string ConversationId, string Title, DateTimeOffset CreatedAt, DateTimeOffset LastActivityAt, IReadOnlyList<HistoryTurn> Turns,
+    ConversationFocus? Focus = null);
+
+/// <summary>The account a conversation is about (add-focus-state): an id only, never a name or holdings.</summary>
+public sealed record ConversationFocus(string AccountId);
 
 public sealed record HistoryTurn(
     string TurnId,

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { authHeaders } from '../api/client';
-import type { ConversationDetail, PendingProposal } from '../api/types';
+import type { ConversationDetail, FocusAccount, PendingProposal } from '../api/types';
 import { useAuth } from '../auth/useAuth';
 import { chatReducer, initialChatState } from './chatReducer';
 import { readChatStream } from './readChatStream';
@@ -16,10 +16,15 @@ export function useChatStream() {
   const [state, dispatch] = useReducer(chatReducer, initialChatState);
   const abortRef = useRef<AbortController | null>(null);
   const conversationRef = useRef<string | undefined>(undefined);
+  const focusRef = useRef<FocusAccount | null>(null);
 
   useEffect(() => {
     conversationRef.current = state.conversationId;
   }, [state.conversationId]);
+
+  useEffect(() => {
+    focusRef.current = state.focus;
+  }, [state.focus]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -37,6 +42,8 @@ export function useChatStream() {
       const request = {
         threadId: conversationRef.current ?? null,
         runId: nextId('r'),
+        // The run's AG-UI state: the account in focus as this screen holds it (add-focus-state).
+        state: { focus: focusRef.current },
         messages: [{ id: nextId('u'), role: 'user', content: text }],
       };
 
@@ -85,6 +92,7 @@ export function useChatStream() {
   const reset = useCallback(() => {
     abortRef.current?.abort();
     conversationRef.current = undefined;
+    focusRef.current = null;
     dispatch({ type: 'reset' });
   }, []);
 
@@ -178,7 +186,19 @@ export function useChatStream() {
   const hydrate = useCallback((detail: ConversationDetail) => {
     abortRef.current?.abort();
     conversationRef.current = detail.conversationId;
-    dispatch({ type: 'hydrate', conversationId: detail.conversationId, turns: detail.turns });
+    focusRef.current = detail.focus ?? null;
+    dispatch({
+      type: 'hydrate',
+      conversationId: detail.conversationId,
+      turns: detail.turns,
+      focus: detail.focus ?? null,
+    });
+  }, []);
+
+  /** Chooses the account in focus, or clears it; it goes with the next message and starts nothing itself. */
+  const setFocus = useCallback((focus: FocusAccount | null) => {
+    focusRef.current = focus;
+    dispatch({ type: 'set_focus', focus });
   }, []);
 
   /** What this conversation is still waiting on, asked for when it is opened. */
@@ -211,7 +231,7 @@ export function useChatStream() {
     [token],
   );
 
-  return { state, send, reset, hydrate, answer, loadPending, toggleReasoning };
+  return { state, send, reset, hydrate, answer, loadPending, toggleReasoning, setFocus };
 }
 
 /**

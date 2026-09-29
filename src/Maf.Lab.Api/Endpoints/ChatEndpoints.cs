@@ -1,4 +1,5 @@
 using System.Net.ServerSentEvents;
+using System.Text.Json;
 using System.Threading.Channels;
 using AGUI.Abstractions;
 using Maf.Lab.Api.Agent;
@@ -56,7 +57,7 @@ public static class ChatEndpoints
 
             return TypedResults.ServerSentEvents(
                 Stream(runner, confirmations, runs, frames, runStates, principal, token, conversationId, runId,
-                    message?.Trim() ?? "", resume, ct));
+                    message?.Trim() ?? "", resume, input.State, ct));
         });
 
         // Coming back to a run: the tab was closed, or the stream dropped, and the client wants to know where the
@@ -92,7 +93,7 @@ public static class ChatEndpoints
     private static async IAsyncEnumerable<SseItem<object>> Stream(
         ChatTurnRunner runner, ConfirmationService confirmations, RunRegistry runs, RunFrameStore store,
         IRunStateStore runStates, Principal principal, string token, string conversationId, string runId,
-        string message, AGUIResume? resume,
+        string message, AGUIResume? resume, JsonElement? clientState,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         // Every event of this run passes here on its way out, the cancellation path's terminal event included.
@@ -114,7 +115,7 @@ public static class ChatEndpoints
                 }
                 else
                 {
-                    await runner.RunAsync(principal, token, conversationId, message, runId, channel.Writer, registration.Token);
+                    await runner.RunAsync(principal, token, conversationId, message, runId, channel.Writer, registration.Token, clientState);
                 }
             }
             catch (OperationCanceledException)

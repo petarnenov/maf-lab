@@ -117,6 +117,11 @@ export interface AguiFrame {
  * A data card (AG-UI `ACTIVITY_SNAPSHOT`): a typed tool result the chat renders as a table. `activityType` is open —
  * a type this screen does not know renders nothing.
  */
+/** The account a conversation is about (add-focus-state): an id only. */
+export interface FocusAccount {
+  accountId: string;
+}
+
 export interface DataCard {
   messageId: string;
   activityType: string;
@@ -128,6 +133,8 @@ export type ChatStreamEvent =
   | { type: 'tool_call_started'; data: ToolCallStartedData }
   | { type: 'tool_call_finished'; data: ToolCallFinishedData }
   | { type: 'sources'; data: { sources: SourceRef[] } }
+  /** The run's shared state (AG-UI `STATE_SNAPSHOT`): the account in focus (add-focus-state). */
+  | { type: 'state'; data: { focus: FocusAccount | null } }
   /** A data card: an AG-UI activity a carded tool result became (add-activity-cards). */
   | { type: 'card'; data: DataCard }
   | { type: 'reasoning_delta'; data: { text: string } }
@@ -162,6 +169,7 @@ export type TraceKind =
   | 'guardrail'
   | 'sources'
   | 'card'
+  | 'focus'
   | 'signals'
   | 'memory'
   | 'turn.end';
@@ -382,6 +390,8 @@ export interface ConversationDetail {
   createdAt: string;
   lastActivityAt: string;
   turns: HistoryTurn[];
+  /** The account in focus; absent or null when none (add-focus-state). */
+  focus?: FocusAccount | null;
 }
 
 export interface RenameConversationRequest {

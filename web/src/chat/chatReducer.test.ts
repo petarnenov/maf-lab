@@ -451,4 +451,27 @@ describe('a write waiting for a person', () => {
     expect(withCard.cards).toHaveLength(1);
     expect((hydrateTurn(stored(undefined))[1] as AssistantTurn).cards).toEqual([]);
   });
+
+  it('keeps the account in focus: chosen by the user, replaced by the server, restored with the conversation', () => {
+    const chosen = chatReducer(initialChatState, {
+      type: 'set_focus',
+      focus: { accountId: 'A-1044' },
+    });
+    expect(chosen.focus).toEqual({ accountId: 'A-1044' });
+
+    const refused = apply(send(chosen), {
+      type: 'state',
+      data: { focus: { accountId: 'A-1043' } },
+    });
+    expect(refused.focus).toEqual({ accountId: 'A-1043' });
+
+    const restored = chatReducer(initialChatState, {
+      type: 'hydrate',
+      conversationId: 'c1',
+      turns: [],
+      focus: { accountId: 'A-1042' },
+    });
+    expect(restored.focus).toEqual({ accountId: 'A-1042' });
+    expect(chatReducer(restored, { type: 'reset' }).focus).toBeNull();
+  });
 });

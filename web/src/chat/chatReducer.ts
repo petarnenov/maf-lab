@@ -1,5 +1,6 @@
 import type {
   DataCard,
+  FocusAccount,
   ChatStreamEvent,
   FeedbackKind,
   HistoryTurn,
@@ -65,6 +66,11 @@ export interface ChatState {
   streaming: boolean;
   /** Behind-the-scenes trace events, keyed by assistant turn (see traceReducer). */
   traces: TraceState;
+  /**
+   * The account in focus (add-focus-state): as the server last said, or as the user just chose. It is sent with the
+   * next message, and the server's snapshot for that run replaces it.
+   */
+  focus: FocusAccount | null;
 }
 
 /**
@@ -87,7 +93,9 @@ export type ChatAction =
   | { type: 'event'; event: ChatStreamEvent }
   | { type: 'stream_error'; message: string; kind?: FailureKind }
   | { type: 'reset' }
-  | { type: 'hydrate'; conversationId: string; turns: HistoryTurn[] }
+  | { type: 'hydrate'; conversationId: string; turns: HistoryTurn[]; focus?: FocusAccount | null }
+  /** The user chose an account to focus on, or cleared it; nothing runs until they send. */
+  | { type: 'set_focus'; focus: FocusAccount | null }
   | { type: 'pending'; confirmation: ConfirmationRequiredData; expired: boolean }
   /** A person opened or closed a turn's reasoning; from then on the block is theirs, not the answer's. */
   | { type: 'toggle_reasoning'; turnId: string; open: boolean }
@@ -107,6 +115,7 @@ export const initialChatState: ChatState = {
   turns: [],
   streaming: false,
   traces: initialTraceState,
+  focus: null,
 };
 
 export function chatReducer(state: ChatState, action: ChatAction): ChatState {
@@ -153,7 +162,11 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         streaming: false,
         traces: initialTraceState,
         turns: action.turns.flatMap((t) => hydrateTurn(t)),
+        focus: action.focus ?? null,
       };
+
+    case 'set_focus':
+      return { ...state, focus: action.focus };
 
     // A proposal found waiting after a reload belongs to the last assistant turn, which is where it was made.
     case 'pending':
@@ -276,6 +289,10 @@ export function hydrateTurn(turn: HistoryTurn): Turn[] {
 
 function applyEvent(state: ChatState, event: ChatStreamEvent): ChatState {
   switch (event.type) {
+    // The server's word on the focus replaces whatever the client held, so a refused choice does not stay on screen.
+    case 'state':
+      return { ...state, focus: event.data.focus };
+
     // The answer's first text is what closes the reasoning block, and stops a clock still running.
     case 'text_delta':
       return updateActiveTurn(state, (turn) => ({

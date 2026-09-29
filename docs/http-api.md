@@ -50,6 +50,7 @@ SSE frames are `event: <TYPE>\ndata: <json>\n\n`, where `<TYPE>` is the event's 
 | `RUN_STARTED` | `{ threadId, runId }` — first, exactly once |
 | `TEXT_MESSAGE_START` / `TEXT_MESSAGE_CONTENT` / `TEXT_MESSAGE_END` | the answer, under one `messageId`. A run that produces no answer opens no message |
 | `TOOL_CALL_START` / `TOOL_CALL_ARGS` / `TOOL_CALL_END` / `TOOL_CALL_RESULT` | one tool call, under one `toolCallId`. The start is emitted before the tool runs |
+| `STATE_SNAPSHOT` | the run's shared state `{ snapshot: { focus: { accountId } \| null } }`: right after `RUN_STARTED`, and again after a read moves the focus — see below |
 | `ACTIVITY_SNAPSHOT` | a data card: `{ messageId: "card-<toolCallId>", activityType, content }`, right after the carded call's `TOOL_CALL_RESULT` — see below |
 | `CUSTOM` | this system's own events, by `name` — see below |
 | `RUN_FINISHED` | `{ threadId, runId, outcome, result }` — last. `result.turnId` is the turn, which feedback names |
@@ -58,6 +59,17 @@ SSE frames are `event: <TYPE>\ndata: <json>\n\n`, where `<TYPE>` is the event's 
 **Arguments and results are identifiers and summaries, never free text.** `TOOL_CALL_ARGS.delta` carries the
 argument summary (`runId=4417`), not the query a user typed; `TOOL_CALL_RESULT.content` is structured —
 `{ tool, summary, sourceCount, isError }` — not the documents the tool found. The full result is in the trace.
+
+### The account in focus (shared state)
+
+A conversation has at most one account in focus (add-focus-state):
+- **How it is set:** a successful `get_household_portfolio` or `get_aum_history` read sets it; `list_my_accounts` does
+  not change it.
+- **Client to server:** the client sends `state: { focus: { accountId } | null }` in the `POST /api/chat` body. An id
+  is accepted only if a data card in this conversation showed it. `null` clears the focus. Anything else is ignored,
+  and the trace records the rejection without the value.
+- **What it does:** the model is told the id with "if the question names no account, it is about this one". Data
+  routing uses it for an account-less portfolio question. Reads stay firm-scoped by the token whatever it says.
 
 ### Data cards
 
@@ -146,7 +158,7 @@ is per instance, so a stop sent to the replica that is not running the turn answ
 `HistoryTurn` = `{ turnId, question, answer, createdAt, toolCalls: [{ callId?, toolName, argumentSummary, outcome,
 resultSummary?, sourceCount }], sources: [{ docId, sectionPath, sourcePath, snippet }], feedbackKinds: [string],
 traceAvailable, activities: [{ messageId, activityType, content }] }` — `activities` are the turn's data cards, empty
-for turns stored before cards existed. Turns stored before this change may have empty `sourcePath`/`snippet` and null `callId`/`resultSummary`.
+for turns stored before cards existed. The conversation detail also carries `focus: { accountId } | null`. Turns stored before this change may have empty `sourcePath`/`snippet` and null `callId`/`resultSummary`.
 The default title is the first question (≤ 80 chars, cut at a word boundary with "…"). `POST /api/chat` with a deleted
 conversation id returns `404`.
 

@@ -177,4 +177,15 @@ describe('toChatEvents', () => {
       },
     ]);
   });
+
+  it('reads the account in focus from the protocol"s state snapshot, and nothing else in it', () => {
+    expect(
+      toChatEvents(
+        event(EventType.STATE_SNAPSHOT, { snapshot: { focus: { accountId: 'A-1043' }, other: 1 } }),
+      ),
+    ).toEqual([{ type: 'state', data: { focus: { accountId: 'A-1043' } } }]);
+    expect(toChatEvents(event(EventType.STATE_SNAPSHOT, { snapshot: { focus: null } }))).toEqual([
+      { type: 'state', data: { focus: null } },
+    ]);
+  });
 });
