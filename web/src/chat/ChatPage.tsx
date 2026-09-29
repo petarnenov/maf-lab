@@ -1,5 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ApiError } from '../api/client';
 import { useAuth } from '../auth/useAuth';
@@ -12,6 +19,7 @@ import { framesFor, traceFor } from '../monitor/traceReducer';
 import { useTurnTrace } from '../monitor/useTurnTrace';
 import type { AssistantTurn } from './chatReducer';
 import styles from './ChatPage.module.css';
+import { idle, step, type RecallState } from './promptHistory';
 import { SourcesPanel } from './SourcesPanel';
 import { ConfirmationCard } from './ConfirmationCard';
 import { ToolCallCard } from './ToolCallCard';
@@ -35,6 +43,11 @@ export function ChatPage() {
   const [historyCollapsed, setHistoryCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  /** Recalling earlier prompts with the arrow keys (add-prompt-history-recall). */
+  const recall = useRef<RecallState>(idle);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  /** Set when a recall replaced the text: the caret goes to its end once the input shows it. */
+  const caretToEnd = useRef(false);
 
   /**
    * The conversation the user is leaving. react-router applies a navigation a tick after it is asked for, so
@@ -101,6 +114,36 @@ export function ChatPage() {
     endRef.current?.scrollIntoView?.({ block: 'end' });
   }, [state.turns]);
 
+  // Another conversation on screen is another history: any recall of the last one ends.
+  useEffect(() => {
+    recall.current = idle;
+  }, [state.conversationId, routeId]);
+
+  useLayoutEffect(() => {
+    if (!caretToEnd.current) return;
+    caretToEnd.current = false;
+    composerRef.current?.setSelectionRange(draft.length, draft.length);
+  }, [draft]);
+
+  /** ArrowUp/ArrowDown recall earlier prompts, but only where the caret has no line to move to. */
+  function recallPrompt(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || e.nativeEvent.isComposing) return;
+    const { selectionStart, selectionEnd, value } = e.currentTarget;
+    if (selectionStart !== selectionEnd) return;
+    const up = e.key === 'ArrowUp';
+    const lineAbove = selectionStart > 0 && value.lastIndexOf('\n', selectionStart - 1) !== -1;
+    const lineBelow = value.indexOf('\n', selectionEnd) !== -1;
+    if (up ? lineAbove : lineBelow) return;
+    const history = state.turns.filter((t) => t.role === 'user').map((t) => t.text);
+    const next = step(history, recall.current, up ? 'up' : 'down', draft);
+    if (next === null) return;
+    e.preventDefault();
+    recall.current = next.state;
+    caretToEnd.current = true;
+    setDraft(next.text);
+  }
+
   const assistantTurns = state.turns.filter((t): t is AssistantTurn => t.role === 'assistant');
   const latest = assistantTurns[assistantTurns.length - 1];
 
@@ -153,6 +196,7 @@ export function ChatPage() {
     setDrawerOpen(false);
     leaving.current = routeId ?? null;
     urlNeedsId.current = false;
+    recall.current = idle;
     reset();
     void navigate('/chat');
   }
@@ -172,6 +216,7 @@ export function ChatPage() {
     urlNeedsId.current = !routeId;
     void send(draft);
     setDraft('');
+    recall.current = idle;
   }
 
   return (
@@ -275,13 +320,19 @@ export function ChatPage() {
 
         <form className={styles.composer} onSubmit={submit}>
           <textarea
+            ref={composerRef}
             aria-label="Message"
             value={draft}
             rows={2}
             placeholder="Ask about billing or portfolios: procedures, runs, fees, holdings, AUM…"
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              // An edit makes the text a new draft: the next ArrowUp starts again from the newest prompt.
+              recall.current = idle;
+              setDraft(e.target.value);
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) submit(e);
+              else recallPrompt(e);
             }}
           />
           <button
