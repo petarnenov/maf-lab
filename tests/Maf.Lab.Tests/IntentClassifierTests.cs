@@ -273,6 +273,35 @@ public class IntentClassifierTests
         Assert.Equal("outside the domain (none)", decision.Reason);
     }
 
+    [Theory]
+    [InlineData("procedural", 0.02, true)]
+    [InlineData("other", 0.02, true)]
+    [InlineData("data", 0.02, true)]
+    [InlineData("chitchat", 0.02, false)]
+    [InlineData("procedural", 0.37, false)]
+    public async Task A_question_in_no_domain_that_is_not_small_talk_is_marked_outside_the_domains(string choice, double inDomain, bool outside)
+    {
+        var h = Build(new FakeJev { Choose = _ => choice, InDomain = inDomain });
+
+        var decision = await h.Classifier.ClassifyAsync("What do frogs eat?", Ct);
+
+        Assert.Equal(outside, decision.OutsideDomains);
+    }
+
+    [Fact]
+    public async Task Without_a_domain_answer_or_with_the_refusal_off_nothing_is_outside_the_domains()
+    {
+        var missing = await Build(new FakeJev { InDomain = null }).Classifier.ClassifyAsync("What do frogs eat?", Ct);
+        var off = await Build(new FakeJev { InDomain = 0.0 }, options: new JevOptions { RefuseOutsideDomains = false })
+            .Classifier.ClassifyAsync("What do frogs eat?", Ct);
+        var failed = await Build(new FakeJev { InDomain = 0.0, Status = System.Net.HttpStatusCode.InternalServerError })
+            .Classifier.ClassifyAsync("What do frogs eat?", Ct);
+
+        Assert.False(missing.OutsideDomains);
+        Assert.False(off.OutsideDomains);
+        Assert.False(failed.OutsideDomains);
+    }
+
     [Fact]
     public async Task A_zero_floor_turns_the_gate_off()
     {

@@ -5,7 +5,7 @@ public sealed class SystemPrompt
 {
     public SystemPrompt(IConfiguration configuration)
     {
-        Version = configuration["Agent:SystemPrompt"] ?? "system.v1";
+        Version = configuration["Agent:SystemPrompt"] ?? "system.v2";
         var path = Path.Combine(AppContext.BaseDirectory, "Prompts", $"{Version}.md");
         Text = File.ReadAllText(path);
     }

@@ -39,6 +39,15 @@ public sealed class JevOptions
     /// crossing recall 0.9 and precision 0.947, against 0.922 / 0.8 / 0.941 at 0.6 — see DECISIONS.</remarks>
     public double MinDomainScope { get; set; } = 0.5;
 
+    /// <summary>
+    /// A question Jev puts in no domain — every domain's probability below <see cref="MinInDomain"/> — and does not read
+    /// as small talk is marked outside the domains, and the first question of a conversation so marked is answered with a
+    /// fixed reply instead of reaching the model (refuse-off-domain-questions). The floor is the gate's own: off-domain
+    /// questions measured ≤ 0.07, in-domain ≥ 0.37 bar one Latin-script transliteration (0.09), which is refused and
+    /// asked to rephrase. Off restores the model's own judgment on every question.
+    /// </summary>
+    public bool RefuseOutsideDomains { get; set; } = true;
+
     /// <summary>Budget for one classification; 0 disables classification and every turn forces nothing.</summary>
     public double TimeoutSeconds { get; set; } = 2;
 

@@ -23,6 +23,8 @@ public static class TurnSignal
     public const string LongAnswerWithoutSources = "long_answer_without_sources";
     /// <summary>The prompt was refused by the content guard.</summary>
     public const string GuardrailBlocked = "guardrail_blocked";
+    /// <summary>The question was outside every domain and got the fixed reply instead of an answer.</summary>
+    public const string OutOfScope = "out_of_scope";
     /// <summary>The content guard withheld a tool-result item or another agent's words.</summary>
     public const string GuardrailWithheld = "guardrail_withheld";
     /// <summary>Jev found a claim in the answer that the data the model read does not support.</summary>

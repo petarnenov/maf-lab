@@ -4,6 +4,7 @@ using System.Text.Json;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Tracing;
 using Maf.Lab.Api.Storage;
+using Maf.Lab.Domain.Feedback;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Domain.Tracing;
 using Maf.Lab.TestSupport;
@@ -243,10 +244,9 @@ public class TurnTraceTests
     }
 
     [Fact]
-    public async Task A_procedure_outside_the_domain_is_not_forced_and_raises_no_signal()
+    public async Task A_first_procedure_outside_the_domain_is_not_forced_and_gets_the_fixed_reply()
     {
-        // The answering model declines without a tool, as it did for the question that prompted the domain gate.
-        var chat = new ScriptedChatClient((_, _, _) => ScriptedChatClient.Text("I can only help with billing questions."));
+        var chat = new ScriptedChatClient((_, _, _) => ScriptedChatClient.Text("Frogs eat insects."));
         using var api = new ApiFactory(chat, jev: new FakeJev { Choose = _ => "procedural", InDomain = 0.02, Confidence = 0.93 });
         var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
 
@@ -259,11 +259,15 @@ public class TurnTraceTests
         Assert.Equal("procedural", intent.Data.GetProperty("choice").GetString());
         Assert.Equal(0.02, intent.Data.GetProperty("inDomain").GetDouble());
         Assert.Equal("outside the domain (0.02)", intent.Data.GetProperty("reason").GetString());
+        Assert.True(intent.Data.GetProperty("outOfScopeReply").GetBoolean());
         Assert.Contains("outside the domain 0.02", intent.Title);
+        Assert.Contains("outside every domain", intent.Title);
+        Assert.Equal(OutOfScope.ReplyEnglish, ApiFactory.AnswerOf(events));
+        Assert.Empty(api.Chat.Requests);
         Assert.Empty(api.Tools.Invocations);
-        // Neither "how/why answered without a tool" nor "zero retrieval results": nothing for a reviewer to label.
+        // Not "how/why answered without a tool" nor "zero retrieval results": only the reply, for a reviewer to confirm.
         var signals = trace.Single(t => t.Kind == TraceKinds.Signals).Data.GetProperty("signals");
-        Assert.Equal(0, signals.GetArrayLength());
+        Assert.Equal(TurnSignal.OutOfScope, Assert.Single(signals.EnumerateArray()).GetString());
     }
 
     [Fact]
