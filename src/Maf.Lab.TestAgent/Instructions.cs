@@ -1,0 +1,76 @@
+using System.Text;
+using Maf.Lab.TestGen;
+
+namespace Maf.Lab.TestAgent;
+
+/// <summary>What the model is told: the rules once, and each attempt's task with what the last one taught.</summary>
+public static class Instructions
+{
+    public const string System = """
+        You write automated tests for one source file of the maf-lab repository, to raise its line coverage.
+
+        Rules you must follow:
+        - Only write test files. For dotnet: C# xUnit v3 tests under tests/Maf.Lab.Tests/ (namespace Maf.Lab.Tests).
+          For vitest: *.test.ts or *.test.tsx next to the code under web/src/, using vitest and Testing Library.
+        - Never change production code, and never write a test that changes it (no writing, moving or deleting files
+          under src/ or web/src/).
+        - Assert the behaviour the code is meant to have — what its names, documentation, specs and callers say —
+          not whatever it happens to do.
+        - Every test asserts something. Never skip or focus a test (.skip, .only, Skip=), and never make a test pass by
+          catching the exception it should verify: use Assert.Throws / expect(...).toThrow.
+        - If a test fails because the production code does not do what it is meant to, that is a suspected bug. Do not
+          change the code and do not bend the assertion. Keep the test, skip it with the reason
+          "suspected-bug: <short title>" ([Fact(Skip = "suspected-bug: <title>")] in C#; in TypeScript it.skip(...) with
+          the comment // suspected-bug: <title> on the line before), and call report_suspected_bug. At most three.
+        - Read before you write: the target file, its callers, and the existing tests nearby, and follow their style.
+        - Use run_tests to check your work; finish when the tests build, pass, and cover what you can.
+        """;
+
+    public static string Attempt(TestGenRequest request, int attempt, double? currentPct, string? feedback)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"Target file: {request.TargetFile} ({request.Toolchain}).");
+        sb.AppendLine($"Goal: at least {request.TargetLinePct}% line coverage. Now: {(currentPct is { } p ? $"{p:0.0}%" : "not measured")}.");
+        sb.AppendLine($"This is attempt {attempt} of {request.MaxAttempts}.");
+        if (feedback is { Length: > 0 })
+        {
+            sb.AppendLine();
+            sb.AppendLine("What the last attempt's measured run found:");
+            sb.AppendLine(feedback);
+        }
+        sb.AppendLine();
+        sb.AppendLine("Write or improve the tests now, then finish with one sentence saying what you changed.");
+        return sb.ToString();
+    }
+
+    /// <summary>What the next attempt needs to know from this one: errors, failures, violations, what is still uncovered.</summary>
+    public static string Feedback(RunnerResult result, IReadOnlyList<GuardrailViolation> violations)
+    {
+        var sb = new StringBuilder();
+        if (result.Status == RunnerStatus.DiffRejected)
+        {
+            sb.AppendLine("- Your changes could not be applied to the commit.");
+        }
+        if (result.Build == BuildOutcome.Failed)
+        {
+            sb.AppendLine("- The build failed:");
+            foreach (var d in result.Diagnostics.Take(20))
+            {
+                sb.AppendLine($"  {d}");
+            }
+        }
+        foreach (var f in result.Failures.Take(10))
+        {
+            sb.AppendLine($"- Failing test {f.Name}: {f.Message}");
+        }
+        foreach (var v in violations)
+        {
+            sb.AppendLine($"- Rule broken: {v}");
+        }
+        if (result.Uncovered.Count > 0)
+        {
+            sb.AppendLine($"- Lines still uncovered: {string.Join(", ", result.Uncovered.Take(40).Select(r => r[0] == r[1] ? $"{r[0]}" : $"{r[0]}-{r[1]}"))}");
+        }
+        return sb.ToString().TrimEnd();
+    }
+}

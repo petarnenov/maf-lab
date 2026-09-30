@@ -1,0 +1,22 @@
+<!-- The test-generation agent: an A2A server around a Microsoft Agent Framework agent that writes tests for one file.
+     It reads the repository, writes test files in its own scratch checkout, and has the coverage runner build and
+     measure them. It never runs model-written code itself. -->
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <PackageReference Include="A2A" />
+    <PackageReference Include="Microsoft.Agents.AI" />
+    <PackageReference Include="Microsoft.Extensions.AI" />
+    <PackageReference Include="StackExchange.Redis" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Maf.Lab.A2A\Maf.Lab.A2A.csproj" />
+    <ProjectReference Include="..\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />
+    <ProjectReference Include="..\Maf.Lab.Hosting\Maf.Lab.Hosting.csproj" />
+    <ProjectReference Include="..\Maf.Lab.TestGen\Maf.Lab.TestGen.csproj" />
+    <!-- For the one chat client the lab has (ModelProviders): the same Ollama Cloud path and key handling as chat. -->
+    <ProjectReference Include="..\Maf.Lab.Retrieval\Maf.Lab.Retrieval.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Maf.Lab.Tests" />
+  </ItemGroup>
+</Project>

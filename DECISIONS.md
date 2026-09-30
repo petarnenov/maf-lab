@@ -2032,3 +2032,18 @@ said which account the conversation was about.
 - **The Redis task stores moved to `Maf.Lab.A2A`.** They were the compliance reviewer's; the test agent needs the
   same. Their key prefix is `A2A:StoreKeyspace`, defaulting to the reviewer's `compliance`, so its keys are
   unchanged.
+- **The test agent (`Maf.Lab.TestAgent`).**
+  - **Clone, not worktree.** Each task gets a `git clone --shared` of the read-only repository, checked out at the
+    task's commit. A worktree would need write access to the source `.git`.
+  - **The model gets what it can act on.** The tool loop is a `FunctionInvokingChatClient` with a round cap. Its
+    invoker turns a refused path, or an unavailable runner, into text the model reads. Any other tool failure becomes
+    "The tool failed." — never an exception message, which could carry a host path.
+  - **Every call is counted.** A `BudgetedChatClient` sits on the provider client and counts each call's
+    `UsageDetails`. Before an attempt, the agent stops if the estimate (or the dearest attempt so far) would cross a
+    cap. A call that crosses a cap mid-attempt stops the run with `budget`.
+  - **The result is the best clean attempt.** Clean means it builds, all tests pass, and no rule is broken. The last
+    attempt may be worse than an earlier one, and a broken attempt is never returned.
+  - **Chat client.** `ModelProviders` (native Ollama API, `OLLAMA_API_KEY`) serves the model the task names. The
+    brief's OpenAI-compatible `/v1` would be a second client path.
+- **Provider refusals are told apart in one place.** `ProviderRefusal` (in `Maf.Lab.TestGen`) is shared by the
+  picker's availability check and the agent.

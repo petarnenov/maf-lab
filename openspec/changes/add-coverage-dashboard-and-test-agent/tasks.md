@@ -71,7 +71,7 @@
 - [x] 5.1 Check whether `Microsoft.Agents.AI.Hosting.A2A` 1.22.0-preview now exposes `A2AAgentHandler` and
   `AddA2AServer` publicly and can express `rejected`. Record the finding in DECISIONS §23. Proceed with
   `Maf.Lab.A2A` either way, as design D2 says. Verify that the DECISIONS entry exists.
-- [ ] 5.2 Create `src/Maf.Lab.TestAgent` (Web SDK, added to the solution): `MapA2ASurface` and `MapA2AProtocol`,
+- [x] 5.2 Create `src/Maf.Lab.TestAgent` (Web SDK, added to the solution): `MapA2ASurface` and `MapA2AProtocol`,
   Redis task and push stores, `AddLabTelemetry("maf-lab-test-agent")`, `/health`, a card with the one skill
   `generate-tests`, and `A2A:Audience` `maf-lab-test-agent`. Verify with a test that the card is served and that a
   task without a token gets 401.
@@ -85,13 +85,13 @@
   `suspected-bug:` marker and are listed, reject more than 3, and flag test code that writes, moves or deletes files
   under `src/` or `web/src/`. Verify with fixture tests for an allowed suspected-bug skip, an unlisted skip, a
   fourth bug, and `File.WriteAllText("src/…")` / `fs.writeFileSync('web/src/…')`.
-- [ ] 5.5 Implement the scratch workspace (a read-only clone at the SHA) and the five tools (design D6) as
+- [x] 5.5 Implement the scratch workspace (a read-only clone at the SHA) and the five tools (design D6) as
   `AIFunction`s returning DTOs. Verify with tool tests for the caps, refusal text and write-then-read.
-- [ ] 5.5a Add the `report_suspected_bug` tool and `suspectedBugs[]` in the report. The instructions tell the model to
+- [x] 5.5a Add the `report_suspected_bug` tool and `suspectedBugs[]` in the report. The instructions tell the model to
   assert intended behaviour, never to change production code or bend an assertion to observed behaviour, and to skip
   with the marker and report. Verify with a scripted run in which a failing test is skipped and reported, and the
   report carries it.
-- [ ] 5.6 Implement `TestGenerationHandler`:
+- [x] 5.6 Implement `TestGenerationHandler`:
   - input validation, which rejects over 5 attempts, a missing file or an incomplete input;
   - the code-owned loop;
   - feedback assembly;
@@ -103,7 +103,7 @@
   Verify with `ScriptedChatClient` plus a fake runner, covering: target reached at attempt 2, goal not reached after
   5, budget stop, cancel during attempt 3 with no further calls, `model_unavailable` → failed, and an invalid input
   → rejected.
-- [ ] 5.7 Check that no log, span or artifact contains a prompt, source text or the API key. Verify with a test using
+- [x] 5.7 Check that no log, span or artifact contains a prompt, source text or the API key. Verify with a test using
   an in-memory exporter and log sink that asserts none of the fixture's source lines or key appear.
 
 ## 6. Coverage runner service
