@@ -10,44 +10,70 @@ exist, turns that raise into a confirmed, model-backed test-generation run.
 There SHALL be one global default line-coverage threshold, set in configuration, and each file MAY carry an
 override. A file's effective threshold is its override if set, else the default. The UI SHALL show the effective
 threshold and whether it is the default or an override. An administrator SHALL be able to clear an override,
-returning the file to the default.
+returning the file to the default. When the default is above the file's current coverage, clearing the override
+SHALL open the same confirmation as saving a threshold above coverage, with the default as the target. A run started
+from it SHALL leave the file on the default, not on an override of the same value.
 
 #### Scenario: Effective threshold
 - **WHEN** the default is 80% and a file has no override
 - **THEN** its effective threshold is shown as 80% (default)
 
 #### Scenario: Clearing an override
-- **WHEN** an administrator clears a file's 90% override
-- **THEN** the file's effective threshold becomes the default
+- **WHEN** an administrator clears a file's 90% override and the file's coverage is 85%, at or above the 80% default
+- **THEN** the file's effective threshold becomes the default at once, and no run starts
+
+#### Scenario: Clearing an override below the default
+- **WHEN** an administrator clears a file's 60% override, the default is 80% and the file is at 40%
+- **THEN** the confirmation opens with 80% as the target, and a run started from it leaves the file on the default
 
 ### Requirement: Saving without a run
-Setting a threshold that is at or below the current value SHALL save immediately, without confirmation and without
-starting a run. Raising a threshold to a value the file's current coverage already meets SHALL also save immediately.
-The value SHALL be a whole percentage from 0 to 100. Any other value SHALL be rejected with nothing saved.
+Saving a threshold that the file's current coverage already meets SHALL save immediately, without confirmation and
+without starting a run, whether it lowers, keeps or raises the threshold. The value SHALL be a whole percentage from
+0 to 100. Any other value SHALL be rejected with nothing saved. From the confirmation of a threshold above coverage
+that does not raise the stored threshold (it keeps or lowers it, or clears the override), the administrator SHALL be
+able to save it without starting a run. A raise above coverage SHALL NOT be offered that choice: it is saved only with
+an accepted run, and the server refuses it otherwise.
 
 #### Scenario: Threshold lowered
-- **WHEN** an administrator lowers a file's threshold from 80% to 70%
+- **WHEN** a file is at 75% and an administrator lowers its threshold from 80% to 70%
 - **THEN** it saves at once, no dialog opens and no run starts
 
 #### Scenario: Raised but already met
 - **WHEN** a file is at 91% and an administrator raises its threshold from 80% to 90%
 - **THEN** it saves at once and no run starts
 
+#### Scenario: Saved without a run on purpose
+- **WHEN** a file is at 40%, an administrator lowers its threshold from 90% to 85%, and chooses "Save without a run" in the confirmation
+- **THEN** 85% is saved and no run starts
+
+#### Scenario: A raise needs a run
+- **WHEN** a file is at 40%, its threshold is 80%, and an administrator saves 85%
+- **THEN** the confirmation opens without "Save without a run", and a direct request to save 85% is refused with `run_required`
+
 #### Scenario: Out of range
 - **WHEN** a threshold of 120 is submitted
 - **THEN** it is rejected and the stored threshold is unchanged
 
 ### Requirement: Raising above coverage starts a confirmed run
-Raising a file's threshold above its current coverage SHALL open a confirmation. The confirmation SHALL state the
-current coverage, the target, and that an agent run will be started to write tests. After confirming, the
-administrator SHALL choose a model and SHALL see the cost estimate (see `model-selection`) before the run can start.
-The new threshold SHALL be saved only when the run has been accepted for execution. Cancelling at any step, or a run
-that fails to start, SHALL leave the threshold unchanged. The raised threshold SHALL persist whatever the run's
-eventual outcome.
+Saving a threshold above the file's current coverage SHALL open a confirmation, whether it raises, keeps or lowers
+the stored threshold: a threshold above coverage means "reach it". The confirmation SHALL state the current
+coverage, the target, and that an agent run will be started to write tests. After confirming, the administrator
+SHALL choose a model and SHALL see the cost estimate (see `model-selection`) before the run can start. The new
+threshold SHALL be saved only when the run has been accepted for execution. Cancelling at any step, or a run that
+fails to start, SHALL leave the threshold unchanged. The saved threshold SHALL persist whatever the run's eventual
+outcome.
 
 #### Scenario: Happy path
 - **WHEN** a file is at 62%, an administrator raises its threshold to 85%, confirms, picks a model and starts
 - **THEN** the run is created, the threshold becomes 85% and the file shows the run as submitted
+
+#### Scenario: Saving the threshold the file is below
+- **WHEN** a file with no override is at 40% under the 80% default, and an administrator presses Save with 80%
+- **THEN** the confirmation opens with 80% as the target, and a run started from it leaves the file on the default
+
+#### Scenario: Lowered but still above coverage
+- **WHEN** a file is at 40% and an administrator lowers its threshold from 90% to 85%
+- **THEN** the confirmation opens with 85% as the target
 
 #### Scenario: Confirmation cancelled
 - **WHEN** the administrator cancels at the confirmation or at the model picker
@@ -59,7 +85,7 @@ eventual outcome.
 
 #### Scenario: Goal not reached keeps the threshold
 - **WHEN** a run ends without reaching the target
-- **THEN** the file keeps the raised threshold and is flagged as below it
+- **THEN** the file keeps the saved threshold and is flagged as below it
 
 ### Requirement: One active run per file
 A file SHALL have at most one active run (any state before a final one). While a run is active, the file's threshold

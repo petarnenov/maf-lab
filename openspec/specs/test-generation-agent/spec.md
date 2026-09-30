@@ -25,20 +25,35 @@ only on the internal network, not through the public load balancer. The browser 
 
 ### Requirement: Task input
 A task SHALL carry the commit SHA to work at, the repo-relative target file, the target line coverage %, the maximum
-number of attempts (at most 5), the model, the toolchain (`dotnet` or `vitest`) and the run's token and cost caps. The
+number of attempts (at most 10), the model and the toolchain (`dotnet` or `vitest`). It MAY carry a token cap, a cost
+cap, or both. A cap that is absent means that dimension is unlimited. A cap that is present SHALL be positive. The
 agent SHALL reject input that is incomplete, names a file not in the repository at that commit, names a production
-file under a test directory, or asks for more than 5 attempts. The model's API key SHALL come from the agent's own
-environment, never from the task.
+file under a test directory, asks for more than 10 attempts, or carries a cap that is zero or negative. The model's
+API key SHALL come from the agent's own environment, never from the task.
 
 #### Scenario: Too many attempts
-- **WHEN** a task asks for 8 attempts
+- **WHEN** a task asks for 12 attempts
 - **THEN** it is rejected as invalid before any model call
+
+#### Scenario: No caps
+- **WHEN** a task carries neither a token cap nor a cost cap
+- **THEN** it is accepted, and only the attempt cap, a cancel or the caller's deadline ends it early
+
+#### Scenario: Non-positive cap
+- **WHEN** a task carries a cost cap of 0
+- **THEN** it is rejected as invalid before any model call
+
+#### Scenario: Ten attempts
+- **WHEN** a task asks for 10 attempts
+- **THEN** it is accepted, and progress reports attempt n of 10
 
 ### Requirement: Attempt loop with feedback
 An attempt SHALL be one cycle: generate or modify tests, build, run the relevant test suite with coverage, read the
 target file's coverage, and compare it with the target. The agent SHALL feed each attempt's outcome into the next:
-compiler errors, failing tests with their messages, guardrail violations, and the line ranges still uncovered.
-Building and running SHALL go through the coverage runner, never in the agent's own process.
+compiler errors, failing tests with their messages, guardrail violations, and the line ranges still uncovered. When
+an attempt added or changed no test file, the next attempt's input SHALL say so, and SHALL say that reading without
+writing does not count as progress. Building and running SHALL go through the coverage runner, never in the agent's
+own process.
 
 #### Scenario: Build error fed back
 - **WHEN** attempt 1 fails to compile
@@ -47,6 +62,10 @@ Building and running SHALL go through the coverage runner, never in the agent's 
 #### Scenario: Uncovered ranges fed back
 - **WHEN** attempt 2 reaches 74% of an 85% target
 - **THEN** attempt 3's input lists the line ranges of the target file still uncovered
+
+#### Scenario: An attempt that wrote nothing
+- **WHEN** attempt 1 ends without writing any test file
+- **THEN** attempt 2's input says that attempt 1 wrote no test, alongside the uncovered ranges
 
 ### Requirement: Tools with a test-only write allowlist
 The agent SHALL have exactly these tools: read a file, list files, write or modify a file, run tests with coverage,
@@ -66,11 +85,13 @@ a tool error and SHALL NOT end the run.
 
 ### Requirement: Test guardrails
 The agent SHALL reject its own tests that are focused (`.only`, `fit`, `fdescribe`), that contain no assertion, or
-that make a test pass by catching the exception it is meant to verify. A generated test SHALL NOT modify production
-code, either in its source or at run time (for example by writing to, moving or deleting a file under `src/` or
-`web/src/`). The agent SHALL NOT skip a test (`.skip`, `xit`, `[Fact(Skip=...)]`, `[Theory(Skip=...)]`), except a
-suspected-bug skip that follows the requirement below. A violating test SHALL count as a failed check in that attempt
-and SHALL be reported as feedback. The final diff SHALL NOT contain a violation.
+that make a test pass by catching the exception it is meant to verify. A check on a substitute's received calls
+(`Received`, `DidNotReceive`, `ReceivedWithAnyArgs`, `DidNotReceiveWithAnyArgs`) SHALL count as an assertion. A
+generated test SHALL NOT modify production code, either in its source or at run time (for example by writing to,
+moving or deleting a file under `src/` or `web/src/`). The agent SHALL NOT skip a test (`.skip`, `xit`,
+`[Fact(Skip=...)]`, `[Theory(Skip=...)]`), except a suspected-bug skip that follows the requirement below. A
+violating test SHALL count as a failed check in that attempt and SHALL be reported as feedback. The final diff SHALL
+NOT contain a violation.
 
 #### Scenario: Focused test
 - **WHEN** a generated Vitest file contains `it.only(`
@@ -79,6 +100,14 @@ and SHALL be reported as feedback. The final diff SHALL NOT contain a violation.
 #### Scenario: Assertion-free test
 - **WHEN** a generated xUnit test calls the method under test and asserts nothing
 - **THEN** it is reported as assertion-free, and the attempt does not count it
+
+#### Scenario: A received-call check is an assertion
+- **WHEN** a generated xUnit test calls the method under test and ends with `await db.Received(1).HashSetAsync(...)` on a substitute
+- **THEN** no assertion-free violation is reported for it
+
+#### Scenario: Setting up a substitute is not an assertion
+- **WHEN** a generated xUnit test only configures a substitute with `.Returns(...)` and calls the method under test
+- **THEN** it is reported as assertion-free
 
 #### Scenario: Skip without a suspected bug
 - **WHEN** a generated test is skipped with no suspected-bug marker, or is not listed as a suspected bug in the report
@@ -122,23 +151,31 @@ towards the file's coverage.
 The task SHALL move `submitted → working` and end in exactly one final state:
 
 - `completed` with `goalReached=true` as soon as an attempt meets the target;
-- `completed` with `goalReached=false` when all attempts are used, or when the token or cost cap would be exceeded;
+- `completed` with `goalReached=false` when all attempts are used, or, for a task that carries caps, when the token
+  or cost cap would be exceeded;
 - `failed` on an unrecoverable error (for example, the commit cannot be checked out, or the model is refused);
 - `canceled` on a cancel request.
 
-Progress updates SHALL report the current attempt n of N and the latest measured coverage.
+A task without caps SHALL never stop for `budget`. Progress updates SHALL report the current attempt n of N and the
+latest measured coverage. Before it completes, the agent SHALL record a final `stopped` activity entry naming the
+stop reason (`target`, `attempts` or `budget`), the last attempt that ran, and, for `budget`, the attempt it did not
+start.
 
 #### Scenario: Target reached early
 - **WHEN** attempt 2 reaches 86% of an 85% target
-- **THEN** the task completes with `goalReached=true` and no third attempt runs
+- **THEN** the task completes with `goalReached=true`, no third attempt runs, and the last activity entry is `stopped` with reason `target`
 
 #### Scenario: Goal not reached after 5 attempts
 - **WHEN** the fifth attempt ends at 79% of an 85% target
-- **THEN** the task completes with `goalReached=false` and a report of all 5 attempts
+- **THEN** the task completes with `goalReached=false`, a report of all 5 attempts, and a `stopped` entry with reason `attempts`
 
 #### Scenario: Budget exhausted
 - **WHEN** the next attempt would exceed the run's cost cap
-- **THEN** the task completes with `goalReached=false`, stop reason `budget`, and does not start that attempt
+- **THEN** the task completes with `goalReached=false`, stop reason `budget`, does not start that attempt, and records a `stopped` entry with reason `budget` naming the attempt not started
+
+#### Scenario: Unlimited budget
+- **WHEN** a task without caps has used 900 000 tokens after attempt 3 of 5
+- **THEN** attempt 4 starts
 
 #### Scenario: Cancel mid-run
 - **WHEN** a cancel request arrives during attempt 3
@@ -174,7 +211,9 @@ carry a sequence number that increases within the task, the time, the attempt, a
 - `attempt`: an attempt's result, with coverage before and after, the build outcome, test counts, and at most ten
   error lines;
 - `text` and `reasoning`: the model's reply and, when the provider returns it, its reasoning. They SHALL be sent in
-  chunks as they stream, no more than about every two seconds, with each chunk appended to the entry it continues.
+  chunks as they stream, no more than about every two seconds, with each chunk appended to the entry it continues;
+- `stopped`: the task's work is over, with the stop reason, the last attempt that ran, the best coverage, and, for
+  `budget`, the attempt not started. It SHALL be the last entry of a completed task.
 
 A text or reasoning entry SHALL be capped at 4 KB and marked truncated beyond it. Reporting SHALL NOT slow down or
 fail the task: if an update cannot be sent, the agent SHALL go on and send later entries. None of this content SHALL
@@ -192,6 +231,43 @@ appear in the agent's logs, spans or metrics.
 - **WHEN** the model streams a reply for eight seconds
 - **THEN** the api receives the reply as several chunks of one `text` entry, not one message at the end
 
+#### Scenario: The stop is reported
+- **WHEN** the task stops for `budget` before attempt 3
+- **THEN** the last entry is `stopped` with reason `budget`, last attempt 2 and attempt not started 3
+
 #### Scenario: No content in telemetry
 - **WHEN** the agent's logs and spans for a run are inspected
 - **THEN** none contains the model's text, its reasoning or a tool's path summary
+
+### Requirement: Writing within the tool-round cap
+An attempt SHALL have a configured cap on tool rounds (a model call and the tool calls it asks for). The attempt's
+instructions SHALL state that cap and SHALL tell the model to write a test before it spends most of the rounds
+reading. When 3 rounds remain, the agent SHALL tell the model, before its next call, how many rounds remain and that
+it must write or improve a test file now. Reaching the cap SHALL end the attempt's model work, and the attempt SHALL
+then be built and measured as usual.
+
+#### Scenario: Cap stated
+- **WHEN** an attempt starts with a cap of 12 rounds
+- **THEN** its input states that it has 12 tool rounds
+
+#### Scenario: Nudge before the cap
+- **WHEN** the model has used 9 of 12 rounds and has not written a test file
+- **THEN** its next call is told that 3 rounds remain and that it must write a test now
+
+#### Scenario: Cap reached
+- **WHEN** the model uses all 12 rounds
+- **THEN** the attempt's model work ends and whatever it wrote is built and measured
+
+### Requirement: Substitutes for interfaces
+The `dotnet` test project SHALL provide a substitution library, and the coverage runner SHALL be able to build tests
+that use it without network access. The agent's instructions for `dotnet` SHALL name that library as the way to
+stand in for an interface the code under test depends on. They SHALL say that a large interface is substituted, not
+implemented by hand.
+
+#### Scenario: A class behind a large interface
+- **WHEN** the agent works on a file whose class takes `StackExchange.Redis.IConnectionMultiplexer`
+- **THEN** its instructions tell it to substitute the interface with the library, and a test that does so builds and runs in the coverage runner
+
+#### Scenario: The runner has the package offline
+- **WHEN** the coverage runner, which has no network, builds a diff that adds a test using `Substitute.For<IDatabase>()`
+- **THEN** the build succeeds from the packages its image restored
