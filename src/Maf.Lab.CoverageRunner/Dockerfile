@@ -7,7 +7,14 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0.401-noble AS build
 WORKDIR /src
 COPY global.json Directory.Build.props Directory.Packages.props ./
 COPY src/ src/
-RUN dotnet publish src/Maf.Lab.CoverageRunner/Maf.Lab.CoverageRunner.csproj -c Release -o /app /p:UseAppHost=false
+# NuGet packages come from a cache shared by every image build (DECISIONS.md §58). The first restore fills it with
+# anything it lacks, holding it alone so parallel builds never extract into the same folder; the second copies this
+# project's packages out of it into the stage, so publish needs neither the cache nor the network.
+ENV NUGET_PACKAGES=/nuget
+RUN --mount=type=cache,id=maf-lab-nuget,target=/root/.nuget/packages,sharing=locked \
+    NUGET_PACKAGES=/root/.nuget/packages dotnet restore src/Maf.Lab.CoverageRunner/Maf.Lab.CoverageRunner.csproj \
+    && dotnet restore src/Maf.Lab.CoverageRunner/Maf.Lab.CoverageRunner.csproj --force --source /root/.nuget/packages
+RUN dotnet publish src/Maf.Lab.CoverageRunner/Maf.Lab.CoverageRunner.csproj -c Release -o /app /p:UseAppHost=false --no-restore
 
 # The web app's dependencies, installed once for the platform the runner runs on.
 FROM node:24.21.0-bookworm-slim AS webdeps
@@ -21,12 +28,16 @@ COPY --from=webdeps /usr/local/bin/node /usr/local/bin/node
 ENV NUGET_PACKAGES=/opt/nuget \
     DOTNET_CLI_TELEMETRY_OPTOUT=1 \
     DOTNET_NOLOGO=1
-# Restore every project the unit tests build, then keep only the package cache.
+# Restore every project the unit tests build, then keep only the package cache. The first restore fills the shared
+# build cache with anything it lacks; the second copies the packages into the image from that cache alone, so a
+# package missing from it fails the build instead of reaching the network.
 COPY global.json Directory.Build.props Directory.Packages.props /seed/
 COPY src/ /seed/src/
 COPY tests/ /seed/tests/
 COPY tools/ /seed/tools/
-RUN dotnet restore /seed/tests/Maf.Lab.Tests/Maf.Lab.Tests.csproj \
+RUN --mount=type=cache,id=maf-lab-nuget,target=/root/.nuget/packages,sharing=locked \
+    NUGET_PACKAGES=/root/.nuget/packages dotnet restore /seed/tests/Maf.Lab.Tests/Maf.Lab.Tests.csproj \
+    && dotnet restore /seed/tests/Maf.Lab.Tests/Maf.Lab.Tests.csproj --force --source /root/.nuget/packages \
     && rm -rf /seed \
     && chmod -R a+rX /opt/nuget
 COPY --from=webdeps /web/node_modules /opt/web/node_modules

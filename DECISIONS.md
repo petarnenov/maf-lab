@@ -2138,3 +2138,38 @@ said which account the conversation was about.
   - The runner container carries no model, Jev or GitHub key and cannot reach the internet.
   - A full .NET build per job fills Docker Desktop's disk quickly when build cache piles up. A job that died with
     "No space left on device" looked like a build failure. Keep Docker's disk pruned before long e2e runs.
+
+## 58. NuGet packages cached across image builds (cache-nuget-in-docker-builds, 2026-09-30)
+
+- **Why.** Each .NET Dockerfile copies `src/` and then restores. Any edit invalidated that layer, so every `make`
+  after an edit downloaded every package again, seven images at once, from `api.nuget.org`. Restores took 3–4 min
+  per project and failed intermittently with `Received an unexpected EOF or 0 bytes from the transport stream`.
+- **One BuildKit cache mount, `id=maf-lab-nuget`, at `/root/.nuget/packages`, shared by all seven Dockerfiles.**
+  Each build stage does both of these steps in one `RUN`, under `sharing=locked`:
+  - It restores into the cache, which downloads only what the cache lacks.
+  - It restores again with `--force --source /root/.nuget/packages` into `NUGET_PACKAGES=/nuget`, a stage-local path.
+  Publish then runs with `--no-restore` and no mount, so compilation stays parallel. The final images do not change.
+- **Mount this id only with `sharing=locked`.** The first version also mounted the cache in publish, in the default
+  `shared` mode. A shared mount taken while another build holds the id `locked` gets a fresh, empty cache record
+  with the same id. That publish failed with `NETSDK1064: Package ModelContextProtocol.Core, version 2.2.0 was not
+  found`. The stray record also stayed behind: later locked restores picked either copy, ran in parallel, and
+  downloaded again. `docker buildx du --verbose` lists the records (`with id "/maf-lab-nuget"`). The fix removed each
+  record by its ID with `docker buildx prune --filter id=<ID>`, which leaves other build cache alone.
+- **The coverage runner's `/opt/nuget` is filled the same way.** Its runtime stage restores `tests/Maf.Lab.Tests`
+  into the cache, then into `/opt/nuget` from the cache alone. The image still carries every package the tests
+  need: 125 packages, 490 MB, the same as before.
+- **Measured (2026-09-30, Docker Desktop, the same slow link that produced the EOFs).**
+  - Empty cache, all seven images in parallel: 20 min, with no failed download. Almost all of it is the first
+    download. The restores queue on the lock: the first one fetches the shared packages, the test project fetches
+    its own, and the other six take about 15 s each. Publish takes 7–22 s per image, in parallel.
+  - Warm cache after an edit under `src/`, all seven images:
+    - Four images built with `--network none`: 52–88 s per image, restores 1–2 s per project.
+    - The other three (api, test-agent, coverage-runner) were rebuilt with `api.nuget.org` pointed at `0.0.0.0`.
+      Their other RUN steps (`apt-get`, `npm ci`) need the network, and `--network none` changes their cache key.
+      Restores took 6–10 s per project. With no network, NuGet's vulnerability audit reports `NU1900`, a warning.
+  - The runner image built all 977 tests with `--network none` from its `/opt/nuget` alone, with 0 errors.
+- **Clearing it.** `docker builder prune` removes it, or `--filter id=<ID>` removes just these records. `make clean`
+  leaves it, because it is a download cache, not a build output. BuildKit's GC may also evict it. The next build then
+  downloads again, which is slower but still correct.
+- **CI.** Runners start with an empty builder, so the e2e job gains nothing and behaves as before. Workflow NuGet
+  caching (§14) is unchanged. No package version moved.
