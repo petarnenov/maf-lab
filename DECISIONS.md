@@ -2195,3 +2195,14 @@ said which account the conversation was about.
   `Returns` and `Arg.*` only set up a substitute, so they are not assertions.
 - **The agent is told.** The dotnet rules in its system instructions name NSubstitute for interfaces, and say never
   to hand-implement a large interface such as `IDatabase`.
+
+## 60. More tool rounds per attempt (2026-09-30)
+
+- **Why.** With the cap at 12 rounds, the agent often spent a whole attempt reading. On
+  `src/Maf.Lab.A2A/RedisTaskStore.cs`, `glm-5.3:cloud` read 15 files, planned its tests, and was cut off before its
+  first `write_file`. That happened even with the nudge when few rounds remain.
+- **The cap is `TestAgentOptions.MaxToolRoundsPerAttempt`, and only there.** The attempt's instructions, the nudge
+  (`RoundNudgeChatClient`, when `Instructions.NudgeAtRoundsLeft` rounds remain) and the tool loop's
+  `MaximumIterationsPerRequest` all read it. No appsettings or compose entry repeats it, so this is its only value.
+- **Cost.** More rounds per attempt means more input tokens per attempt, because each round re-reads the
+  conversation. The run's budget (chosen in the picker, unlimited by default) and the 5-attempt cap still bound a run.
