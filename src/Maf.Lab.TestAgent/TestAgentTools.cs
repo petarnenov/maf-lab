@@ -42,6 +42,9 @@ public sealed class TestAgentTools(Workspace workspace, TestGenRequest request, 
         AIFunctionFactory.Create(ReportSuspectedBug, "report_suspected_bug"),
     ];
 
+    /// <summary>The suspected bugs recorded before a restart, so a resumed task goes on counting them.</summary>
+    public void Restore(IEnumerable<SuspectedBug> bugs) => _bugs.AddRange(bugs);
+
     /// <summary>Starts a new attempt: the model's own test runs are counted per attempt.</summary>
     public void BeginAttempt() => _runsThisAttempt = 0;
 

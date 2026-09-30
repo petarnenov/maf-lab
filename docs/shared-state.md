@@ -10,6 +10,7 @@ mostly believed that already — what it did not is what this describes.
 | A run while it runs | Redis | The tab closes and the client comes back on another replica |
 | Idempotency keys a caller owns | Redis | The write happens in the MCP server; the record belongs beside it |
 | The reviewer's A2A tasks and webhooks | Redis | Two replicas, no database of its own, and no page that queries them |
+| The test agent's A2A tasks, their checkpoints and leases | Redis | A run outlives the process running it; after a restart the next one takes it over |
 | Conversations, messages, what one is waiting on | SQLite | Already shared; the list is one query over the turns, which do not move |
 | The assistant's A2A tasks and webhooks | SQLite | `/admin/a2a` reads them in one query with the audit rows |
 | Turns, traces, audit chain, feedback, labels, admin jobs | SQLite | Written to be read later, not shared in flight |
@@ -45,6 +46,19 @@ says how long what was said is kept, the other how long the working of a turn is
 whether it is waiting for a person, and how it finished. Any replica can answer, because the state is not any
 one replica's. It is a snapshot and not a replay — a client is told where the turn stands, not the frames it
 missed. See [http-api.md](http-api.md).
+
+## A test run across an agent restart
+
+The test agent runs a task in the process that accepted it, but keeps what the task needs beside it in the store:
+`task:testgen:checkpoint:{id}` holds the request and, after the baseline and after every finished attempt, where the
+loop stood (attempts so far, the best result and its diff, the tests written so far, the feedback, usage, the last
+activity number). `task:testgen:lease:{id}` names the replica running it; it lasts `TestAgent:LeaseFor` (30 s) and is
+renewed every third of that, and given up when the host stops.
+
+On start, and every `TestAgent:RecoverEvery` (15 s), the agent takes over each `submitted` or `working` task whose lease
+has lapsed and resumes it from its checkpoint: an interrupted attempt runs again from the tests the last finished one
+left, usage and activity numbering go on, and a `resumed` entry tells the page. A task with no checkpoint ends
+`failed` with reason `interrupted`. Both keys go when the task ends.
 
 ## An idempotency key
 

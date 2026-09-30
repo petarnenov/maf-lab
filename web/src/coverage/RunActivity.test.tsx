@@ -6,7 +6,14 @@ import type { RunSummary } from '../api/types';
 import { jsonResponse, makeSession, renderWithProviders, sse, streamResponse } from '../test/render';
 import { CoveragePage } from './CoveragePage';
 import { detail } from './CoveragePage.test';
-import { ATTEMPT_EVENT, initialRunStream, reduceRunEvent, STOPPED_EVENT, type RunStreamState } from './runStream';
+import {
+  ATTEMPT_EVENT,
+  initialRunStream,
+  reduceRunEvent,
+  RESUMED_EVENT,
+  STOPPED_EVENT,
+  type RunStreamState,
+} from './runStream';
 import { sampleTree } from './treeModel.test';
 
 const run = (overrides: Partial<RunSummary> = {}): RunSummary => ({
@@ -148,6 +155,18 @@ describe('run stream reducer (AG-UI)', () => {
     expect(s.timeline).toEqual([
       { kind: 'tool', id: 't', name: 'run_tests', path: null, outcome: 'refused', summary: 'Only test files.' },
     ]);
+  });
+
+  it('notes where the agent resumed after a restart', () => {
+    const s = fold([
+      e(EventType.STEP_STARTED, { stepName: 'attempt 2: generating' }),
+      e(EventType.STEP_FINISHED, { stepName: 'attempt 2: generating' }),
+      e(EventType.CUSTOM, { name: RESUMED_EVENT, value: { attempt: 2 } }),
+    ]);
+    expect(s.timeline.at(-1)).toMatchObject({
+      kind: 'notice',
+      text: 'The agent restarted and resumed the run at attempt 2.',
+    });
   });
 
   it('takes the summary from state snapshots and the end from the terminal event', () => {

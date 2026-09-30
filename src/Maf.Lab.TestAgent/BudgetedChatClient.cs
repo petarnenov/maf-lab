@@ -60,6 +60,13 @@ public sealed class RunUsage(TestGenBudget? caps, ModelPrice price)
         Interlocked.Add(ref _output, details.OutputTokenCount ?? 0);
     }
 
+    /// <summary>What a task used before a restart: a resumed task's caps count it.</summary>
+    public void Restore(TestGenUsage used)
+    {
+        Interlocked.Add(ref _input, used.InputTokens);
+        Interlocked.Add(ref _output, used.OutputTokens);
+    }
+
     // A null cap compares false, so an unset cap never stops the run.
     public bool Spent => Tokens > budget.MaxTokens || CostUsd > budget.MaxCostUsd;
 

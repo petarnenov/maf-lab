@@ -9,6 +9,7 @@ import { SseParser } from '../chat/sseParser';
 export const ATTEMPT_EVENT = 'maf-lab/testgen-attempt';
 export const DROPPED_EVENT = 'maf-lab/testgen-activity-dropped';
 export const STOPPED_EVENT = 'maf-lab/testgen-stopped';
+export const RESUMED_EVENT = 'maf-lab/testgen-resumed';
 
 export interface StopInfo {
   reason: string;
@@ -140,6 +141,14 @@ export function reduceRunEvent(state: RunStreamState, event: AguiEvent): RunStre
       }
       if (event.name === STOPPED_EVENT) {
         return { ...state, timeline: [...timeline, { kind: 'stopped', id: 'stopped', ...(event.value as StopInfo) }] };
+      }
+      if (event.name === RESUMED_EVENT) {
+        const attempt = Number((event.value as { attempt?: number } | undefined)?.attempt ?? 0);
+        const text =
+          attempt > 0
+            ? `The agent restarted and resumed the run at attempt ${attempt}.`
+            : 'The agent restarted and resumed the run at the baseline.';
+        return { ...state, timeline: [...timeline, { kind: 'notice', id: `resumed-${timeline.length}`, text }] };
       }
       if (event.name === DROPPED_EVENT) {
         const text = 'The oldest activity of this run was dropped to keep it within its cap.';

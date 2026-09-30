@@ -28,6 +28,25 @@ public sealed class ActivityReporterTests
     }
 
     [Fact]
+    public async Task A_resumed_task_numbers_on_from_where_it_stopped()
+    {
+        var sent = new List<TestGenActivity>();
+        var reporter = new ActivityReporter((entries, _) =>
+        {
+            sent.AddRange(entries);
+            return Task.CompletedTask;
+        }, new ManualTime(), NullLogger.Instance, startAfter: 41) { Attempt = 3 };
+
+        await reporter.ResumedAsync(Ct);
+        await reporter.PhaseAsync(AttemptPhase.Generating, Ct);
+
+        Assert.Equal([42L, 43L], sent.Select(e => e.Seq));
+        Assert.Equal(ActivityType.Resumed, sent[0].Type);
+        Assert.Equal(3, sent[0].Attempt);
+        Assert.Equal(43, reporter.Seq);
+    }
+
+    [Fact]
     public async Task Entries_are_numbered_in_order_under_their_attempt()
     {
         var (reporter, sent, _) = Reporter();

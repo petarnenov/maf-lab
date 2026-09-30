@@ -17,6 +17,7 @@ public sealed class RunActivityProjection(string runId)
     public const string AttemptEvent = "maf-lab/testgen-attempt";
     public const string DroppedEvent = "maf-lab/testgen-activity-dropped";
     public const string StoppedEvent = "maf-lab/testgen-stopped";
+    public const string ResumedEvent = "maf-lab/testgen-resumed";
 
     private readonly Dictionary<long, int> _sent = [];
     private string? _summary;
@@ -111,6 +112,19 @@ public sealed class RunActivityProjection(string runId)
                             errors = result.Errors,
                             violations = result.Violations,
                         }, AGUIStream.Json),
+                    };
+                    break;
+                case ActivityType.Resumed:
+                    // The agent restarted: the step it was in is over, and the attempt it resumes at starts again.
+                    if (_step is { } interrupted)
+                    {
+                        _step = null;
+                        yield return new StepFinishedEvent { StepName = interrupted };
+                    }
+                    yield return new CustomEvent
+                    {
+                        Name = ResumedEvent,
+                        Value = JsonSerializer.SerializeToElement(new { attempt = row.Attempt }, AGUIStream.Json),
                     };
                     break;
                 case ActivityType.Stopped when Data<StoppedActivity>(row) is { } stop:

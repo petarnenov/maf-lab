@@ -16,5 +16,11 @@ public sealed class TestAgentOptions
     public string RunnerPartnerId { get; set; } = "maf-lab-test-agent";
     public TimeSpan RunnerPollEvery { get; set; } = TimeSpan.FromSeconds(2);
 
+    /// <summary>How long a task's lease lasts unrenewed; a replica renews it every third of this while it runs the task.</summary>
+    public TimeSpan LeaseFor { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>How often the agent looks for tasks a stopped process left running, after the first look at start.</summary>
+    public TimeSpan RecoverEvery { get; set; } = TimeSpan.FromSeconds(15);
+
     // How much an attempt may do (tool rounds, test runs) comes with each task, bounded by RunLimits (DECISIONS.md §61).
 }

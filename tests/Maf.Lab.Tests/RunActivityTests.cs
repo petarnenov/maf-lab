@@ -242,6 +242,27 @@ public sealed class RunActivityTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_resume_closes_the_interrupted_step_and_says_where_it_resumes()
+    {
+        var view = new RunActivityProjection("r1");
+
+        var events = await ProjectAsync(view,
+            [Phase(1, AttemptPhase.Generating, 2), Entry(2, ActivityType.Resumed, 2), Phase(3, AttemptPhase.Generating, 2)]);
+
+        Assert.Collection(events,
+            e => Assert.Equal("attempt 2: generating", Assert.IsType<StepStartedEvent>(e).StepName),
+            e => Assert.Equal("attempt 2: generating", Assert.IsType<StepFinishedEvent>(e).StepName),
+            e =>
+            {
+                var resumed = Assert.IsType<CustomEvent>(e);
+                Assert.Equal(RunActivityProjection.ResumedEvent, resumed.Name);
+                Assert.Equal(2, ((JsonElement)resumed.Value!).GetProperty("attempt").GetInt32());
+            },
+            // The resume closed the step, so the next phase starts one without finishing another.
+            e => Assert.Equal("attempt 2: generating", Assert.IsType<StepStartedEvent>(e).StepName));
+    }
+
+    [Fact]
     public async Task An_attempts_result_is_a_custom_event()
     {
         var view = new RunActivityProjection("r1");
@@ -266,6 +287,13 @@ public sealed class RunActivityTests : IAsyncLifetime
 
         Assert.Equal(reason ?? state, error.Code);
     }
+
+    [Theory]
+    [InlineData(TestGenFailure.Interrupted, "interrupted")]
+    [InlineData(TestGenFailure.RunnerUnavailable, "runner_unavailable")]
+    [InlineData("something the agent said", "agent_failed")]
+    public void A_failed_tasks_text_becomes_the_runs_reason(string text, string reason) =>
+        Assert.Equal(reason, Maf.Lab.Api.Coverage.TestGenRuns.Code(text));
 
     [Fact]
     public void A_candidate_ends_finished_with_its_summary()

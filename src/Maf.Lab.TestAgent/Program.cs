@@ -59,7 +59,14 @@ public partial class Program
         builder.Services.TryAddSingleton<ITaskStore, RedisTaskStore>();
         builder.Services.TryAddSingleton<IPushConfigStore, RedisPushConfigStore>();
         builder.RequireSharedState<ITaskStore>();
-        builder.Services.AddSingleton<IAgentHandler, TestGenerationHandler>();
+        // A task's checkpoint and lease sit beside it in the shared store; a host without one keeps them in memory.
+        builder.Services.TryAddSingleton<ITaskCheckpointStore>(sp =>
+            sp.GetService<StackExchange.Redis.IConnectionMultiplexer>() is { } redis
+                ? new RedisTaskCheckpointStore(redis, sp.GetRequiredService<IOptions<A2AOptions>>())
+                : new InMemoryTaskCheckpointStore(sp.GetRequiredService<TimeProvider>()));
+        builder.Services.AddSingleton<TestGenerationHandler>();
+        builder.Services.AddSingleton<IAgentHandler>(sp => sp.GetRequiredService<TestGenerationHandler>());
+        builder.Services.AddHostedService<TaskRecovery>();
         builder.Services.AddSingleton<ChannelEventNotifier>();
         builder.Services.AddSingleton<A2AServer>();
         builder.Services.AddSingleton<IA2ARequestHandler, A2ARequestHandlerWithExtras>();

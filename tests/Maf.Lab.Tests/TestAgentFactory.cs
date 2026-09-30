@@ -46,15 +46,17 @@ internal sealed class RecordingTaskStore : global::A2A.ITaskStore
 
 /// <summary>
 /// The test agent on a real socket, over a temp repository, with a scripted model and a fake runner: what a test
-/// drives is the handler's loop, the tools and the protocol, not a model or a build.
+/// drives is the handler's loop, the tools and the protocol, not a model or a build. Two factories given the same task
+/// and checkpoint stores are one agent restarted: what the first leaves behind, the second finds.
 /// </summary>
-internal sealed class TestAgentFactory(TempGitRepo repo, IChatClient model, FakeCoverageRunner runner, Uri? realRunner = null)
-    : IAsyncDisposable
+internal sealed class TestAgentFactory(TempGitRepo repo, IChatClient model, FakeCoverageRunner runner, Uri? realRunner = null,
+    RecordingTaskStore? tasks = null, ITaskCheckpointStore? checkpoints = null) : IAsyncDisposable
 {
     private WebApplication? _app;
 
     public CapturingLoggerProvider Logs { get; } = new();
-    public RecordingTaskStore Tasks { get; } = new();
+    public RecordingTaskStore Tasks { get; } = tasks ?? new();
+    public ITaskCheckpointStore Checkpoints { get; } = checkpoints ?? new InMemoryTaskCheckpointStore(TimeProvider.System);
 
     public async Task<HttpClient> ClientAsync(bool authenticated = true)
     {
@@ -74,10 +76,13 @@ internal sealed class TestAgentFactory(TempGitRepo repo, IChatClient model, Fake
                     ["TestAgent:RepoRoot"] = repo.Root,
                     ["TestAgent:WorkRoot"] = Directory.CreateTempSubdirectory("maf-agent-work-").FullName,
                     ["TestAgent:RunnerPollEvery"] = "00:00:00.010",
+                    ["TestAgent:RecoverEvery"] = "00:00:00.100",
+                    ["TestAgent:LeaseFor"] = "00:00:03",
                 });
                 builder.Logging.ClearProviders();
                 builder.Logging.AddProvider(Logs).SetMinimumLevel(LogLevel.Debug);
                 builder.Services.AddSingleton<global::A2A.ITaskStore>(Tasks);
+                builder.Services.AddSingleton(Checkpoints);
                 builder.Services.AddSingleton<IPushConfigStore>(new FakePushConfigStore());
                 builder.Services.AddSingleton<IChatClientFactory>(new FixedChatClientFactory(model));
                 builder.Services.AddSingleton(realRunner is null

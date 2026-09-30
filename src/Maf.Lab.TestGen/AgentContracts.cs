@@ -110,6 +110,9 @@ public static class ActivityType
     public const string Text = "text";
     public const string Reasoning = "reasoning";
     public const string Stopped = "stopped";
+
+    /// <summary>The agent took the task over after a restart; the entry's attempt is the one it resumes at.</summary>
+    public const string Resumed = "resumed";
 }
 
 public static class ToolOutcome
@@ -215,6 +218,9 @@ public static class TestGenFailure
     public const string RunnerUnavailable = "runner_unavailable";
     public const string DiffTooLarge = "diff_too_large";
     public const string Internal = "internal_error";
+
+    /// <summary>The agent restarted and the task had nothing to resume from.</summary>
+    public const string Interrupted = "interrupted";
 
     /// <summary>Largest diff the report carries; it keeps the whole artifact well under the 1 MB request limit.</summary>
     public const int MaxDiffBytes = 256 * 1024;

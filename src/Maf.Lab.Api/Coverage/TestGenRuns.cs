@@ -354,9 +354,9 @@ public sealed class TestGenRuns(
     }
 
     /// <summary>The agent's failure code from its status text, or a generic one.</summary>
-    private static string Code(string? text) =>
+    internal static string Code(string? text) =>
         text is TestGenFailure.ModelUnavailable or TestGenFailure.CheckoutFailed or TestGenFailure.RunnerUnavailable
-            or TestGenFailure.DiffTooLarge or TestGenFailure.Internal
+            or TestGenFailure.DiffTooLarge or TestGenFailure.Internal or TestGenFailure.Interrupted
             ? text
             : "agent_failed";
 }

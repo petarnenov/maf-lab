@@ -11,7 +11,8 @@ namespace Maf.Lab.TestAgent;
 public sealed class ActivityReporter(
     Func<IReadOnlyList<TestGenActivity>, CancellationToken, Task> send,
     TimeProvider time,
-    ILogger logger)
+    ILogger logger,
+    long startAfter = 0)
 {
     /// <summary>A chunk goes once it holds this much text, or once it is this old.</summary>
     public const int ChunkBytes = 1024;
@@ -23,10 +24,14 @@ public sealed class ActivityReporter(
         [ActivityType.Text] = new TextStream(),
         [ActivityType.Reasoning] = new TextStream(),
     };
-    private long _seq;
+    // A task taken over after a restart numbers on from the last entry recorded before it.
+    private long _seq = startAfter;
 
     /// <summary>The attempt entries are recorded under.</summary>
     public int Attempt { get; set; }
+
+    /// <summary>The last sequence number handed out.</summary>
+    public long Seq => Interlocked.Read(ref _seq);
 
     /// <summary>Entries that could not be sent.</summary>
     public int Failures { get; private set; }
@@ -46,6 +51,9 @@ public sealed class ActivityReporter(
     /// <summary>The agent's work is over: the last entry of a completed task, saying why it stopped.</summary>
     public Task StoppedAsync(StoppedActivity stop, CancellationToken ct) =>
         EntryAsync(seq => Entry(seq, ActivityType.Stopped) with { Stop = stop }, ct);
+
+    /// <summary>The agent took the task over after a restart, at <see cref="Attempt"/>.</summary>
+    public Task ResumedAsync(CancellationToken ct) => EntryAsync(seq => Entry(seq, ActivityType.Resumed), ct);
 
     /// <summary>Model text or reasoning as it streams; it goes out in chunks, each continuing the reply's entry.</summary>
     public async Task TextAsync(string type, string delta, CancellationToken ct)
