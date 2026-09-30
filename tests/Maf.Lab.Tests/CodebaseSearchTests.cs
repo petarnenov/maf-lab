@@ -376,6 +376,81 @@ public class CodebaseSearchTests
         Assert.Equal([SourceType.Docs], ranker.Calls[^1].Types);
     }
 
+    /// <summary>A 3,000-character chunk of 60 lines, starting at line 101, whose line 141 holds <c>MaxRounds = 40</c>.</summary>
+    private static string LongChunk()
+    {
+        var lines = Enumerable.Range(0, 60).Select(i => i == 40
+            ? "    public int MaxRounds { get; set; } = 40;".PadRight(49)
+            : $"    // filler line {i:00} about nothing in particular".PadRight(49));
+        return string.Join('\n', lines);
+    }
+
+    [Fact]
+    public async Task A_matching_line_past_the_limit_is_in_the_snippet_and_its_range_is_the_windows()
+    {
+        var text = LongChunk();
+        Assert.Equal(2_999, text.Length);
+        Assert.True(text.IndexOf("= 40", StringComparison.Ordinal) > 1_200);
+        var ranker = new FakeRanker(Chunk("src/Maf.Lab.TestAgent/TestAgentOptions.cs", 101, 160, "TestAgentOptions", text));
+
+        var result = await Service(ranker).SearchAsync(FirmA, "what is MaxRounds of the test agent", null, null, null, Ct);
+
+        var snippet = Assert.Single(result.Results);
+        Assert.Contains("MaxRounds { get; set; } = 40;", snippet.Snippet);
+        Assert.True(snippet.Snippet.Length <= 1_200 + 4);
+        Assert.StartsWith("…\n", snippet.Snippet);
+        // The range is the window's and covers line 141: the run from the matching line reaches the chunk's end, so the
+        // room left is spent above it (lines 137–160), and every line it spans is one the text holds.
+        Assert.Equal((137, 160), (snippet.StartLine, snippet.EndLine));
+        var shown = snippet.Snippet.Split('\n').Count(l => l != "…");
+        Assert.Equal(snippet.EndLine - snippet.StartLine + 1, shown);
+    }
+
+    [Fact]
+    public void A_window_starting_near_the_end_widens_upwards_and_the_densest_run_wins()
+    {
+        var lines = Enumerable.Range(0, 60).Select(i => i is 10 or 50 or 55 ? $"var tenantFilter{i} = TenantFilter.For(p);" : $"// line {i:00} of filler text here");
+        var text = string.Join('\n', lines);
+
+        var window = CodeSearchService.Window(text, 1, 60, "tenant filter", 600);
+
+        // Lines 51 and 56 match together; line 11 alone does not beat them.
+        Assert.Contains("tenantFilter50", window.Text);
+        Assert.Contains("tenantFilter55", window.Text);
+        Assert.DoesNotContain("tenantFilter10", window.Text);
+        Assert.Equal(60, window.EndLine);
+        Assert.EndsWith("TenantFilter.For(p);\n// line 56 of filler text here\n// line 57 of filler text here\n// line 58 of filler text here\n// line 59 of filler text here", window.Text);
+        Assert.StartsWith("…\n", window.Text);
+        Assert.True(window.Text.Length - 2 <= 600);
+    }
+
+    [Fact]
+    public async Task A_chunk_with_no_query_term_keeps_its_head_and_the_heads_range()
+    {
+        var text = LongChunk();
+        var ranker = new FakeRanker(Chunk("src/Maf.Lab.TestAgent/TestAgentOptions.cs", 101, 160, "TestAgentOptions", text));
+
+        var result = await Service(ranker).SearchAsync(FirmA, "колко кръга има агентът", null, null, null, Ct);
+
+        var snippet = Assert.Single(result.Results);
+        Assert.StartsWith("    // filler line 00", snippet.Snippet);
+        Assert.EndsWith("\n…", snippet.Snippet);
+        Assert.DoesNotContain("= 40", snippet.Snippet);
+        Assert.Equal(101, snippet.StartLine);
+        Assert.Equal(101 + snippet.Snippet.Split('\n').Count(l => l != "…") - 1, snippet.EndLine);
+    }
+
+    [Fact]
+    public async Task A_chunk_under_the_limit_is_returned_unchanged()
+    {
+        var ranker = new FakeRanker(Chunk("src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs", 38, 60, "TenantScopedSearch.QueryAsync", "public async Task QueryAsync()"));
+
+        var snippet = Assert.Single((await Service(ranker).SearchAsync(FirmA, "query async", null, null, null, Ct)).Results);
+
+        Assert.Equal("public async Task QueryAsync()", snippet.Snippet);
+        Assert.Equal((38, 60), (snippet.StartLine, snippet.EndLine));
+    }
+
     [Fact]
     public async Task Search_with_no_match_says_how_to_rephrase()
     {

@@ -501,6 +501,43 @@ public class JevStatsTests
     }
 
     [Fact]
+    public void Uncertain_answers_are_counted_apart_and_over_the_cap_sends_no_request()
+    {
+        static JsonObject Band(JsonObject e, double floor)
+        {
+            e["data"]!["relevantFloor"] = floor;
+            e["data"]!["groundedFloor"] = floor;
+            e["data"]!["relevantPassAt"] = 0.8;
+            e["data"]!["groundedPassAt"] = 0.8;
+            return e;
+        }
+        var rows = new[]
+        {
+            Row(-5, Trace(IntentEv("Procedural", forced: true, choice: "procedural"), Band(AnswerEv("pass", 0.93, 0.88), 0.2))),
+            // In the band: checked, above both floors, no signal.
+            Row(-6, Trace(IntentEv("Procedural", forced: true, choice: "procedural"), Band(AnswerEv("uncertain", 0.9, 0.35), 0.2))),
+            // Over the cap: unchecked, no request, and not Jev being unavailable.
+            Row(-7, Trace(IntentEv("Procedural", forced: true, choice: "procedural"),
+                Band(AnswerEv("unchecked", null, null, ms: 0, reason: "sources over cap", requests: 0), 0.2))),
+        };
+
+        var r = Aggregate(rows);
+
+        var a = r.AnswerCheck!;
+        Assert.Equal(3, a.Answers);
+        Assert.Equal(2, a.Checked);
+        Assert.Equal(1, a.Pass);
+        Assert.Equal(1, a.Uncertain);
+        Assert.Equal((0, 0), (a.NotRelevant, a.NotGrounded));
+        Assert.Equal(1, a.Unchecked);
+        Assert.Equal(0, a.Unavailable);
+        Assert.Equal((0.2, 0.2), (a.RelevantFloor, a.GroundedFloor));
+        var site = r.Overview.Sites.Single(x => x.Site == "answer");
+        Assert.Equal(2, site.Requests);
+        Assert.Equal(0, site.Unavailable);
+    }
+
+    [Fact]
     public async Task Answered_turns_reach_the_answer_section_through_the_api()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());

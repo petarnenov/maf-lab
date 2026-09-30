@@ -39,6 +39,24 @@ public sealed class GuardOptions
 
     /// <summary>How many items of one tool result are screened at once.</summary>
     public int MaxConcurrent { get; set; } = 8;
+
+    /// <summary>
+    /// Content questions that are recorded but never withhold a <c>search_codebase</c> snippet on their own
+    /// (fit-answer-checks-to-code-questions, D2). The repository's prompt templates and agent instructions really do
+    /// speak to an AI, so "addressed to an AI" cannot tell the lab's own prompt from a planted one; a codebase snippet is
+    /// withheld only when another question reaches <see cref="ContentWithholdAt"/>. Every other tool is unaffected. Unset
+    /// means <see cref="DefaultCodebaseRecordOnly"/>; configured, the list replaces it (the binder would append to a
+    /// non-empty default), so <c>Guard__CodebaseRecordOnly__0=</c> — one empty entry — restores withholding on every question.
+    /// </summary>
+    public List<string>? CodebaseRecordOnly { get; set; }
+
+    public static readonly IReadOnlyList<string> DefaultCodebaseRecordOnly = [JevGuardQuestions.Prefix + "to_ai"];
+
+    /// <summary>The record-only question ids in force: the configured ones, empty entries dropped, or the default.</summary>
+    public IReadOnlyList<string> RecordOnlyQuestions =>
+        CodebaseRecordOnly is { } configured
+            ? [.. configured.Where(q => !string.IsNullOrWhiteSpace(q)).Distinct(StringComparer.Ordinal)]
+            : DefaultCodebaseRecordOnly;
 }
 
 /// <summary>Jev's probabilities for one screening, or why there are none.</summary>
@@ -73,8 +91,11 @@ public sealed record PromptScreen(GuardDecision Decision, GuardScores Scores, do
 /// <summary>A tool result as the model will read it, and how each of its items was judged.</summary>
 /// <param name="Requests">How many Jev requests the screening made: one per item that had text.</param>
 /// <param name="ElapsedMs">From the first request to the last answer — the items run in parallel, so not their sum.</param>
+/// <param name="Context">The battery's context: <see cref="Guardrail.ContextCodebase"/> for a codebase search, billing otherwise.</param>
+/// <param name="RecordOnly">The questions that were recorded but could not withhold an item.</param>
 public sealed record ScreenedToolResult(string Payload, JsonElement? Structured, GuardDecision Decision, IReadOnlyList<ScreenedItem> Items,
-    int Withheld, bool WholeWithheld, double Threshold, int Requests = 0, double ElapsedMs = 0);
+    int Withheld, bool WholeWithheld, double Threshold, int Requests = 0, double ElapsedMs = 0, string Context = Guardrail.ContextBilling,
+    IReadOnlyList<string>? RecordOnly = null);
 
 /// <summary>
 /// The content guard's policy: what a screening means for the turn. Jev supplies probabilities; this class owns the
@@ -87,6 +108,10 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
     public const string CheckPartner = "partner_prompt";
     public const string CheckToolResult = "tool_result";
     public const string CheckReviewer = "reviewer";
+
+    /// <summary>The content battery's contexts, as the trace names them.</summary>
+    public const string ContextBilling = "billing";
+    public const string ContextCodebase = "codebase";
 
     public const string RefusalEnglish =
         "I can't help with that request. I answer questions about your firm's billing from its own documents and data, "
@@ -160,8 +185,10 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
         var threshold = options.Value.ContentWithholdAt;
         var excerpts = Excerpts(tool, structured);
         var texts = excerpts ?? [payload];
+        var recordOnly = RecordOnlyFor(tool);
+        var context = ContextOf(tool);
         var clock = System.Diagnostics.Stopwatch.StartNew();
-        var items = await ScreenAllAsync(texts, ct);
+        var items = await ScreenAllAsync(texts, JevGuardQuestions.ContentFor(tool), recordOnly, ct);
         var elapsedMs = clock.Elapsed.TotalMilliseconds;
         // One request per item that had text, less the ones an open circuit skipped: those sent nothing.
         var requests = texts.Count(t => !string.IsNullOrWhiteSpace(t)) - items.Count(i => i.Scores.Skipped);
@@ -172,27 +199,82 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
             : GuardDecision.Pass;
         if (withheld.Count == 0)
         {
-            return new ScreenedToolResult(payload, structured, decision, items, 0, false, threshold, requests, elapsedMs);
+            return new ScreenedToolResult(payload, structured, decision, items, 0, false, threshold, requests, elapsedMs, context, recordOnly);
         }
         if (excerpts is null)
         {
             // One item, and it is the result: nothing of it may reach the model.
             var node = new JsonObject { ["withheld"] = true, ["notice"] = WithheldNotice };
             return new ScreenedToolResult(node.ToJsonString(), JsonSerializer.SerializeToElement(node), decision, items, 1, true, threshold,
-                requests, elapsedMs);
+                requests, elapsedMs, context, recordOnly);
         }
 
+        // A withheld item becomes its stub in place (D3): the model, the answer check and the trace keep the place it
+        // came from, and nothing of its text.
         var sanitized = JsonNode.Parse(structured!.Value.GetRawText())!.AsObject();
         var results = sanitized["results"]!.AsArray();
-        foreach (var index in withheld.OrderByDescending(i => i))
+        foreach (var index in withheld)
         {
-            results.RemoveAt(index);
+            results[index] = Stub(results[index]);
         }
         sanitized["withheld"] = withheld.Count;
-        sanitized["withheldNotice"] = $"{withheld.Count} excerpt(s) removed. {WithheldNotice}";
+        sanitized["withheldNotice"] = $"{withheld.Count} excerpt(s) withheld. {WithheldNotice}";
         return new ScreenedToolResult(sanitized.ToJsonString(), JsonSerializer.SerializeToElement(sanitized), decision, items,
-            withheld.Count, false, threshold, requests, elapsedMs);
+            withheld.Count, false, threshold, requests, elapsedMs, context, recordOnly);
     }
+
+    /// <summary>
+    /// One text screened as an item of <paramref name="tool"/>'s result — the battery and the record-only rule that tool's
+    /// items get — for the guardrail eval, which measures the item decision on its own.
+    /// </summary>
+    public async Task<ScreenedItem> ScreenItemAsync(string tool, string text, CancellationToken ct)
+    {
+        if (!Enabled)
+        {
+            return new ScreenedItem(0, GuardDecision.Unscreened, GuardScores.Failed("disabled", null, 0));
+        }
+        var items = await ScreenAllAsync([text], JevGuardQuestions.ContentFor(tool), RecordOnlyFor(tool), ct);
+        return items.Single();
+    }
+
+    /// <summary>
+    /// What a withheld search item leaves behind: only identifiers that are not free text, which the indexer wrote from
+    /// the file system — a codebase snippet's path and line range, a document excerpt's id — and <c>withheld: true</c>.
+    /// Never the snippet, the symbol or the section path: those come from the file's own text and could carry the words.
+    /// </summary>
+    internal static JsonObject Stub(JsonNode? item)
+    {
+        var stub = new JsonObject();
+        if (item is JsonObject o)
+        {
+            if (o["path"] is JsonValue path && o["docId"] is null)
+            {
+                stub["path"] = path.DeepClone();
+                if (o["startLine"] is JsonValue start)
+                {
+                    stub["startLine"] = start.DeepClone();
+                }
+                if (o["endLine"] is JsonValue end)
+                {
+                    stub["endLine"] = end.DeepClone();
+                }
+            }
+            else if (o["docId"] is JsonValue docId)
+            {
+                stub["docId"] = docId.DeepClone();
+            }
+        }
+        stub["withheld"] = true;
+        return stub;
+    }
+
+    /// <summary>The questions that may not withhold an item of this tool on their own: the configured list for a codebase search, none otherwise.</summary>
+    private IReadOnlyList<string> RecordOnlyFor(string? tool) =>
+        tool == Domains.SearchTool[Domains.Codebase]
+            ? options.Value.RecordOnlyQuestions
+            : [];
+
+    private static string ContextOf(string? tool) => tool == Domains.SearchTool[Domains.Codebase] ? ContextCodebase : ContextBilling;
 
     /// <summary>
     /// A reviewer's words, judged before they are believed or put before the model. Flagged: the review failed — the
@@ -217,7 +299,8 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
             : top.Top >= threshold ? GuardDecision.Withheld
             : GuardDecision.Pass;
         Trace(trace, CheckReviewer, null, callId, decision, threshold, [new ScreenedItem(0, decision, scores)],
-            decision == GuardDecision.Withheld ? 1 : 0, scores.Failure, requests: scores.Skipped ? 0 : 1, elapsedMs: scores.DurationMs);
+            decision == GuardDecision.Withheld ? 1 : 0, scores.Failure, requests: scores.Skipped ? 0 : 1, elapsedMs: scores.DurationMs,
+            context: ContextBilling);
 
         return (decision, result) switch
         {
@@ -237,15 +320,22 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
     /// The Jev requests this screening made itself; null for the prompt, whose questions ride in the intent request.
     /// </param>
     /// <param name="elapsedMs">The screening's wall-clock time; without it, the slowest item stands in.</param>
+    /// <param name="context">The content battery's context (billing or codebase); null for the prompt, which has its own.</param>
+    /// <param name="recordOnly">
+    /// Questions recorded without the power to withhold: a score at or above the threshold on one of them is visible
+    /// here, and decided nothing.
+    /// </param>
     public void Trace(TurnTrace? trace, string check, string? tool, string? callId, GuardDecision decision, double threshold,
-        IReadOnlyList<ScreenedItem> items, int withheld, string? reason, int? requests = null, double? elapsedMs = null)
+        IReadOnlyList<ScreenedItem> items, int withheld, string? reason, int? requests = null, double? elapsedMs = null,
+        string? context = null, IReadOnlyList<string>? recordOnly = null)
     {
+        recordOnly ??= [];
         var top = items.Select(i => i.Scores.Highest).Where(h => h is not null).Select(h => h!.Value)
             .OrderByDescending(h => h.Top).FirstOrDefault();
         var model = items.Select(i => i.Scores.Model).FirstOrDefault(m => m is not null);
         var durationMs = elapsedMs ?? (items.Count == 0 ? 0 : items.Max(i => i.Scores.DurationMs));
         var word = Word(decision);
-        var title = Title(check, tool, word, top, withheld, items.Count, reason)
+        var title = Title(check, tool, word, top, withheld, items.Count, reason, top != default && recordOnly.Contains(top.Question))
             + (requests > 1 ? $" · {requests} Jev requests" : "");
         trace?.Add(TraceKinds.Guardrail, title, new JsonObject
         {
@@ -271,6 +361,8 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
             ["requests"] = requests,
             ["durationMs"] = Math.Round(durationMs),
             ["reason"] = reason,
+            ["context"] = context,
+            ["recordOnly"] = new JsonArray([.. recordOnly.Select(q => (JsonNode)JsonValue.Create(q)!)]),
         }, (long)durationMs);
 
         // Structure only: which check, the decision, the scores — no message content, no credential.
@@ -304,7 +396,8 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
         _ => "pass",
     };
 
-    private async Task<List<ScreenedItem>> ScreenAllAsync(IReadOnlyList<string> texts, CancellationToken ct)
+    private async Task<List<ScreenedItem>> ScreenAllAsync(IReadOnlyList<string> texts, IReadOnlyDictionary<string, object> battery,
+        IReadOnlyList<string> recordOnly, CancellationToken ct)
     {
         var threshold = options.Value.ContentWithholdAt;
         using var gate = new SemaphoreSlim(Math.Max(1, options.Value.MaxConcurrent));
@@ -315,9 +408,11 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
             {
                 var scores = string.IsNullOrWhiteSpace(text)
                     ? new GuardScores(new Dictionary<string, double>(), null, 0, null)
-                    : await jev.ScreenContentAsync(text, ct);
-                var decision = scores.Scores is null ? GuardDecision.Unscreened
-                    : scores.Highest is { } top && top.Top >= threshold ? GuardDecision.Withheld
+                    : await jev.ScreenContentAsync(text, battery, ct);
+                // The decision is the highest answer among the questions that may withhold; the record-only ones are
+                // traced with the rest and decide nothing (D2).
+                var decision = scores.Scores is not { } s ? GuardDecision.Unscreened
+                    : s.Where(kv => !recordOnly.Contains(kv.Key)).Any(kv => kv.Value >= threshold) ? GuardDecision.Withheld
                     : GuardDecision.Pass;
                 return new ScreenedItem(index, decision, scores);
             }
@@ -343,7 +438,8 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
                 : r.GetRawText())];
     }
 
-    private static string Title(string check, string? tool, string decision, (double Top, string Question) top, int withheld, int items, string? reason)
+    private static string Title(string check, string? tool, string decision, (double Top, string Question) top, int withheld, int items, string? reason,
+        bool topRecordOnly)
     {
         var what = check switch
         {
@@ -352,7 +448,7 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
             CheckReviewer => "Reviewer's words",
             _ => $"{tool} result",
         };
-        var score = top == default ? "" : $" (top {top.Question} {top.Top:F2})";
+        var score = top == default ? "" : $" (top {top.Question} {top.Top:F2}{(topRecordOnly ? ", record-only" : "")})";
         return decision switch
         {
             "withheld" when items > 1 => $"{what}: {withheld} of {items} item(s) withheld{score}",

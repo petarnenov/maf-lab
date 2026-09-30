@@ -74,9 +74,11 @@ public static class Metrics
     /// guard that flags everything cannot hide behind one that flags nothing. Each is also given per side (prompt,
     /// content), language, split and category; a group with no case of a kind reports no rate for it. <c>answered</c>
     /// is the share of cases Jev answered at all: an unscreened case counts as not flagged, and this says how many were.
+    /// A tool-side case that names its tool is also counted under <c>:tool:&lt;tool&gt;</c>, overall, per language and per
+    /// split — the codebase's search has its own battery and record-only rule, so its rates are read on their own.
     /// </summary>
     public static Dictionary<string, double> Guardrail(IEnumerable<(bool Malicious, bool Flagged, bool Answered, string Side, string Language,
-        string Split, string Category)> cases)
+        string Split, string Category, string? Tool)> cases)
     {
         var all = cases.ToList();
         static double Share(IEnumerable<bool> hits)
@@ -85,7 +87,7 @@ public static class Metrics
             return list.Count == 0 ? 1 : (double)list.Count(h => h) / list.Count;
         }
         var metrics = new Dictionary<string, double>();
-        void Rates(string suffix, IReadOnlyCollection<(bool Malicious, bool Flagged, bool Answered, string Side, string Language, string Split, string Category)> group)
+        void Rates(string suffix, IReadOnlyCollection<(bool Malicious, bool Flagged, bool Answered, string Side, string Language, string Split, string Category, string? Tool)> group)
         {
             if (group.Any(c => c.Malicious))
             {
@@ -112,6 +114,78 @@ public static class Metrics
             foreach (var category in group.GroupBy(c => c.Category).OrderBy(g => g.Key, StringComparer.Ordinal))
             {
                 Rates($":{group.Key}:{category.Key}", category.ToList());
+            }
+        }
+        foreach (var tool in all.Where(c => c.Side == "tool" && c.Tool is not null).GroupBy(c => c.Tool!).OrderBy(g => g.Key, StringComparer.Ordinal))
+        {
+            Rates($":tool:{tool.Key}", tool.ToList());
+            foreach (var language in tool.GroupBy(c => c.Language).OrderBy(g => g.Key, StringComparer.Ordinal))
+            {
+                Rates($":tool:{tool.Key}:{language.Key}", language.ToList());
+            }
+            foreach (var split in tool.GroupBy(c => c.Split).OrderBy(g => g.Key, StringComparer.Ordinal))
+            {
+                Rates($":tool:{tool.Key}:{split.Key}", split.ToList());
+            }
+        }
+        return metrics;
+    }
+
+    /// <summary>One labelled answer and what the check made of it (see <see cref="AnswerCheck"/>).</summary>
+    /// <param name="NotGrounded">The check raised <c>answer_not_grounded</c>: grounding below its signal floor.</param>
+    /// <param name="NotRelevant">The check raised <c>answer_not_relevant</c>.</param>
+    /// <param name="Uncertain">Checked, above both floors and below a pass threshold: no signal.</param>
+    public readonly record struct AnswerCheckOutcome(bool Unsupported, bool OffTopic, bool Checked, bool NotGrounded, bool NotRelevant,
+        bool Uncertain, string Domain, string Language, string Split);
+
+    /// <summary>
+    /// The answer check against its labels. <c>groundedDetection</c> is the share of unsupported answers flagged not
+    /// grounded and <c>groundedPass</c> the share of supported ones not flagged — each higher-is-better and reported
+    /// apart, so a check that flags everything cannot hide behind one that flags nothing; the same for relevance.
+    /// <c>accuracy</c> is the share whose two signals both match their labels. <c>checked</c> is the share that got a
+    /// verdict, <c>band</c> the share of those found uncertain. An unchecked or uncertain answer counts as not flagged.
+    /// Each rate is also given per domain, language and split; a group with no case of a kind reports no rate for it.
+    /// </summary>
+    public static Dictionary<string, double> AnswerCheck(IEnumerable<AnswerCheckOutcome> cases)
+    {
+        var all = cases.ToList();
+        static double Share(IEnumerable<bool> hits)
+        {
+            var list = hits.ToList();
+            return list.Count == 0 ? 1 : (double)list.Count(h => h) / list.Count;
+        }
+        var metrics = new Dictionary<string, double>();
+        void Rates(string suffix, IReadOnlyCollection<AnswerCheckOutcome> group)
+        {
+            metrics[$"accuracy{suffix}"] = Share(group.Select(c => c.NotGrounded == c.Unsupported && c.NotRelevant == c.OffTopic));
+            if (group.Any(c => c.Unsupported))
+            {
+                metrics[$"groundedDetection{suffix}"] = Share(group.Where(c => c.Unsupported).Select(c => c.NotGrounded));
+            }
+            if (group.Any(c => !c.Unsupported))
+            {
+                metrics[$"groundedPass{suffix}"] = Share(group.Where(c => !c.Unsupported).Select(c => !c.NotGrounded));
+            }
+            if (group.Any(c => c.OffTopic))
+            {
+                metrics[$"relevantDetection{suffix}"] = Share(group.Where(c => c.OffTopic).Select(c => c.NotRelevant));
+            }
+            if (group.Any(c => !c.OffTopic))
+            {
+                metrics[$"relevantPass{suffix}"] = Share(group.Where(c => !c.OffTopic).Select(c => !c.NotRelevant));
+            }
+        }
+        Rates("", all);
+        metrics["checked"] = Share(all.Select(c => c.Checked));
+        if (all.Any(c => c.Checked))
+        {
+            metrics["band"] = Share(all.Where(c => c.Checked).Select(c => c.Uncertain));
+        }
+        foreach (var key in new Func<AnswerCheckOutcome, string>[] { c => c.Domain, c => c.Language, c => c.Split })
+        {
+            foreach (var group in all.GroupBy(key).OrderBy(g => g.Key, StringComparer.Ordinal))
+            {
+                Rates($":{group.Key}", group.ToList());
             }
         }
         return metrics;

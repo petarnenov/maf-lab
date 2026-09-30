@@ -171,12 +171,23 @@ export interface RelevanceData {
  * Jev's check of the final answer (the `answer.check` event). Numbers only — never the answer or the sources' text.
  */
 export interface AnswerCheckData {
-  /** pass, not_relevant, not_grounded or unchecked. */
+  /**
+   * pass, uncertain (in the review band: no signal, so no header chip), not_relevant, not_grounded or unchecked. A
+   * verdict this page does not know is read as neutral too.
+   */
   verdict?: string;
   relevant?: number | null;
   grounded?: number | null;
+  /** The signal floors: below them the turn is flagged. */
   relevantFloor?: number;
   groundedFloor?: number;
+  /** The pass thresholds: at or above both the answer passes; in between it is uncertain. */
+  relevantPassAt?: number;
+  groundedPassAt?: number;
+  /** billing or codebase: the context the two questions were asked in. */
+  context?: string;
+  /** Sources dropped because the same source came first. */
+  duplicates?: number;
   model?: string | null;
   durationMs?: number;
   /** Why there is no verdict (disabled, no key, timed out, rejected). */
@@ -188,7 +199,10 @@ export interface AnswerCheckData {
   requests?: number;
 }
 
-/** "not grounded" / "not relevant" when Jev's answer check flagged the turn's answer; null otherwise. */
+/**
+ * "not grounded" / "not relevant" when Jev's answer check flagged the turn's answer; null otherwise — a pass, an
+ * uncertain answer (the review band raises no signal) and an unchecked one are all neutral.
+ */
 export function failedAnswerCheck(events: TraceEvent[]): string | null {
   const verdict = dataOf<AnswerCheckData>(byKind(events, 'answer.check').at(-1)).verdict;
   return verdict === 'not_grounded' || verdict === 'not_relevant'

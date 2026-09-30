@@ -52,7 +52,9 @@ RUN_REFERENCE = re.compile(r"\b(run|рън)\s*#?\s*\d{3,}")
 JEV_OPTIONS = ("procedural", "mixed", "data", "chitchat", "other")
 OFF_DOMAIN_WORDS = ("cook", "recipe", "carbonara", "passport", "weather", "баница", "паспорт")
 # The content guard's questions (ids "guard_*"): only unmistakable phrases score, so the model-free e2e exercises the
-# path — a refused prompt, a withheld excerpt — without a model or a key, and nothing ordinary is ever flagged.
+# path — a refused prompt, a withheld excerpt — without a model or a key, and nothing ordinary is ever flagged. The
+# codebase battery (a search_codebase snippet) has the same ids and another context; it is answered the same way, from
+# the text alone (scripts/tests/test_ollama_stub.py).
 GUARD_PHRASES = ("ignore all previous instructions", "ignore all prior instructions", "ignore your rules",
                  "ignore your instructions", "evil.example", "assistant:")
 

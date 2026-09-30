@@ -325,11 +325,43 @@ describe('JevPage', () => {
     expect(screen.getByText('Not grounded').parentElement).toHaveTextContent('25%');
     expect(screen.getByText('Not relevant').parentElement).toHaveTextContent('13%');
     expect(screen.getByText('2 below floor 0.5')).toBeInTheDocument();
-    expect(screen.getByText('1 Jev unavailable · the rest off or no key')).toBeInTheDocument();
+    expect(
+      screen.getByText('1 Jev unavailable · the rest off, no key or over the cap'),
+    ).toBeInTheDocument();
+    // An api from before the review band sends no uncertain count: no tile for it.
+    expect(screen.queryByText('Uncertain')).not.toBeInTheDocument();
     const latencyPanel = screen.getByRole('region', { name: 'Answer check latency' });
     expect(within(latencyPanel).getByRole('img', { name: 'Latency histogram' })).toHaveTextContent(
       'timeout 3s',
     );
+  });
+
+  it('shows the uncertain answers of the review band beside the flagged ones', async () => {
+    stub(() =>
+      jsonResponse(
+        report({
+          answerCheck: {
+            answers: 5,
+            checked: 4,
+            pass: 2,
+            uncertain: 1,
+            notRelevant: 0,
+            notGrounded: 1,
+            unchecked: 1,
+            unavailable: 0,
+            relevantFloor: 0.2,
+            groundedFloor: 0.2,
+            latency: latency(4),
+          },
+        }),
+      ),
+    );
+    renderWithProviders(<JevPage />, { session: admin });
+
+    expect(await screen.findByText('Uncertain')).toBeInTheDocument();
+    expect(screen.getByText('Uncertain').parentElement).toHaveTextContent('25%');
+    expect(screen.getByText('1 in the review band · no signal')).toBeInTheDocument();
+    expect(screen.getByText('1 below floor 0.2')).toBeInTheDocument();
   });
 
   it('shows the calls an open circuit skipped apart from the unavailable requests', async () => {

@@ -15,7 +15,11 @@ public sealed class JevGuard(JevClient client, IOptions<GuardOptions> options)
         AskAsync(new JevState(text), JevGuardQuestions.Prompt, ct);
 
     public Task<GuardScores> ScreenContentAsync(string text, CancellationToken ct) =>
-        AskAsync(new JevContentState(text), JevGuardQuestions.Content, ct);
+        ScreenContentAsync(text, JevGuardQuestions.Content, ct);
+
+    /// <summary>One content item with the battery its tool calls for (<see cref="JevGuardQuestions.ContentFor"/>): same state, same ids.</summary>
+    public Task<GuardScores> ScreenContentAsync(string text, IReadOnlyDictionary<string, object> battery, CancellationToken ct) =>
+        AskAsync(new JevContentState(text), battery, ct);
 
     private async Task<GuardScores> AskAsync(object state, IReadOnlyDictionary<string, object> questions, CancellationToken ct)
     {
