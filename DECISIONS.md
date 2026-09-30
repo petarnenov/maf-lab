@@ -1974,3 +1974,16 @@ said which account the conversation was about.
   tool. PNGs are 150–400 KB; the script flags any file over 400 KB.
 - **Framing.** The chat recipes collapse the history (it lists the persona's earlier test conversations), scroll the
   question to the top of the chat pane, and keep the window at the top so the navigation stays in the frame.
+
+## 56. Coverage screen and test-generation agent (add-coverage-dashboard-and-test-agent, 2026-09-30)
+
+- **.NET coverage on Microsoft.Testing.Platform.** `Microsoft.Testing.Extensions.CodeCoverage` 18.11.2, referenced by
+  `tests/Maf.Lab.Tests` only. It depends on `Microsoft.Testing.Platform` 2.4.0, the version xunit.v3 4.0.1 already
+  brings. The brief named coverlet's `XPlat Code Coverage`, but that is a VSTest data collector and `global.json` runs
+  tests on MTP, so it would not attach. `coverlet.MTP` was the alternative; the Microsoft extension needs no
+  runsettings and writes Cobertura directly. Settings live in `tests/Maf.Lab.Tests/coverage.config.xml`: `src/`
+  assemblies only, generated code and `[ExcludeFromCodeCoverage]` excluded. The report names files by absolute path
+  and carries no `<source>`; ingestion makes them repo-relative.
+- **Web coverage.** `@vitest/coverage-v8` 5.0.1, pinned to the same version as `vitest`, as the provider requires.
+  `vitest run --coverage` writes `web/coverage/cobertura-coverage.xml` with `<source>` = the `web` directory and
+  source-relative file names. Test files and `src/test/` are excluded.

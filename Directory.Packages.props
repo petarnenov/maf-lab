@@ -51,5 +51,7 @@
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
     <PackageVersion Include="Testcontainers.Qdrant" Version="4.15.0" />
     <PackageVersion Include="Mono.Cecil" Version="0.11.6" />
+    <!-- Coverage on Microsoft.Testing.Platform: Cobertura for the Coverage screen (see DECISIONS.md) -->
+    <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.11.2" />
   </ItemGroup>
 </Project>

@@ -2,11 +2,11 @@
 
 ## 1. Coverage tooling and ingestion (backend)
 
-- [ ] 1.1 Add `Microsoft.Testing.Extensions.CodeCoverage` to `Directory.Packages.props` and `tests/Maf.Lab.Tests`,
+- [x] 1.1 Add `Microsoft.Testing.Extensions.CodeCoverage` to `Directory.Packages.props` and `tests/Maf.Lab.Tests`,
   and write a coverage config that includes `src/**` modules only. Note it in DECISIONS.md: "coverage on MTP, why not
   coverlet". Verify that `dotnet test --project tests/Maf.Lab.Tests -- --coverage --coverage-output-format cobertura`
   produces a Cobertura file.
-- [ ] 1.2 Add `@vitest/coverage-v8` and a `test.coverage` block in `web/vite.config.ts` (v8, cobertura plus
+- [x] 1.2 Add `@vitest/coverage-v8` and a `test.coverage` block in `web/vite.config.ts` (v8, cobertura plus
   text-summary, include `src/**`, exclude tests and `src/test`), and note it in DECISIONS.md. Verify that
   `npx vitest run --coverage` writes `coverage/cobertura-coverage.xml`.
 - [ ] 1.3 Add the SQLite tables from design D10 (`CoverageSnapshots`, `CoverageFiles`, `CoverageThresholds`,
