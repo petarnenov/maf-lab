@@ -40,6 +40,9 @@ public static class CoverageEndpoints
     public sealed record ModelDto(string Tag, string DisplayName, double InputPerMTok, double OutputPerMTok, string BestFor,
         bool IsDefault, bool PriceIsEstimate, bool Available, string? UnavailableReason, CostEstimate? Estimate);
 
+    /// <summary>A request to raise a file's threshold with a run of the test agent.</summary>
+    public sealed record StartRunRequest(string Path, int Pct, string Model);
+
     public sealed record ModelsDto(IReadOnlyList<ModelDto> Models, int MaxAttempts, long MaxTokens, double MaxCostUsd);
 
     public static IEndpointRouteBuilder MapCoverage(this IEndpointRouteBuilder app)
@@ -142,6 +145,51 @@ public static class CoverageEndpoints
             return Results.Ok(new ModelsDto(models, agent.MaxAttempts, agent.Budget.MaxTokens, agent.Budget.MaxCostUsd));
         }).RequireAuthorization(AuthPolicies.FirmAdmin);
 
+        admin.MapPost("/runs", async (StartRunRequest request, IPrincipalAccessor principals, TestGenRuns runs, CancellationToken ct) =>
+            await runs.StartAsync(request.Path ?? "", request.Pct, request.Model ?? "", principals.Current.UserId, ct) switch
+            {
+                StartOutcome.Started started => Results.Created($"/api/coverage/runs/{started.Run.Id}", started.Run),
+                StartOutcome.NotFound => NotFound(),
+                StartOutcome.Invalid invalid => Invalid(invalid.Field, invalid.Message),
+                StartOutcome.ModelRejected rejected => Results.Problem(type: "model_rejected", title: "Model not usable",
+                    detail: rejected.Message, statusCode: StatusCodes.Status422UnprocessableEntity),
+                StartOutcome.AlreadyActive active => Results.Problem(type: "run_active", title: "A run is active",
+                    detail: $"This file already has a run in progress ({active.RunId}).", statusCode: StatusCodes.Status409Conflict),
+                StartOutcome.AgentUnavailable => Results.Problem(type: "agent_unavailable", title: "Test agent unavailable",
+                    detail: "The test agent is unavailable. The threshold was not changed.", statusCode: StatusCodes.Status503ServiceUnavailable),
+                _ => Results.StatusCode(StatusCodes.Status500InternalServerError),
+            });
+
+        read.MapGet("/runs", async (string? path, IDbContextFactory<MafDbContext> db, CancellationToken ct) =>
+        {
+            await using var context = await db.CreateDbContextAsync(ct);
+            var rows = await context.TestGenRuns.AsNoTracking().Where(r => path == null || r.Path == path)
+                .OrderByDescending(r => r.CreatedAt).Take(50).ToListAsync(ct);
+            return Results.Ok(rows.Select(RunSummary.Of).ToList());
+        });
+
+        read.MapGet("/runs/{id}", async (string id, TestGenRuns runs, CancellationToken ct) =>
+            await runs.GetAsync(id, ct) is { } run ? Results.Ok(RunDetail.Of(run)) : NotFound());
+
+        // The run as it happens: its current state first, then each change, until it reaches a final state. Events come
+        // from the shared database, so whichever replica the browser reaches can serve the stream.
+        read.MapGet("/runs/{id}/events", async (string id, TestGenRuns runs, IOptions<TestAgentOptions> options, CancellationToken ct) =>
+            await runs.GetAsync(id, ct) is { } run
+                ? TypedResults.ServerSentEvents(RunEventsAsync(runs, run, options.Value.EventPollEvery, ct))
+                : NotFound());
+
+        admin.MapPost("/runs/{id}/cancel", async (string id, TestGenRuns runs, CancellationToken ct) =>
+            await runs.GetAsync(id, ct) is null ? NotFound()
+            : await runs.CancelAsync(id, ct) ? Results.Ok(RunSummary.Of((await runs.GetAsync(id, ct))!))
+            : Results.Problem(type: "not_cancellable", title: "Not cancellable",
+                detail: "Only a run the agent is still working on can be cancelled.", statusCode: StatusCodes.Status409Conflict));
+
+        admin.MapPost("/runs/{id}/accept", async (string id, CandidateDecisions decisions, CancellationToken ct) =>
+            Decision(await decisions.AcceptAsync(id, ct)));
+
+        admin.MapPost("/runs/{id}/discard", async (string id, CandidateDecisions decisions, CancellationToken ct) =>
+            Decision(await decisions.DiscardAsync(id, ct)));
+
         admin.MapPost("/reports", async (HttpRequest request, CoverageIngestor ingestor, IRepository repository,
             IOptions<CoverageOptions> options, CancellationToken ct) =>
         {
@@ -197,6 +245,24 @@ public static class CoverageEndpoints
         return app;
     }
 
+    private static async IAsyncEnumerable<System.Net.ServerSentEvents.SseItem<RunSummary>> RunEventsAsync(TestGenRuns runs,
+        TestGenRunRow run, TimeSpan pollEvery, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        var seq = (await runs.EventsAsync(run.Id, 0, ct)).Select(e => e.Seq).DefaultIfEmpty(0).Max();
+        var current = RunSummary.Of(run);
+        yield return new(current, "snapshot");
+        while (!TestGenRunState.Final.Contains(current.State))
+        {
+            await Task.Delay(pollEvery, ct);
+            foreach (var (next, summary) in await runs.EventsAsync(run.Id, seq, ct))
+            {
+                seq = next;
+                current = summary;
+                yield return new(summary, TestGenRunState.Final.Contains(summary.State) ? "end" : "update");
+            }
+        }
+    }
+
     public static async Task<CoverageTreeDto> TreeAsync(CoverageStore store, IDbContextFactory<MafDbContext> db, CoverageOptions options,
         CancellationToken ct)
     {
@@ -240,6 +306,18 @@ public static class CoverageEndpoints
         }
         await context.SaveChangesAsync(ct);
     }
+
+    /// <summary>A run after a person's decision, with anything GitHub could not be told.</summary>
+    public sealed record DecisionDto(RunSummary Run, IReadOnlyList<string> GitHubProblems);
+
+    private static IResult Decision(DecisionOutcome outcome) => outcome switch
+    {
+        DecisionOutcome.Done done => Results.Ok(new DecisionDto(RunSummary.Of(done.Run), done.GitHubProblems)),
+        DecisionOutcome.Refused refused => Results.Problem(type: refused.Type, title: "Not merged", detail: refused.Detail,
+            statusCode: StatusCodes.Status409Conflict),
+        _ => Results.Problem(type: "not_candidate", title: "Not a candidate",
+            detail: "Only a verified run awaiting a decision can be accepted or discarded.", statusCode: StatusCodes.Status409Conflict),
+    };
 
     internal static IResult RunActive() =>
         Results.Problem(type: "run_active", title: "A run is active", detail: "This file has a run in progress; wait for it to finish.",

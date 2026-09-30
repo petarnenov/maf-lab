@@ -118,6 +118,18 @@ public partial class Program
         builder.Services.AddSingleton<Coverage.CoverageRefresher>();
         builder.Services.Configure<Coverage.TestAgentOptions>(builder.Configuration.GetSection(Coverage.TestAgentOptions.Section));
         builder.Services.AddSingleton<Coverage.ModelAvailability>();
+        builder.Services.AddHttpClient(Coverage.TestAgentClient.HttpClientName);
+        builder.Services.AddSingleton<Coverage.TestAgentClient>();
+        builder.Services.AddSingleton<Coverage.TestGenRuns>();
+        builder.Services.Configure<Coverage.GitHubOptions>(builder.Configuration.GetSection(Coverage.GitHubOptions.Section));
+        builder.Services.AddHttpClient(Coverage.GitHubIssues.HttpClientName);
+        builder.Services.AddSingleton<Coverage.GitHubIssues>();
+        builder.Services.AddSingleton(sp => (Coverage.GitRepository)sp.GetRequiredService<Coverage.IRepository>());
+        builder.Services.AddSingleton<Coverage.RepoWriter>();
+        builder.Services.AddSingleton<Coverage.IRunVerifier, Coverage.RunVerifier>();
+        builder.Services.AddSingleton<Coverage.CandidateDecisions>();
+        builder.Services.AddSingleton<Coverage.RunFollower>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<Coverage.RunFollower>());
         Coverage.CoverageRunnerRegistration.AddCoverageRunnerClient(builder.Services);
 
         var app = builder.Build();

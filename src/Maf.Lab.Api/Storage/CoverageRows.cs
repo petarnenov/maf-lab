@@ -66,6 +66,9 @@ public sealed class TestGenRunRow
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public required string CreatedBy { get; set; }
+    /// <summary>The replica following the run's task, and when it last said so: a lease any replica can take over.</summary>
+    public string? Follower { get; set; }
+    public DateTime? FollowerHeartbeatAt { get; set; }
 }
 
 /// <summary>Every update a run went through, in order: what a late SSE subscriber is replayed from.</summary>
@@ -76,6 +79,23 @@ public sealed class TestGenRunEventRow
     public int Seq { get; set; }
     public DateTime At { get; set; }
     public required string Json { get; set; }
+}
+
+/// <summary>
+/// The GitHub issue opened for one confirmed suspected bug of one run. Written as <c>creating</c> before the call and
+/// completed after it, so verification repeated after a restart never opens a second issue for the same test.
+/// </summary>
+public sealed class TestGenIssueRow
+{
+    public required string RunId { get; set; }
+    /// <summary>"testFile::test".</summary>
+    public required string TestKey { get; set; }
+    /// <summary>creating | created</summary>
+    public required string State { get; set; }
+    public int? Number { get; set; }
+    public string? Url { get; set; }
+    public required string Title { get; set; }
+    public DateTime CreatedAt { get; set; }
 }
 
 /// <summary>The states a run can be in. Everything not in <see cref="Final"/> is active.</summary>

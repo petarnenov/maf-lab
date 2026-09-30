@@ -25,6 +25,7 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
     public DbSet<CoverageThresholdRow> CoverageThresholds => Set<CoverageThresholdRow>();
     public DbSet<TestGenRunRow> TestGenRuns => Set<TestGenRunRow>();
     public DbSet<TestGenRunEventRow> TestGenRunEvents => Set<TestGenRunEventRow>();
+    public DbSet<TestGenIssueRow> TestGenIssues => Set<TestGenIssueRow>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -67,6 +68,7 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
         b.Entity<TestGenRunRow>().HasIndex(x => x.Path).IsUnique().HasFilter($"\"State\" IN ({TestGenRunState.ActiveSql})")
             .HasDatabaseName("IX_TestGenRuns_Path_Active");
         b.Entity<TestGenRunEventRow>().HasIndex(x => new { x.RunId, x.Seq }).IsUnique();
+        b.Entity<TestGenIssueRow>().HasKey(x => new { x.RunId, x.TestKey });
     }
 }
 

@@ -44,6 +44,18 @@ public sealed class TestAgentOptions
     /// </summary>
     public List<AgentModelOption> Models { get; set; } = [];
 
+    /// <summary>How often each replica looks for runs nobody is following, and how often a follower renews its lease.</summary>
+    public TimeSpan FollowerPollEvery { get; set; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>A lease not renewed for this long is taken over: its replica has stopped.</summary>
+    public TimeSpan FollowerStaleAfter { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>How long to wait before trying to subscribe again after a stream could not be had.</summary>
+    public TimeSpan ResubscribeAfter { get; set; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>How often a browser's event stream looks for the run's next change.</summary>
+    public TimeSpan EventPollEvery { get; set; } = TimeSpan.FromSeconds(1);
+
     /// <summary>How long a model's availability answer is reused.</summary>
     public TimeSpan AvailabilityCacheFor { get; set; } = TimeSpan.FromMinutes(10);
 }

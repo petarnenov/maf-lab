@@ -1,4 +1,5 @@
 using Maf.Lab.Api.Storage;
+using Maf.Lab.TestGen;
 using Maf.Lab.TestGen.Coverage;
 
 namespace Maf.Lab.Api.Coverage;
@@ -11,6 +12,13 @@ public sealed record RunSummary(string Id, string Path, string State, string? Re
 
     public static RunSummary Of(TestGenRunRow r) => new(r.Id, r.Path, r.State, r.Reason, r.Attempt, r.MaxAttempts, r.LastPct,
         r.TargetPct, r.Model, r.Tokens, r.CostUsd, r.Branch, r.CreatedAt, r.UpdatedAt);
+}
+
+/// <summary>A run with the agent's report: its attempts, suspected bugs and diff, for the candidate panel.</summary>
+public sealed record RunDetail(RunSummary Run, TestGenReport? Report)
+{
+    public static RunDetail Of(TestGenRunRow r) => new(RunSummary.Of(r),
+        r.ReportJson is { } json ? System.Text.Json.JsonSerializer.Deserialize<TestGenReport>(json, TestGenKinds.Json) : null);
 }
 
 public sealed record CandidateCoverage(string RunId, double Pct, int LinesCovered, int LinesTotal);

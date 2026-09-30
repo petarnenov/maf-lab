@@ -2061,3 +2061,26 @@ said which account the conversation was about.
     image has its own `Dockerfile.dockerignore`, because the repository's ignore file leaves out `tests/` and `web/`.
   - **git reads a repository it does not own.** The mount belongs to the host user, so the image sets
     `safe.directory '*'` system-wide. Tests run as the unprivileged `runner` user (uid 10001).
+- **The api follows a run with the SDK's A2A client.** Design D3 planned the Agent Framework's `A2AAgent`. It turns
+  chat messages into A2A messages, but the test agent's request is a data part, and a run is followed, polled and
+  cancelled by task id (`tasks/resubscribe`, `tasks/get`, `tasks/cancel`), none of which it exposes. The client
+  therefore uses `A2AClient` directly, found by card and authenticated as itself, like the compliance consultant.
+  §23 records the gap.
+- **The follower's lease is a database row.** Design D10 planned a Redis lease. Each run has `Follower` and
+  `FollowerHeartbeatAt`, taken by a conditional update, renewed while followed, and taken over when stale, the way
+  `AdminJobRunner` works. The browser's event stream reads `TestGenRunEvents` from the shared database once a
+  second. There is no Redis pub/sub (design D11): any replica can serve the stream, and nothing new was added to
+  the shared state. The stream ends at a final state; a candidate is not final, so it stays open until the decision.
+- **Issues are opened after the verification run passes, not before (refines design D19).** The order is: prove
+  each bug with its test un-skipped, run the tests, and only then open issues and rewrite the skip markers. A run
+  that fails verification leaves no issue behind.
+- **Merging without `git merge-tree --write-tree`.** It needs git 2.38, and the host has 2.33. When nobody has main
+  checked out, the merge is made in a temporary detached worktree at main, and main is moved by
+  `update-ref <new> <old>` (compare-and-swap), once more if it moved. Candidate branches are also committed in a
+  temporary worktree, so no one's checkout is touched.
+- **Repository writes are serialised in-process.** One semaphore covers worktree, branch and merge operations. Two
+  api replicas rely on git's own ref and index locks between them; a lost race fails that call, and the person can
+  press Accept again.
+- **The GitHub token is named, not fixed.** `GitHub:TokenVariable` (default `GITHUB_ISSUES_TOKEN`) names the
+  environment variable, and `GitHub:Repository` defaults to the origin remote. The token is sent only as the bearer
+  header. A write that fails (GitHub down) is reported with the decision and never blocks it.

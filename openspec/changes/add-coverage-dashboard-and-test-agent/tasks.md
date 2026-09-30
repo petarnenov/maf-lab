@@ -119,18 +119,18 @@
 
 ## 7. A2A wiring and run orchestration (api)
 
-- [ ] 7.1 Add `TestAgentOptions` and a `TestAgentClient` that reuses the consultant's token and card helpers. Start
+- [x] 7.1 Add `TestAgentOptions` and a `TestAgentClient` that reuses the consultant's token and card helpers. Start
   runs through `A2AAgent` with background responses and persist the task id. Use `A2AClient` for
   get/resubscribe/cancel if `A2AAgent` lacks them, and record the gap in DECISIONS §23. Add `ToolAudit` records
   `a2a.testgen.*`. Verify with tests against an in-process fake agent for start and for unreachable → 503 with no
   active run.
-- [ ] 7.2 Implement `POST /runs`:
+- [x] 7.2 Implement `POST /runs`:
   - checks: admin, model in the allowlist and available (otherwise 422), and no active run (otherwise 409);
   - saves the threshold and the run in one transaction only after the task is accepted;
   - leaves the threshold unchanged when the agent is unreachable.
 
   Verify with endpoint tests for each case.
-- [ ] 7.3 Implement the `RunFollower` background service:
+- [x] 7.3 Implement the `RunFollower` background service:
   - Redis lease per run;
   - subscribe, resubscribe, then fall back to polling `tasks/get`;
   - persist events before relaying;
@@ -139,7 +139,7 @@
 
   Verify with tests for a stream drop mid-attempt with no lost events, an expired lease taken over by a second
   follower, and deadline → `failed(deadline)`.
-- [ ] 7.4 Add `GET /runs/{id}/events` (SSE: a snapshot first, then progress and state, closing on a final state,
+- [x] 7.4 Add `GET /runs/{id}/events` (SSE: a snapshot first, then progress and state, closing on a final state,
   Redis pub/sub with a poll fallback), `GET /runs` and `GET /runs/{id}`, and `POST /runs/{id}/cancel`. Verify with
   tests that a late subscriber gets the current state first and that cancel mid-run ends the run `canceled` with no
   branch.
@@ -148,7 +148,7 @@
 
 ## 8. Verification, candidate branch and accept
 
-- [ ] 8.1 Implement `RunVerifier`, which runs when the task completes:
+- [x] 8.1 Implement `RunVerifier`, which runs when the task completes:
   - allowlist check on every diff path, including renames;
   - `TestGuardrails.Check`;
   - a runner run in a fresh workspace;
@@ -158,17 +158,17 @@
 
   Verify with tests for a failing test → `verification_failed` with coverage unchanged, a production path in the diff
   → `verification_failed` with no runner call, and reported 88% vs measured 84% → candidate 84%.
-- [ ] 8.1a Add `GitHubIssues` (typed HttpClient, `GITHUB_ISSUES_TOKEN` from the environment only, repository from
+- [x] 8.1a Add `GitHubIssues` (typed HttpClient, `GITHUB_ISSUES_TOKEN` from the environment only, repository from
   `GitHub:Repository` or origin) and the `TestGenIssues` table. In `RunVerifier`, check every skip against the
   suspected bugs, prove each by an un-skipped runner run, create the issue once per run and test (surviving a
   restart), and rewrite the marker with the issue link, or with "no issue" when there is no token. Verify with tests
   against a fake GitHub: a confirmed bug gives one issue and a linked marker; a bug not reproduced ends
   `verification_failed` with no issue; an unlisted skip fails; verifying twice creates one issue; no token gives the
   "no issue" marker.
-- [ ] 8.2 Add `git` to the api image and implement `RepoWriter.CreateBranch` (a temporary detached worktree, apply,
+- [x] 8.2 Add `git` to the api image and implement `RepoWriter.CreateBranch` (a temporary detached worktree, apply,
   commit as `maf-lab test-agent`, branch `test-agent/<slug>-<runId>`, Redis lock). Verify with a test on a temporary
   git repo that the branch has exactly one commit, contains exactly the diff, and leaves the checkout untouched.
-- [ ] 8.3 Implement `RepoWriter.Merge`:
+- [x] 8.3 Implement `RepoWriter.Merge`:
   - refuse when `main` is checked out in a dirty worktree;
   - in a clean checkout, `merge --no-ff` (with `--abort` on conflict);
   - otherwise `merge-tree`, `commit-tree` and CAS `update-ref`, retried once;
@@ -177,7 +177,7 @@
 
   Verify with temporary-repo tests for a clean accept, a conflict (main unchanged, run stays candidate), a dirty
   checkout (refused, nothing written), a CAS retry after main moves, and discard.
-- [ ] 8.3a On Accept, comment on each run issue with the merge commit. On Discard, close each with a comment. A GitHub
+- [x] 8.3a On Accept, comment on each run issue with the merge commit. On Discard, close each with a comment. A GitHub
   failure is shown and does not block. Verify with fake-GitHub tests for both, and for GitHub down.
 - [ ] 8.4 Web: add a candidate panel in the file view (diff summary, candidate %, suspected bugs with issue
   links, Accept and Discard with a confirmation, and the refusal reason shown). Verify with RTL tests for accept
