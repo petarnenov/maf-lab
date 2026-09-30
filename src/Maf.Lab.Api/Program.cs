@@ -116,6 +116,8 @@ public partial class Program
         builder.Services.AddSingleton<Coverage.CoverageStore>();
         builder.Services.AddSingleton<Coverage.CoverageIngestor>();
         builder.Services.AddSingleton<Coverage.CoverageRefresher>();
+        builder.Services.Configure<Coverage.TestAgentOptions>(builder.Configuration.GetSection(Coverage.TestAgentOptions.Section));
+        builder.Services.AddSingleton<Coverage.ModelAvailability>();
         Coverage.CoverageRunnerRegistration.AddCoverageRunnerClient(builder.Services);
 
         var app = builder.Build();

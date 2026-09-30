@@ -93,6 +93,9 @@ public static class TestGenRunState
     public const string VerificationFailed = "verification_failed";
 
     public static readonly IReadOnlySet<string> Active = new HashSet<string> { Submitted, Working, Verifying, Candidate };
+
+    /// <summary>The same states as an array: what a database query can translate.</summary>
+    public static readonly string[] ActiveStates = [Submitted, Working, Verifying, Candidate];
     public static readonly IReadOnlySet<string> Final =
         new HashSet<string> { Accepted, Discarded, CompletedNoChange, Failed, Canceled, VerificationFailed };
 

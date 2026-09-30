@@ -7,6 +7,8 @@ import page from '../components/Page.module.css';
 import { CoverageTree } from './CoverageTree';
 import { FileView } from './FileView';
 import { coverageKeys } from './keys';
+import { RunStatus } from './RunStatus';
+import { ThresholdControl } from './ThresholdControl';
 import styles from './CoveragePage.module.css';
 
 /** How well the repository's own source is covered by its tests, file by file and line by line. */
@@ -70,7 +72,15 @@ export function CoveragePage() {
                 Could not load this file.
               </p>
             )}
-            {selected && file.data && <FileView detail={file.data} />}
+            {selected && file.data && (
+              <FileView detail={file.data}>
+                {isAdmin ? (
+                  <ThresholdControl key={`${file.data.path}:${file.data.summary.threshold}`} detail={file.data} />
+                ) : (
+                  file.data.run && <RunStatus run={file.data.run} />
+                )}
+              </FileView>
+            )}
           </div>
         </div>
       )}

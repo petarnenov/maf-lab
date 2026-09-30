@@ -1,5 +1,6 @@
 using Maf.Lab.Api.Coverage;
 using Maf.Lab.Api.Storage;
+using Maf.Lab.Retrieval.Auth;
 using Maf.Lab.TestGen;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -25,6 +26,20 @@ public static class CoverageEndpoints
     public sealed record HistoryEntryDto(string SnapshotId, string Commit, DateTime MeasuredAt, double Pct, int LinesCovered, int LinesTotal, string Kind);
 
     public sealed record IngestResponse(string SnapshotId, int Files, int Dropped);
+
+    /// <summary>A new threshold for one file; null clears its override.</summary>
+    public sealed record ThresholdRequest(int? Pct);
+
+    public sealed record ThresholdSaved(string Path, int Threshold, bool ThresholdIsOverride);
+
+    /// <summary>Why a raise was not saved: it needs a run, from this coverage to this target.</summary>
+    public sealed record RunRequired(string Type, double CurrentPct, int TargetPct,
+        string Detail = "Raising the threshold above the file's coverage needs a confirmed test-generation run.");
+
+    public sealed record ModelDto(string Tag, string DisplayName, double InputPerMTok, double OutputPerMTok, string BestFor,
+        bool IsDefault, bool PriceIsEstimate, bool Available, string? UnavailableReason, CostEstimate? Estimate);
+
+    public sealed record ModelsDto(IReadOnlyList<ModelDto> Models, int MaxAttempts, long MaxTokens, double MaxCostUsd);
 
     public static IEndpointRouteBuilder MapCoverage(this IEndpointRouteBuilder app)
     {
@@ -81,6 +96,50 @@ public static class CoverageEndpoints
                 : Results.Ok(history.Select(h => new HistoryEntryDto(h.Totals.SnapshotId, h.Totals.CommitSha, h.Totals.MeasuredAt,
                     h.Totals.LinePct, h.Totals.LinesCovered, h.Totals.LinesTotal, h.Kind)).ToList());
         });
+
+        admin.MapPut("/thresholds", async (string? path, ThresholdRequest request, IPrincipalAccessor principals,
+            CoverageStore store, IDbContextFactory<MafDbContext> db, IOptions<CoverageOptions> options, CancellationToken ct) =>
+        {
+            if (CoveragePaths.Clean(path ?? "") is not { } clean || clean != path || await store.CurrentAsync(clean, ct) is not { } current)
+            {
+                return NotFound();
+            }
+            if (request.Pct is < 0 or > 100)
+            {
+                return Invalid("pct", "pct must be a whole percentage from 0 to 100.");
+            }
+            await using var context = await db.CreateDbContextAsync(ct);
+            if (await context.TestGenRuns.AnyAsync(r => r.Path == clean && TestGenRunState.ActiveStates.Contains(r.State), ct))
+            {
+                return RunActive();
+            }
+            var existing = await context.CoverageThresholds.FindAsync([clean], ct);
+            var effective = existing?.Pct ?? options.Value.DefaultThresholdPct;
+            if (request.Pct is { } pct && pct > effective && current.Totals.LinePct < pct)
+            {
+                // Tests that exist cannot meet it: saving waits for a confirmed run.
+                return Results.Conflict(new RunRequired("run_required", current.Totals.LinePct, pct));
+            }
+            await SaveThresholdAsync(context, clean, request.Pct, principals.Current.UserId, ct);
+            return Results.Ok(new ThresholdSaved(clean, request.Pct ?? options.Value.DefaultThresholdPct, request.Pct is not null));
+        });
+
+        read.MapGet("/models", async (string? path, CoverageStore store, IRepository repository, ModelAvailability availability,
+            IOptions<TestAgentOptions> options, CancellationToken ct) =>
+        {
+            var agent = options.Value;
+            long? bytes = null;
+            if (CoveragePaths.Clean(path ?? "") is { } clean && clean == path && await store.CurrentAsync(clean, ct) is { } current
+                && await repository.ShowAsync(current.Totals.CommitSha, clean, ct) is { } source)
+            {
+                bytes = System.Text.Encoding.UTF8.GetByteCount(source);
+            }
+            var checks = await Task.WhenAll(agent.Models.Select(m => availability.CheckAsync(m.Tag, ct)));
+            var models = agent.Models.Select((m, i) => new ModelDto(m.Tag, m.DisplayName, m.InputPerMTok, m.OutputPerMTok, m.BestFor,
+                m.Default, m.PriceIsEstimate, checks[i].Available, checks[i].Reason,
+                bytes is { } b ? CostEstimator.Estimate(b, agent.MaxAttempts, m) : null)).ToList();
+            return Results.Ok(new ModelsDto(models, agent.MaxAttempts, agent.Budget.MaxTokens, agent.Budget.MaxCostUsd));
+        }).RequireAuthorization(AuthPolicies.FirmAdmin);
 
         admin.MapPost("/reports", async (HttpRequest request, CoverageIngestor ingestor, IRepository repository,
             IOptions<CoverageOptions> options, CancellationToken ct) =>
@@ -156,6 +215,34 @@ public static class CoverageEndpoints
 
     internal static async Task<IReadOnlyDictionary<string, int>> OverridesAsync(MafDbContext context, CancellationToken ct) =>
         await context.CoverageThresholds.AsNoTracking().ToDictionaryAsync(t => t.Path, t => t.Pct, ct);
+
+    /// <summary>Sets or clears a file's override. The caller has already decided a save is what this is.</summary>
+    internal static async Task SaveThresholdAsync(MafDbContext context, string path, int? pct, string userId, CancellationToken ct)
+    {
+        var existing = await context.CoverageThresholds.FindAsync([path], ct);
+        if (pct is null)
+        {
+            if (existing is not null)
+            {
+                context.CoverageThresholds.Remove(existing);
+            }
+        }
+        else if (existing is null)
+        {
+            context.CoverageThresholds.Add(new CoverageThresholdRow { Path = path, Pct = pct.Value, UpdatedAt = DateTime.UtcNow, UpdatedBy = userId });
+        }
+        else
+        {
+            existing.Pct = pct.Value;
+            existing.UpdatedAt = DateTime.UtcNow;
+            existing.UpdatedBy = userId;
+        }
+        await context.SaveChangesAsync(ct);
+    }
+
+    internal static IResult RunActive() =>
+        Results.Problem(type: "run_active", title: "A run is active", detail: "This file has a run in progress; wait for it to finish.",
+            statusCode: StatusCodes.Status409Conflict);
 
     internal static IResult NotFound() =>
         Results.Problem(type: "not_found", title: "Not found", detail: "No coverage for that file.", statusCode: StatusCodes.Status404NotFound);

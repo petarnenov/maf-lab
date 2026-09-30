@@ -2,6 +2,8 @@ import type { RunState } from '../api/types';
 
 export const pct = (value: number) => `${value.toFixed(1)}%`;
 
+export const usd = (value: number) => `$${value.toFixed(value < 1 ? 3 : 2)}`;
+
 export const shortSha = (sha: string) => sha.slice(0, 7);
 
 export const when = (iso: string) => new Date(iso).toLocaleString();

@@ -974,3 +974,30 @@ export interface CoverageFileDetail {
   lines: CoverageLine[];
   run: RunSummary | null;
 }
+
+export interface CostEstimate {
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+}
+
+/** One model the test agent may use, as the server's allowlist has it. */
+export interface AgentModel {
+  tag: string;
+  displayName: string;
+  inputPerMTok: number;
+  outputPerMTok: number;
+  bestFor: string;
+  isDefault: boolean;
+  priceIsEstimate: boolean;
+  available: boolean;
+  unavailableReason: string | null;
+  estimate: CostEstimate | null;
+}
+
+export interface AgentModels {
+  models: AgentModel[];
+  maxAttempts: number;
+  maxTokens: number;
+  maxCostUsd: number;
+}

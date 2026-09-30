@@ -51,16 +51,16 @@
 
 ## 4. Web and API: threshold and model picker
 
-- [ ] 4.1 Add `Coverage:DefaultThresholdPct` (80) and `PUT /thresholds?path=` (admin): save when the value is lowered,
+- [x] 4.1 Add `Coverage:DefaultThresholdPct` (80) and `PUT /thresholds?path=` (admin): save when the value is lowered,
   kept, cleared or already met; return `409 run_required` when raised above coverage; return 400 when out of range;
   return 409 when a run is active. Verify with endpoint tests for each case.
-- [ ] 4.2 Add `TestAgent:Models` configuration with the five allowlisted models (`glm-5.3:cloud` as default,
+- [x] 4.2 Add `TestAgent:Models` configuration with the five allowlisted models (`glm-5.3:cloud` as default,
   `PriceIsEstimate: true`), `ModelAvailability` (a 1-token probe with no repo content and a 10-minute Redis cache),
   and `GET /models` with estimate inputs. Verify with tests that a provider refusal marks a model unavailable and that
   the chat model setting is unchanged.
-- [ ] 4.3 Add `CostEstimator` (design D13). Verify with unit tests that the estimate changes with the model and scales
+- [x] 4.3 Add `CostEstimator` (design D13). Verify with unit tests that the estimate changes with the model and scales
   with the remaining attempts.
-- [ ] 4.4 Build `ThresholdControl`, `RaiseThresholdDialog` (current %, target %, "an agent run will start") and
+- [x] 4.4 Build `ThresholdControl`, `RaiseThresholdDialog` (current %, target %, "an agent run will start") and
   `ModelPicker` (name, price labelled estimate, best-for, unavailable disabled, cost estimate and cap, Start disabled
   until a model is selected). Show admin-only controls, and lock the control with run status while a run is active.
   Verify with RTL tests for the lowered flow, raised-but-met, cancel at the dialog, cancel at the picker (threshold

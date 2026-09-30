@@ -2003,3 +2003,14 @@ said which account the conversation was about.
   small. Tests in jsdom assume a 600 px viewport, because jsdom measures nothing.
 - **`web/src/coverage/treeModel.ts`, not `coverageTree.ts`.** Next to `CoverageTree.tsx`, the name differed only in
   case, and on macOS the import resolved to the component.
+- **Model allowlist and prices.** `TestAgent:Models` in the api's appsettings holds the five models named in the brief.
+  The user authorised this new model use for the test agent only; the chat model is untouched. The prices are the
+  lab's guesses, marked `PriceIsEstimate` and labelled "estimate" in the picker, until the real prices are confirmed
+  (proposal, open question). The list lives in appsettings only, because binding appends to a list default in code.
+- **Availability is asked, per replica.** A one-token request with a fixed probe string and no repository content.
+  A refusal (401, 403, 404, 402, or Ollama's "not included in your … usage") marks a model unavailable for 10
+  minutes; a timeout or 5xx is kept for 30 s only. The answer is cached in `IMemoryCache`, not Redis as design D14
+  said. Both replicas asking separately costs two one-token calls, and sharing the answer would need another store.
+- **The browser decides when to confirm; the server decides what is saved.** The threshold control opens the
+  confirmation when the new value is above both the threshold and the coverage it has. `PUT /thresholds` still
+  refuses a raise that needs a run (`409 run_required`), and only `POST /runs` saves a raised threshold.
