@@ -18,15 +18,15 @@
   `NUGET_PACKAGES=/opt/nuget` and `--source /root/.nuget/packages` only, under a `sharing=locked` mount. Keep
   `rm -rf /seed` and `chmod`. Verify: the image builds, and `du -sh /opt/nuget` in it matches the image built from
   `main` to within a few MB.
-- [ ] 2.2 Verify the spec's "Runner stays offline-capable" scenario. Start the new runner image with
+- [x] 2.2 Verify the spec's "Runner stays offline-capable" scenario. Start the new runner image with
   `--network none` and run a workspace's .NET and web tests, as DECISIONS.md §57 did. Both suites run and Cobertura
   is produced.
 
 ## 3. Behavior check
 
-- [ ] 3.1 Cold cache, parallel. Remove only the `maf-lab-nuget` cache records (`docker buildx prune --filter id=<ID>`), invalidate `COPY src/`, then build all seven images in parallel. Every image builds and the stack becomes healthy. The restore logs show no `Failed to download` for a
+- [x] 3.1 Cold cache, parallel. Remove only the `maf-lab-nuget` cache records (`docker buildx prune --filter id=<ID>`), invalidate `COPY src/`, then build all seven images in parallel. Every image builds and the stack becomes healthy. The restore logs show no `Failed to download` for a
   package that another image already fetched.
-- [ ] 3.2 Warm cache, source edit, no network. Touch a `.cs` file under `src/`, build each image with `--network none`, or with `--add-host api.nuget.org=0.0.0.0` where
+- [x] 3.2 Warm cache, source edit, no network. Touch a `.cs` file under `src/`, build each image with `--network none`, or with `--add-host api.nuget.org=0.0.0.0` where
   another step (`apt-get`, `npm ci`) needs the network.
   Every .NET image rebuilds without download attempts and the stack becomes healthy. Record the restore time
   before and after the change.
