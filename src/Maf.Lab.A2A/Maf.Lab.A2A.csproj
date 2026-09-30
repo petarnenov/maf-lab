@@ -1,6 +1,9 @@
 <!-- The A2A code both agents need: partner identity, the card, the 1.0 wire format and the request handler.
      It depends on the domain and on the protocol packages, and on nothing that serves one agent in particular. -->
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>A2A code both agents share: partner identity, the signed card, the 1.0 wire format, the request handler</Description>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="A2A" />
     <PackageReference Include="A2A.AspNetCore" />

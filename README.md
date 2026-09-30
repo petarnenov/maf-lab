@@ -86,6 +86,26 @@ compliance run two replicas each, mcp-code one (`X-Instance` response header sho
 also serves Jaeger at `/jaeger` and takes the browser's OTLP traces at `/v1/traces`. Only Qdrant and Ollama are
 published besides 7171.
 
+The balancer's routes, as `compose/lb/nginx.conf` declares them:
+
+<!-- generated:lb-routes — edit compose/lb/nginx.conf, then run make docs -->
+| Path | Match | Served by |
+|---|---|---|
+| `/lb-health` | exact | the balancer itself |
+| `/api/chat` | exact | `api` |
+| `/api/` | prefix | `api` |
+| `/dev/` | prefix | `api` |
+| `/.well-known/agent-card.json` | exact | `api` |
+| `/a2a` | prefix | `api` |
+| `/mcp` | exact | `mcp-retrieval` |
+| `/portfolio/mcp` | exact | `mcp-portfolio` at `/mcp` |
+| `/code/mcp` | exact | `mcp-code` at `/mcp` |
+| `/compliance` | prefix | `compliance` |
+| `/v1/traces` | prefix | `otel-collector` |
+| `/jaeger` | prefix | `jaeger` |
+| `/` | prefix | `web` |
+<!-- /generated:lb-routes -->
+
 <table>
 <tr>
 <td width="50%" valign="top">
@@ -128,21 +148,54 @@ make                       # doctor-lite → build → start → wait until heal
 make help                  # every target
 ```
 
-| Target | What it does |
+<!-- generated:make-targets — edit the Makefile's ## comments, then run make docs -->
+| Command | What it does |
 |---|---|
-| `make` / `make up` | Start the stack (scale with `API_REPLICAS`, `MCP_REPLICAS`, `PORTFOLIO_REPLICAS`, `COMPLIANCE_REPLICAS`), wait until healthy, reload the balancer |
-| `make down` / `restart` / `ps` / `logs` | Stop (volumes kept), restart, status, follow logs (`SERVICE=api`) |
-| `make index` / `index-portfolio` / `index-code` / `reindex` / `drift` / `migrate` / `rebuild-index` | Indexing CLI against the compose Qdrant + Ollama; `index` covers billing, portfolio and the codebase; `rebuild-index FORCE=1` re-creates the collection with the configured embedding |
-| `make test` / `test-dotnet` / `test-web` / `lint` | Test suites and linters |
-| `make ci` / `ci-e2e` / `specs` | Locally, what GitHub Actions runs; the end-to-end part alone; strict OpenSpec validation |
-| `make verify` | 35 checks through the load balancer (routing, closed ports, balancing, SSE, MCP, failover, jobs, A2A, compliance reviewer, fee adjustment) |
-| `make screenshots` | Re-take the README screenshots from the running stack (`SHOTS=chat,topology` for some); see §55 of `DECISIONS.md` |
-| `make eval` / `eval-selection` / … / `eval-accept` | Evals against the stack's MCP servers (`SUITE=all`); `eval-accept` makes the result the new baseline |
-| `make ask Q="…"` | Ask one question through the agent and print its trace (`FIRM=firm-a`) |
+| `make all` | Start everything: build, run, wait for health, index if empty (default) |
+| `make help` | List the targets |
+| `make up` | Build and start the stack (replicas via API_REPLICAS/MCP_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy |
+| `make down` | Stop the stack (data volumes are kept) |
+| `make restart` | Stop and start the stack |
+| `make ps` | Show services, state and health |
+| `make logs` | Follow logs (SERVICE=api to narrow) |
+| `make clean` | Remove the stack WITH volumes (index, conversations) and build outputs; asks unless FORCE=1 |
+| `make index` | Index both domains' corpora and the codebase (unchanged documents are skipped) |
+| `make index-portfolio` | Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only |
+| `make index-code` | Index the repository itself (→ maf_code_chunks, served by mcp-code) only; unchanged files are skipped |
+| `make reindex` | Re-embed every document of both domains (--force) |
+| `make drift` | Report stale documents (source newer than index) |
+| `make rebuild-index` | Re-create the collection with every configured dense vector and re-index (asks unless FORCE=1) |
+| `make migrate` | Fill a provisioned dense vector with its configured model (TO=dense_v3) |
+| `make test` | Run all tests (.NET unit + integration, web) |
+| `make test-dotnet` | .NET tests (integration tests start Qdrant via Testcontainers) |
+| `make test-web` | Web tests (Vitest) |
+| `make lint` | Build .NET with warnings as errors; ESLint + Prettier for web |
+| `make lint-dotnet` | .NET build with warnings as errors |
+| `make lint-web` | ESLint + Prettier |
+| `make build-web` | Type-check and build the web app |
+| `make specs` | Validate all OpenSpec specs and changes (strict) |
+| `make docs` | Rewrite the generated blocks in README, project.md, config.yaml and the Copilot instructions |
+| `make docs-check` | Check the docs against the code (generated blocks, routes, make targets, models, links); changes nothing |
+| `make ci` | Run locally what GitHub Actions runs on every push |
+| `make ci-e2e` | Model-free end-to-end: stack with the Ollama stub, index, verify, A2A conformance (CI mode) |
+| `make verify` | Verify the running stack through the load balancer (35 checks) |
+| `make eval` | Run evals (SUITE=all\|selection\|retrieval\|generation\|injection\|confirmation\|intent\|domain\|presentation) against the stack's MCP servers |
+| `make ask` | Ask one question through the agent and print its trace (Q="…" FIRM=firm-a), e.g. a cross-domain one |
+| `make screenshots` | Re-take the README screenshots from the running stack into docs/screenshots (SHOTS=chat,topology for a subset) |
+| `make eval-accept` | Run the evals and accept their metrics as the new baseline (commit the result) |
+| `make eval-selection` | Eval: tool selection (recall/precision) |
+| `make eval-retrieval` | Eval: retrieval (recall@5/@20, MRR per mode) |
+| `make eval-generation` | Eval: answers judged for faithfulness/relevance |
+| `make eval-injection` | Eval: prompt-injection pass rate |
+| `make eval-confirmation` | Eval: does the summary a person approves say what would happen |
+| `make eval-intent` | Eval: intent classifier alone — would each question force search_documents? (needs JEV_MAF_LAB) |
+| `make eval-guardrail` | Eval: content guard alone — are malicious prompts/tool results flagged and benign ones not? (needs JEV_MAF_LAB) |
+| `make eval-presentation` | Eval: do portfolio answers build on their data cards instead of restating them? |
+| `make eval-a2a` | Conformance: an outside client drives the agents through evals/a2a-conformance.jsonl |
 | `make dev` | Run mcp/api/web locally without Docker (infra stays in compose); Ctrl-C stops |
-| `make doctor` | Check Docker, .NET SDK, Node, make, `OLLAMA_API_KEY`, `JEV_MAF_LAB` (values never printed) |
-| `make setup` | Install what `doctor` reports missing. Only the unattended, per-user part runs: the .NET SDK `global.json` pins, into `~/.dotnet`. Docker (admin rights), Node (your version manager) and the API key (a secret) are printed as commands, never executed |
-| `make clean` | Remove the stack **with volumes** and build outputs (asks; `FORCE=1` to skip) |
+| `make doctor` | Check prerequisites (Docker, .NET SDK, Node/npm, make, OLLAMA_API_KEY, JEV_MAF_LAB) |
+| `make setup` | Install what 'make doctor' reports missing (.NET SDK unattended; prints the rest) |
+<!-- /generated:make-targets -->
 
 ## Chat history
 
@@ -386,7 +439,7 @@ GitHub Actions ([`.github/workflows`](.github/workflows)) — `make ci` runs the
 
 | Workflow | Trigger | What runs |
 |---|---|---|
-| **CI** (`ci.yml`) | every push and pull request | `specs` (OpenSpec strict validation) · `dotnet` (build with warnings as errors, unit + Testcontainers integration tests) · `web` (lint, Vitest, build) · `e2e` (full stack behind the balancer on :7171, corpus indexed, `make verify` and the A2A conformance probe: `make ci-e2e`) |
+| **CI** (`ci.yml`) | every push and pull request | `specs` (OpenSpec strict validation and `make docs-check`) · `dotnet` (build with warnings as errors, unit + Testcontainers integration tests) · `web` (lint, Vitest, build) · `e2e` (full stack behind the balancer on :7171, corpus indexed, `make verify` and the A2A conformance probe: `make ci-e2e`) |
 | **Evals** (`evals.yml`) | manual (*Actions → Evals → Run workflow*, choose a suite) | real embeddings in compose Ollama + chat on Ollama Cloud and intent on Jev (`OLLAMA_API_KEY` and `JEV_MAF_LAB` repository secrets); reports uploaded as an artifact |
 
 The e2e job needs **no model and no secret**, so it also runs for pull requests from forks. `CI_MODE=1` replaces the
@@ -398,6 +451,35 @@ tenancy, failover and admin jobs are exercised for real. Try it locally: `make c
 gh workflow run evals.yml -f suite=selection   # dispatch evals from the CLI
 gh run watch                                   # follow it
 ```
+
+## Keeping docs in sync
+
+Facts that the code already holds are not written by hand. `make docs` writes them into the documents, between
+`generated:` markers:
+
+| Block | Where | Source |
+|---|---|---|
+| `make-targets` | this README | the Makefile's `##` target descriptions |
+| `lb-routes` | this README, [Copilot instructions](.github/copilot-instructions.md) | [`compose/lb/nginx.conf`](compose/lb/nginx.conf) |
+| `repo-layout` | [`openspec/project.md`](openspec/project.md) | each `.csproj` `<Description>`, and `[layout]` in [`docs/docs-sync.toml`](docs/docs-sync.toml) |
+| `project-context` | [`openspec/config.yaml`](openspec/config.yaml) | the whole of `openspec/project.md` |
+
+`make docs-check` changes nothing. It fails, naming file and line, when:
+- a generated block is out of date;
+- an api route has no row in [`docs/http-api.md`](docs/http-api.md), or a row names a route that is not registered;
+- a document runs a `make` target that does not exist;
+- a document names a chat, embedding or Jev model other than the configured one;
+- a relative link is broken;
+- an active OpenSpec change has no `## Documentation impact` section.
+
+It runs in `make ci` and in the CI `specs` job, with Python 3.11+ and nothing else. Deliberate exceptions live in
+[`docs/docs-sync.toml`](docs/docs-sync.toml), each with its reason:
+- a route left out of the API reference;
+- a route an SDK registers;
+- a model name that is not the default.
+
+`DECISIONS.md`, eval reports and archived changes are history, and are not checked. Prose is checked by review:
+archiving a change asks for a read-only pass over these documents against the change's diff.
 
 ## Evals — when you must run them
 

@@ -1,3 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Shared contracts ONLY (principal, tenant, result shapes)</Description>
+  </PropertyGroup>
   <!-- Shared contracts ONLY: principal, tenant, result shapes, events. No infrastructure packages. -->
 </Project>

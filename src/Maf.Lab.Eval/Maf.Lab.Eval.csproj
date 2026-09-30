@@ -1,5 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <Description>Console app: eval datasets, runners, metrics, report</Description>
+  </PropertyGroup>
+  <PropertyGroup>
     <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>

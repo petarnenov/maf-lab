@@ -1974,3 +1974,30 @@ said which account the conversation was about.
   tool. PNGs are 150–400 KB; the script flags any file over 400 KB.
 - **Framing.** The chat recipes collapse the history (it lists the persona's earlier test conversations), scroll the
   question to the top of the chat pane, and keep the window at the top so the navigation stays in the frame.
+
+## 56. Docs are generated where the code holds the fact, and checked everywhere else (keep-docs-in-sync, 2026-09-30)
+
+- **Why.** OpenSpec syncs only the main specs, and README, `docs/`, `openspec/project.md`, `config.yaml` and the
+  agent instructions drifted. The drift included three layout entries, the embedding model, the compose services,
+  four load-balancer routes, four API routes (one described only in prose) and 20 make targets.
+- **Generate a block, not a document.** Four blocks between `generated:` markers are written by `make docs`:
+  `make-targets`, `lb-routes`, `repo-layout` and `project-context`. The rest stays hand-written. `docs/http-api.md`
+  is mostly contract prose (bodies, responses, the AG-UI events), so generating it whole would have lost that. Its
+  method and path columns are checked in both directions instead.
+- **Static route parsing, not booting the api.** `WebApplicationFactory` over `EndpointDataSource` would be exact,
+  but it needs the .NET SDK, the api's options, SQLite and Qdrant settings in a job that has only Node. The parser
+  follows `MapGroup` variables and `const string` fields, and it fails closed: an argument it cannot resolve is a
+  finding, not a skip.
+- **Python standard library, not a new toolchain.** `scripts/docs.py` needs Python 3.11+ (for `tomllib`), which the
+  runner and the Mac already have. There is no `pip install` and no `package.json` outside `web/`, and it runs in
+  about a second.
+- **Exceptions carry reasons.** `docs/docs-sync.toml` lists each exception with its reason:
+  - routes left out of the API reference (`/health`);
+  - routes an SDK registers (A2A);
+  - routes another host serves (the compliance agent);
+  - a non-default model name (`qwen3:4b`).
+  An exception without a reason, or one that no longer matches anything, fails the check.
+- **Enforced in CI; the prose review only advises.** `make docs-check` is in `make ci` and the `specs` job, and it
+  fails an active change that has no `## Documentation impact` section. A model reading prose against a diff is not
+  reproducible, so the archive-time review in `openspec/config.yaml` suggests fixes and never blocks.
+- **Descriptions live next to the code.** Each `.csproj` has a `<Description>`, and it is the layout's source.

@@ -53,8 +53,8 @@ CODE_ENV := Indexing__Layout=repository Indexing__CorpusRoot=$(ROOT) Indexing__M
 
 .PHONY: all help up down restart ps logs clean index index-portfolio index-code reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
         eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-a2a dev doctor banner index-if-empty \
-        specs lint-dotnet lint-web build-web ci ci-e2e setup \
-        require-docker require-dotnet require-npm
+        specs docs docs-check lint-dotnet lint-web build-web ci ci-e2e setup \
+        require-docker require-dotnet require-npm require-python
 
 all: require-docker up index-if-empty banner ## Start everything: build, run, wait for health, index if empty (default)
 
@@ -151,7 +151,14 @@ build-web: require-npm ## Type-check and build the web app
 specs: require-npm ## Validate all OpenSpec specs and changes (strict)
 	npx --yes @fission-ai/openspec@$(OPENSPEC_VERSION) validate --all --strict --no-interactive
 
-ci: specs lint-dotnet test-dotnet lint-web test-web build-web ci-e2e ## Run locally what GitHub Actions runs on every push
+docs: require-python ## Rewrite the generated blocks in README, project.md, config.yaml and the Copilot instructions
+	python3 scripts/docs.py generate
+
+docs-check: require-python ## Check the docs against the code (generated blocks, routes, make targets, models, links); changes nothing
+	@python3 -m unittest discover -s scripts/tests -q
+	python3 scripts/docs.py check
+
+ci: specs docs-check lint-dotnet test-dotnet lint-web test-web build-web ci-e2e ## Run locally what GitHub Actions runs on every push
 
 ci-e2e: require-docker require-dotnet ## Model-free end-to-end: stack with the Ollama stub, index, verify, A2A conformance (CI mode)
 	$(MAKE) up index-if-empty verify eval-a2a CI_MODE=1
@@ -221,6 +228,9 @@ require-docker:
 
 require-dotnet:
 	@command -v $(DOTNET) >/dev/null 2>&1 || test -x $(DOTNET) || { echo "✗ The .NET SDK is required (global.json pins $$(python3 -c 'import json;print(json.load(open("global.json"))["sdk"]["version"])')). Run 'make setup'."; exit 1; }
+
+require-python:
+	@python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/null || { echo "✗ Python 3.11 or newer is required for the docs targets (tomllib)."; exit 1; }
 
 require-npm:
 	@command -v $(NPM) >/dev/null 2>&1 || { echo "✗ Node.js/npm is required (see 'make doctor'; 'make setup' installs what it can)."; exit 1; }

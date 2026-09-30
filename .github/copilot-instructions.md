@@ -42,11 +42,29 @@ MCP note: workspace MCP server config lives in `.mcp.json` (Playwright server vi
 ## High-level architecture
 
 - **Single entry point:** nginx load balancer on `http://localhost:7171` routes everything.
-- **Routing model:** `/api/*`, `/dev/*`, `/a2a`, and `/.well-known/agent-card.json` go to `Maf.Lab.Api`; `/mcp` goes to `Maf.Lab.Retrieval`; `/compliance/*` goes to `Maf.Lab.ComplianceAgent`; everything else goes to the web SPA.
+- **Routing model:** the table below, generated from `compose/lb/nginx.conf`.
 - **API service (`src/Maf.Lab.Api`):** ASP.NET Core host for chat SSE, history, feedback, admin/compliance surfaces, A2A protocol, and topology/trace endpoints. Persists app state in SQLite.
 - **Retrieval service (`src/Maf.Lab.Retrieval`):** MCP server exposing `search_documents` + billing-related tools over `/mcp`; retrieval runs against Qdrant (dense+sparse hybrid).
 - **Indexing and eval CLIs:** `src/Maf.Lab.Indexing` builds/updates the Qdrant corpus index; `src/Maf.Lab.Eval` runs selection/retrieval/generation/injection/confirmation suites against the running stack.
 - **Web app (`web/`):** Vite + React + TypeScript; in local non-balancer dev it proxies `/api` and `/dev` to the API process.
+
+<!-- generated:lb-routes — edit compose/lb/nginx.conf, then run make docs -->
+| Path | Match | Served by |
+|---|---|---|
+| `/lb-health` | exact | the balancer itself |
+| `/api/chat` | exact | `api` |
+| `/api/` | prefix | `api` |
+| `/dev/` | prefix | `api` |
+| `/.well-known/agent-card.json` | exact | `api` |
+| `/a2a` | prefix | `api` |
+| `/mcp` | exact | `mcp-retrieval` |
+| `/portfolio/mcp` | exact | `mcp-portfolio` at `/mcp` |
+| `/code/mcp` | exact | `mcp-code` at `/mcp` |
+| `/compliance` | prefix | `compliance` |
+| `/v1/traces` | prefix | `otel-collector` |
+| `/jaeger` | prefix | `jaeger` |
+| `/` | prefix | `web` |
+<!-- /generated:lb-routes -->
 
 ## Key conventions in this codebase
 
@@ -56,4 +74,5 @@ MCP note: workspace MCP server config lives in `.mcp.json` (Playwright server vi
 - **Tool output shape:** MCP tools return model-facing DTOs/structured content (see `SearchDocumentsTool.Structured(...)`), never persistence entities.
 - **Logging rule:** keep logs structured (tool names, timings, counts) and never log message content.
 - If package versions change, update `DECISIONS.md` in the same commit.
+- Never edit inside a `generated:` block; edit its source and run `make docs`. `make docs-check` (part of `make ci` and CI) fails when docs and code disagree.
 - Evals are on-demand gates (not every commit). Run relevant suites when prompts, tool schema/description, model settings, toolset, or retrieval/chunking behavior changes.

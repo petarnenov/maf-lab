@@ -17,8 +17,9 @@ Roles: `FIRM_ADMIN`, `ADVISOR`, `OPS`, `READ_ONLY`. Firms: `firm-a`, `firm-b`, `
 
 ## Identity
 
-| GET | `/api/me` | — | `{ userId, firmId, role, advisorIds }` |
+| Method | Path | Body | Response |
 |---|---|---|---|
+| GET | `/api/me` | — | `{ userId, firmId, role, advisorIds }` |
 
 ## Chat
 
@@ -132,7 +133,11 @@ happens twice. `metadata.state` is opaque and integrity-protected: hand it back,
 
 ### What a conversation is waiting on
 
-`GET /api/conversations/{id}/pending` → `200 { pending }`, where `pending` is `null` or
+| Method | Path | Response |
+|---|---|---|
+| GET | `/api/conversations/{id}/pending` | `200 { pending }`; `404` when the conversation is not the caller's own |
+
+`pending` is `null` or
 `{ adjustmentId, adjustment, question, expiresAt }`. The run that proposed it is gone once its stream ends; the
 proposal is not, so this is how a reopened page finds it again. A proposal that was applied, declined or has
 expired is not waiting. A conversation that is not the caller's own is `404`.
@@ -221,6 +226,8 @@ summary a person was asked to approve, so the UI offers it only on a turn that a
 | POST | `/api/admin/index/run` | — | `202 AdminJob` |
 | POST | `/api/admin/index/migrate` | `{ targetModel? }` | `202 AdminJob` |
 | GET | `/api/admin/jobs/{jobId}` | — | `AdminJob` |
+| GET | `/api/admin/intent-stats?window=1h\|24h\|7d` | — | `IntentStatsReport` for the caller's firm (default `24h`; another window is `400`) |
+| GET | `/api/admin/jev-stats?window=1h\|24h\|7d` | — | `JevStatsReport` for the caller's firm, same windows |
 
 `AdminJob.state`: `queued` \| `running` \| `succeeded` \| `failed`. `migrate` accepts `{}` or no body.
 
@@ -232,6 +239,25 @@ summary a person was asked to approve, so the UI offers it only on a turn that a
 
 `LabelRequest.dataset`: `selection` (uses `expectedTools`), `retrieval` (uses
 `relevantChunkIds`), `generation` (uses `referenceAnswer`, `expectedDocIds`).
+
+The two statistics reports are numbers only: no question, answer, passage or identifier of a turn, conversation or
+user leaves the server. `IntentStatsReport` = `{ window, from, to, bucketMinutes, settings, totals, pipeline,
+reasons, choices, timeline, confidence, inDomain, points, meanProbabilities, latency, models }` — how the intent classifier
+answered on the firm's turns. `JevStatsReport` = `{ window, from, to, bucketMinutes, overview, intent, guardrail,
+relevance, routing, domains?, answerCheck? }` — every Jev call site on the firm's chat turns, with `intent` equal to
+the intent-stats report for the same window. Calls on the A2A path have no turn trace and are not counted. The
+shapes are in `Maf.Lab.Domain/Intent` and `Maf.Lab.Domain/Jev`.
+
+## Code (any authenticated role)
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| POST | `/api/code/snippets` | `{ question, maxResults? }` | `CodeSearchResult`; `400` without a question; `503` when code search cannot answer |
+
+The Code snippets tab: `search_codebase` on the codebase MCP server, called with the caller's own bearer token, so the
+server derives the principal itself. `maxResults` defaults to 8 and is clamped to 1–10.
+`CodeSearchResult` = `{ results: [{ path, startLine?, endLine?, symbol?, section, kind, language, score, snippet }],
+totalMatches, truncated, refineHint? }` — snippets only, never a synthesized answer.
 
 ## Topology (any authenticated role)
 

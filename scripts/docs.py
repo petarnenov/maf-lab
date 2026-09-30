@@ -1,0 +1,578 @@
+#!/usr/bin/env python3
+"""Keep the documents outside the main specs in step with the code (openspec/specs/documentation-sync).
+
+    docs.py generate   rewrite every generated block from its source            (make docs)
+    docs.py check      change nothing; list every place a document disagrees     (make docs-check)
+
+Standard library only, so it runs wherever python3 does: no .NET SDK, no Docker, no pip install.
+A finding prints as `path:line: rule: message → fix`; `check` exits 1 when there is any.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+import tomllib
+import urllib.parse
+from dataclasses import dataclass
+from pathlib import Path
+
+CONFIG = "docs/docs-sync.toml"
+VERBS = ("GET", "POST", "PUT", "PATCH", "DELETE")
+ROUTE_SOURCES = ("src/Maf.Lab.Api", "src/Maf.Lab.A2A", "src/Maf.Lab.Hosting")
+HTTP_API = "docs/http-api.md"
+
+# Where each generated block must appear. Dependency order: repo-layout rewrites project.md, which project-context copies.
+REQUIRED_BLOCKS = {
+    "README.md": ("make-targets", "lb-routes"),
+    ".github/copilot-instructions.md": ("lb-routes",),
+    "openspec/project.md": ("repo-layout",),
+    "openspec/config.yaml": ("project-context",),
+}
+BLOCK_ORDER = ("make-targets", "repo-layout", "lb-routes", "project-context")
+GENERATED_FILES = ("README.md", ".github/copilot-instructions.md", "openspec/project.md", "openspec/config.yaml")
+
+
+@dataclass(frozen=True)
+class Finding:
+    path: str
+    line: int | None
+    rule: str
+    message: str
+    fix: str
+
+    def __str__(self) -> str:
+        where = f"{self.path}:{self.line}" if self.line else self.path
+        return f"{where}: {self.rule}: {self.message} → {self.fix}"
+
+
+class Repo:
+    """The repository as the rules see it; reads go through a cache so generated text can be checked in memory."""
+
+    def __init__(self, root: Path):
+        self.root = root
+        self._text: dict[str, str] = {}
+        self.config = tomllib.loads(self.read(CONFIG)) if self.exists(CONFIG) else {}
+
+    def exists(self, rel: str) -> bool:
+        return rel in self._text or (self.root / rel).is_file()
+
+    def read(self, rel: str) -> str:
+        if rel not in self._text:
+            self._text[rel] = (self.root / rel).read_text(encoding="utf-8")
+        return self._text[rel]
+
+    def put(self, rel: str, text: str) -> None:
+        self._text[rel] = text
+
+    def tracked_dirs(self, under: str = "") -> list[str]:
+        """Directories directly under `under` that hold at least one file git tracks (all of them outside a repo)."""
+        base = self.root / under if under else self.root
+        try:
+            out = subprocess.run(["git", "ls-files", "--", under or "."], cwd=self.root, capture_output=True,
+                                 text=True, check=True).stdout
+            inside = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=self.root, capture_output=True,
+                                    text=True, check=True).stdout.strip()
+            if Path(inside).resolve() != self.root.resolve():
+                raise subprocess.CalledProcessError(1, "git")
+            depth = len(Path(under).parts) if under else 0
+            names = {Path(p).parts[depth] for p in out.splitlines() if len(Path(p).parts) > depth + 1}
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            names = {p.name for p in base.iterdir() if p.is_dir() and p.name != ".git"} if base.is_dir() else set()
+        return sorted(n for n in names if (base / n).is_dir())
+
+    def checked_documents(self) -> list[str]:
+        docs = ["README.md", "CLAUDE.md", "openspec/project.md", ".github/copilot-instructions.md"]
+        docs_dir = self.root / "docs"
+        if docs_dir.is_dir():
+            docs += sorted(str(p.relative_to(self.root)) for p in docs_dir.rglob("*.md"))
+        return [d for d in docs if self.exists(d)]
+
+
+# ── generated blocks ───────────────────────────────────────────────────────────────────────────────────────────────
+
+MD_START = re.compile(r"^<!-- generated:([a-z0-9-]+)\b.*-->\s*$")
+MD_END = re.compile(r"^<!-- /generated:([a-z0-9-]+) -->\s*$")
+YAML_START = re.compile(r"^# generated:([a-z0-9-]+)\b.*$")
+YAML_END = re.compile(r"^# /generated:([a-z0-9-]+)\s*$")
+
+
+def _patterns(rel: str):
+    return (YAML_START, YAML_END) if rel.endswith((".yaml", ".yml")) else (MD_START, MD_END)
+
+
+def find_blocks(rel: str, text: str) -> tuple[list[tuple[str, int, int]], list[Finding]]:
+    """(name, start line index, end line index) of every block, and findings for unbalanced markers."""
+    start_re, end_re = _patterns(rel)
+    blocks, findings, open_block = [], [], None
+    for i, line in enumerate(text.split("\n")):
+        if m := start_re.match(line):
+            if open_block:
+                findings.append(Finding(rel, i + 1, "generated-block", f"`{m[1]}` starts inside `{open_block[0]}`",
+                                        "close the first block before opening another"))
+            open_block = (m[1], i)
+        elif m := end_re.match(line):
+            if not open_block or open_block[0] != m[1]:
+                findings.append(Finding(rel, i + 1, "generated-block", f"end marker for `{m[1]}` has no matching start",
+                                        "restore the start marker, or delete this one"))
+            else:
+                blocks.append((m[1], open_block[1], i))
+            open_block = None
+    if open_block:
+        findings.append(Finding(rel, open_block[1] + 1, "generated-block", f"`{open_block[0]}` is never closed",
+                                f"add the end marker for `{open_block[0]}`"))
+    return blocks, findings
+
+
+def replace_block(text: str, start: int, end: int, body: str) -> str:
+    lines = text.split("\n")
+    return "\n".join(lines[: start + 1] + ([body] if body else []) + lines[end:])
+
+
+def gen_make_targets(repo: Repo, findings: list[Finding]) -> str:
+    rows = ["| Command | What it does |", "|---|---|"]
+    for m in re.finditer(r"^([a-zA-Z0-9_-]+):.*?## (.*)$", repo.read("Makefile"), re.M):
+        description = m[2].strip().replace("|", r"\|")
+        rows.append(f"| `make {m[1]}` | {description} |")
+    return "\n".join(rows)
+
+
+def project_description(repo: Repo, rel_dir: str) -> str | None:
+    for csproj in sorted((repo.root / rel_dir).glob("*.csproj")):
+        if m := re.search(r"<Description>(.*?)</Description>", csproj.read_text(encoding="utf-8"), re.S):
+            return " ".join(m[1].split())
+        return None
+    return repo.config.get("layout", {}).get(rel_dir)
+
+
+def gen_repo_layout(repo: Repo, findings: list[Finding]) -> str:
+    layout = repo.config.get("layout", {})
+    entries: list[tuple[int, str, str]] = []
+    for top in repo.tracked_dirs():
+        entries.append((1, f"{top}/", layout.get(top) or ""))
+        if not layout.get(top):
+            findings.append(Finding(CONFIG, None, "layout", f"top-level directory `{top}/` has no description",
+                                    f'add `"{top}" = "…"` under [layout]'))
+        if top in ("src", "tools"):
+            for sub in repo.tracked_dirs(top):
+                rel = f"{top}/{sub}"
+                desc = project_description(repo, rel)
+                if not desc:
+                    is_dotnet = any((repo.root / rel).glob("*.csproj"))
+                    findings.append(Finding(rel, None, "layout", f"`{rel}` has no description",
+                                            "add <Description> to its .csproj" if is_dotnet
+                                            else f'add `"{rel}" = "…"` under [layout] in {CONFIG}'))
+                entries.append((2, f"{sub}/", desc or ""))
+    known = {d for d in repo.tracked_dirs()} | {f"{t}/{s}" for t in ("src", "tools") for s in repo.tracked_dirs(t)}
+    for key in layout:
+        if key not in known:
+            findings.append(Finding(CONFIG, None, "layout", f"[layout] describes `{key}`, which git does not track",
+                                    "remove the entry"))
+    width = max((2 * depth + len(name) for depth, name, _ in entries), default=0) + 2
+    lines = ["```", "maf-lab/"]
+    for depth, name, desc in entries:
+        head = "  " * depth + name
+        lines.append((head.ljust(width) + desc).rstrip())
+    lines.append("```")
+    return "\n".join(lines)
+
+
+def gen_lb_routes(repo: Repo, findings: list[Finding]) -> str:
+    conf = repo.read("compose/lb/nginx.conf")
+    upstreams = {m[1]: m[2] for m in re.finditer(r"upstream\s+(\w+)\s*\{[^}]*?^\s*server\s+([\w.-]+)", conf, re.M | re.S)}
+    rows = ["| Path | Match | Served by |", "|---|---|---|"]
+    for m in re.finditer(r"^\s*location\s+(=\s*)?(\S+)\s*\{(.*?)^\s*\}", conf, re.M | re.S):
+        exact, path, body = bool(m[1]), m[2], m[3]
+        if p := re.search(r"proxy_pass\s+http://(\w+)(/\S*)?;", body):
+            service = upstreams.get(p[1])
+            if not service:
+                findings.append(Finding("compose/lb/nginx.conf", None, "lb-routes",
+                                        f"`location {path}` proxies to unknown upstream `{p[1]}`", "define the upstream"))
+                service = p[1]
+            target = f"`{service}`" + (f" at `{p[2]}`" if p[2] else "")
+        elif re.search(r"\breturn\b", body):
+            target = "the balancer itself"
+        else:
+            continue
+        rows.append(f"| `{path}` | {'exact' if exact else 'prefix'} | {target} |")
+    return "\n".join(rows)
+
+
+def gen_project_context(repo: Repo, findings: list[Finding]) -> str:
+    lines = repo.read("openspec/project.md").rstrip("\n").split("\n")
+    return "\n".join(["context: |"] + [("  " + l).rstrip() for l in lines])
+
+
+GENERATORS = {
+    "make-targets": gen_make_targets,
+    "repo-layout": gen_repo_layout,
+    "lb-routes": gen_lb_routes,
+    "project-context": gen_project_context,
+}
+
+
+def render(repo: Repo) -> tuple[dict[str, str], list[Finding]]:
+    """The generated files as `make docs` would write them, and findings about the blocks themselves."""
+    findings: list[Finding] = []
+    bodies: dict[str, str] = {}
+    files = [f for f in GENERATED_FILES if repo.exists(f)] + [
+        d for d in repo.checked_documents() if d not in GENERATED_FILES]
+    for name in BLOCK_ORDER:
+        for rel in files:
+            blocks, _ = find_blocks(rel, repo.read(rel))
+            for block_name, start, end in reversed(blocks):
+                if block_name != name:
+                    continue
+                if name not in bodies:
+                    bodies[name] = GENERATORS[name](repo, findings)
+                repo.put(rel, replace_block(repo.read(rel), start, end, bodies[name]))
+    for rel in files:
+        blocks, marker_findings = find_blocks(rel, repo.read(rel))
+        findings += marker_findings
+        for block_name, start, _ in blocks:
+            if block_name not in GENERATORS:
+                findings.append(Finding(rel, start + 1, "generated-block", f"unknown block `{block_name}`",
+                                        f"use one of: {', '.join(BLOCK_ORDER)}"))
+    for rel, names in REQUIRED_BLOCKS.items():
+        if not repo.exists(rel):
+            continue
+        present = {b[0] for b in find_blocks(rel, repo.read(rel))[0]}
+        for name in names:
+            if name not in present:
+                findings.append(Finding(rel, None, "generated-block", f"block `{name}` is missing",
+                                        f"add the `generated:{name}` start and end markers, then run make docs"))
+    return {rel: repo.read(rel) for rel in files}, findings
+
+
+# ── routes ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+def normalize_route(path: str) -> str:
+    path = re.sub(r"\{[^}]*\}", "{}", path.split("?")[0].strip())
+    path = re.sub(r"/+", "/", "/" + path.lstrip("/"))
+    return path.rstrip("/") or "/"
+
+
+def registered_routes(repo: Repo) -> tuple[dict[tuple[str, str], tuple[str, int]], list[Finding]]:
+    files = sorted(p for src in ROUTE_SOURCES if (repo.root / src).is_dir() for p in (repo.root / src).rglob("*.cs")
+                   if "/obj/" not in str(p) and "/bin/" not in str(p))
+    consts: dict[str, str] = {}
+    texts = {}
+    for f in files:
+        text = f.read_text(encoding="utf-8")
+        texts[f] = text
+        classes = [(m.start(), m[1]) for m in re.finditer(r"\b(?:class|record|struct)\s+(\w+)", text)]
+        for m in re.finditer(r"\bconst\s+string\s+(\w+)\s*=\s*\"([^\"]*)\"", text):
+            owner = next((name for pos, name in reversed(classes) if pos < m.start()), None)
+            consts[m[1]] = m[2]
+            if owner:
+                consts[f"{owner}.{m[1]}"] = m[2]
+
+    def resolve(arg: str) -> str | None:
+        arg = arg.strip()
+        if m := re.fullmatch(r'@?"([^"]*)"', arg):
+            return m[1]
+        return consts.get(arg) if re.fullmatch(r"[\w.]+", arg) else None
+
+    routes: dict[tuple[str, str], tuple[str, int]] = {}
+    findings: list[Finding] = []
+    for f, text in texts.items():
+        rel = str(f.relative_to(repo.root))
+        groups: dict[str, str] = {}
+        for i, raw in enumerate(text.split("\n"), 1):
+            line = re.sub(r"^\s*//.*$", "", raw)
+            if m := re.search(r"\bvar\s+(\w+)\s*=\s*(\w+)\.MapGroup\(\s*([^,)]*)", line):
+                prefix = resolve(m[3])
+                if prefix is None:
+                    findings.append(Finding(rel, i, "routes", f"cannot resolve MapGroup argument `{m[3].strip()}`",
+                                            "use a string literal or a const string"))
+                    continue
+                groups[m[1]] = groups.get(m[2], "") + prefix
+                continue
+            if re.search(r"\.MapGroup\(", line):
+                findings.append(Finding(rel, i, "routes", "MapGroup result is not held in a `var`",
+                                        "assign the group to a local variable so its prefix can be followed"))
+                continue
+            for m in re.finditer(r"(\w+)\.Map(Get|Post|Put|Patch|Delete|Methods|Fallback)\(\s*([^,)]*)", line):
+                receiver, verb, arg = m[1], m[2], m[3]
+                if verb in ("Methods", "Fallback"):
+                    findings.append(Finding(rel, i, "routes", f"Map{verb} is not understood by the route check",
+                                            "register with MapGet/MapPost/… or extend scripts/docs.py"))
+                    continue
+                path = resolve(arg)
+                if path is None:
+                    findings.append(Finding(rel, i, "routes", f"cannot resolve route argument `{arg.strip()}`",
+                                            "use a string literal or a const string"))
+                    continue
+                routes.setdefault((verb.upper(), normalize_route(groups.get(receiver, "") + "/" + path)), (rel, i))
+    return routes, findings
+
+
+def documented_routes(repo: Repo) -> dict[tuple[str, str], int]:
+    rows: dict[tuple[str, str], int] = {}
+    if not repo.exists(HTTP_API):
+        return rows
+    for i, line in enumerate(repo.read(HTTP_API).split("\n"), 1):
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in re.split(r"(?<!\\)\|", line.strip().strip("|"))]
+        if len(cells) < 2:
+            continue
+        methods = cells[0].split("/")
+        if not all(m in VERBS for m in methods):
+            continue
+        for path in re.findall(r"`([^`]+)`", cells[1]):
+            for method in methods:
+                rows.setdefault((method, normalize_route(path) if "…" not in path else path), i)
+    return rows
+
+
+def check_routes(repo: Repo) -> tuple[list[Finding], int]:
+    registered, findings = registered_routes(repo)
+    documented = documented_routes(repo)
+    routes_cfg = repo.config.get("routes", {})
+    undocumented = routes_cfg.get("undocumented", {})
+    library = {**routes_cfg.get("library", {}), **routes_cfg.get("elsewhere", {})}
+
+    def library_match(path: str) -> str | None:
+        for key in library:
+            if key == path or (key.endswith("…") and path.startswith(key[:-1])):
+                return key
+        return None
+
+    for key, reason in {**undocumented, **library}.items():
+        if not str(reason).strip():
+            findings.append(Finding(CONFIG, None, "routes", f"exemption `{key}` has no reason", "state why"))
+    used_library = set()
+    for (method, path), (rel, line) in sorted(registered.items()):
+        if (method, path) not in documented and f"{method} {path}" not in undocumented:
+            findings.append(Finding(rel, line, "routes", f"{method} {path} is registered but not in {HTTP_API}",
+                                    f"add a row for it, or list `{method} {path}` under [routes.undocumented]"))
+    for (method, path), line in sorted(documented.items(), key=lambda kv: kv[1]):
+        if (method, path) in registered:
+            continue
+        if key := library_match(path):
+            used_library.add(key)
+            continue
+        findings.append(Finding(HTTP_API, line, "routes", f"{method} {path} is documented but not registered",
+                                "remove the row, or list the path under [routes.library] (an SDK registers it) "
+                                "or [routes.elsewhere] (another host serves it)"))
+    for key in undocumented:
+        method, _, path = key.partition(" ")
+        if (method, normalize_route(path)) not in registered:
+            findings.append(Finding(CONFIG, None, "routes", f"[routes.undocumented] names `{key}`, which is not registered",
+                                    "remove the exemption"))
+    for key in library:
+        if key not in used_library:
+            findings.append(Finding(CONFIG, None, "routes", f"route exemption `{key}` matches no row in {HTTP_API}",
+                                    "remove the exemption"))
+    return findings, len(registered)
+
+
+# ── make references, models, links, change proposals ─────────────────────────────────────────────────────────────
+
+def make_targets_defined(repo: Repo) -> set[str]:
+    targets = set()
+    for m in re.finditer(r"^([a-zA-Z0-9_.%-][^:=#\n]*?)\s*:(?![=])", repo.read("Makefile"), re.M):
+        targets |= {t for t in m[1].split() if not t.startswith(".")}
+    return targets
+
+
+def iter_lines(text: str):
+    """(line number, line, inside a fenced code block)."""
+    fenced = False
+    for i, line in enumerate(text.split("\n"), 1):
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            continue
+        yield i, line, fenced
+
+
+def make_target_of(command: str) -> str | None:
+    for token in command.split()[1:]:
+        if "=" in token or token.startswith("-"):
+            continue
+        return token.rstrip(".,;:")
+    return None
+
+
+def check_make_references(repo: Repo) -> list[Finding]:
+    targets = make_targets_defined(repo)
+    findings = []
+    for rel in repo.checked_documents():
+        for i, line, fenced in iter_lines(repo.read(rel)):
+            commands = [line.strip()] if fenced and re.match(r"^\s*make(\s|$)", line) else []
+            commands += re.findall(r"`(make(?:\s[^`]*)?)`", line) if not fenced else []
+            for command in commands:
+                target = make_target_of(command.split("#")[0])
+                if target and target not in targets and re.fullmatch(r"[a-zA-Z0-9_-]+", target):
+                    findings.append(Finding(rel, i, "make", f"`make {target}`: the Makefile has no target `{target}`",
+                                            "fix the reference, or add the target"))
+    return findings
+
+
+def configured_models(repo: Repo) -> tuple[dict[str, str], list[Finding]]:
+    findings: list[Finding] = []
+    anchors = {
+        "chat": ("src/Maf.Lab.Retrieval/Configuration/Options.cs", r'\bChatModel\s*\{\s*get;\s*set;\s*\}\s*=\s*"([^"]+)"'),
+        "jev": ("src/Maf.Lab.Retrieval/Jev/JevOptions.cs", r'\bModel\s*\{\s*get;\s*set;\s*\}\s*=\s*"([^"]+)"'),
+        "dense": ("src/Maf.Lab.Retrieval/Configuration/Options.cs", r'\bDenseVector\s*\{\s*get;\s*set;\s*\}\s*=\s*"([^"]+)"'),
+    }
+    values: dict[str, str] = {}
+    for kind, (rel, pattern) in anchors.items():
+        m = re.search(pattern, repo.read(rel)) if repo.exists(rel) else None
+        if not m:
+            findings.append(Finding(rel, None, "models", f"cannot find the configured {kind} value",
+                                    "update the anchor in scripts/docs.py to where the default now lives"))
+            continue
+        values[kind] = m[1]
+    if "dense" in values:
+        rel = anchors["dense"][0]
+        m = re.search(r'\["' + re.escape(values["dense"]) + r'"\]\s*=\s*new\s+EmbeddingProfile\s*\{[^}]*?\bModel\s*=\s*"([^"]+)"',
+                      repo.read(rel), re.S)
+        if m:
+            values["embedding"] = m[1]
+        else:
+            findings.append(Finding(rel, None, "models", f"cannot find the embedding profile `{values['dense']}`",
+                                    "update the anchor in scripts/docs.py"))
+    if "chat" in values and (m := re.search(r"^CHAT_MODEL\s*\?=\s*(\S+)", repo.read("Makefile"), re.M)):
+        if m[1] != values["chat"]:
+            findings.append(Finding("Makefile", None, "models",
+                                    f"CHAT_MODEL is `{m[1]}` but the code default is `{values['chat']}`",
+                                    "make the two agree"))
+    values.pop("dense", None)
+    return values, findings
+
+
+def check_models(repo: Repo) -> list[Finding]:
+    values, findings = configured_models(repo)
+    patterns = repo.config.get("models", {}).get("patterns", {})
+    allowed = repo.config.get("models", {}).get("allowed", {})
+    seen_allowed = set()
+    for key, reason in allowed.items():
+        if not str(reason).strip():
+            findings.append(Finding(CONFIG, None, "models", f"allowed model `{key}` has no reason", "state why"))
+    for rel in repo.checked_documents():
+        for i, line in enumerate(repo.read(rel).split("\n"), 1):
+            for kind, pattern in patterns.items():
+                for m in re.finditer(pattern, line):
+                    name = m[0]
+                    if name in allowed:
+                        seen_allowed.add(name)
+                    elif kind in values and name != values[kind]:
+                        findings.append(Finding(rel, i, "models",
+                                                f"names {kind} model `{name}`, but the code configures `{values[kind]}`",
+                                                f"write `{values[kind]}`, or list `{name}` under [models.allowed]"))
+    for key in allowed:
+        if key not in seen_allowed:
+            findings.append(Finding(CONFIG, None, "models", f"[models.allowed] names `{key}`, which no document mentions",
+                                    "remove the entry"))
+    return findings
+
+
+LINK = re.compile(r"!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\s*\)")
+HTML_REF = re.compile(r"\b(?:src|href|srcset)=\"([^\"]+)\"")
+
+
+def check_links(repo: Repo) -> list[Finding]:
+    findings = []
+    for rel in repo.checked_documents():
+        base = (repo.root / rel).parent
+        for i, line, fenced in iter_lines(repo.read(rel)):
+            if fenced:
+                continue
+            line = re.sub(r"`[^`]*`", "", line)
+            targets = LINK.findall(line) + [t.split()[0] for t in HTML_REF.findall(line)]
+            for target in targets:
+                if re.match(r"^[a-z][a-z0-9+.-]*:", target, re.I) or target.startswith("#"):
+                    continue
+                path = urllib.parse.unquote(target.split("#")[0].split("?")[0])
+                resolved = repo.root / path.lstrip("/") if path.startswith("/") else base / path
+                if not resolved.exists():
+                    findings.append(Finding(rel, i, "links", f"`{target}` does not exist", "fix the path"))
+    return findings
+
+
+def check_change_proposals(repo: Repo) -> list[Finding]:
+    findings = []
+    changes = repo.root / "openspec" / "changes"
+    if not changes.is_dir():
+        return findings
+    for change in sorted(p for p in changes.iterdir() if p.is_dir() and p.name != "archive"):
+        proposal = change / "proposal.md"
+        rel = str(proposal.relative_to(repo.root))
+        if not proposal.is_file():
+            continue
+        text = proposal.read_text(encoding="utf-8")
+        m = re.search(r"^## Documentation impact[ \t]*\n(.*?)(?=^## |\Z)", text, re.M | re.S)
+        if not m:
+            findings.append(Finding(rel, None, "documentation-impact", f"change `{change.name}` has no "
+                                    "`## Documentation impact` section",
+                                    "name each document the change affects, or say why none is"))
+        elif not re.sub(r"<!--.*?-->", "", m[1], flags=re.S).strip():
+            findings.append(Finding(rel, None, "documentation-impact", "the `## Documentation impact` section is empty",
+                                    "name each document the change affects, or say why none is"))
+    return findings
+
+
+# ── commands ───────────────────────────────────────────────────────────────────────────────────────────────────────
+
+def generate(root: Path) -> int:
+    repo = Repo(root)
+    rendered, findings = render(repo)
+    changed = []
+    for rel, text in rendered.items():
+        path = root / rel
+        if path.read_text(encoding="utf-8") != text:
+            path.write_text(text, encoding="utf-8")
+            changed.append(rel)
+    for f in findings:
+        print(f, file=sys.stderr)
+    print(f"docs: {len(changed)} file(s) rewritten" + (f": {', '.join(changed)}" if changed else ""))
+    return 1 if findings else 0
+
+
+def check(root: Path) -> int:
+    on_disk = Repo(root)
+    repo = Repo(root)
+    rendered, findings = render(repo)
+    blocks = 0
+    for rel, text in rendered.items():
+        current = on_disk.read(rel)
+        found, _ = find_blocks(rel, current)
+        blocks += len(found)
+        if current != text:
+            expected, _ = find_blocks(rel, text)
+            cur_lines, exp_lines = current.split("\n"), text.split("\n")
+            for (name, s, e), (_, s2, e2) in zip(found, expected):
+                if cur_lines[s:e + 1] != exp_lines[s2:e2 + 1]:
+                    findings.append(Finding(rel, s + 1, "generated-block",
+                                            f"block `{name}` differs from its source", "run make docs"))
+    route_findings, route_count = check_routes(on_disk)
+    findings += route_findings
+    findings += check_make_references(on_disk)
+    findings += check_models(on_disk)
+    findings += check_links(on_disk)
+    findings += check_change_proposals(on_disk)
+    for f in findings:
+        print(f)
+    documents = len(on_disk.checked_documents())
+    if findings:
+        print(f"docs-check: {len(findings)} finding(s)")
+        return 1
+    print(f"docs-check: {documents} documents, {blocks} generated blocks, {route_count} routes — in sync")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("command", choices=("generate", "check"),
+                        help="generate: rewrite generated blocks (make docs); check: verify, change nothing (make docs-check)")
+    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent)
+    args = parser.parse_args(argv)
+    return generate(args.root) if args.command == "generate" else check(args.root)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

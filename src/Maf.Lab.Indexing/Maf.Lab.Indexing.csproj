@@ -1,5 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <Description>Console app: source loaders, chunkers, embedding, upsert, drift</Description>
+  </PropertyGroup>
+  <PropertyGroup>
     <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>

@@ -19,17 +19,20 @@ production system.
 - Vector store: Qdrant (latest stable, Docker image), .NET client
   Qdrant.Client. Dense + sparse named vectors, payload indexes, Query API
   with prefetch and fusion.
-- Models: Ollama in Docker for local development — one embedding model
-  (nomic-embed-text or equivalent) and one chat model. Provider is
-  abstracted behind Microsoft.Extensions.AI so it can be switched to
-  Azure OpenAI / OpenAI by configuration only.
+- Models: one multilingual embedding model on the local Ollama in Docker
+  (embeddinggemma, vector dense_v3), and the chat model on Ollama Cloud
+  (gpt-oss:120b). Typed decisions go to TypeSafe Jev (jev-1.13.0). The
+  provider is abstracted behind Microsoft.Extensions.AI so it can be
+  switched to Azure OpenAI / OpenAI by configuration only.
 - Sparse encoder: BM25 implemented in C# (tokenizer, IDF from the indexed
   corpus, persisted vocabulary). No external service.
 - Frontend: React (latest), TypeScript, Vite, React Router, TanStack Query
   (React Query), Vitest + Testing Library. No UI framework required; plain
   CSS modules are fine.
-- Containers: Docker Compose — qdrant, ollama, api, mcp-retrieval, web.
-  One command brings everything up.
+- Containers: Docker Compose — lb (nginx, the one entry point on 7171),
+  api, mcp-retrieval, mcp-portfolio, mcp-code, compliance, web, qdrant,
+  ollama, ollama-init, redis, otel-collector, prometheus, jaeger. One
+  command (`make`) brings everything up.
 - Tests: xUnit for .NET (unit + integration with Testcontainers for
   Qdrant), Vitest for the web. Evals are a separate CLI project, not part
   of the unit test run.
@@ -39,24 +42,37 @@ production system.
 
 ## Repository layout
 
+<!-- generated:repo-layout — edit each .csproj <Description> or [layout] in docs/docs-sync.toml, then run make docs -->
 ```
 maf-lab/
-  src/
-    Maf.Lab.Api/            ASP.NET Core host: agent, chat endpoints (SSE), feedback, admin
-    Maf.Lab.Retrieval/      MCP server exposing search_documents; Qdrant access; BM25
-    Maf.Lab.Portfolio/      MCP server for the portfolio domain: search_portfolio_documents (own collection), household read tools
-    Maf.Lab.CodeSearch/     MCP server over the repository itself: search_codebase, ask_codebase (own collection)
-    Maf.Lab.Indexing/       Console app: source loaders, chunkers, embedding, upsert
-    Maf.Lab.Eval/           Console app: eval datasets, runners, metrics, report
-    Maf.Lab.Domain/         Shared contracts ONLY (principal, tenant, result shapes)
-  web/                      Vite + React app
-  compose/                  docker-compose.yml, ollama model pull script, seed data
-  data/                     Sample corpus: docs/, procedures/, code/ per tenant + shared
-  data-portfolio/           Portfolio domain corpus, same tenant layout, indexed into its own collection
-  evals/                    JSONL datasets: selection, retrieval, generation, injection
-  openspec/
-  DECISIONS.md
+  .claude/                    Agent tooling: the OpenSpec skills and commands this repository's agents use
+  .github/                    GitHub Actions workflows (ci, evals) and the Copilot instructions
+  .vscode/                    Compound api + web debugging, and tasks for compose up, index and eval
+  compose/                    docker-compose.yml, the nginx load balancer, the Ollama stub for CI, OpenTelemetry config, seed data
+  data/                       Sample corpus: docs/, procedures/, code/ per tenant + shared
+  data-portfolio/             Portfolio domain corpus, same tenant layout, indexed into its own collection
+  docs/                       HTTP API, trace events, telemetry and shared-state references; rules; screenshots; docs-sync.toml
+  evals/                      JSONL datasets per suite, the accepted baseline, and the run reports
+  openspec/                   Specs, active changes and the archive; project.md is the source for the OpenSpec context
+  scripts/                    The multi-line logic behind make targets (bash, and Python for docs and corpus stats)
+  src/                        .NET projects, one per service or shared library
+    Maf.Lab.A2A/              A2A code both agents share: partner identity, the signed card, the 1.0 wire format, the request handler
+    Maf.Lab.Api/              ASP.NET Core host: the agent, chat endpoints (AG-UI over SSE), history, feedback, admin, A2A
+    Maf.Lab.CodeSearch/       MCP server over the repository itself: search_codebase, ask_codebase (own collection)
+    Maf.Lab.ComplianceAgent/  The compliance reviewer: a second agent, an A2A server under /compliance
+    Maf.Lab.Domain/           Shared contracts ONLY (principal, tenant, result shapes)
+    Maf.Lab.Eval/             Console app: eval datasets, runners, metrics, report
+    Maf.Lab.Hosting/          What every service runs: instance identity and /health, telemetry, shared state
+    Maf.Lab.Indexing/         Console app: source loaders, chunkers, embedding, upsert, drift
+    Maf.Lab.Portfolio/        MCP server for the portfolio domain: search_portfolio_documents (own collection), household read tools
+    Maf.Lab.Retrieval/        MCP server exposing search_documents; Qdrant access; BM25; the Jev relevance judge
+  tests/                      xUnit unit tests and Testcontainers integration tests
+  tools/                      Developer tools outside the running stack
+    Maf.Lab.A2AProbe/         A2A conformance probe: builds an agent from the card alone (make eval-a2a)
+    screenshots/              Playwright script that captures the README screenshots in both themes
+  web/                        Vite + React app
 ```
+<!-- /generated:repo-layout -->
 
 ## Conventions
 

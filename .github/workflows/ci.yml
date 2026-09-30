@@ -29,6 +29,8 @@ jobs:
         with:
           node-version: "24"
       - run: make specs
+      # The runner's own Python 3.12; the docs check needs nothing else (openspec/specs/documentation-sync).
+      - run: make docs-check
 
   dotnet:
     name: .NET build and tests

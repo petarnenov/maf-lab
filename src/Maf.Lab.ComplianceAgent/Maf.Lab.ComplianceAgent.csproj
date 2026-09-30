@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <Description>The compliance reviewer: a second agent, an A2A server under /compliance</Description>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="StackExchange.Redis" />
     <PackageReference Include="A2A" />

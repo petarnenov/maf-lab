@@ -1,5 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <Description>A2A conformance probe: builds an agent from the card alone (make eval-a2a)</Description>
+  </PropertyGroup>
+  <PropertyGroup>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
     <!-- The Agent Framework marks its A2A client as evaluation-only; this probe is exactly that. -->

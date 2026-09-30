@@ -97,6 +97,12 @@ row whose path ends in `…` is a family, such as the A2A HTTP+JSON binding. Fam
 - `[routes.undocumented]`: registered but deliberately not in `http-api.md`, for example `GET /health`, which is
   infrastructure served by every host.
 - `[routes.library]`: documented but registered by an SDK, not by a literal (`POST /a2a`, the `/a2a/...` family).
+- `[routes.elsewhere]`: documented but served by another host behind the same balancer (the compliance agent's
+  `/compliance/...` rows, which sit under its `A2A:PathBase`). The parser scans only the api's sources, so these rows
+  are listed rather than parsed.
+
+Table cells are split on unescaped `|` only, because a row such as `` `/api/telemetry?window=15m\|1h` `` escapes the
+pipe inside its path.
 
 *Alternative:* enumerate `EndpointDataSource` in a `WebApplicationFactory<Program>` test. It is exact, but it needs the
 api to boot with its options, SQLite and Qdrant settings, and the .NET SDK in the `specs` job. The fail-closed parser

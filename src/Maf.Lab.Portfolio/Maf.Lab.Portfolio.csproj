@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <Description>MCP server for the portfolio domain: search_portfolio_documents (own collection), household read tools</Description>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol.AspNetCore" />
   </ItemGroup>

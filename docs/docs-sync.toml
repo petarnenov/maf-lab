@@ -1,0 +1,49 @@
+# The facts `make docs` cannot read from code, and the exceptions `make docs-check` allows.
+# Every exception carries a reason; one without a reason, or one that no longer matches anything, fails the check.
+# See README "Keeping docs in sync" and openspec/specs/documentation-sync.
+
+# One line per top-level directory (and per non-.NET directory under src/ or tools/) for the repo-layout block in
+# openspec/project.md. .NET projects describe themselves with <Description> in their .csproj.
+[layout]
+".claude" = "Agent tooling: the OpenSpec skills and commands this repository's agents use"
+".github" = "GitHub Actions workflows (ci, evals) and the Copilot instructions"
+".vscode" = "Compound api + web debugging, and tasks for compose up, index and eval"
+"compose" = "docker-compose.yml, the nginx load balancer, the Ollama stub for CI, OpenTelemetry config, seed data"
+"data" = "Sample corpus: docs/, procedures/, code/ per tenant + shared"
+"data-portfolio" = "Portfolio domain corpus, same tenant layout, indexed into its own collection"
+"docs" = "HTTP API, trace events, telemetry and shared-state references; rules; screenshots; docs-sync.toml"
+"evals" = "JSONL datasets per suite, the accepted baseline, and the run reports"
+"openspec" = "Specs, active changes and the archive; project.md is the source for the OpenSpec context"
+"scripts" = "The multi-line logic behind make targets (bash, and Python for docs and corpus stats)"
+"src" = ".NET projects, one per service or shared library"
+"tests" = "xUnit unit tests and Testcontainers integration tests"
+"tools" = "Developer tools outside the running stack"
+"tools/screenshots" = "Playwright script that captures the README screenshots in both themes"
+"web" = "Vite + React app"
+
+# Registered by the api but deliberately not rows in docs/http-api.md.
+[routes.undocumented]
+"GET /health" = "Infrastructure, not API: every host serves it for its Dockerfile HEALTHCHECK and the topology probe, not for clients"
+
+# Rows in docs/http-api.md for routes an SDK registers, which no string literal in this repository shows.
+[routes.library]
+"/a2a" = "MapA2A (A2A SDK) registers the JSON-RPC endpoint at AgentCardFactory.A2APath"
+"/a2a/message:send" = "MapA2A registers the HTTP+JSON binding beside the JSON-RPC endpoint"
+"/a2a/message:stream" = "MapA2A registers the HTTP+JSON binding beside the JSON-RPC endpoint"
+"/a2a/tasks…" = "MapA2A registers the HTTP+JSON task paths beside the JSON-RPC endpoint"
+
+# Rows in docs/http-api.md for routes another host serves behind the same balancer.
+[routes.elsewhere]
+"/compliance/.well-known/agent-card.json" = "The compliance agent's MapA2ASurface, under its A2A:PathBase /compliance"
+"/compliance/a2a/token" = "The compliance agent's MapA2ASurface, under its A2A:PathBase /compliance"
+"/compliance/a2a" = "The compliance agent's MapA2A, under its A2A:PathBase /compliance"
+
+# A name in a checked document that matches a kind's pattern must equal the configured value for that kind.
+[models.patterns]
+chat = 'gpt-oss:\d+b|qwen3:\d+b|llama3(?:\.\d+)?:\d+b'
+embedding = 'nomic-embed-text|embeddinggemma|mxbai-embed-large|bge-m3|snowflake-arctic-embed|all-minilm|qwen3-embedding'
+jev = 'jev-\d+\.\d+\.\d+'
+
+# Names that may appear although they are not the configured value.
+[models.allowed]
+"qwen3:4b" = "The local chat fallback DECISIONS.md records (Models__ChatModel=qwen3:4b), not the default"
