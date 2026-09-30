@@ -26,12 +26,13 @@ only on the internal network, not through the public load balancer. The browser 
 ### Requirement: Task input
 A task SHALL carry the commit SHA to work at, the repo-relative target file, the target line coverage %, the maximum
 number of attempts (at most 10), the model and the toolchain (`dotnet` or `vitest`). It MAY carry the tool rounds per
-attempt (1 to 40) and the test runs the model may start per attempt (0 to 2); one that is absent SHALL take its
-default (40 and 2). It MAY carry a token cap, a cost cap, or both. A cap that is absent means that dimension is
-unlimited. A cap that is present SHALL be positive. The agent SHALL reject input that is incomplete, names a file not
-in the repository at that commit, names a production file under a test directory, asks for more than 10 attempts,
-carries a tool-round or test-run limit outside its bounds, or carries a cap that is zero or negative. The model's API
-key SHALL come from the agent's own environment, never from the task.
+attempt (1 to 40), the test runs the model may start per attempt (0 to 2) and the suspected bugs the run may report
+(0 to 3); one that is absent SHALL take its default (40, 2 and 3). It MAY carry a token cap, a cost cap, or both. A cap
+that is absent means that dimension is unlimited. A cap that is present SHALL be positive. The agent SHALL reject
+input that is incomplete, names a file not in the repository at that commit, names a production file under a test
+directory, asks for more than 10 attempts, carries a tool-round, test-run or suspected-bug limit outside its bounds, or
+carries a cap that is zero or negative. The model's API key SHALL come from the agent's own environment, never from
+the task.
 
 #### Scenario: Too many attempts
 - **WHEN** a task asks for 12 attempts
@@ -54,8 +55,12 @@ key SHALL come from the agent's own environment, never from the task.
 - **THEN** it is rejected as invalid before any model call
 
 #### Scenario: Limits absent
-- **WHEN** a task carries neither tool rounds nor test runs per attempt
-- **THEN** each attempt has 40 tool rounds and the model may start 2 test runs
+- **WHEN** a task carries neither tool rounds, test runs nor suspected bugs
+- **THEN** each attempt has 40 tool rounds, the model may start 2 test runs, and the run may report 3 suspected bugs
+
+#### Scenario: Too many suspected bugs allowed
+- **WHEN** a task asks for 4 suspected bugs
+- **THEN** it is rejected as invalid before any model call
 
 ### Requirement: Attempt loop with feedback
 An attempt SHALL be one cycle: generate or modify tests, build, run the relevant test suite with coverage, read the
@@ -139,8 +144,9 @@ observed behaviour. Instead it SHALL:
 - list it in the report as a suspected bug, with the test, its file, a title, a description, the expected and the
   actual behaviour, and the failure message.
 
-A run SHALL report at most 3 suspected bugs. A suspected-bug test SHALL still contain assertions. Its lines do not count
-towards the file's coverage.
+A run SHALL report at most the task's suspected-bug limit (3 when the task names none). The attempt's instructions SHALL
+state that limit; with a limit of 0 they SHALL say the run reports no suspected bugs. A suspected-bug test SHALL still
+contain assertions. Its lines do not count towards the file's coverage.
 
 #### Scenario: A bug is found
 - **WHEN** a generated test expects `Pct(0, 0)` to be 100 and the code returns 0, and the name and documentation say
@@ -154,8 +160,12 @@ towards the file's coverage.
   of suspected bugs does not rely on it
 
 #### Scenario: Too many suspected bugs
-- **WHEN** an attempt would report a fourth suspected bug
+- **WHEN** an attempt would report a fourth suspected bug under the default limit
 - **THEN** the fourth is reported as a guardrail violation, and the attempt does not count it
+
+#### Scenario: A lower limit
+- **WHEN** a task carries a suspected-bug limit of 1 and the model reports a second suspected bug
+- **THEN** the tool does not record it, and the attempt's input states the limit of 1
 
 ### Requirement: Stop conditions and states
 The task SHALL move `submitted → working` and end in exactly one final state:
