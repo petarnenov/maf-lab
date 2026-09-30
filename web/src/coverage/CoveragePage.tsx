@@ -1,13 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useSearchParams } from 'react-router';
-import type { AdminJob, CoverageFileDetail, CoverageTree as Tree } from '../api/types';
+import type { AdminJob, CoverageFileDetail, CoverageTree as Tree, RunSummary } from '../api/types';
 import { useApi, useAuth } from '../auth/useAuth';
 import page from '../components/Page.module.css';
+import { CandidatePanel } from './CandidatePanel';
 import { CoverageTree } from './CoverageTree';
 import { FileView } from './FileView';
 import { coverageKeys } from './keys';
 import { RunStatus } from './RunStatus';
+import { useRunEvents } from './useRunEvents';
 import { ThresholdControl } from './ThresholdControl';
 import styles from './CoveragePage.module.css';
 
@@ -74,10 +76,13 @@ export function CoveragePage() {
             )}
             {selected && file.data && (
               <FileView detail={file.data}>
+                {file.data.run?.state === 'candidate' && (
+                  <CandidatePanel run={file.data.run} canDecide={isAdmin} />
+                )}
                 {isAdmin ? (
                   <ThresholdControl key={`${file.data.path}:${file.data.summary.threshold}`} detail={file.data} />
                 ) : (
-                  file.data.run && <RunStatus run={file.data.run} />
+                  file.data.run && <LiveRunStatus run={file.data.run} />
                 )}
               </FileView>
             )}
@@ -126,4 +131,10 @@ function RefreshControl() {
       )}
     </div>
   );
+}
+
+/** A non-admin sees a run move too, without its controls. */
+function LiveRunStatus({ run }: { run: RunSummary }) {
+  const live = useRunEvents(run);
+  return live ? <RunStatus run={live} /> : null;
 }

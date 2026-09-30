@@ -168,8 +168,17 @@ public static class CoverageEndpoints
             return Results.Ok(rows.Select(RunSummary.Of).ToList());
         });
 
-        read.MapGet("/runs/{id}", async (string id, TestGenRuns runs, CancellationToken ct) =>
-            await runs.GetAsync(id, ct) is { } run ? Results.Ok(RunDetail.Of(run)) : NotFound());
+        read.MapGet("/runs/{id}", async (string id, TestGenRuns runs, IDbContextFactory<MafDbContext> db, CancellationToken ct) =>
+        {
+            if (await runs.GetAsync(id, ct) is not { } run)
+            {
+                return NotFound();
+            }
+            await using var context = await db.CreateDbContextAsync(ct);
+            var issues = await context.TestGenIssues.AsNoTracking().Where(i => i.RunId == id)
+                .Select(i => new RunIssue(i.TestKey, i.Title, i.Number, i.Url)).ToListAsync(ct);
+            return Results.Ok(RunDetail.Of(run, issues));
+        });
 
         // The run as it happens: its current state first, then each change, until it reaches a final state. Events come
         // from the shared database, so whichever replica the browser reaches can serve the stream.

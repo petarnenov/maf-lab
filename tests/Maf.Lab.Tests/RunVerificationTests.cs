@@ -258,7 +258,10 @@ public sealed class RunVerificationTests
 
         var test = (await h.Repo.GitAsync(Ct, "show", $"{run.Branch}:tests/Lab.Tests/CalcTests.cs")).Text;
         Assert.Contains($"suspected-bug https://github.com/owner/repo/issues/{number}: Add ignores overflow", test);
-        // The un-skipped proof ran once, then the real verification.
+        // The panel's view of the run carries the issue.
+        var shown = await Admin(h).GetFromJsonAsync<RunDetail>($"/api/coverage/runs/{run.Id}", new JsonSerializerOptions(JsonSerializerDefaults.Web), Ct);
+        Assert.Equal($"https://github.com/owner/repo/issues/{number}", Assert.Single(shown!.Issues).Url);
+                // The un-skipped proof ran once, then the real verification.
         Assert.Equal(2, h.Runner.Requests.Count);
         Assert.DoesNotContain("Skip = ", h.Runner.Requests.First().Diff);
     }

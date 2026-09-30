@@ -420,3 +420,43 @@
 .estimate {
   font-size: 0.875rem;
 }
+
+/* Candidate */
+
+.candidatePanel {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--ok);
+  border-radius: 8px;
+  font-size: 0.875rem;
+}
+
+.panelTitle {
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+}
+
+.panelSubtitle {
+  margin: 8px 0 4px;
+  font-size: 0.875rem;
+}
+
+.diffFiles,
+.bugs {
+  margin: 6px 0;
+  padding-left: 18px;
+}
+
+.added {
+  color: var(--ok);
+}
+
+.removed {
+  color: var(--danger);
+}
+
+.decisions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}

@@ -1001,3 +1001,43 @@ export interface AgentModels {
   maxTokens: number;
   maxCostUsd: number;
 }
+
+export interface SuspectedBug {
+  testFile: string;
+  test: string;
+  title: string;
+  description: string;
+  expected: string;
+  actual: string;
+  failure: string;
+}
+
+export interface TestGenReport {
+  goalReached: boolean;
+  stopReason: string;
+  target: number;
+  baseline: number | null;
+  final: number | null;
+  attempts: { n: number; before: number | null; after: number | null; build: string }[];
+  usage: { inputTokens: number; outputTokens: number; estimatedCostUsd: number };
+  diff: string;
+  suspectedBugs?: SuspectedBug[] | null;
+}
+
+export interface RunIssue {
+  testKey: string;
+  title: string;
+  number: number | null;
+  url: string | null;
+}
+
+export interface RunDetail {
+  run: RunSummary;
+  report: TestGenReport | null;
+  issues: RunIssue[];
+}
+
+export interface RunDecision {
+  run: RunSummary;
+  gitHubProblems: string[];
+}

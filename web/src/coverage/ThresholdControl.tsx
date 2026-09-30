@@ -5,6 +5,7 @@ import { useApi } from '../auth/useAuth';
 import { coverageKeys } from './keys';
 import { RaiseThresholdDialog } from './RaiseThresholdDialog';
 import { RunStatus } from './RunStatus';
+import { useRunEvents } from './useRunEvents';
 import styles from './CoveragePage.module.css';
 
 /**
@@ -14,7 +15,8 @@ import styles from './CoveragePage.module.css';
 export function ThresholdControl({ detail }: { detail: CoverageFileDetail }) {
   const api = useApi();
   const client = useQueryClient();
-  const { summary, path, run } = detail;
+  const { summary, path } = detail;
+  const run = useRunEvents(detail.run);
   const [value, setValue] = useState(String(summary.threshold));
   const [raising, setRaising] = useState<number | null>(null);
 

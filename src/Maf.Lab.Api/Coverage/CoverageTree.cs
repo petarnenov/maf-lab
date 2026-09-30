@@ -14,11 +14,15 @@ public sealed record RunSummary(string Id, string Path, string State, string? Re
         r.TargetPct, r.Model, r.Tokens, r.CostUsd, r.Branch, r.CreatedAt, r.UpdatedAt);
 }
 
-/// <summary>A run with the agent's report: its attempts, suspected bugs and diff, for the candidate panel.</summary>
-public sealed record RunDetail(RunSummary Run, TestGenReport? Report)
+/// <summary>An issue a run's confirmed bug opened.</summary>
+public sealed record RunIssue(string TestKey, string Title, int? Number, string? Url);
+
+/// <summary>A run with the agent's report (attempts, suspected bugs, diff) and the issues it opened, for the candidate panel.</summary>
+public sealed record RunDetail(RunSummary Run, TestGenReport? Report, IReadOnlyList<RunIssue> Issues)
 {
-    public static RunDetail Of(TestGenRunRow r) => new(RunSummary.Of(r),
-        r.ReportJson is { } json ? System.Text.Json.JsonSerializer.Deserialize<TestGenReport>(json, TestGenKinds.Json) : null);
+    public static RunDetail Of(TestGenRunRow r, IReadOnlyList<RunIssue>? issues = null) => new(RunSummary.Of(r),
+        r.ReportJson is { } json ? System.Text.Json.JsonSerializer.Deserialize<TestGenReport>(json, TestGenKinds.Json) : null,
+        issues ?? []);
 }
 
 public sealed record CandidateCoverage(string RunId, double Pct, int LinesCovered, int LinesTotal);

@@ -143,7 +143,7 @@
   Redis pub/sub with a poll fallback), `GET /runs` and `GET /runs/{id}`, and `POST /runs/{id}/cancel`. Verify with
   tests that a late subscriber gets the current state first and that cancel mid-run ends the run `canceled` with no
   branch.
-- [ ] 7.5 Web: add `useRunEvents` (fetch plus `SseParser`) and wire it to the tree, the control and the file header.
+- [x] 7.5 Web: add `useRunEvents` (fetch plus `SseParser`) and wire it to the tree, the control and the file header.
   Invalidate tree, file and runs queries on a final state. Verify with a Vitest test using a scripted SSE stream.
 
 ## 8. Verification, candidate branch and accept
@@ -179,7 +179,7 @@
   checkout (refused, nothing written), a CAS retry after main moves, and discard.
 - [x] 8.3a On Accept, comment on each run issue with the merge commit. On Discard, close each with a comment. A GitHub
   failure is shown and does not block. Verify with fake-GitHub tests for both, and for GitHub down.
-- [ ] 8.4 Web: add a candidate panel in the file view (diff summary, candidate %, suspected bugs with issue
+- [x] 8.4 Web: add a candidate panel in the file view (diff summary, candidate %, suspected bugs with issue
   links, Accept and Discard with a confirmation, and the refusal reason shown). Verify with RTL tests for accept
   success, conflict and dirty refusals, and a listed bug with its link.
 
