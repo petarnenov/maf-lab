@@ -536,6 +536,13 @@ referenced web projects' config files never collide.
   and both are required here — a partner asking about another firm's run, and a run whose period is missing. The
   handler is therefore ours, and the assistant's own answers are produced by running the same `ChatClientAgent`
   the chat UI runs, under a token minted for the partner's firm.
+- **Re-checked for the test agent (add-coverage-dashboard-and-test-agent, 2026-09-30).** The metadata of
+  `Microsoft.Agents.AI.Hosting.A2A` 1.22.0-preview.260918.1 (net10.0) now shows `AddA2AServer` (five overloads) and
+  `A2AServerRegistrationOptions`/`AgentRunMode` as public. `A2AAgentHandler` and `ArtifactStreamWriter` are still
+  `internal`. The server can host an `AIAgent` and nothing else. The test agent needs three things that setup
+  cannot give: `rejected` for invalid input, progress status updates carrying its own data part, and a loop that
+  owns cancellation and the attempt cap. The conclusion above therefore stands. The test agent uses `Maf.Lab.A2A`
+  like the compliance reviewer, and the hosting package stays unpinned.
 - **Both transports are mapped, gRPC is not.** `MapA2A` (JSON-RPC) and `MapHttpA2A` (HTTP+JSON) both answer behind
   the partner policy. The SDK ships no gRPC server, so the card does not advertise one.
 

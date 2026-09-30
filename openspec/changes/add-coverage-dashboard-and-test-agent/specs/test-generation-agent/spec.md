@@ -66,18 +66,58 @@ a tool error and SHALL NOT end the run.
 - **THEN** it is refused as outside the test allowlist
 
 ### Requirement: Test guardrails
-The agent SHALL reject its own tests that are skipped or focused (`.skip`, `.only`, `xit`, `fit`, `[Fact(Skip=...)]`,
-`[Theory(Skip=...)]`), that contain no assertion, or that make a test pass by catching the exception it is meant to
-verify. A violating test SHALL count as a failed check in that attempt and SHALL be reported as feedback. The final
-diff SHALL NOT contain a violation.
+The agent SHALL reject its own tests that are focused (`.only`, `fit`, `fdescribe`), that contain no assertion, or
+that make a test pass by catching the exception it is meant to verify. A generated test SHALL NOT modify production
+code, either in its source or at run time (for example by writing to, moving or deleting a file under `src/` or
+`web/src/`). The agent SHALL NOT skip a test (`.skip`, `xit`, `[Fact(Skip=...)]`, `[Theory(Skip=...)]`), except a
+suspected-bug skip that follows the requirement below. A violating test SHALL count as a failed check in that attempt
+and SHALL be reported as feedback. The final diff SHALL NOT contain a violation.
 
 #### Scenario: Focused test
 - **WHEN** a generated Vitest file contains `it.only(`
-- **THEN** the attempt reports a guardrail violation and the next attempt is told to remove it
+- **THEN** the attempt reports a guardrail violation, and the next attempt is told to remove it
 
 #### Scenario: Assertion-free test
 - **WHEN** a generated xUnit test calls the method under test and asserts nothing
-- **THEN** it is reported as assertion-free and the attempt does not count it
+- **THEN** it is reported as assertion-free, and the attempt does not count it
+
+#### Scenario: Skip without a suspected bug
+- **WHEN** a generated test is skipped with no suspected-bug marker, or is not listed as a suspected bug in the report
+- **THEN** it is reported as a skipped test, and the attempt does not count it
+
+#### Scenario: Test writes to production code
+- **WHEN** a generated test writes to a file under `src/`
+- **THEN** it is reported as modifying production code, and the attempt does not count it
+
+### Requirement: Suspected bugs are reported, not worked around
+A test SHALL assert the behaviour the code is meant to have: what its names, documentation, specs and callers say. The
+test SHALL NOT assert whatever the code happens to do. When such a test fails because the production code does not
+behave as intended, the agent SHALL NOT change the production code, and SHALL NOT weaken the assertion to match the
+observed behaviour. Instead it SHALL:
+
+- keep the test with its assertion;
+- mark it skipped with a suspected-bug marker (`suspected-bug: <title>` as the skip reason, or in a comment on the line
+  before the skipped test);
+- list it in the report as a suspected bug, with the test, its file, a title, a description, the expected and the
+  actual behaviour, and the failure message.
+
+A run SHALL report at most 3 suspected bugs. A suspected-bug test SHALL still contain assertions. Its lines do not count
+towards the file's coverage.
+
+#### Scenario: A bug is found
+- **WHEN** a generated test expects `Pct(0, 0)` to be 100 and the code returns 0, and the name and documentation say
+  100
+- **THEN** the test keeps its assertion and is skipped with `suspected-bug: Pct of an empty file is 0`, the production
+  code is untouched, and the report lists the suspected bug with expected and actual behaviour
+
+#### Scenario: Assertion bent to the bug
+- **WHEN** a test's assertion is changed to expect the buggy value so that it passes
+- **THEN** this is the behaviour the requirement forbids; the agent's instructions forbid it, and the api's verification
+  of suspected bugs does not rely on it
+
+#### Scenario: Too many suspected bugs
+- **WHEN** an attempt would report a fourth suspected bug
+- **THEN** the fourth is reported as a guardrail violation, and the attempt does not count it
 
 ### Requirement: Stop conditions and states
 The task SHALL move `submitted → working` and end in exactly one final state:
@@ -112,6 +152,8 @@ A completed task SHALL carry one artifact containing:
 - `goalReached` and the stop reason;
 - a per-attempt log, each entry with coverage before and after, tests added or changed, errors and guardrail
   violations;
+- the suspected bugs, each with its test, test file, title, description, expected and actual behaviour, and failure
+  message;
 - the tokens used and the estimated cost;
 - a unified diff of the test changes against the task's commit.
 

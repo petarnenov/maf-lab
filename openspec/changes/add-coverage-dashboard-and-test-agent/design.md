@@ -403,6 +403,41 @@ propagates as follows:
 Spans are named `testgen.run`, `testgen.attempt` (attributes `attempt`, `pct`, `tokens`, `cost`) and `runner.run`
 (attributes `toolchain`, `build`, `tests.*`, `duration`). Prompts, source text and diffs are never recorded.
 
+### D19. Suspected bugs: skip, prove, file an issue
+
+- **Agent side.** The instructions tell the model to assert intended behaviour: what the names, documentation, specs
+  and callers say. When a test fails on the production code rather than on itself, the model keeps the assertion and
+  marks the test skipped:
+  - C#: `[Fact(Skip = "suspected-bug: <title>")]`;
+  - TS: `it.skip(…)` with `// suspected-bug: <title>` on the line before it.
+
+  It then calls `report_suspected_bug(testFile, test, title, description, expected, actual, failure)`, a sixth tool.
+  `TestGuardrails.Check(files, allowedSkips)` allows exactly those skips. Any other skip, or more than 3 suspected
+  bugs, is a violation. A suspected-bug test still needs an assertion. A new guardrail flags file writes, moves and
+  deletes (C#: `File.*`/`Directory.*`; TS: `fs.*`) whose arguments name `src/` or `web/src/`: tests never change the
+  code they test. The report gains `suspectedBugs[]`.
+- **Api side (in `RunVerifier`, before the full verification run).**
+  1. Every skip in the diff must be a listed suspected bug.
+  2. For each suspected bug, the runner runs the diff with that one skip removed (`targetFile` unset) and must report
+     that test as failed. If the test passes, the run is `verification_failed` with `suspected bug not reproduced`.
+  3. For each confirmed bug, look up `TestGenIssues(RunId, TestId)`. If there is no row, create the issue through the
+     GitHub REST API (`POST /repos/{owner}/{repo}/issues`, labels `test-agent`, `suspected-bug`) and store its number
+     and URL. The row is inserted with a `creating` state first and completed after the call, so a restart in between
+     sees `creating` and searches the repository's open issues for the run-and-test marker in the body before
+     creating again.
+  4. Rewrite the diff's marker from `suspected-bug: <title>` to `suspected-bug <issue-url>: <title>`, or to
+     `suspected-bug (no issue: GitHub not configured): <title>`, then continue with the normal verification and the
+     branch.
+- **GitHub client.** `GitHubIssues` is a typed HttpClient on `https://api.github.com` with bearer
+  `GITHUB_ISSUES_TOKEN`, read from the environment by the api only. The repository comes from `GitHub:Repository`
+  (default: parsed from `git remote get-url origin`). No other GitHub operation is used: create, comment, close.
+- **Accept and Discard.** Accept comments on each issue with the merge commit and leaves it open. Discard closes each
+  issue with a comment. A GitHub failure in either is logged and shown, and never blocks the merge or the discard.
+- **UI.** The run's report lists its suspected bugs with issue links, in the candidate panel (task 8.4).
+- **Why not have the agent create issues?** It would need the GitHub credential next to model-driven code, and a
+  test that was simply wrong would leave a false issue behind. The api creates an issue only after its own run shows
+  the failure. A person then owns what follows (human in the loop).
+
 ## Risks / Trade-offs
 
 - **The account may not serve the allowlisted models.** DECISIONS §9 found only `gpt-oss:120b` usable on this tier.
@@ -419,6 +454,11 @@ Spans are named `testgen.run`, `testgen.attempt` (attributes `attempt`, `pct`, `
   restore failure is reported as `runner_restore_failed`, not as a failing test.
 - **Full unit test project per attempt is slow (minutes).** → An attempt budget of about 5 minutes and one runner
   build at a time are accepted. `run_tests` inside an attempt is capped at 2 calls.
+- **The model bends an assertion to the bug instead of reporting it.** Code cannot see that; the instructions forbid
+  it, and the candidate diff is reviewed before Accept. → Accepted risk, stated rather than hidden.
+- **A flaky test is reported as a bug.** The un-skipped test must fail in the api's own run; a test that passes there
+  fails verification and creates no issue. → A flaky test can still fail by chance once; the issue says it came from
+  one run, and a person closes it.
 - **Host paths in the bind mount (`MAF_LAB_REPO`).** → `make` exports it, and `make doctor` checks it points at a git
   repository.
 - **File ownership from container writes.** → The api's git commands run as the host UID and GID, passed by `make`.

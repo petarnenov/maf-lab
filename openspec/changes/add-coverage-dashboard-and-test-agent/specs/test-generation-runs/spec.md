@@ -108,6 +108,62 @@ until the run is accepted or discarded.
 - **WHEN** verification passes
 - **THEN** the branch exists with one commit on top of the task's commit containing exactly the diff
 
+### Requirement: Suspected bugs become GitHub issues after verification
+For each suspected bug in a completed task's report, the api SHALL check the claim independently. A skip is accepted
+only if the test's skip marker is on the list of suspected bugs. With the skip removed, the runner SHALL run the test
+against the task's commit, and the test SHALL fail.
+
+- A suspected bug whose test passes once un-skipped is not a bug. The run SHALL end `verification_failed` with that
+  reason, and no issue is created.
+- For each confirmed suspected bug, the api SHALL create one issue in the repository's GitHub project. The issue SHALL
+  carry:
+  - the title and description;
+  - the expected and actual behaviour and the failure message;
+  - the test and its file;
+  - the target file, the run, the commit and the model;
+  - a label saying it was reported by the test agent.
+- The api SHALL write the issue's link into that test's skip marker before the candidate branch is committed, so the
+  skipped test in the repository points at its issue.
+- Creating the issue SHALL happen at most once per run and test, even if verification is repeated after a restart.
+- Issues SHALL be created with a credential that the api alone holds, limited to the repository's issues. It is never
+  given to the agent or the runner, and never logged.
+- Without that credential, the skip marker SHALL say that no issue was created, and the run SHALL proceed.
+
+The Coverage screen SHALL show a run's suspected bugs with links to their issues.
+
+When a candidate is discarded, each issue it created SHALL be closed with a comment saying the run was discarded.
+When a candidate is accepted, each issue SHALL get a comment linking the merge commit, and SHALL stay open for a person
+to resolve.
+
+#### Scenario: Confirmed bug
+- **WHEN** the report lists one suspected bug and its test fails once un-skipped
+- **THEN** one issue is created with the description, expected and actual behaviour, the test, the run and the commit,
+  and the candidate branch's skip reason carries the issue link
+
+#### Scenario: Bug not reproduced
+- **WHEN** a suspected bug's test passes once un-skipped
+- **THEN** the run ends `verification_failed` with reason "suspected bug not reproduced", and no issue is created
+
+#### Scenario: Skip that is not a suspected bug
+- **WHEN** the diff skips a test that the report does not list as a suspected bug
+- **THEN** the run ends `verification_failed` without running anything
+
+#### Scenario: Verification repeated
+- **WHEN** the api restarts during verification and verifies the same run again
+- **THEN** no second issue is created for the same test
+
+#### Scenario: No GitHub credential
+- **WHEN** no issue credential is configured and a bug is confirmed
+- **THEN** the test is skipped with a marker saying no issue was created, and the run still becomes a candidate
+
+#### Scenario: Discarded run
+- **WHEN** a candidate with one created issue is discarded
+- **THEN** the issue is closed with a comment saying the run that found it was discarded
+
+#### Scenario: Screen shows the bugs
+- **WHEN** a run with a created issue is a candidate
+- **THEN** the file view lists the suspected bug with a link to its issue
+
 ### Requirement: Accept merges into main, safely
 An administrator SHALL be able to accept a candidate, which merges its branch into `main`. The merge SHALL succeed
 only if it has no conflicts. The update of `main` SHALL be compare-and-swap: if `main` moved between reading and

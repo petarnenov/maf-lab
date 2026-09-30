@@ -35,6 +35,11 @@ the file meets its threshold. The lab verifies the result itself before anything
   guardrails, re-runs the tests itself, commits the diff to a branch `test-agent/<file>-<runId>`, and shows the new
   coverage as a *candidate*. **Accept** merges the branch into `main` (refused if `main` moved in a conflicting way
   or its checkout is dirty), and the candidate becomes the file's coverage.
+- **Suspected bugs become GitHub issues.** Tests assert intended behaviour. Neither the agent nor its tests ever change
+  the code under test. When a test shows the code is wrong, the agent keeps the assertion, skips the test with a
+  `suspected-bug` marker, and reports the bug. The api then checks independently that the un-skipped test fails, opens
+  one GitHub issue per confirmed bug, and writes the issue link into the skip on the candidate branch. That gives
+  traceability, and a person decides what happens next. Discarding the run closes its issues.
 - **Cost estimate and budget.** The estimated cost is shown before start. Each run has a hard token and cost cap. The
   actual tokens and cost are in the report.
 - **Observability.** One trace spans browser → api → A2A → agent → runner and LLM calls, using the existing telemetry
@@ -66,7 +71,8 @@ the file meets its threshold. The lab verifies the result itself before anything
 
 - `system-topology`: the report and diagram must include the test-generation agent and the coverage runner, with
   their edges.
-- `make-workflow`: the target catalogue gains `coverage`, which refreshes the coverage snapshot.
+- `make-workflow`: the target catalogue gains `coverage`, which refreshes the coverage snapshot, and `make doctor`
+  reports `MAF_LAB_REPO` and the optional `GITHUB_ISSUES_TOKEN`.
 
 ## Impact
 
@@ -99,6 +105,10 @@ the file meets its threshold. The lab verifies the result itself before anything
   (docs/rules/jev-usage.md §2 and §5).
 - **Tenancy:** coverage, thresholds and runs describe the repository, not tenant data. No `firm_id` is involved and no
   tenant parameter is added anywhere. Starting, cancelling and accepting runs require the FirmAdmin policy.
+- **GitHub:** suspected-bug issues are opened in `petarnenov/maf-lab` with a new optional secret,
+  `GITHUB_ISSUES_TOKEN` (a fine-grained token limited to Issues read/write on this repository). It is given to the
+  api only; the agent and the runner never see it. Without it, a confirmed bug is still skipped, and its marker says
+  no issue was created.
 - **Security:** code written by the model runs only in the runner, which has no secrets and no egress. The api
   re-checks the diff's paths and guardrails and never trusts the coverage numbers the agent reports.
 

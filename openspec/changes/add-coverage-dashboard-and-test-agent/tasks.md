@@ -68,7 +68,7 @@
 
 ## 5. Test-generation agent service
 
-- [ ] 5.1 Check whether `Microsoft.Agents.AI.Hosting.A2A` 1.22.0-preview now exposes `A2AAgentHandler` and
+- [x] 5.1 Check whether `Microsoft.Agents.AI.Hosting.A2A` 1.22.0-preview now exposes `A2AAgentHandler` and
   `AddA2AServer` publicly and can express `rejected`. Record the finding in DECISIONS §23. Proceed with
   `Maf.Lab.A2A` either way, as design D2 says. Verify that the DECISIONS entry exists.
 - [ ] 5.2 Create `src/Maf.Lab.TestAgent` (Web SDK, added to the solution): `MapA2ASurface` and `MapA2AProtocol`,
@@ -81,8 +81,16 @@
 - [ ] 5.4 Implement `TestGuardrails.Check` (design D8): Roslyn for C#, and the TS compiler API through a node script
   for TS. Verify with fixture tests for `Skip=`, `.only`, `xit`, an assertion-free test, a swallowed expected
   exception, and a clean test that passes.
+- [ ] 5.4a Extend `TestGuardrails` for suspected bugs (design D19): allow skips only when they carry a
+  `suspected-bug:` marker and are listed, reject more than 3, and flag test code that writes, moves or deletes files
+  under `src/` or `web/src/`. Verify with fixture tests for an allowed suspected-bug skip, an unlisted skip, a
+  fourth bug, and `File.WriteAllText("src/…")` / `fs.writeFileSync('web/src/…')`.
 - [ ] 5.5 Implement the scratch workspace (a read-only clone at the SHA) and the five tools (design D6) as
   `AIFunction`s returning DTOs. Verify with tool tests for the caps, refusal text and write-then-read.
+- [ ] 5.5a Add the `report_suspected_bug` tool and `suspectedBugs[]` in the report. The instructions tell the model to
+  assert intended behaviour, never to change production code or bend an assertion to observed behaviour, and to skip
+  with the marker and report. Verify with a scripted run in which a failing test is skipped and reported, and the
+  report carries it.
 - [ ] 5.6 Implement `TestGenerationHandler`:
   - input validation, which rejects over 5 attempts, a missing file or an incomplete input;
   - the code-owned loop;
@@ -150,6 +158,13 @@
 
   Verify with tests for a failing test → `verification_failed` with coverage unchanged, a production path in the diff
   → `verification_failed` with no runner call, and reported 88% vs measured 84% → candidate 84%.
+- [ ] 8.1a Add `GitHubIssues` (typed HttpClient, `GITHUB_ISSUES_TOKEN` from the environment only, repository from
+  `GitHub:Repository` or origin) and the `TestGenIssues` table. In `RunVerifier`, check every skip against the
+  suspected bugs, prove each by an un-skipped runner run, create the issue once per run and test (surviving a
+  restart), and rewrite the marker with the issue link, or with "no issue" when there is no token. Verify with tests
+  against a fake GitHub: a confirmed bug gives one issue and a linked marker; a bug not reproduced ends
+  `verification_failed` with no issue; an unlisted skip fails; verifying twice creates one issue; no token gives the
+  "no issue" marker.
 - [ ] 8.2 Add `git` to the api image and implement `RepoWriter.CreateBranch` (a temporary detached worktree, apply,
   commit as `maf-lab test-agent`, branch `test-agent/<slug>-<runId>`, Redis lock). Verify with a test on a temporary
   git repo that the branch has exactly one commit, contains exactly the diff, and leaves the checkout untouched.
@@ -162,8 +177,11 @@
 
   Verify with temporary-repo tests for a clean accept, a conflict (main unchanged, run stays candidate), a dirty
   checkout (refused, nothing written), a CAS retry after main moves, and discard.
-- [ ] 8.4 Web: add a candidate panel in the file view (diff summary, candidate %, Accept and Discard with a
-  confirmation, and the refusal reason shown). Verify with RTL tests for accept success, conflict and dirty refusals.
+- [ ] 8.3a On Accept, comment on each run issue with the merge commit. On Discard, close each with a comment. A GitHub
+  failure is shown and does not block. Verify with fake-GitHub tests for both, and for GitHub down.
+- [ ] 8.4 Web: add a candidate panel in the file view (diff summary, candidate %, suspected bugs with issue
+  links, Accept and Discard with a confirmation, and the refusal reason shown). Verify with RTL tests for accept
+  success, conflict and dirty refusals, and a listed bug with its link.
 
 ## 9. Compose, topology, Make and telemetry
 
@@ -172,7 +190,8 @@
   `runner`, and point the CI compose at the Ollama stub with a scripted test answer. Verify that `make` brings
   everything up healthy and that `docker compose exec coverage-runner env` shows no `OLLAMA_API_KEY` or `JEV_MAF_LAB`.
 - [ ] 9.2 Export `MAF_LAB_REPO` and the host UID and GID from the Makefile, add the `coverage` target (with help text,
-  a non-zero exit when the stack is down), and extend `make doctor` to check `MAF_LAB_REPO`. Verify that `make help`
+  a non-zero exit when the stack is down), and extend `make doctor` to check `MAF_LAB_REPO` and to report the optional `GITHUB_ISSUES_TOKEN` without printing it.
+  Pass `GITHUB_ISSUES_TOKEN` to the api service only. Verify that `make help`
   lists `coverage` and that `make coverage` with the stack down exits non-zero.
 - [ ] 9.3 Add `TestAgent` and `CoverageRunner` to `TopologyOptions`, add their probes, ids and edges in
   `TopologyProbe`, and add their boxes to `docs/topology.drawio` without overlap. Verify that `TopologyTests` pass
