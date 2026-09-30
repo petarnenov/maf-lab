@@ -38,6 +38,13 @@ public sealed class TestAgentRoundsTests
     }
 
     [Fact]
+    public void The_rules_name_the_substitution_library_and_forbid_new_packages()
+    {
+        Assert.Contains("Substitute.For<IDatabase>()", Instructions.System);
+        Assert.Contains("never add a package", Instructions.System);
+    }
+
+    [Fact]
     public void An_attempt_that_wrote_nothing_is_fed_back()
     {
         var result = FakeCoverageRunner.Result("<coverage/>", targetPct: 0) with { Uncovered = [[11, 37]] };

@@ -39,7 +39,7 @@ context: |
     ollama, ollama-init, redis, otel-collector, prometheus, jaeger. One
     command (`make`) brings everything up.
   - Tests: xUnit for .NET (unit + integration with Testcontainers for
-    Qdrant), Vitest for the web. Evals are a separate CLI project, not part
+    Qdrant; NSubstitute for substitutes in unit tests), Vitest for the web. Evals are a separate CLI project, not part
     of the unit test run.
   - Dev environment: VS Code with C# Dev Kit, ESLint, Prettier. Include
     .vscode/launch.json for api + web compound debugging and

@@ -134,6 +134,23 @@ public sealed class TestGenSafetyTests
     }
 
     [Fact]
+    public void A_received_call_check_is_an_assertion()
+    {
+        Assert.Empty(Cs("""
+            [Fact] public async Task Saves() { var db = Substitute.For<IDatabase>(); await new Store(db).SaveAsync(); await db.Received(1).HashSetAsync("k", "f", "v"); }
+            [Fact] public void Skips() { var db = Substitute.For<IDatabase>(); new Store(db).Skip(); db.DidNotReceiveWithAnyArgs().KeyDelete(default); }
+            """));
+    }
+
+    [Fact]
+    public void Setting_up_a_substitute_is_not_an_assertion()
+    {
+        var v = Cs("""[Fact] public void Lists() { var db = Substitute.For<IDatabase>(); db.HashGetAll("k").Returns([]); new Store(db).List(); }""");
+
+        Assert.Equal([TestGuardrails.NoAssertion], v.Select(x => x.Rule));
+    }
+
+    [Fact]
     public void Swallowing_the_expected_exception_is_a_violation()
     {
         var v = Cs("""[Fact] public void Fails() { try { Calc.Fail(1); } catch (ArgumentException) { } Assert.True(true); }""");

@@ -63,6 +63,7 @@ model is served, not its size.
 | Microsoft.AspNetCore.Mvc.Testing | 10.0.12 |
 | Testcontainers.Qdrant | 4.15.0 |
 | Mono.Cecil | 0.11.6 |
+| NSubstitute (tests only, §59) | 6.2.0 |
 | StackExchange.Redis | 3.3.0 |
 | OpenTelemetry / .Extensions.Hosting / .Exporter.OpenTelemetryProtocol | 1.19.1 |
 | OpenTelemetry.Instrumentation.AspNetCore / .Http | 1.19.0 |
@@ -2173,3 +2174,24 @@ said which account the conversation was about.
   downloads again, which is slower but still correct.
 - **CI.** Runners start with an empty builder, so the e2e job gains nothing and behaves as before. Workflow NuGet
   caching (§14) is unchanged. No package version moved.
+
+## 59. Substitutes in .NET tests (add-mocking-library, 2026-09-30)
+
+- **Why.** Run `r_2a1cf280` on `src/Maf.Lab.A2A/RedisPushConfigStore.cs` used all 5 attempts (about 539 000 tokens,
+  $0.34) and wrote no test. The class takes `IConnectionMultiplexer` and calls `IDatabase`. The test project had no
+  mocking library, no Redis container and no fake, and a hand-written `IDatabase` runs to hundreds of members. The
+  model weighed those options each attempt until its round cap ended it.
+- **NSubstitute 6.2.0, in `tests/Maf.Lab.Tests` only.** It brings Castle.Core 5.1.1. Moq was not chosen: some of its
+  versions shipped build-time telemetry (SponsorLink), and its `Setup/Verify` lambdas are longer. FakeItEasy is
+  capable but less common, so a model is less likely to write it right the first time. NSubstitute's
+  `Substitute.For<T>()`, `.Returns(...)` and `.Received()` are short and well known. No Microsoft Agent Framework
+  package covers test doubles. `NSubstitute.Analyzers.CSharp` is not added: it helps people but would be one more
+  package in the runner's offline cache.
+- **The coverage runner gets it with its image.** Its image restores `tests/Maf.Lab.Tests` into `/opt/nuget` at build
+  time (§58), and it builds diffs offline from there. So a package must be referenced before the image is built. The
+  agent is told to use only packages the test project already references.
+- **The guardrail counts received-call checks as assertions.** `TestGuardrails.IsAssertion` also accepts `Received`,
+  `DidNotReceive`, `ReceivedWithAnyArgs` and `DidNotReceiveWithAnyArgs`, by name, just as it accepts `Verify*`.
+  `Returns` and `Arg.*` only set up a substitute, so they are not assertions.
+- **The agent is told.** The dotnet rules in its system instructions name NSubstitute for interfaces, and say never
+  to hand-implement a large interface such as `IDatabase`.

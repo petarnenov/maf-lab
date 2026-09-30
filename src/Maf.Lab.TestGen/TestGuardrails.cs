@@ -143,8 +143,9 @@ public static partial class TestGuardrails
     }
 
     /// <summary>
-    /// A call that checks something: Assert.* and Record.Exception, FluentAssertions' Should(), a mock's Verify, or
-    /// a helper whose name says it asserts (AssertTree, ExpectFailure).
+    /// A call that checks something: Assert.* and Record.Exception, FluentAssertions' Should(), a mock's Verify, an
+    /// NSubstitute received-call check (Received, DidNotReceive and their WithAnyArgs forms), or a helper whose name
+    /// says it asserts (AssertTree, ExpectFailure). Setting a substitute up (Returns, Arg.*) checks nothing.
     /// </summary>
     private static bool IsAssertion(InvocationExpressionSyntax call)
     {
@@ -160,7 +161,8 @@ public static partial class TestGuardrails
             || name.StartsWith("Assert", StringComparison.Ordinal)
             || name.StartsWith("Should", StringComparison.Ordinal)
             || name.StartsWith("Verify", StringComparison.Ordinal)
-            || name.StartsWith("Expect", StringComparison.Ordinal);
+            || name.StartsWith("Expect", StringComparison.Ordinal)
+            || name is "Received" or "DidNotReceive" or "ReceivedWithAnyArgs" or "DidNotReceiveWithAnyArgs";
     }
 
     // ---- TypeScript ----

@@ -17,6 +17,10 @@ public static class Instructions
 
         Rules you must follow:
         - Only write test files. For dotnet: C# xUnit v3 tests under tests/Maf.Lab.Tests/ (namespace Maf.Lab.Tests).
+          To stand in for an interface the code depends on, use NSubstitute, which the test project already references:
+          var db = Substitute.For<IDatabase>(); db.HashGetAllAsync(key).Returns(entries); await db.Received(1).HashSetAsync(...).
+          Never implement a large interface (such as StackExchange.Redis IConnectionMultiplexer or IDatabase) by hand,
+          and never add a package: use only what tests/Maf.Lab.Tests already references.
           For vitest: *.test.ts or *.test.tsx next to the code under web/src/, using vitest and Testing Library.
         - Never change production code, and never write a test that changes it (no writing, moving or deleting files
           under src/ or web/src/).
