@@ -1,13 +1,22 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  type UseQueryResult,
+  useIsFetching,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import type { A2AActivity } from '../api/types';
 import { useApi, useAuth } from '../auth/useAuth';
 import styles from '../components/Page.module.css';
+import { Progress } from '../components/Progress';
 import { formatDate } from '../evals/format';
+import { TestAgentSection } from './TestAgentSection';
+import { useTestAgentOverview } from './testAgentOverview';
 
 /**
  * What the agents have been doing: what partners asked of this system, what it asked of the reviewer, and
  * every push delivery. A task that is still running can be stopped from here — it is this firm's data being
- * worked on.
+ * worked on. Below it, the test-generation agent: its card, whether it answers, its defaults and its runs.
  */
 export function A2AAdminPage() {
   const { session } = useAuth();
@@ -27,21 +36,51 @@ export function A2AAdminPage() {
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['admin', 'a2a'] }),
   });
 
-  if (activity.isPending) return <p className={styles.muted}>Loading…</p>;
+  const overview = useTestAgentOverview();
+
+  // Both sections share the ['admin', 'a2a'] prefix: one Refresh asks for both, and cannot be pressed twice.
+  const fetching = useIsFetching({ queryKey: ['admin', 'a2a'] }) > 0;
+  const refresh = () => void queryClient.invalidateQueries({ queryKey: ['admin', 'a2a'] });
+
+  return (
+    <section className={styles.page}>
+      <header className={styles.header}>
+        <h1>Agent to agent</h1>
+        <button type="button" onClick={refresh} disabled={fetching}>
+          Refresh
+        </button>
+      </header>
+      {fetching && !activity.isPending && !overview.isPending && <Progress label="Refreshing…" />}
+
+      <Activity
+        activity={activity}
+        cancelling={cancel.isPending}
+        onCancel={(taskId) => cancel.mutate(taskId)}
+      />
+
+      <TestAgentSection />
+    </section>
+  );
+}
+
+/** What partners and this system asked of each other, for the caller's firm. */
+function Activity({
+  activity,
+  cancelling,
+  onCancel,
+}: {
+  activity: UseQueryResult<A2AActivity>;
+  cancelling: boolean;
+  onCancel: (taskId: string) => void;
+}) {
+  if (activity.isPending) return <Progress label="Loading the A2A activity…" />;
   if (activity.error) return <p role="alert">The A2A activity could not be loaded.</p>;
 
   const { inbound, outbound, deliveries } = activity.data!;
   const nothing = inbound.length === 0 && outbound.length === 0 && deliveries.length === 0;
 
   return (
-    <section className={styles.page}>
-      <header className={styles.header}>
-        <h1>Agent to agent</h1>
-        <button type="button" onClick={() => void activity.refetch()}>
-          Refresh
-        </button>
-      </header>
-
+    <>
       {nothing ? (
         <p className={styles.muted} data-testid="a2a-empty">
           No other agent has talked to this system yet.
@@ -77,8 +116,8 @@ export function A2AAdminPage() {
                       {t.cancellable && (
                         <button
                           type="button"
-                          disabled={cancel.isPending}
-                          onClick={() => cancel.mutate(t.taskId)}
+                          disabled={cancelling}
+                          onClick={() => onCancel(t.taskId)}
                         >
                           Cancel
                         </button>
@@ -151,6 +190,6 @@ export function A2AAdminPage() {
           )}
         </>
       )}
-    </section>
+    </>
   );
 }

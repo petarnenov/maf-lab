@@ -1,0 +1,61 @@
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 360px;
+  margin: 8px 0;
+}
+
+.track {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.2s ease-out;
+}
+
+.indeterminate {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 35%;
+  background: var(--accent);
+  border-radius: 999px;
+  animation: slide 1.2s ease-in-out infinite;
+}
+
+.label {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+@keyframes slide {
+  from {
+    left: -35%;
+  }
+  to {
+    left: 100%;
+  }
+}
+
+/* Reduced motion: the bar stands still and still reads as work in progress. */
+@media (prefers-reduced-motion: reduce) {
+  .indeterminate {
+    animation: none;
+    left: 0;
+    width: 100%;
+    opacity: 0.45;
+  }
+
+  .fill {
+    transition: none;
+  }
+}
