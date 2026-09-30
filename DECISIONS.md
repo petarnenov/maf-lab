@@ -1998,3 +1998,8 @@ said which account the conversation was about.
 - **Service tokens to the runner.** The api and the agent sign a short-lived `PartnerJwt` with audience
   `maf-lab-coverage-runner` and scope `runner.run`. The runner checks audience, partner and scope, and holds no secret
   besides the signing key it checks with. No new secret was added.
+- **Windowing without a dependency.** `web/src/coverage/useWindowedList.ts` (fixed row height, overscan) renders only
+  the rows near the viewport, for both the file view and the tree. `react-window` is the fallback if it proves too
+  small. Tests in jsdom assume a 600 px viewport, because jsdom measures nothing.
+- **`web/src/coverage/treeModel.ts`, not `coverageTree.ts`.** Next to `CoverageTree.tsx`, the name differed only in
+  case, and on macOS the import resolved to the component.

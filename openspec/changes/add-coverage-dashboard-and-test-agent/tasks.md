@@ -38,15 +38,15 @@
 
 ## 3. Web: Coverage screen, tree and file view
 
-- [ ] 3.1 Add the `/coverage` route and the nav link in `LINKS`, and API types and helpers in `api/`. Verify with a
+- [x] 3.1 Add the `/coverage` route and the nav link in `LINKS`, and API types and helpers in `api/`. Verify with a
   Vitest test that the nav shows Coverage and the route renders the page.
-- [ ] 3.2 Build `CoverageTree`: folders with aggregates, per-file % and threshold, a below-threshold marker (icon plus
+- [x] 3.2 Build `CoverageTree`: folders with aggregates, per-file % and threshold, a below-threshold marker (icon plus
   text, theme colours), a candidate badge, sort by name or coverage, a path filter and a below-threshold toggle.
   Verify with RTL tests for sort, filter, toggle and marker.
-- [ ] 3.3 Build `FileView`: a summary header, line status classes, a hit and branch tooltip on hover and focus, and a
+- [x] 3.3 Build `FileView`: a summary header, line status classes, a hit and branch tooltip on hover and focus, and a
   windowing hook (fixed line height, overscan). Verify with RTL tests that a 5 000-line file renders at most about
   (viewport + overscan) line elements and that a partial line shows "1/2 branches".
-- [ ] 3.4 Add loading, empty ("No coverage report yet", plus Refresh for admin) and region-local error states, with
+- [x] 3.4 Add loading, empty ("No coverage report yet", plus Refresh for admin) and region-local error states, with
   no internal text. Verify with RTL tests for each state and that a failed file view leaves the tree usable.
 
 ## 4. Web and API: threshold and model picker
