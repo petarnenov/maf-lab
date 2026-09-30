@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/docs_hook.sh\"; [ -x \"$f\" ] && \"$f\" || cat >/dev/null",
+            "timeout": 30,
+            "statusMessage": "make docs"
+          }
+        ]
+      }
+    ]
+  }
+}

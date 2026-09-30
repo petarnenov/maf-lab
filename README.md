@@ -465,6 +465,11 @@ Facts that the code already holds are not written by hand. `make docs` writes th
 | `repo-layout` | [`openspec/project.md`](openspec/project.md) | each `.csproj` `<Description>`, and `[layout]` in [`docs/docs-sync.toml`](docs/docs-sync.toml) |
 | `project-context` | [`openspec/config.yaml`](openspec/config.yaml) | the whole of `openspec/project.md` |
 
+Agents do not have to remember `make docs`. A Claude Code hook in [`.claude/settings.json`](.claude/settings.json)
+runs [`scripts/docs_hook.sh`](scripts/docs_hook.sh) after every edit to one of these sources (Makefile, `nginx.conf`,
+a `.csproj`, `project.md`, `docs-sync.toml`). It regenerates the blocks in that checkout and tells the agent which
+files changed. It never blocks: CI is the gate.
+
 `make docs-check` changes nothing. It fails, naming file and line, when:
 - a generated block is out of date;
 - an api route has no row in [`docs/http-api.md`](docs/http-api.md), or a row names a route that is not registered;
