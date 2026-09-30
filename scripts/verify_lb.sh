@@ -243,9 +243,11 @@ if reviewer:
 
 # 4.6 a write proposed on one replica and confirmed through the balancer --------------------------------
 # The MCP server keeps nothing between the two calls, so whichever replica answers must honour the proposal.
-def propose(request_state=None, approve=None):
+# The run undoes its own write (repeatable-verify): an increase first, which the sign guard always allows, then the
+# matching reduction, so the fee ends where it started and the next run finds the same data.
+def propose(amount, reason, request_state=None, approve=None):
     params = {"name": "propose_fee_adjustment",
-              "arguments": {"accountId": "A-1042", "amount": -200, "reason": "verify_lb end-to-end check"}}
+              "arguments": {"accountId": "A-1042", "amount": amount, "reason": reason}}
     if request_state:
         params["requestState"] = request_state
     if approve is not None:
@@ -254,27 +256,40 @@ def propose(request_state=None, approve=None):
     _, _, body = mcp("tools/call", params, adam)
     return body
 
-asked = propose().get("result", {})
+def summary_of(result):
+    return next((r.get("params", {}).get("_meta", {}).get("maf-lab/adjustment", {})
+                 for r in (result.get("inputRequests") or {}).values()), {})
+
+asked = propose(200, "verify_lb end-to-end check").get("result", {})
 state = asked.get("requestState")
 check("a proposal asks for input and writes nothing", bool(state) and bool(asked.get("inputRequests")),
       json.dumps(asked)[:140])
 
 if state:
-    summary = next((r.get("params", {}).get("_meta", {}).get("maf-lab/adjustment", {})
-                    for r in (asked.get("inputRequests") or {}).values()), {})
+    summary = summary_of(asked)
+    before = summary.get("currentFee")
     check("the proposal names the account, its fee and what it would become",
           summary.get("accountId") == "A-1042" and "currentFee" in summary and "resultingFee" in summary,
           json.dumps(summary)[:140])
 
-    first = propose(state, approve=True).get("result", {}).get("structuredContent", {})
+    first = propose(200, "verify_lb end-to-end check", state, approve=True).get("result", {}).get("structuredContent", {})
     check("confirming through the balancer applies it", first.get("status") == "applied",
           json.dumps(first)[:140])
 
-    second = propose(state, approve=True).get("result", {}).get("structuredContent", {})
+    second = propose(200, "verify_lb end-to-end check", state, approve=True).get("result", {}).get("structuredContent", {})
     check("confirming the same proposal twice applies it once",
           second.get("status") == "already_applied"
           and second.get("adjustment", {}).get("currentFee") == first.get("adjustment", {}).get("currentFee"),
           json.dumps(second)[:140])
+
+    undo = propose(-200, "verify_lb reversal of its own check").get("result", {})
+    undone = propose(-200, "verify_lb reversal of its own check", undo.get("requestState"), approve=True) \
+        .get("result", {}).get("structuredContent", {}) if undo.get("requestState") else {}
+    after = undone.get("adjustment", {}).get("currentFee")
+    check("the run undoes its own adjustment: the fee is back where it started",
+          undone.get("status") == "applied" and before is not None and after is not None
+          and abs(float(after) - float(before)) < 0.005,
+          f"before={before} after={after} {json.dumps(undone)[:100]}")
 
 print()
 print("ALL CHECKS PASSED" if not failures else f"{len(failures)} CHECK(S) FAILED: {failures}")

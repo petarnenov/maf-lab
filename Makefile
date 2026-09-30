@@ -156,7 +156,7 @@ ci: specs lint-dotnet test-dotnet lint-web test-web build-web ci-e2e ## Run loca
 ci-e2e: require-docker require-dotnet ## Model-free end-to-end: stack with the Ollama stub, index, verify, A2A conformance (CI mode)
 	$(MAKE) up index-if-empty verify eval-a2a CI_MODE=1
 
-verify: ## Verify the running stack through the load balancer (31 checks)
+verify: ## Verify the running stack through the load balancer (35 checks)
 	scripts/verify_lb.sh $(BASE_URL)
 
 eval: require-dotnet ## Run evals (SUITE=all|selection|retrieval|generation|injection|confirmation|intent|domain|presentation) against the stack's MCP servers

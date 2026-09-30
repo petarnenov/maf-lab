@@ -135,7 +135,7 @@ make help                  # every target
 | `make index` / `index-portfolio` / `index-code` / `reindex` / `drift` / `migrate` / `rebuild-index` | Indexing CLI against the compose Qdrant + Ollama; `index` covers billing, portfolio and the codebase; `rebuild-index FORCE=1` re-creates the collection with the configured embedding |
 | `make test` / `test-dotnet` / `test-web` / `lint` | Test suites and linters |
 | `make ci` / `ci-e2e` / `specs` | Locally, what GitHub Actions runs; the end-to-end part alone; strict OpenSpec validation |
-| `make verify` | 31 checks through the load balancer (routing, closed ports, balancing, SSE, MCP, failover, jobs, A2A, compliance reviewer, fee adjustment) |
+| `make verify` | 35 checks through the load balancer (routing, closed ports, balancing, SSE, MCP, failover, jobs, A2A, compliance reviewer, fee adjustment) |
 | `make screenshots` | Re-take the README screenshots from the running stack (`SHOTS=chat,topology` for some); see §55 of `DECISIONS.md` |
 | `make eval` / `eval-selection` / … / `eval-accept` | Evals against the stack's MCP servers (`SUITE=all`); `eval-accept` makes the result the new baseline |
 | `make ask Q="…"` | Ask one question through the agent and print its trace (`FIRM=firm-a`) |
