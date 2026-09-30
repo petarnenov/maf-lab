@@ -84,6 +84,10 @@ context: |
 
   ## Conventions
 
+  - **Progress feedback (top priority).** Every CLI tool shows a progress bar
+    for the work it does, and every process started from the UI that can take
+    longer than 3 seconds shows progress that matches the page's theme and
+    design. No work runs silently. Details: the `progress-feedback` spec.
   - Tenant is `firm_id`. It is derived from the caller's token, never from a
     request parameter, tool argument, or model output.
   - Every Qdrant query goes through exactly one method that takes a
@@ -113,6 +117,10 @@ context: |
 
 rules:
   proposal:
+    - If the change adds or alters a CLI tool, a make target, or a UI action
+      that can start a process longer than 3 seconds, state how it shows
+      progress (progress bar in the terminal; themed progress on the page),
+      per the progress-feedback spec.
     - If the change adds or modifies a Jev call, state why Jev (not code or
       an LLM) is the right tool, per docs/rules/jev-usage.md §2 and §5.
     - Include a `## Documentation impact` section. Name each document the

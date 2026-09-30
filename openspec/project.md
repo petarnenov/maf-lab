@@ -79,6 +79,10 @@ maf-lab/
 
 ## Conventions
 
+- **Progress feedback (top priority).** Every CLI tool shows a progress bar
+  for the work it does, and every process started from the UI that can take
+  longer than 3 seconds shows progress that matches the page's theme and
+  design. No work runs silently. Details: the `progress-feedback` spec.
 - Tenant is `firm_id`. It is derived from the caller's token, never from a
   request parameter, tool argument, or model output.
 - Every Qdrant query goes through exactly one method that takes a

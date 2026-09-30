@@ -5,6 +5,9 @@ stack, layout, and hard conventions. Active change proposals live under
 openspec/changes/.
 
 Non-negotiables while editing:
+- TOP PRIORITY: every CLI tool shows a progress bar for the work it does, and
+  every UI-started process that can take longer than 3 seconds shows progress
+  in the page's theme and design (spec: `progress-feedback`).
 - Tenant (firm_id) comes from the principal only. Never add a tenant
   parameter to a tool, an endpoint, or a query builder.
 - One method builds Qdrant queries and applies the tenant filter. Do not

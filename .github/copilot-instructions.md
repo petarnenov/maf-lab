@@ -68,6 +68,7 @@ MCP note: workspace MCP server config lives in `.mcp.json` (Playwright server vi
 
 ## Key conventions in this codebase
 
+- **Progress feedback (top priority):** every CLI tool shows a progress bar for the work it does, and every process started from the UI that can take longer than 3 seconds shows progress that matches the page's theme and design (spec: `progress-feedback`).
 - Read `openspec/project.md` first for stack/layout conventions; active proposals live under `openspec/changes/`.
 - **Tenant isolation rule:** tenant (`firm_id`) is derived from the authenticated principal only. Do not add tenant parameters to endpoints, tools, or query builders.
 - **Single tenant query path:** all tenant-scoped Qdrant reads go through `TenantScopedSearch.QueryAsync(...)` and `TenantFilter` (`src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs`). Do not add alternate query-building paths.
