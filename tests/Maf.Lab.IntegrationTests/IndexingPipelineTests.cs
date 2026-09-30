@@ -47,6 +47,32 @@ public class IndexingPipelineTests(QdrantFixture qdrant)
     }
 
     [Fact]
+    public async Task Progress_counts_every_document_of_the_run_on_the_first_run_and_on_an_unchanged_repeat()
+    {
+        using var corpus = TempCorpus.Small();
+        await using var services = qdrant.Services(Name(), corpus.Root);
+        var pipeline = services.GetRequiredService<IndexingPipeline>();
+
+        foreach (var _ in new[] { "first", "repeat" })
+        {
+            var reports = new List<IndexProgress>();
+            var summary = await pipeline.RunAsync(new IndexRequest { Progress = new Recorder(reports) }, Ct);
+
+            var total = summary.DocumentsIndexed + summary.DocumentsUnchanged;
+            Assert.Null(reports[0].Total);
+            Assert.All(reports.Where(r => r.Total is not null), r => Assert.Equal(total, r.Total));
+            Assert.Equal(total, reports[^1].Done);
+            Assert.Equal(Enumerable.Range(0, total + 1), reports.Where(r => r.Total is not null).Select(r => r.Done).Distinct());
+            Assert.Equal(summary.DocumentsIndexed, reports.Count(r => r.Current is not null));
+        }
+    }
+
+    private sealed class Recorder(List<IndexProgress> reports) : IProgress<IndexProgress>
+    {
+        public void Report(IndexProgress value) => reports.Add(value);
+    }
+
+    [Fact]
     public async Task Points_have_dense_and_sparse_vectors()
     {
         using var corpus = TempCorpus.Small();

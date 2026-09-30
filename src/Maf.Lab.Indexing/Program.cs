@@ -1,11 +1,14 @@
 using System.Text.Json;
+using Maf.Lab.Domain.Admin;
 using Maf.Lab.Domain.Tenancy;
+using Maf.Lab.Hosting.Cli;
 using Maf.Lab.Indexing.Corpus;
 using Maf.Lab.Indexing.Pipeline;
 using Maf.Lab.Retrieval.Store;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Maf.Lab.Indexing;
@@ -30,6 +33,9 @@ public static class Program
             builder.Configuration["Indexing:ContextualRetrieval"] = (ctx is "on" or "true").ToString();
         }
         builder.Services.AddMafIndexing(builder.Configuration);
+        // The progress bar owns stderr's last line and ends in the run's outcome; informational logs would break into
+        // it and repeat that outcome, so the console shows warnings and errors only.
+        builder.Logging.SetMinimumLevel(LogLevel.Warning);
         using var host = builder.Build();
         var services = host.Services;
         using var cts = new CancellationTokenSource();
@@ -45,7 +51,7 @@ public static class Program
             {
                 case "index":
                 {
-                    var summary = await services.GetRequiredService<IndexingPipeline>().RunAsync(
+                    var summary = await IndexWithProgressAsync(services,
                         new IndexRequest { Tenants = tenants, Force = flags.ContainsKey("force") }, cts.Token);
                     Console.WriteLine(JsonSerializer.Serialize(summary, Pretty));
                     return summary.Rejected.Count > 0 ? 0 : 0;
@@ -116,8 +122,7 @@ public static class Program
                         return 1;
                     }
                     await bootstrapper.DeleteChunkCollectionAsync(cts.Token);
-                    var summary = await services.GetRequiredService<IndexingPipeline>().RunAsync(
-                        new IndexRequest { Tenants = tenants, Force = true }, cts.Token);
+                    var summary = await IndexWithProgressAsync(services, new IndexRequest { Tenants = tenants, Force = true }, cts.Token);
                     Console.WriteLine(JsonSerializer.Serialize(summary, Pretty));
                     return 0;
                 }
@@ -139,6 +144,32 @@ public static class Program
         {
             Console.Error.WriteLine("Cancelled.");
             return 130;
+        }
+    }
+
+    /// <summary>
+    /// Runs the pipeline under a progress bar on stderr (stdout keeps the JSON summary), ending in one line that says
+    /// whether it succeeded, failed or was cancelled. A failure names the exception type only, never its message.
+    /// </summary>
+    private static async Task<IndexRunSummary> IndexWithProgressAsync(IServiceProvider services, IndexRequest request, CancellationToken ct)
+    {
+        var collection = services.GetRequiredService<IOptions<Retrieval.Configuration.QdrantOptions>>().Value.Collection;
+        using var bar = new ConsoleProgress($"index {collection}");
+        try
+        {
+            var summary = await services.GetRequiredService<IndexingPipeline>().RunAsync(request with { Progress = new IndexProgressBar(bar) }, ct);
+            bar.Succeed($"{summary.DocumentsIndexed} indexed, {summary.DocumentsUnchanged} unchanged, {summary.ChunksWritten} chunks written");
+            return summary;
+        }
+        catch (OperationCanceledException)
+        {
+            bar.Cancel();
+            throw;
+        }
+        catch (Exception ex)
+        {
+            bar.Fail(ex.GetType().Name);
+            throw;
         }
     }
 

@@ -19,7 +19,15 @@ public sealed record IndexRequest
     public bool Force { get; init; }
     /// <summary>Overrides Indexing:ContextualRetrieval for this run.</summary>
     public bool? Contextual { get; init; }
+    /// <summary>Receives the run's stage and document counts as they move (the CLI's progress bar); reported synchronously.</summary>
+    public IProgress<IndexProgress>? Progress { get; init; }
 }
+
+/// <param name="Stage">What runs now.</param>
+/// <param name="Done">Documents finished — written or found unchanged.</param>
+/// <param name="Total">Documents this run looks at; null while the corpus is still being read.</param>
+/// <param name="Current">The document being embedded, by id (a path), or null.</param>
+public sealed record IndexProgress(string Stage, int Done, int? Total, string? Current = null);
 
 /// <summary>Load → chunk → (contextualise) → embed dense + BM25 → replace per document. Idempotent.</summary>
 public sealed class IndexingPipeline(
@@ -37,7 +45,11 @@ public sealed class IndexingPipeline(
     public async Task<IndexRunSummary> RunAsync(IndexRequest request, CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
+        var progress = request.Progress;
+        progress?.Report(new IndexProgress("connecting to Qdrant", 0, null));
         await bootstrapper.EnsureAsync(ct);
+
+        progress?.Report(new IndexProgress("reading and chunking the corpus", 0, null));
 
         // Corpus statistics come from the whole corpus so IDF does not depend on which tenants a run writes.
         var corpus = _options.LoadCorpus();
@@ -52,6 +64,9 @@ public sealed class IndexingPipeline(
         var bm25Changed = model.Rebuild(prepared.Values.SelectMany(c => c).Select(c => c.SparseText)) || tokenizerChanged;
 
         var tenants = request.Tenants ?? corpus.LayoutTenants;
+        var total = corpus.Documents.Count(d => tenants.Contains(d.Tenant));
+        var done = 0;
+        progress?.Report(new IndexProgress("indexing", done, total));
         var enricher = enrichers.Create(contextual);
         var modelVersion = dense.ModelVersion(_options.DenseVector);
         // Every configured dense vector is written on every chunk, so no write can drop the vector a rollback needs.
@@ -72,14 +87,18 @@ public sealed class IndexingPipeline(
                     && vectorModels.All(v => current.DenseModelVersions?.GetValueOrDefault(v.Key) == v.Value))
                 {
                     unchanged++;
+                    progress?.Report(new IndexProgress("indexing", ++done, total));
                     continue;
                 }
+
+                progress?.Report(new IndexProgress("indexing", done, total, doc.DocId));
 
                 var writes = await EncodeAsync(prepared[doc.DocId], model, enricher, modelVersion, vectorModels, ct);
                 var (w, d) = await store.ReplaceDocumentAsync(tenant, doc.DocId, writes, ct);
                 written += w;
                 deleted += d;
                 indexed++;
+                progress?.Report(new IndexProgress("indexing", ++done, total));
             }
 
             // Documents removed from the corpus are removed from the index.
@@ -89,6 +108,7 @@ public sealed class IndexingPipeline(
             }
         }
 
+        progress?.Report(new IndexProgress("saving", done, total));
         if (bm25Changed)
         {
             await bm25Store.SaveAsync(model, ct);
