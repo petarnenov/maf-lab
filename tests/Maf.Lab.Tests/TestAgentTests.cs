@@ -17,7 +17,9 @@ internal sealed record Move(
     SuspectedBug? Bug = null,
     long Tokens = 1_000,
     Exception? Throw = null,
-    Func<CancellationToken, Task>? Before = null);
+    Func<CancellationToken, Task>? Before = null,
+    string Reply = "Done.",
+    string? Reasoning = null);
 
 /// <summary>
 /// A model that, in each attempt, calls write_file (and report_suspected_bug) once and then says it is done. The
@@ -49,7 +51,8 @@ internal sealed partial class AttemptModel(Func<int, Move> script) : IChatClient
             {
                 ToolResults.Enqueue(result.Result?.ToString() ?? "");
             }
-            return new ChatResponse(new ChatMessage(ChatRole.Assistant, "Done.")) { Usage = usage };
+            List<AIContent> said = move.Reasoning is { } thought ? [new TextReasoningContent(thought), new TextContent(move.Reply)] : [new TextContent(move.Reply)];
+            return new ChatResponse(new ChatMessage(ChatRole.Assistant, said)) { Usage = usage };
         }
 
         Prompts.Enqueue(prompt);
@@ -169,6 +172,21 @@ public sealed class TestAgentTests
         Assert.Contains("Lines still uncovered: 5", model.Prompts.ElementAt(1));
         // Baseline plus two measured attempts: the runner was never asked for a third.
         Assert.Equal(3, runner.Requests.Count);
+
+        // What it did, as the run's activity shows it: numbered in order, each attempt's phases and result.
+        var activity = TestAgentFactory.Activity(task);
+        Assert.Equal(Enumerable.Range(1, activity.Count).Select(i => (long)i), activity.Select(e => e.Seq));
+        // The baseline is measured first (attempt 0), so the run is never silent while its first build runs.
+        Assert.Equal([(0, AttemptPhase.Measuring), (1, AttemptPhase.Generating), (1, AttemptPhase.Building), (1, AttemptPhase.Measuring),
+            (2, AttemptPhase.Generating), (2, AttemptPhase.Building), (2, AttemptPhase.Measuring)],
+            activity.Where(e => e.Type == ActivityType.Phase).Select(e => (e.Attempt, e.Phase)));
+        Assert.Equal([(1, 40.0, 70.0), (2, 70.0, 86.0)],
+            activity.Where(e => e.Type == ActivityType.Attempt).Select(e => (e.Attempt, e.Result!.Before!.Value, e.Result.After!.Value)));
+        Assert.Contains(activity, e => e.Tool is { Name: "write_file", Path: "tests/Lab.Tests/CalcTests.cs", Outcome: ToolOutcome.Ok } t
+            && t.Summary.StartsWith("created"));
+        Assert.Contains(activity, e => e.Type == ActivityType.Text && e.Text == "Done.");
+        // A tool's summary is counts and sizes, never the file it wrote.
+        Assert.DoesNotContain(activity, e => JsonSerializer.Serialize(e, TestGenKinds.Json).Contains("Calc.Add(1, 1)"));
     }
 
     [Fact]
@@ -292,6 +310,8 @@ public sealed class TestAgentTests
         Assert.True(report.GoalReached);
         Assert.Contains(model.ToolResults, r => r.Contains("Refused: " + WorkspacePaths.WriteRefusal));
         Assert.DoesNotContain("src/Lab/Calc.cs", report.Diff);
+        Assert.Contains(TestAgentFactory.Activity(task), e => e.Tool is { Name: "write_file", Path: "src/Lab/Calc.cs" } t
+            && t.Outcome == ToolOutcome.Refused && t.Summary == WorkspacePaths.WriteRefusal);
     }
 
     [Fact]
@@ -370,6 +390,39 @@ public sealed class TestAgentTests
         {
             Assert.DoesNotContain(secret, logs);
             Assert.DoesNotContain(secret, spanText);
+        }
+    }
+
+    [Fact]
+    public async Task The_models_text_reaches_the_activity_and_never_logs_or_spans()
+    {
+        const string said = "MODEL_TEXT_ONLY_IN_THE_ACTIVITY";
+        const string thought = "REASONING_ONLY_IN_THE_ACTIVITY";
+        var repo = await RepoAsync();
+        var spans = new ConcurrentQueue<Activity>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = _ => true,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = spans.Enqueue,
+        };
+        ActivitySource.AddActivityListener(listener);
+        await using var agent = new TestAgentFactory(repo, new AttemptModel(n => Writes(n) with { Reply = said, Reasoning = thought }), Runner(_ => 90));
+
+        var task = await TestAgentFactory.RpcAsync(await agent.ClientAsync(), "message/send",
+            TestAgentFactory.Send(TestAgentFactory.Request(await repo.HeadAsync(Ct))), Ct);
+
+        var activity = TestAgentFactory.Activity(task);
+        Assert.Contains(activity, e => e.Type == ActivityType.Text && e.Text == said);
+        Assert.Contains(activity, e => e.Type == ActivityType.Reasoning && e.Text == thought);
+        var summary = activity.First(e => e.Tool is { Name: "write_file" }).Tool!.Summary;
+        var logs = string.Join("\n", agent.Logs.Messages);
+        var spanText = string.Join("\n", spans.SelectMany(s => s.TagObjects.Select(t => $"{t.Key}={t.Value}")
+            .Concat(s.Events.SelectMany(e => e.Tags.Select(t => $"{t.Key}={t.Value}")))));
+        foreach (var content in new[] { said, thought, summary })
+        {
+            Assert.DoesNotContain(content, logs);
+            Assert.DoesNotContain(content, spanText);
         }
     }
 

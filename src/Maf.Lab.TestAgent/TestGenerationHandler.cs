@@ -100,11 +100,20 @@ public sealed class TestGenerationHandler(
 
             var usage = new RunUsage(request.Budget, request.Price);
             var tools = new TestAgentTools(workspace, request, runner, opts);
+            // Each batch of activity is its own artifact: a resubscribing caller is told of new artifacts, not of
+            // parts appended to one it has seen.
+            var reporter = new ActivityReporter((entries, token) => updater.AddArtifactAsync(
+                    entries.Select(a => new Part { Data = JsonSerializer.SerializeToElement(a, TestGenKinds.Json) }).ToList(),
+                    artifactId: $"activity-{entries[0].Seq}", name: TestGenKinds.ActivityArtifact, lastChunk: true,
+                    cancellationToken: token).AsTask(),
+                TimeProvider.System, _logger);
             var attempts = new List<AttemptLog>();
             var fileBytes = new FileInfo(Path.Combine(workspace.Root, request.TargetFile)).Length;
             var (estimatedInput, estimatedOutput) = AttemptEstimate.PerAttempt(fileBytes);
 
-            // Where the file starts: the baseline every attempt is compared with.
+            // Where the file starts: the baseline every attempt is compared with. It takes a whole build, so it is
+            // reported as it starts rather than leaving the run silent until the first attempt.
+            await ProgressAsync(updater, reporter, request, 0, AttemptPhase.Measuring, null, usage, ct);
             RunnerResult baseline;
             try
             {
@@ -121,7 +130,7 @@ public sealed class TestGenerationHandler(
             string? feedback = baseline.Uncovered.Count > 0 ? Instructions.Feedback(baseline with { Failures = [] }, []) : null;
             var stop = StopReason.Attempts;
             long largestInput = 0, largestOutput = 0;
-            IChatClient chat = BuildChatClient(request.Model, usage, opts);
+            IChatClient chat = BuildChatClient(request.Model, usage, opts, reporter);
 
             for (var n = 1; n <= request.MaxAttempts; n++)
             {
@@ -135,7 +144,8 @@ public sealed class TestGenerationHandler(
 
                 using var attemptSpan = Maf.Lab.Hosting.LabTelemetry.Source.StartActivity("testgen.attempt");
                 attemptSpan?.SetTag("testgen.attempt", n);
-                await ProgressAsync(updater, request, n, AttemptPhase.Generating, current, usage, ct);
+                reporter.Attempt = n;
+                await ProgressAsync(updater, reporter, request, n, AttemptPhase.Generating, current, usage, ct);
                 tools.BeginAttempt();
                 var (inputBefore, outputBefore) = (usage.InputTokens, usage.OutputTokens);
                 var errors = new List<string>();
@@ -151,7 +161,24 @@ public sealed class TestGenerationHandler(
                             Temperature = 0,
                         },
                     }, loggers);
-                    await agent.RunAsync(Instructions.Attempt(request, n, current, feedback), session: null, options: null, ct);
+                    // Streamed, so the model's text and reasoning reach the activity as they are written.
+                    await foreach (var update in agent.RunStreamingAsync(Instructions.Attempt(request, n, current, feedback),
+                        session: null, options: null, ct))
+                    {
+                        foreach (var content in update.Contents)
+                        {
+                            switch (content)
+                            {
+                                case TextReasoningContent reasoning when reasoning.Text is { Length: > 0 }:
+                                    await reporter.TextAsync(ActivityType.Reasoning, reasoning.Text, ct);
+                                    break;
+                                case TextContent text when text.Text is { Length: > 0 }:
+                                    await reporter.TextAsync(ActivityType.Text, text.Text, ct);
+                                    break;
+                            }
+                        }
+                    }
+                    await reporter.EndTextAsync(ct);
                 }
                 catch (BudgetExceededException)
                 {
@@ -179,7 +206,7 @@ public sealed class TestGenerationHandler(
                 var forbidden = DiffPaths.Forbidden(diff, request.Toolchain);
                 violations = [.. violations, .. forbidden.Select(p => new GuardrailViolation(p, "(file)", WorkspacePaths.WriteRefusal))];
 
-                await ProgressAsync(updater, request, n, AttemptPhase.Building, current, usage, ct);
+                await ProgressAsync(updater, reporter, request, n, AttemptPhase.Building, current, usage, ct);
                 RunnerResult result;
                 try
                 {
@@ -203,10 +230,13 @@ public sealed class TestGenerationHandler(
                 {
                     current = result.TargetPct;
                 }
-                attempts.Add(new AttemptLog(n, before, result.TargetPct, result.Build, result.Tests, TestsIn(diff),
+                var log = new AttemptLog(n, before, result.TargetPct, result.Build, result.Tests, TestsIn(diff),
                     [.. errors, .. result.Diagnostics.Take(10), .. result.Failures.Take(10).Select(f => $"{f.Name}: {f.Message}")],
-                    violations.Select(v => v.ToString()).ToList(), result.Uncovered));
-                await ProgressAsync(updater, request, n, AttemptPhase.Measuring, current, usage, ct);
+                    violations.Select(v => v.ToString()).ToList(), result.Uncovered);
+                attempts.Add(log);
+                await reporter.AttemptAsync(
+                    new AttemptActivity(log.Before, log.After, log.Build, log.Tests, log.Errors, log.GuardrailViolations.Count), ct);
+                await ProgressAsync(updater, reporter, request, n, AttemptPhase.Measuring, current, usage, ct);
 
                 // Only a clean attempt — it builds, every test passes, no rule is broken — can be the result.
                 var clean = result.Green && violations.Count == 0 && diff.Length > 0;
@@ -248,7 +278,7 @@ public sealed class TestGenerationHandler(
     /// provider → usage counting → the tool loop. The counter sits on the provider so every call the loop makes is
     /// counted; the tool loop has a round cap and turns a refused tool call into text the model can act on.
     /// </summary>
-    private IChatClient BuildChatClient(string model, RunUsage usage, TestAgentOptions opts)
+    private IChatClient BuildChatClient(string model, RunUsage usage, TestAgentOptions opts, ActivityReporter reporter)
     {
         var provider = new OpenTelemetryChatClient(models.CreateChatClient(model));
         var budgeted = new BudgetedChatClient(provider, usage);
@@ -257,29 +287,38 @@ public sealed class TestGenerationHandler(
             MaximumIterationsPerRequest = opts.MaxToolRoundsPerAttempt,
             FunctionInvoker = async (context, ct) =>
             {
+                object? result;
+                var (outcome, problem) = (ToolOutcome.Ok, (string?)null);
                 try
                 {
-                    return await context.Function.InvokeAsync(context.Arguments, ct);
+                    result = await context.Function.InvokeAsync(context.Arguments, ct);
                 }
                 catch (PathRefusedException ex)
                 {
-                    return $"Refused: {ex.Message}";
+                    (outcome, problem) = (ToolOutcome.Refused, ex.Message);
+                    result = $"Refused: {ex.Message}";
                 }
                 catch (RunnerUnavailableException)
                 {
-                    return "The test runner is unavailable right now.";
+                    (outcome, problem) = (ToolOutcome.Failed, "The test runner is unavailable right now.");
+                    result = problem;
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     _logger.LogWarning("tool {Tool} failed ({ErrorType})", context.Function.Name, ex.GetType().Name);
-                    return "The tool failed.";
+                    (outcome, problem) = (ToolOutcome.Failed, "The tool failed.");
+                    result = problem;
                 }
+                await reporter.ToolAsync(ToolSummaries.Of(context.Function.Name, context.Arguments, result, outcome, problem), ct);
+                return result;
             },
         };
     }
 
-    private static async Task ProgressAsync(TaskUpdater updater, TestGenRequest request, int attempt, string phase, double? pct,
-        RunUsage usage, CancellationToken ct) =>
+    private static async Task ProgressAsync(TaskUpdater updater, ActivityReporter reporter, TestGenRequest request, int attempt,
+        string phase, double? pct, RunUsage usage, CancellationToken ct)
+    {
+        await reporter.PhaseAsync(phase, ct);
         await updater.StartWorkAsync(new Message
         {
             MessageId = Guid.NewGuid().ToString("N"),
@@ -295,6 +334,7 @@ public sealed class TestGenerationHandler(
                 },
             ],
         }, ct);
+    }
 
     /// <summary>The request's data part, or null when there is none of the right kind.</summary>
     internal static TestGenRequest? Read(RequestContext context)

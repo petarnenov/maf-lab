@@ -37,11 +37,19 @@ public sealed class CoverageRefresher(
     {
         var main = options.Value.MainBranch;
         var commit = await repository.ResolveAsync(main, ct)
-            ?? throw new InvalidOperationException($"The {main} branch has no commit.");
+            ?? throw new AdminJobFailure($"The {main} branch has no commit.");
         var parts = new List<string>();
         foreach (var toolchain in new[] { Toolchains.Dotnet, Toolchains.Vitest })
         {
-            var result = await runner.RunAsync(new RunnerRequest(commit, toolchain), ct);
+            RunnerResult result;
+            try
+            {
+                result = await runner.RunAsync(new RunnerRequest(commit, toolchain), ct);
+            }
+            catch (RunnerUnavailableException ex)
+            {
+                throw new AdminJobFailure("The coverage runner could not be reached.", ex);
+            }
             if (result.CoberturaXml is not { Length: > 0 } xml)
             {
                 logger.LogWarning("coverage refresh {Toolchain} produced no report: {Status} build={Build}", toolchain, result.Status, result.Build);
@@ -56,7 +64,7 @@ public sealed class CoverageRefresher(
         }
         if (parts.All(p => p.Contains("no report", StringComparison.Ordinal)))
         {
-            throw new InvalidOperationException("Neither toolchain produced a coverage report.");
+            throw new AdminJobFailure("Neither toolchain produced a coverage report.");
         }
         return $"{commit[..7]} — " + string.Join("; ", parts);
     }

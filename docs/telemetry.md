@@ -34,6 +34,11 @@ metric or a log. The GenAI instrumentation can be asked to record prompts and co
 turning it on is not a supported configuration of this system. A test runs a turn with markers in the question,
 the answer, the reasoning and a document and refuses any that reaches an exported signal.
 
+A test-generation run's activity — the test agent's text and reasoning, and which files its tools touched — is
+content in the same sense. It is kept in the api's database for the Coverage screen, which reads it over the run's
+AG-UI stream, and it is never emitted as a span, a metric or a log line; a test runs the agent with markers in its
+text and reasoning and refuses any that reaches its logs or spans.
+
 What a span does carry, and should: `gen_ai.tool.description` holds the tool's own description — the text this
 system wrote to tell the model what a tool is for. It is configuration, not anybody's data, and the turn trace
 already shows it. Searching an exported trace for a phrase that appears in a tool description will find it there.

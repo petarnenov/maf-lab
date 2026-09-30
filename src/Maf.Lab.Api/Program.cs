@@ -120,6 +120,7 @@ public partial class Program
         builder.Services.AddSingleton<Coverage.ModelAvailability>();
         builder.Services.AddHttpClient(Coverage.TestAgentClient.HttpClientName);
         builder.Services.AddSingleton<Coverage.TestAgentClient>();
+        builder.Services.AddSingleton<Coverage.RunActivityStore>();
         builder.Services.AddSingleton<Coverage.TestGenRuns>();
         builder.Services.Configure<Coverage.GitHubOptions>(builder.Configuration.GetSection(Coverage.GitHubOptions.Section));
         builder.Services.AddHttpClient(Coverage.GitHubIssues.HttpClientName);

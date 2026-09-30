@@ -902,6 +902,8 @@ export interface RunSummary {
   createdAt: string;
   updatedAt: string;
   active: boolean;
+  /** The attempt's phase the agent last reported: generating, building, testing or measuring. */
+  phase?: string | null;
 }
 
 export interface CandidateCoverage {

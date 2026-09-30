@@ -268,17 +268,11 @@ class Handler(BaseHTTPRequestHandler):
             messages = body.get("messages", [])
             turn = testgen_turn(messages)
             if turn is not None:
-                done = {"model": model, "created_at": now(), "message": turn, "done": True, "done_reason": "stop",
-                        "total_duration": 1, "eval_count": 50, "prompt_eval_count": 500}
                 if not body.get("stream", True):
-                    return self._json(200, done)
-                self.send_response(200)
-                self.send_header("Content-Type", "application/x-ndjson")
-                self.send_header("Transfer-Encoding", "chunked")
-                self.end_headers()
-                self._chunk(done)
-                self.wfile.write(b"0\r\n\r\n")
-                return
+                    return self._json(200, {"model": model, "created_at": now(), "message": turn, "done": True,
+                                            "done_reason": "stop", "total_duration": 1, "eval_count": 50,
+                                            "prompt_eval_count": 500})
+                return self._stream_testgen(model, turn)
             if is_translation(messages):
                 text = translate(messages)
             else:
@@ -301,6 +295,30 @@ class Handler(BaseHTTPRequestHandler):
             time.sleep(0.05)  # stream like a real model so SSE relaying is observable
         self._chunk({"model": model, "created_at": now(), "message": {"role": "assistant", "content": ""}, "done": True,
                      "done_reason": "stop", "total_duration": 1, "eval_count": len(words), "prompt_eval_count": 1})
+        self.wfile.write(b"0\r\n\r\n")
+
+    def _stream_testgen(self, model: str, turn: dict):
+        """The test agent's turn as a model streams it: some reasoning, the reply in pieces, then any tool call, so the
+        run's activity (reasoning, text chunks, tool calls) is exercised end to end in CI."""
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson")
+        self.send_header("Transfer-Encoding", "chunked")
+        self.end_headers()
+        thinking = "The fixture is small: one test per branch of Sign and of Clamp covers every line."
+        text = turn.get("content") or "Writing one test class for the fixture."
+        for kind, words in (("thinking", thinking.split(" ")), ("content", text.split(" "))):
+            for i, word in enumerate(words):
+                piece = word if i == 0 else " " + word
+                message = {"role": "assistant", "content": piece if kind == "content" else ""}
+                if kind == "thinking":
+                    message["thinking"] = piece
+                self._chunk({"model": model, "created_at": now(), "message": message, "done": False})
+                time.sleep(0.05)
+        final = {"role": "assistant", "content": ""}
+        if turn.get("tool_calls"):
+            final["tool_calls"] = turn["tool_calls"]
+        self._chunk({"model": model, "created_at": now(), "message": final, "done": True, "done_reason": "stop",
+                     "total_duration": 1, "eval_count": 50, "prompt_eval_count": 500})
         self.wfile.write(b"0\r\n\r\n")
 
     def _chunk(self, obj: dict):

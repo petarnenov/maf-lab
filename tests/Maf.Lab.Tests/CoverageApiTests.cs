@@ -218,6 +218,22 @@ public sealed class CoverageApiTests
         Assert.Equal(["src/Lab/Small.cs", "web/src/App.tsx"], tree!.Files.Select(f => f.Path));
     }
 
+    [Theory]
+    [InlineData(true, "The coverage runner could not be reached.")]
+    [InlineData(false, "Neither toolchain produced a coverage report.")]
+    public async Task A_refresh_that_fails_names_its_reason(bool runnerDown, string reason)
+    {
+        var repo = await RepoAsync();
+        var runner = new FakeCoverageRunner { Down = runnerDown, Answer = _ => FakeCoverageRunner.Result("", status: "error") };
+        using var api = CoverageApi.Create(repo, runner);
+        var admin = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+
+        var started = await (await admin.PostAsync("/api/coverage/refresh", null, Ct)).Content.ReadFromJsonAsync<AdminJob>(Json, Ct);
+        var job = await WaitAsync(admin, started!.JobId);
+
+        Assert.Equal((AdminJobStates.Failed, reason), (job.State, job.Summary));
+    }
+
     [Fact]
     public async Task A_second_refresh_while_one_runs_is_answered_with_the_first()
     {

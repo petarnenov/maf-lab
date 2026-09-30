@@ -69,6 +69,32 @@ public class ReplicaStateTests
     }
 
     [Fact]
+    public async Task A_job_the_service_stops_during_is_reported_interrupted()
+    {
+        var db = await NewDatabaseAsync();
+        var lifetime = new ApplicationLifetime(NullLogger<ApplicationLifetime>.Instance);
+        var runner = Runner(db, "replica-a", lifetime: lifetime);
+        var job = await runner.StartAsync("firm-a", "coverage.refresh", async ct => { await Task.Delay(Timeout.Infinite, ct); return "never"; }, Ct);
+
+        lifetime.StopApplication();
+
+        var ended = await WaitAsync(runner, "firm-a", job.JobId);
+        Assert.Equal((AdminJobStates.Failed, AdminJobRunner.Interrupted), (ended.State, ended.Summary));
+    }
+
+    [Fact]
+    public async Task A_job_that_names_its_reason_says_it_and_any_other_failure_does_not()
+    {
+        var db = await NewDatabaseAsync();
+        var runner = Runner(db, "replica-a");
+
+        var named = await runner.StartAsync("firm-a", "a", _ => throw new AdminJobFailure("The coverage runner could not be reached."), Ct);
+        Assert.Equal("The coverage runner could not be reached.", (await WaitAsync(runner, "firm-a", named.JobId)).Summary);
+        var other = await runner.StartAsync("firm-b", "b", _ => throw new InvalidOperationException("at /app-data/secret.db"), Ct);
+        Assert.Equal("The job failed; see server logs.", (await WaitAsync(runner, "firm-b", other.JobId)).Summary);
+    }
+
+    [Fact]
     public async Task Running_job_keeps_its_heartbeat_fresh()
     {
         var db = await NewDatabaseAsync();
@@ -213,9 +239,10 @@ public class ReplicaStateTests
     private static IDbContextFactory<MafDbContext> Factory(string path) => new PooledDbContextFactory<MafDbContext>(
         new DbContextOptionsBuilder<MafDbContext>().UseSqlite($"Data Source={path}").AddInterceptors(new SqlitePragmaInterceptor()).Options);
 
-    private static AdminJobRunner Runner(IDbContextFactory<MafDbContext> db, string instance, TimeSpan? heartbeat = null, TimeSpan? staleAfter = null) =>
+    private static AdminJobRunner Runner(IDbContextFactory<MafDbContext> db, string instance, TimeSpan? heartbeat = null, TimeSpan? staleAfter = null,
+        ApplicationLifetime? lifetime = null) =>
         new(db, Options.Create(new AdminJobOptions { HeartbeatInterval = heartbeat ?? TimeSpan.FromSeconds(10), StaleAfter = staleAfter ?? TimeSpan.FromSeconds(60) }),
-            NullLogger<AdminJobRunner>.Instance, TimeProvider.System, new ApplicationLifetime(NullLogger<ApplicationLifetime>.Instance))
+            NullLogger<AdminJobRunner>.Instance, TimeProvider.System, lifetime ?? new ApplicationLifetime(NullLogger<ApplicationLifetime>.Instance))
         { Instance = instance };
 
     private static async Task<AdminJob> WaitAsync(AdminJobRunner runner, string firm, string jobId)

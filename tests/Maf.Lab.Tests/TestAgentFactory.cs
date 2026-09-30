@@ -125,7 +125,18 @@ internal sealed class TestAgentFactory(TempGitRepo repo, IChatClient model, Fake
     };
 
     public static TestGenReport Report(JsonElement task) =>
-        task.GetProperty("artifacts")[0].GetProperty("parts")[0].GetProperty("data").Deserialize<TestGenReport>(TestGenKinds.Json)!;
+        task.GetProperty("artifacts").EnumerateArray()
+            .Single(a => a.TryGetProperty("name", out var name) && name.GetString() == TestGenKinds.ReportArtifact)
+            .GetProperty("parts")[0].GetProperty("data").Deserialize<TestGenReport>(TestGenKinds.Json)!;
+
+    /// <summary>Every activity entry the task holds, in the order the agent numbered them.</summary>
+    public static IReadOnlyList<TestGenActivity> Activity(JsonElement task) =>
+        task.GetProperty("artifacts").EnumerateArray()
+            .Where(a => a.TryGetProperty("name", out var name) && name.GetString() == TestGenKinds.ActivityArtifact)
+            .SelectMany(a => a.GetProperty("parts").EnumerateArray())
+            .Select(p => p.GetProperty("data").Deserialize<TestGenActivity>(TestGenKinds.Json)!)
+            .OrderBy(e => e.Seq)
+            .ToList();
 
     public async ValueTask DisposeAsync()
     {

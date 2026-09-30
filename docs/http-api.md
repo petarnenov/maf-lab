@@ -329,12 +329,12 @@ lifecycle is `submitted → working → verifying → candidate → accepted | d
 | POST | `/api/coverage/runs` | `{ path, pct, model }` | `201` run (saves the threshold); `409 run_active`; `422 model_rejected`; `503 agent_unavailable`, threshold unchanged. Admin |
 | GET | `/api/coverage/runs?path=` | — | `[run]`, newest first |
 | GET | `/api/coverage/runs/{id}` | — | `{ run, report, issues: [{ testKey, title, number, url }] }` |
-| GET | `/api/coverage/runs/{id}/events` | — | `text/event-stream`: `snapshot` first, then `update`, `end` at a final state |
+| GET | `/api/coverage/runs/{id}/events` | — | `text/event-stream` in AG-UI, the only way the browser follows a run: `RUN_STARTED` (`threadId` `testgen:<id>`), `STATE_SNAPSHOT` with the run summary (incl. `phase`) first and on every change, then every recorded activity entry in order: a phase as `STEP_STARTED`/`STEP_FINISHED`, a tool call as `TOOL_CALL_START`/`ARGS` (`{path}`)/`END`/`RESULT` (`{outcome, summary}`), model text as `TEXT_MESSAGE_*`, reasoning as `REASONING_*`, an attempt's result as `CUSTOM maf-lab/testgen-attempt`, a capped record as `CUSTOM maf-lab/testgen-activity-dropped`; ends with `RUN_FINISHED` (result: the summary) at `candidate` or a final state, or `RUN_ERROR` (code: the reason) when failed or canceled. A run that has ended replays and closes |
 | POST | `/api/coverage/runs/{id}/cancel` | — | `200` run, `409 not_cancellable`. Admin |
 | POST | `/api/coverage/runs/{id}/accept` | — | `200 { run, gitHubProblems }` merged into main; `409 merge_conflict \| main_dirty \| branch_missing \| not_candidate`. Admin |
 | POST | `/api/coverage/runs/{id}/discard` | — | `200 { run, gitHubProblems }`, branch deleted, issues closed. Admin |
 | POST | `/api/coverage/refresh` | — | `202` admin job (one at a time: a second answers with the first). Admin |
-| GET | `/api/coverage/refresh` · `/api/coverage/refresh/{jobId}` | — | the current or named refresh job, `204` when there is none |
+| GET | `/api/coverage/refresh` · `/api/coverage/refresh/{jobId}` | — | the current or named refresh job, `204` when there is none. A failed job's `summary` names why: interrupted (the service stopped), the coverage runner could not be reached, neither toolchain produced a report, or the main branch has no commit |
 | POST | `/api/coverage/reports` | multipart `commit`, `toolchain`, `report`, `root?`, `dirty?` | `200 { snapshotId, files, dropped }`; `400` for a report that is not Cobertura. Admin |
 
 ## Evals (any authenticated role)

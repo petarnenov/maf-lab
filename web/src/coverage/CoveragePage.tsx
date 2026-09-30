@@ -8,7 +8,9 @@ import page from '../components/Page.module.css';
 import { CandidatePanel } from './CandidatePanel';
 import { CoverageTree } from './CoverageTree';
 import { FileView } from './FileView';
+import { when } from './format';
 import { coverageKeys } from './keys';
+import { RunActivityButton } from './RunActivity';
 import { RunStatus } from './RunStatus';
 import { useRunEvents } from './useRunEvents';
 import { ThresholdControl } from './ThresholdControl';
@@ -42,7 +44,7 @@ export function CoveragePage() {
     <div className={styles.page}>
       <div className={styles.titleRow}>
         <h1 className={page.heading}>Coverage</h1>
-        {isAdmin && tree.data?.hasSnapshot && <RefreshControl />}
+        {isAdmin && tree.data?.hasSnapshot && <RefreshControl latest={latestMeasurement(tree.data)} />}
       </div>
       <p className={page.muted}>
         Line coverage of the repository's C# and TypeScript source, from the latest measurement of each file.
@@ -111,7 +113,7 @@ function FileError({ error, canRefresh }: { error: Error; canRefresh: boolean })
 }
 
 /** Measures both toolchains at main. One refresh runs at a time; a second press shows the one running. */
-function RefreshControl() {
+function RefreshControl({ latest }: { latest?: string | null }) {
   const api = useApi();
   const client = useQueryClient();
   const current = useQuery({
@@ -138,7 +140,9 @@ function RefreshControl() {
       </button>
       {job?.state === 'failed' && (
         <span className={page.error} role="alert">
-          The last refresh failed.
+          The last refresh failed{job.finishedAt ? ` at ${when(job.finishedAt)}` : ''}
+          {job.summary ? `: ${job.summary}` : '.'}
+          {latest && <span className={page.muted}> Current coverage was measured at {when(latest)}.</span>}
         </span>
       )}
       {start.isError && (
@@ -153,5 +157,15 @@ function RefreshControl() {
 /** A non-admin sees a run move too, without its controls. */
 function LiveRunStatus({ run }: { run: RunSummary }) {
   const live = useRunEvents(run);
-  return live ? <RunStatus run={live} /> : null;
+  return live ? (
+    <div className={styles.thresholdControl}>
+      <RunStatus run={live} />
+      <RunActivityButton run={live} canCancel={false} />
+    </div>
+  ) : null;
+}
+
+/** When the newest measurement on screen was taken: what a failed refresh left in place. */
+function latestMeasurement(tree: Tree): string | null {
+  return tree.files.reduce<string | null>((latest, f) => (!latest || f.measuredAt > latest ? f.measuredAt : latest), null);
 }

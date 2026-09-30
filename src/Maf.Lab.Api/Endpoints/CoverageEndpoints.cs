@@ -1,3 +1,4 @@
+using Maf.Lab.Api.Agent.Streaming;
 using Maf.Lab.Api.Coverage;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.Retrieval.Auth;
@@ -183,9 +184,11 @@ public static class CoverageEndpoints
 
         // The run as it happens: its current state first, then each change, until it reaches a final state. Events come
         // from the shared database, so whichever replica the browser reaches can serve the stream.
-        read.MapGet("/runs/{id}/events", async (string id, TestGenRuns runs, IOptions<TestAgentOptions> options, CancellationToken ct) =>
+        // The run as the browser follows it: an AG-UI stream, replayed from the start, then live (add-run-activity-view).
+        read.MapGet("/runs/{id}/events", async (string id, TestGenRuns runs, RunActivityStore activity, IOptions<TestAgentOptions> options,
+            CancellationToken ct) =>
             await runs.GetAsync(id, ct) is { } run
-                ? TypedResults.ServerSentEvents(RunEventsAsync(runs, run, options.Value.EventPollEvery, ct))
+                ? TypedResults.ServerSentEvents(RunEventsAsync(runs, activity, run, options.Value.EventPollEvery, ct))
                 : NotFound());
 
         admin.MapPost("/runs/{id}/cancel", async (string id, TestGenRuns runs, CancellationToken ct) =>
@@ -255,20 +258,41 @@ public static class CoverageEndpoints
         return app;
     }
 
-    private static async IAsyncEnumerable<System.Net.ServerSentEvents.SseItem<RunSummary>> RunEventsAsync(TestGenRuns runs,
-        TestGenRunRow run, TimeSpan pollEvery, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    private static async IAsyncEnumerable<System.Net.ServerSentEvents.SseItem<object>> RunEventsAsync(TestGenRuns runs,
+        RunActivityStore activity, TestGenRunRow run, TimeSpan pollEvery,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
-        var seq = (await runs.EventsAsync(run.Id, 0, ct)).Select(e => e.Seq).DefaultIfEmpty(0).Max();
-        var current = RunSummary.Of(run);
-        yield return new(current, "snapshot");
-        while (!TestGenRunState.Final.Contains(current.State))
+        var view = new RunActivityProjection(run.Id);
+        static System.Net.ServerSentEvents.SseItem<object> Frame(AGUI.Abstractions.BaseEvent e) => new(e, AGUIStream.FrameName(e));
+
+        yield return Frame(view.Started());
+        var summary = RunSummary.Of(run);
+        foreach (var e in view.Summary(summary))
         {
-            await Task.Delay(pollEvery, ct);
-            foreach (var (next, summary) in await runs.EventsAsync(run.Id, seq, ct))
+            yield return Frame(e);
+        }
+        while (true)
+        {
+            // Entries are read after the state they belong to: the api stores them first, so a final state is never
+            // reported ahead of what led to it.
+            foreach (var e in view.Entries(await activity.ChangedSinceAsync(run.Id, view.Cursor, ct), run.ActivityDropped))
             {
-                seq = next;
-                current = summary;
-                yield return new(summary, TestGenRunState.Final.Contains(summary.State) ? "end" : "update");
+                yield return Frame(e);
+            }
+            if (RunActivityProjection.IsOver(summary.State))
+            {
+                foreach (var e in view.Ended(summary))
+                {
+                    yield return Frame(e);
+                }
+                yield break;
+            }
+            await Task.Delay(pollEvery, ct);
+            run = await runs.GetAsync(run.Id, ct) ?? run;
+            summary = RunSummary.Of(run);
+            foreach (var e in view.Summary(summary))
+            {
+                yield return Frame(e);
             }
         }
     }

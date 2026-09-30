@@ -209,27 +209,124 @@ public sealed class TestGenRunsApiTests
         Assert.Equal("canceled", task.GetProperty("status").GetProperty("state").GetString());
     }
 
+    /// <summary>A run's AG-UI stream, read one event at a time: the frame's name and its payload.</summary>
+    private sealed class RunStream : IAsyncDisposable
+    {
+        private readonly HttpResponseMessage _response;
+        private readonly StreamReader _reader;
+        private readonly CancellationTokenSource _timeout;
+
+        private RunStream(HttpResponseMessage response, StreamReader reader, CancellationTokenSource timeout) =>
+            (_response, _reader, _timeout) = (response, reader, timeout);
+
+        public string? MediaType => _response.Content.Headers.ContentType?.MediaType;
+
+        public static async Task<RunStream> OpenAsync(HttpClient client, string runId, int seconds = 30)
+        {
+            var timeout = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(seconds));
+            var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Get, $"/api/coverage/runs/{runId}/events"),
+                HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+            return new RunStream(response, new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token)), timeout);
+        }
+
+        /// <summary>The next event, or null once the stream has closed.</summary>
+        public async Task<(string Name, JsonElement Data)?> NextAsync()
+        {
+            string? name = null;
+            while (await _reader.ReadLineAsync(_timeout.Token) is { } line)
+            {
+                if (line.StartsWith("event: ", StringComparison.Ordinal))
+                {
+                    name = line["event: ".Length..];
+                }
+                else if (line.StartsWith("data: ", StringComparison.Ordinal))
+                {
+                    return (name!, JsonDocument.Parse(line["data: ".Length..]).RootElement.Clone());
+                }
+            }
+            return null;
+        }
+
+        public async Task<List<(string Name, JsonElement Data)>> ReadAsync(Func<(string Name, JsonElement Data), bool>? until = null)
+        {
+            var events = new List<(string, JsonElement)>();
+            while (await NextAsync() is { } e)
+            {
+                events.Add(e);
+                if (until?.Invoke(e) == true)
+                {
+                    break;
+                }
+            }
+            return events;
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            _reader.Dispose();
+            _response.Dispose();
+            _timeout.Dispose();
+            return ValueTask.CompletedTask;
+        }
+    }
+
     [Fact]
-    public async Task A_late_subscriber_gets_the_current_state_first()
+    public async Task A_finished_run_replays_as_AG_UI_the_same_on_any_replica()
     {
         await using var s = await StackAsync();
         var started = (await (await StartAsync(s)).Content.ReadFromJsonAsync<RunSummary>(Json, Ct))!;
         await UntilAsync(s, started.Id, r => r.State == TestGenRunState.Candidate);
+        // A second replica over the same database: it has never followed this run.
+        using var other = CoverageApi.Create(s.Repo, s.Runner, dataDir: s.Api.DataDir);
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/coverage/runs/{started.Id}/events");
-        var client = s.Api.ClientFor("bob", "firm-a", Role.ADVISOR);
-        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, Ct);
-        // A candidate is not final: the stream stays open for the decision still to come, so read its first event only.
-        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(Ct));
-        var first = new List<string>();
-        while (await reader.ReadLineAsync(Ct) is { } line && !(line.Length == 0 && first.Count > 0))
-        {
-            first.Add(line);
-        }
+        await using var stream = await RunStream.OpenAsync(s.Api.ClientFor("bob", "firm-a", Role.ADVISOR), started.Id);
+        var events = await stream.ReadAsync();
+        await using var fromOther = await RunStream.OpenAsync(other.ClientFor("bob", "firm-a", Role.ADVISOR), started.Id);
+        var otherEvents = await fromOther.ReadAsync();
 
-        Assert.Equal("text/event-stream", response.Content.Headers.ContentType?.MediaType);
-        Assert.Equal("event: snapshot", first[0]);
-        Assert.Contains("\"state\":\"candidate\"", first[1]);
+        Assert.Equal("text/event-stream", stream.MediaType);
+        Assert.Equal("RUN_STARTED", events[0].Name);
+        Assert.Equal(($"testgen:{started.Id}", started.Id),
+            (events[0].Data.GetProperty("threadId").GetString(), events[0].Data.GetProperty("runId").GetString()));
+        Assert.Equal("STATE_SNAPSHOT", events[1].Name);
+        Assert.Equal("candidate", events[1].Data.GetProperty("snapshot").GetProperty("state").GetString());
+        Assert.Contains(events, e => e.Name == "STEP_STARTED" && e.Data.GetProperty("stepName").GetString() == "attempt 1: generating");
+        var start = events.First(e => e.Name == "TOOL_CALL_START" && e.Data.GetProperty("toolCallName").GetString() == "write_file");
+        var callId = start.Data.GetProperty("toolCallId").GetString();
+        var result = events.Single(e => e.Name == "TOOL_CALL_RESULT" && e.Data.GetProperty("toolCallId").GetString() == callId);
+        Assert.Contains("\"outcome\":\"ok\"", result.Data.GetProperty("content").GetString());
+        Assert.Contains(events, e => e.Name == "TEXT_MESSAGE_CONTENT" && e.Data.GetProperty("delta").GetString() == "Done.");
+        Assert.Contains(events, e => e.Name == "CUSTOM" && e.Data.GetProperty("name").GetString() == RunActivityProjection.AttemptEvent);
+        Assert.Equal("RUN_FINISHED", events[^1].Name);
+        Assert.Single(events, e => e.Name is "RUN_FINISHED" or "RUN_ERROR");
+        // Every replica tells the run the same way, from what the database holds.
+        Assert.Equal(events.Select(e => e.Data.GetRawText()), otherEvents.Select(e => e.Data.GetRawText()));
+    }
+
+    [Fact]
+    public async Task A_late_subscriber_gets_the_run_so_far_then_live_events()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var s = await StackAsync(script: n => new Move(
+            new Dictionary<string, string> { ["tests/Lab.Tests/CalcTests.cs"] = TestFile(n) },
+            Before: n == 2 ? ct => release.Task.WaitAsync(ct) : null));
+        // 90% per attempt against a 95% target: attempt 2 starts, and waits there.
+        var started = (await (await StartAsync(s, pct: 95)).Content.ReadFromJsonAsync<RunSummary>(Json, Ct))!;
+        await UntilAsync(s, started.Id, r => r.Attempt == 2);
+
+        await using var stream = await RunStream.OpenAsync(s.Api.ClientFor("bob", "firm-a", Role.ADVISOR), started.Id, seconds: 60);
+        var sofar = await stream.ReadAsync(e => e.Name == "STEP_STARTED" && e.Data.GetProperty("stepName").GetString() == "attempt 2: generating");
+        release.SetResult();
+        var live = await stream.ReadAsync();
+
+        Assert.Equal(["RUN_STARTED", "STATE_SNAPSHOT"], sofar.Take(2).Select(e => e.Name));
+        Assert.Equal(2, sofar[1].Data.GetProperty("snapshot").GetProperty("attempt").GetInt32());
+        // Attempt 1, whole, came before attempt 2 began.
+        Assert.Contains(sofar, e => e.Name == "CUSTOM" && e.Data.GetProperty("value").GetProperty("attempt").GetInt32() == 1);
+        Assert.Contains(live, e => e.Name == "STEP_STARTED" && e.Data.GetProperty("stepName").GetString() == "attempt 2: building");
+        Assert.Contains(live, e => e.Name == "STATE_SNAPSHOT");
+        Assert.Contains(live[^1].Name, new[] { "RUN_FINISHED", "RUN_ERROR" });
     }
 
     [Fact]
@@ -244,6 +341,9 @@ public sealed class TestGenRunsApiTests
         var run = await UntilAsync(s, started.Id, r => TestGenRunState.Final.Contains(r.State));
 
         Assert.Equal((TestGenRunState.Failed, "deadline"), (run.State, run.Reason));
+        await using var stream = await RunStream.OpenAsync(s.Admin, started.Id);
+        var last = (await stream.ReadAsync())[^1];
+        Assert.Equal(("RUN_ERROR", "deadline"), (last.Name, last.Data.GetProperty("code").GetString()));
     }
 
     [Fact]
