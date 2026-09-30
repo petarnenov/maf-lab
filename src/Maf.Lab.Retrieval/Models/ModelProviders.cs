@@ -82,12 +82,22 @@ public sealed class ModelProviders(IOptions<ModelOptions> options) : IChatClient
             if (!_embedders.TryGetValue(vectorName, out var embedder))
             {
                 embedder = IsOllama
-                    ? new OllamaApiClient(new Uri(_options.OllamaEndpoint), profile.Model)
+                    ? new OllamaApiClient(EmbeddingHttpClient(), profile.Model)
                     : OpenAIClient().GetEmbeddingClient(profile.Model).AsIEmbeddingGenerator();
                 _embedders[vectorName] = embedder;
             }
             return embedder;
         }
+    }
+
+    private HttpClient EmbeddingHttpClient()
+    {
+        var http = new HttpClient { BaseAddress = new Uri(_options.OllamaEndpoint) };
+        if (_options.EmbeddingTimeoutSeconds is { } seconds)
+        {
+            http.Timeout = TimeSpan.FromSeconds(seconds);
+        }
+        return http;
     }
 
     public EmbeddingProfile GetProfile(string vectorName) =>

@@ -36,6 +36,12 @@ public sealed class ModelOptions
     /// <summary>Disables reasoning tokens for models that support it (qwen3 etc.).</summary>
     public bool DisableThinking { get; set; } = true;
     public string? RerankModel { get; set; }
+    /// <summary>
+    /// How long one embedding request may take. Null keeps HttpClient's 100 s, which a search's single query never
+    /// nears; the indexer raises it (<c>AddMafIndexing</c>), since a batch of long chunks on CPU Ollama can take longer
+    /// and a timeout cancels the whole run.
+    /// </summary>
+    public int? EmbeddingTimeoutSeconds { get; set; }
 
     /// <summary>
     /// Dense embedding profiles keyed by Qdrant named-vector name. One, by decision (adopt-multilingual-embedding): the
