@@ -19,6 +19,7 @@ export function RaiseThresholdDialog({
   currentPct,
   targetPct,
   useDefault = false,
+  canSaveWithoutRun = false,
   onClose,
 }: {
   path: string;
@@ -26,6 +27,11 @@ export function RaiseThresholdDialog({
   targetPct: number;
   /** The target is the default: saving without a run clears the override rather than storing one. */
   useDefault?: boolean;
+  /**
+   * Whether the threshold may be saved without a run: only when it does not raise the stored one. A raise above
+   * coverage is saved by the server only with an accepted run (it answers 409 run_required otherwise).
+   */
+  canSaveWithoutRun?: boolean;
   onClose: () => void;
 }) {
   const api = useApi();
@@ -78,9 +84,11 @@ export function RaiseThresholdDialog({
               <button type="button" onClick={onClose} disabled={saveOnly.isPending}>
                 Cancel
               </button>
-              <button type="button" onClick={() => saveOnly.mutate()} disabled={saveOnly.isPending}>
-                Save without a run
-              </button>
+              {canSaveWithoutRun && (
+                <button type="button" onClick={() => saveOnly.mutate()} disabled={saveOnly.isPending}>
+                  Save without a run
+                </button>
+              )}
               <button type="button" className={styles.primary} onClick={() => setStep('model')}>
                 Continue
               </button>

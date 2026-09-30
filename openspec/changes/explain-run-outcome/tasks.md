@@ -25,7 +25,7 @@ No TypeSafe Jev call is added or changed, so the Jev review checklist does not a
 
 ## 6. Threshold above coverage means "reach it" (added during apply)
 
-- [x] 6.1 `ThresholdControl`: open the confirmation for any value above coverage (raise, keep or lower), and for "Use default" when the default is above coverage (target: the default). Add "Save without a run" to the confirmation's first step. Verify: `ThresholdControl.test.tsx` covers Save with the default on a file below it (dialog, target 80%), a lower value still above coverage (dialog), a lower value coverage meets (saves at once), "Use default" below coverage (dialog), and "Save without a run" (PUT, no run)
+- [x] 6.1 `ThresholdControl`: open the confirmation for any value above coverage (raise, keep or lower), and for "Use default" when the default is above coverage (target: the default). Add "Save without a run" to the confirmation's first step. Verify: `ThresholdControl.test.tsx` covers Save with the default on a file below it (dialog, target 80%), a lower value still above coverage (dialog), a lower value coverage meets (saves at once), "Use default" below coverage (dialog), and "Save without a run" (PUT, no run) — Fixed at archive time: "Save without a run" is offered only when the target does not raise the stored threshold, because the server answers `409 run_required` to a raise above coverage (found in the archive review of docs/http-api.md)
 - [x] 6.2 Api: an accepted start whose `pct` equals the configured default clears the override instead of storing one. Verify: an api test that starts a run to the default and finds no override row, with the effective threshold still the default
 
 ## 4. Verification

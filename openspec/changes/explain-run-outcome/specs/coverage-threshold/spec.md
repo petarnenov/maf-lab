@@ -23,8 +23,10 @@ from it SHALL leave the file on the default, not on an override of the same valu
 ### Requirement: Saving without a run
 Saving a threshold that the file's current coverage already meets SHALL save immediately, without confirmation and
 without starting a run, whether it lowers, keeps or raises the threshold. The value SHALL be a whole percentage from
-0 to 100. Any other value SHALL be rejected with nothing saved. From the confirmation of a threshold above coverage,
-the administrator SHALL be able to save the threshold without starting a run.
+0 to 100. Any other value SHALL be rejected with nothing saved. From the confirmation of a threshold above coverage
+that does not raise the stored threshold (it keeps or lowers it, or clears the override), the administrator SHALL be
+able to save it without starting a run. A raise above coverage SHALL NOT be offered that choice: it is saved only with
+an accepted run, and the server refuses it otherwise.
 
 #### Scenario: Threshold lowered
 - **WHEN** a file is at 75% and an administrator lowers its threshold from 80% to 70%
@@ -37,6 +39,10 @@ the administrator SHALL be able to save the threshold without starting a run.
 #### Scenario: Saved without a run on purpose
 - **WHEN** a file is at 40%, an administrator lowers its threshold from 90% to 85%, and chooses "Save without a run" in the confirmation
 - **THEN** 85% is saved and no run starts
+
+#### Scenario: A raise needs a run
+- **WHEN** a file is at 40%, its threshold is 80%, and an administrator saves 85%
+- **THEN** the confirmation opens without "Save without a run", and a direct request to save 85% is refused with `run_required`
 
 #### Scenario: Out of range
 - **WHEN** a threshold of 120 is submitted

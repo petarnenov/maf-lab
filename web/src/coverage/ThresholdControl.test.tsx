@@ -192,8 +192,22 @@ describe('threshold control', () => {
     expect(await screen.findByRole('dialog')).toHaveTextContent('Reach 85%?');
   });
 
-  it('saves without a run when asked to', async () => {
-    const calls = open({ '/api/coverage/thresholds': () => jsonResponse({}) });
+  it('offers no "Save without a run" for a raise, which only a run can save', async () => {
+    open();
+
+    // 66.7% under the 80% default: 85% raises the stored threshold.
+    await setThreshold('85');
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Reach 85%?');
+    expect(within(dialog).queryByRole('button', { name: 'Save without a run' })).toBeNull();
+  });
+
+  it('saves without a run when asked to, for a threshold that does not rise', async () => {
+    const calls = open(
+      { '/api/coverage/thresholds': () => jsonResponse({}) },
+      { summary: { ...detail().summary, threshold: 90, thresholdIsOverride: true } },
+    );
     await setThreshold('85');
 
     await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Save without a run' }));
