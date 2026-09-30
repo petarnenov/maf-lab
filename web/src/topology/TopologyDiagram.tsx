@@ -1,6 +1,6 @@
 import type { TopologyNode } from '../api/types';
 import { HEALTH_MARK } from './health';
-import { routeEdge } from './layout';
+import { placeLabels, routeEdge } from './layout';
 import type { Diagram } from './parseDiagram';
 import styles from './Topology.module.css';
 
@@ -13,6 +13,16 @@ type Props = {
 
 export function TopologyDiagram({ diagram, state, selected, onSelect }: Props) {
   const { extent } = diagram;
+  const routed = diagram.edges.map((edge) => {
+    const from = diagram.nodes.find((n) => n.id === edge.source)!;
+    const to = diagram.nodes.find((n) => n.id === edge.target)!;
+    return { edge, route: routeEdge(from, to, diagram.nodes) };
+  });
+  // Labels are placed together, so none lands on another where two lines cross.
+  const labels = placeLabels(
+    routed.map(({ edge, route }) => ({ route, label: edge.label })),
+    diagram.nodes,
+  );
   return (
     <svg
       className={styles.canvas}
@@ -33,25 +43,14 @@ export function TopologyDiagram({ diagram, state, selected, onSelect }: Props) {
           <path d="M 0 0 L 10 5 L 0 10 z" className={styles.arrowHead} />
         </marker>
       </defs>
-      {diagram.edges.map((edge) => {
-        const from = diagram.nodes.find((n) => n.id === edge.source)!;
-        const to = diagram.nodes.find((n) => n.id === edge.target)!;
-        const { points, label } = routeEdge(from, to, diagram.nodes);
-        return (
-          <g key={edge.id}>
-            <polyline
-              points={points.map((p) => `${p.x},${p.y}`).join(' ')}
-              className={styles.edge}
-              markerEnd="url(#arrow)"
-            />
-            {edge.label && (
-              <text x={label.x} y={label.y - 6} className={styles.edgeLabel} textAnchor="middle">
-                {edge.label}
-              </text>
-            )}
-          </g>
-        );
-      })}
+      {routed.map(({ edge, route }) => (
+        <polyline
+          key={edge.id}
+          points={route.points.map((p) => `${p.x},${p.y}`).join(' ')}
+          className={styles.edge}
+          markerEnd="url(#arrow)"
+        />
+      ))}
       {diagram.nodes.map((node) => {
         const live = state.get(node.id);
         const mark = HEALTH_MARK[live?.health ?? 'NotProbed'];
@@ -107,6 +106,20 @@ export function TopologyDiagram({ diagram, state, selected, onSelect }: Props) {
           </g>
         );
       })}
+      {/* Labels above the boxes: where a short line leaves no free spot, a label is still read rather than hidden. */}
+      {routed.map(({ edge }, index) =>
+        edge.label ? (
+          <text
+            key={edge.id}
+            x={labels[index].x}
+            y={labels[index].y - 6}
+            className={styles.edgeLabel}
+            textAnchor="middle"
+          >
+            {edge.label}
+          </text>
+        ) : null,
+      )}
     </svg>
   );
 }

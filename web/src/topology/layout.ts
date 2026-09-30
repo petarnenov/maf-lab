@@ -91,3 +91,84 @@ function crosses(p: Point, q: Point, box: DiagramNode): boolean {
     clip(-dx, p.x - left) && clip(dx, right - p.x) && clip(-dy, p.y - top) && clip(dy, bottom - p.y)
   );
 }
+
+/** Roughly how much room an 11px label takes: the renderer's font, measured once by eye and kept generous. */
+const CHAR_WIDTH = 6.2;
+const LABEL_HEIGHT = 14;
+/** The text sits this far above the point it is placed at, clear of the line. */
+const LABEL_RISE = 6;
+
+/** Where along its line a label may go, middle first, then out towards either end. */
+const STOPS = [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8];
+
+type Rect = { left: number; top: number; right: number; bottom: number };
+
+/**
+ * Where each edge's label goes, given every edge's route.
+ *
+ * A label at its line's midpoint lands on another wherever two lines cross or run close, which is how "/jaeger" came
+ * to sit on "OTLP". So labels are placed one after another: each takes the first stop along its own line whose box
+ * overlaps no label already placed and no node, and the least crowded stop when none is free.
+ */
+export function placeLabels(
+  edges: { route: EdgeRoute; label: string }[],
+  nodes: DiagramNode[],
+): Point[] {
+  const boxes: Rect[] = nodes.map((n) => ({
+    left: n.x,
+    top: n.y,
+    right: n.x + n.width,
+    bottom: n.y + n.height,
+  }));
+  const placed: Rect[] = [];
+  return edges.map(({ route, label }) => {
+    if (!label) return route.label;
+    let best: { point: Point; rect: Rect; overlap: number } | null = null;
+    for (const stop of STOPS) {
+      const point = along(route.points, stop);
+      const rect = labelRect(point, label);
+      const overlap = [...placed, ...boxes].reduce((sum, other) => sum + area(rect, other), 0);
+      if (best === null || overlap < best.overlap) best = { point, rect, overlap };
+      if (overlap === 0) break;
+    }
+    placed.push(best!.rect);
+    return best!.point;
+  });
+}
+
+/** The label's box when its text is centred on `point` and raised above it, as the renderer draws it. */
+export function labelRect(point: Point, label: string): Rect {
+  const half = (label.length * CHAR_WIDTH) / 2 + 2;
+  const baseline = point.y - LABEL_RISE;
+  return {
+    left: point.x - half,
+    right: point.x + half,
+    top: baseline - LABEL_HEIGHT + 3,
+    bottom: baseline + 3,
+  };
+}
+
+function area(a: Rect, b: Rect): number {
+  const w = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+  const h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+  return w > 0 && h > 0 ? w * h : 0;
+}
+
+/** The point at `fraction` of the polyline's length. */
+function along(points: Point[], fraction: number): Point {
+  const parts = segments(points).map(([p, q]) => ({
+    p,
+    q,
+    length: Math.hypot(q.x - p.x, q.y - p.y),
+  }));
+  const total = parts.reduce((sum, s) => sum + s.length, 0);
+  let left = total * fraction;
+  for (const { p, q, length } of parts) {
+    if (left <= length && length > 0) {
+      const t = left / length;
+      return { x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t };
+    }
+    left -= length;
+  }
+  return points[points.length - 1];
+}

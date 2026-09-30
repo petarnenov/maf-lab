@@ -40,6 +40,11 @@
 .edgeLabel {
   fill: var(--muted);
   font-size: 11px;
+  /* A halo in the canvas colour, so a line passing under a label does not strike through it. */
+  stroke: var(--surface);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  paint-order: stroke;
 }
 
 .node {
