@@ -2104,3 +2104,10 @@ said which account the conversation was about.
   context of the request that submitted the job, so a job that runs later on a worker stays in its trace. A test
   proves that one run is one trace from the api's request through A2A, the attempts, the model calls and the runner.
   The spans carry only structure: attempts, percentages, counts, tokens and cost.
+- **Verified on the real stack (2026-09-30).**
+  - `make ci-e2e` passed: the stub model covered the fixture, the lab's own runner verified it, and Accept merged it
+    into the clone's main (0% → 100%).
+  - `make` with the standard models came up healthy, and `make verify` passed.
+  - The runner container carries no model, Jev or GitHub key and cannot reach the internet.
+  - A full .NET build per job fills Docker Desktop's disk quickly when build cache piles up. A job that died with
+    "No space left on device" looked like a build failure. Keep Docker's disk pruned before long e2e runs.

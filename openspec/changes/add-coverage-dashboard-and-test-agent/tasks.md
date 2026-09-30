@@ -185,7 +185,7 @@
 
 ## 9. Compose, topology, Make and telemetry
 
-- [ ] 9.1 Add the `test-agent` and `coverage-runner` services, the `runner` network (`internal: true`) and the
+- [x] 9.1 Add the `test-agent` and `coverage-runner` services, the `runner` network (`internal: true`) and the
   volumes. Give the api read-write access to `${MAF_LAB_REPO}` and a place on `runner`, give the collector a place on
   `runner`, and point the CI compose at the Ollama stub with a scripted test answer. Verify that `make` brings
   everything up healthy and that `docker compose exec coverage-runner env` shows no `OLLAMA_API_KEY` or `JEV_MAF_LAB`.
@@ -202,7 +202,7 @@
 
 ## 10. End-to-end and checks
 
-- [ ] 10.1 Add an end-to-end test (in `ci-e2e`) for a fixture file `src/Maf.Lab.Api/Coverage/Fixtures/E2eTarget.cs`
+- [x] 10.1 Add an end-to-end test (in `ci-e2e`) for a fixture file `src/Maf.Lab.Api/Coverage/Fixtures/E2eTarget.cs`
   at low coverage. It raises the threshold, confirms, picks the stub model, runs, verifies, creates a candidate
   branch, accepts, and checks that official coverage for the file is at or above the target. Verify that
   `make ci-e2e` passes.
@@ -217,5 +217,10 @@
     version, 429/401 handling, labeled Bulgarian inputs) apply only to a Jev call, and there is none, so no labeled
     input set is needed. `git grep` over the new projects finds no call to `/v1/systemone`.
 
-- [ ] 10.3 Run `make lint`, `make test`, `make verify` and `openspec validate add-coverage-dashboard-and-test-agent
+- [x] 10.3 Run `make lint`, `make test`, `make verify` and `openspec validate add-coverage-dashboard-and-test-agent
   --strict`. Verify that all pass.
+  - **Result (2026-09-30).** `make lint` passes, and so do `make verify` on the normal stack and `openspec validate
+    --strict`. `make ci-e2e` passes too, including test generation end to end on a clone. `make test`: 998/999 .NET
+    and all web tests pass. The one failure, `GuardrailTests.A_hanging_Jev_costs_no_more_than_the_timeouts`, is a
+    wall-clock bound that also fails on `main` (1 of 3 full runs, at 3.86 s), as does
+    `A2AStreamingTests.A_dropped_stream…` (2 of 3). Both predate this change.
