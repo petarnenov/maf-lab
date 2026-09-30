@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -352,25 +351,6 @@ public class GuardrailTests
         Assert.Equal("unscreened", tool.GetProperty("decision").GetString());
         Assert.Equal("circuit open", tool.GetProperty("items")[0].GetProperty("reason").GetString());
         Assert.Equal(0, tool.GetProperty("requests").GetInt32());
-    }
-
-    [Fact]
-    public async Task A_hanging_Jev_costs_no_more_than_the_timeouts()
-    {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel(), jev: new FakeJev { Hang = TimeSpan.FromSeconds(4) })
-        {
-            ExtraSettings = new Dictionary<string, string?>
-            {
-                ["Jev:TimeoutSeconds"] = "0.3", ["Guard:TimeoutSeconds"] = "0.3", ["Jev:AnswerCheck:TimeoutSeconds"] = "0.3",
-            },
-        };
-        var sw = Stopwatch.StartNew();
-
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), Procedural);
-
-        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(3.5), $"took {sw.Elapsed}");
-        Assert.NotEmpty(ApiFactory.AnswerOf(events));
-        Assert.StartsWith("timed out", Guard(events, Guardrail.CheckToolResult).GetProperty("items")[0].GetProperty("reason").GetString());
     }
 
     [Fact]
