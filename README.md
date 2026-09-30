@@ -428,6 +428,7 @@ under `Models:Embeddings` (one entry per Qdrant named vector).
 ```bash
 make test        # dotnet test --solution maf-lab.sln (Testcontainers starts qdrant/qdrant:v1.19.1) + web Vitest
 make lint        # .NET build with warnings as errors + ESLint/Prettier
+make docs-check  # scripts/docs.py's unit tests, then the docs-vs-code check (Python only)
 ```
 
 Tests never call a model: they use a deterministic feature-hashing embedder and a scripted chat client. Evals are
@@ -570,4 +571,5 @@ is — the chain proves what was recorded, not that the recorded person is who t
 ## Non-negotiables
 
 Tenant comes from the token only · one tenant-scoped query path · tool results are DTOs · no message content in logs ·
-version moves update `DECISIONS.md`. See [`CLAUDE.md`](CLAUDE.md).
+version moves update `DECISIONS.md` · `generated:` blocks are never edited by hand (`make docs`). See
+[`CLAUDE.md`](CLAUDE.md).
