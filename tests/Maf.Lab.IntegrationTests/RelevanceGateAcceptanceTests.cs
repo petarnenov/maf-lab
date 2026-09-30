@@ -60,9 +60,11 @@ public class RelevanceGateAcceptanceTests(CorpusIndexFixture corpus)
         var diagnostics = new SearchDiagnostics();
 
         var gated = await search.RankAsync(AdvisorA, Query, null, 20, Settings(gate: true), Ct, diagnostics);
-        var ungated = await search.RankAsync(AdvisorA, Query, null, 20, Settings(gate: false), Ct);
 
-        Assert.Equal(ungated.Select(c => c.Chunk.ChunkId), gated.Select(c => c.Chunk.ChunkId));
+        // Compared with the fused candidates of the same search, not with a second search: two identical queries
+        // can order tied chunks differently in Qdrant (stabilize-corpus-fixture), which is not what this is about.
+        Assert.NotEmpty(gated);
+        Assert.Equal(diagnostics.Fused.Select(c => c!["chunkId"]!.GetValue<string>()), gated.Select(c => c.Chunk.ChunkId));
         Assert.Equal("timed out after 2s", diagnostics.Relevance!["reason"]!.GetValue<string>());
         Assert.False(diagnostics.Relevance["silenced"]!.GetValue<bool>());
     }

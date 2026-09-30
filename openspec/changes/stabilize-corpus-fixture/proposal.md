@@ -2,25 +2,23 @@
 
 ## Why
 
-CI has failed on `main` since `add-codebase-search`, always on
-`RelevanceGateAcceptanceTests.A_judge_that_does_not_answer_leaves_the_search_ungated`. The test ranks the same query
-twice, gated with a failing judge and ungated, and expects the same 20 chunks. In CI the two lists differ at index 13.
-Locally the test and the whole integration project pass every time.
+`RelevanceGateAcceptanceTests.A_judge_that_does_not_answer_leaves_the_search_ungated` fails intermittently in CI.
+It failed on three of the last four `main` runs, and passed on one with no fix. It ranks the same query twice, gated
+with a judge that times out and ungated, and expects the same 20 chunks. In CI the two lists sometimes differ at
+index 13. Locally the test and the whole integration project pass every time.
 
-The gate path does not change the ranking. The test's two identical queries got different answers from Qdrant:
-- The indexed corpus (3,330 points since the codebase corpus grew it) has many exactly tied BM25 scores, including a
-  group of four at ranks 95–98, next to the prefetch limit of 100.
-- Which tied chunk is kept is decided by Qdrant's segment layout. The optimizer keeps changing that layout for a
-  while after indexing.
-- On a fast machine the collection is already Green when the tests start. On a CI runner it may still be optimizing
-  between the two queries.
+The gate path does not reorder anything, so the difference comes from Qdrant: two identical queries in one process
+returned different tails. The corpus has many exactly tied BM25 scores, including a group of four at ranks 95–98,
+next to the prefetch limit of 100. Which tied chunk is kept, and in what order, is not guaranteed across calls. A
+first attempt waited for the collection to settle after indexing (Green, optimizer idle). CI still failed the same
+way, so that was not the cause, and the wait was taken out again.
 
 ## What Changes
 
-- `CorpusIndexFixture` waits after indexing until the collection is Green with the optimizer idle, bounded at 120 s,
-  and fails with a clear message if it never gets there. It logs how long it waited and the status it started from,
-  so a CI log confirms the cause.
-- No product code changes. The ranking and its tie handling are unchanged.
+- The test compares the gated ranking with the fused candidates of **the same** search, which the search's
+  diagnostics already record, instead of with a second search. That is exactly its claim: a judge that does not
+  answer leaves the search as fusion produced it. A gate that emptied or reordered the list still fails it.
+- No product code changes.
 
 ## Capabilities
 
@@ -28,9 +26,11 @@ The gate path does not change the ranking. The test's two identical queries got 
 <!-- None. -->
 
 ### Modified Capabilities
-<!-- None (skip_specs): test infrastructure only. -->
+<!-- None (skip_specs): a test's assertion only. -->
 
 ## Impact
 
-- `tests/Maf.Lab.IntegrationTests/CorpusIndexFixture.cs`. Every test in the `indexed-corpus` collection starts from a
-  settled index.
+- `tests/Maf.Lab.IntegrationTests/RelevanceGateAcceptanceTests.cs`.
+- Ties in the ranking can order differently between identical queries. That is a property of the product, and it
+  is noted here rather than changed. The neighbouring test that compares two searches' top 10 has not failed, and it
+  is left as it is.
