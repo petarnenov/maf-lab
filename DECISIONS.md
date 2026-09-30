@@ -20,6 +20,7 @@ Pinned versions and the architectural decisions of maf-lab. **If a version moves
 | Prometheus | `prom/prometheus:v3.14.0` | `compose/docker-compose.yml` |
 | Jaeger | `jaegertracing/all-in-one:1.76.0` | `compose/docker-compose.yml` |
 | Redis | `redis:8.8.3-alpine` | `compose/docker-compose.yml` |
+| Playwright (README screenshots only) | `playwright` 1.63.0, Chromium headless shell 153 | `tools/screenshots/package.json` + lockfile — see §55 |
 
 ### Models (Ollama)
 
@@ -1955,3 +1956,21 @@ said which account the conversation was about.
       `d-codebase-13`: portfolio lands at 0.53, just over the scope floor, and adds a third domain. The three other
       misses are the §41 cases.
   - The baseline was not moved: accepting it is the owner's call (`make eval-accept`).
+
+## 55. README screenshots are re-taken by a script (add-readme-screenshots, 2026-09-30)
+
+- **One command.** `make screenshots` drives the running stack with Playwright and writes `docs/screenshots/<screen>-light.png`
+  and `-dark.png` for the chat, code snippets, topology, Jev, evals and compliance screens. `SHOTS=chat,topology` re-takes
+  a subset. The README shows them with `<picture>` and `prefers-color-scheme`, so GitHub picks the reader's theme.
+- **Outside `web/`.** `playwright` 1.63.0 lives in its own package, `tools/screenshots/`, with its own lockfile. In `web/` it
+  would lengthen every CI `npm ci` for a docs tool. It is the library, not `@playwright/test`: this is a script, not a
+  suite. Not part of `make ci`, and no workflow runs it: every run asks two live questions (Ollama Cloud and Jev credit).
+- **How it logs in.** A token for `alice` (firm-a, FIRM_ADMIN) from `/dev/token`, seeded into `sessionStorage` by an init
+  script. The token stays in the browser context and is never written or logged.
+- **Light and dark from one page state.** The app stays in "system" mode and the script emulates the OS colour scheme, so
+  both variants show the same live answer and the theme button tells the truth. Forcing `data-theme` made the dark
+  capture read "System".
+- **1600 px without a resize step.** Viewport 1440×900 at device scale factor 1600/1440. No macOS-only `sips`, no image
+  tool. PNGs are 150–400 KB; the script flags any file over 400 KB.
+- **Framing.** The chat recipes collapse the history (it lists the persona's earlier test conversations), scroll the
+  question to the top of the chat pane, and keep the window at the top so the navigation stays in the frame.

@@ -51,7 +51,7 @@ PORTFOLIO_ENV := Indexing__CorpusRoot=$(ROOT)/data-portfolio Qdrant__Collection=
 CODE_ENV := Indexing__Layout=repository Indexing__CorpusRoot=$(ROOT) Indexing__MaxChunkTokens=1024 Indexing__Bm25Tokenizer=code \
             Qdrant__Collection=maf_code_chunks Qdrant__MetaCollection=maf_code_meta
 
-.PHONY: all help up down restart ps logs clean index index-portfolio index-code reindex ask drift migrate test test-dotnet test-web lint verify \
+.PHONY: all help up down restart ps logs clean index index-portfolio index-code reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
         eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-a2a dev doctor banner index-if-empty \
         specs lint-dotnet lint-web build-web ci ci-e2e setup \
         require-docker require-dotnet require-npm
@@ -156,7 +156,7 @@ ci: specs lint-dotnet test-dotnet lint-web test-web build-web ci-e2e ## Run loca
 ci-e2e: require-docker require-dotnet ## Model-free end-to-end: stack with the Ollama stub, index, verify, A2A conformance (CI mode)
 	$(MAKE) up index-if-empty verify eval-a2a CI_MODE=1
 
-verify: ## Verify the running stack through the load balancer (17 checks)
+verify: ## Verify the running stack through the load balancer (31 checks)
 	scripts/verify_lb.sh $(BASE_URL)
 
 eval: require-dotnet ## Run evals (SUITE=all|selection|retrieval|generation|injection|confirmation|intent|domain|presentation) against the stack's MCP servers
@@ -167,6 +167,12 @@ EVAL = $(EVAL_HOST) --suite
 
 ask: require-dotnet ## Ask one question through the agent and print its trace (Q="…" FIRM=firm-a), e.g. a cross-domain one
 	$(EVAL_HOST) --ask "$(Q)" --firm $(or $(FIRM),firm-a)
+
+screenshots: require-npm ## Re-take the README screenshots from the running stack into docs/screenshots (SHOTS=chat,topology for a subset)
+	@curl -fsS -o /dev/null $(BASE_URL)/dev/users || { echo "✗ The stack is not answering on $(BASE_URL); run 'make' first."; exit 1; }
+	@test -d tools/screenshots/node_modules || (cd tools/screenshots && $(NPM) ci --no-audit --no-fund)
+	@cd tools/screenshots && npx playwright install chromium >/dev/null
+	cd tools/screenshots && BASE_URL=$(BASE_URL) SHOTS=$(SHOTS) node capture.mjs
 
 eval-accept: require-dotnet ## Run the evals and accept their metrics as the new baseline (commit the result)
 	$(EVAL) $(SUITE) --accept-baseline

@@ -1,0 +1,16 @@
+{
+  "name": "maf-lab-screenshots",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Re-takes the README screenshots from the running stack (make screenshots).",
+  "engines": {
+    "node": ">=22.22.0"
+  },
+  "scripts": {
+    "capture": "node capture.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

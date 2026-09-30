@@ -8,32 +8,115 @@ A learning lab: a RAG-backed assistant for a TAMP, over three domains — **bill
 harness and tested prompt-injection defences. TypeSafe's Jev decides which domains a question belongs to, and the
 monitor shows where a turn crosses from one into the other.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/chat-dark.png">
+  <img src="docs/screenshots/chat-light.png" alt="The chat: a billing question answered with its tool calls and sources, and the behind-the-scenes monitor tracing the turn step by step">
+</picture>
+
 - Stack, layout and hard conventions: [`openspec/project.md`](openspec/project.md)
 - Why things are the way they are, and every pinned version: [`DECISIONS.md`](DECISIONS.md)
-- Current behaviour (specs): [`openspec/specs`](openspec/specs); changes that built it:
-  [`add-day3-retrieval`](openspec/changes/archive/2026-09-19-add-day3-retrieval), `add-load-balancer`
-- HTTP contract between API and web: [`docs/http-api.md`](docs/http-api.md)
+- Current behaviour (specs): [`openspec/specs`](openspec/specs); every change that built it, in
+  [`openspec/changes/archive`](openspec/changes/archive) — from
+  [`add-day3-retrieval`](openspec/changes/archive/2026-09-19-add-day3-retrieval) and `add-load-balancer` to
+  `add-portfolio-domain`, `add-compliance-agent`, `use-jev-intent-classifier` and `add-codebase-domain`
+- HTTP contract between API and web: [`docs/http-api.md`](docs/http-api.md); the trace event format:
+  [`docs/trace-events.md`](docs/trace-events.md); telemetry: [`docs/telemetry.md`](docs/telemetry.md); shared state:
+  [`docs/shared-state.md`](docs/shared-state.md)
+- Screens: `/chat`, `/evals`, `/topology`, `/telemetry`, `/curriculum`, and for admins `/admin/index`, `/admin/feedback`,
+  `/admin/compliance`, `/admin/jev`, `/admin/a2a`
 
-```
-                        ┌──────────── lb (nginx, http://localhost:7171) ─────────────┐
-                        │  /            /api/*, /dev/* (SSE)     /mcp, /portfolio/mcp  │
-                        ▼                    ▼                         ▼             │
-                  web (static SPA)    api ×2 (Agent Framework) ──▶ lb/mcp ──▶ mcp-retrieval ×2 (billing)
-                                           │                  └─▶ lb/portfolio/mcp ──▶ mcp-portfolio ×2
-                                           │  SQLite (WAL, shared volume):          │
-                                           │  conversations, turns, feedback,       ▼
-                                           │  audit, admin jobs              Qdrant (:6333/6334)
-                                           └──── chat: Ollama Cloud · embeddings: Ollama (:11435)
+```mermaid
+flowchart TB
+  clients(["👤 Browser · 🤖 A2A partner · MCP client"])
+  lb{{"🚪 lb · nginx · http://localhost:7171 — the only entry point"}}
+
+  subgraph app["Application"]
+    direction LR
+    web["🖥️ web<br/>React SPA"]
+    api["🧠 api ×2<br/>Agent Framework<br/>chat SSE · A2A · admin"]
+    compliance["🛡️ compliance ×2<br/>A2A reviewer"]
+  end
+
+  subgraph mcp["MCP servers · one per domain, reached through lb"]
+    direction LR
+    billing["💳 mcp-retrieval ×2<br/>billing<br/>search_documents"]
+    portfolio["📈 mcp-portfolio ×2<br/>portfolio<br/>search_portfolio_documents"]
+    code["🧩 mcp-code<br/>codebase<br/>search_codebase · ask_codebase"]
+  end
+
+  subgraph backing["State and models"]
+    direction LR
+    qdrant[("Qdrant<br/>one collection per domain")]
+    sqlite[("SQLite<br/>conversations · turns · audit")]
+    redis[("Redis<br/>shared state")]
+    ollama["Ollama<br/>embeddinggemma"]
+    cloud["☁️ Ollama Cloud<br/>gpt-oss:120b"]
+    jev["TypeSafe Jev<br/>domains · guard · relevance · answer check"]
+  end
+
+  obs["📊 OTel collector → Prometheus · Jaeger"]
+
+  clients --> lb
+  lb -- "/" --> web
+  lb -- "/api · /dev · /a2a" --> api
+  lb -- "/compliance" --> compliance
+  lb -- "/mcp · /portfolio/mcp · /code/mcp" --> mcp
+  api -- "A2A" --> compliance
+  api -- "MCP tools" --> mcp
+  mcp -- "hybrid search · embed" --> qdrant & ollama
+  api --> sqlite & redis & cloud & jev
+  app & mcp -. "OTLP" .-> obs
+
+  classDef entry fill:#fff4e5,stroke:#f59e0b,color:#7c2d12
+  classDef svc fill:#e8f1ff,stroke:#3b82f6,color:#0b2e6b
+  classDef store fill:#eafaf1,stroke:#22c55e,color:#14532d
+  classDef model fill:#f3e8ff,stroke:#a855f7,color:#3b0764
+  classDef ext fill:#f1f5f9,stroke:#64748b,color:#0f172a
+  class lb entry
+  class web,api,compliance,billing,portfolio,code svc
+  class qdrant,sqlite,redis store
+  class ollama,cloud,jev model
+  class clients,obs ext
+  classDef group fill:transparent,stroke:#94a3b8,stroke-dasharray:4 3
+  class app,mcp,backing group
 ```
 
-Everything user- and agent-facing goes through **one entry point on port 7171**. api and mcp-retrieval run two replicas
-each (`X-Instance` response header shows which one answered); only Qdrant and Ollama are published besides 7171.
+Everything user- and agent-facing goes through **one entry point on port 7171**. api, mcp-retrieval, mcp-portfolio and
+compliance run two replicas each, mcp-code one (`X-Instance` response header shows which one answered). The balancer
+also serves Jaeger at `/jaeger` and takes the browser's OTLP traces at `/v1/traces`. Only Qdrant and Ollama are
+published besides 7171.
+
+<table>
+<tr>
+<td width="50%" valign="top">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/jev-dark.png">
+  <img src="docs/screenshots/jev-light.png" alt="Jev statistics: requests, availability and latency per call site">
+</picture>
+
+**Jev** (`/admin/jev`): every call TypeSafe's Jev made for the firm's turns, and how often it was unavailable
+</td>
+<td width="50%" valign="top">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/evals-dark.png">
+  <img src="docs/screenshots/evals-light.png" alt="Eval runs: the retrieval trend against its baseline and every suite's metrics">
+</picture>
+
+**Evals** (`/evals`): each suite's metrics over time, against the accepted baseline
+</td>
+</tr>
+</table>
 
 The same picture, drawn in [`docs/topology.drawio`](docs/topology.drawio) and **live**, is at
 [`/topology`](http://localhost:7171/topology): each box carries the state of that service — healthy, degraded or
 unreachable — its replicas by name, and the facts that explain the lab's behaviour (chunks in the index, models,
 tools offered). Edit the diagram in draw.io (save it *uncompressed*) and the page follows; a service that exists in
 the report but not in the drawing fails the test suite.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/topology-dark.png">
+  <img src="docs/screenshots/topology-light.png" alt="The live topology: every service of the stack with its health and replicas">
+</picture>
 
 ## Quick start
 
@@ -47,12 +130,15 @@ make help                  # every target
 
 | Target | What it does |
 |---|---|
-| `make` / `make up` | Start the stack (`API_REPLICAS=3 MCP_REPLICAS=3` to scale), wait until healthy, reload the balancer |
+| `make` / `make up` | Start the stack (scale with `API_REPLICAS`, `MCP_REPLICAS`, `PORTFOLIO_REPLICAS`, `COMPLIANCE_REPLICAS`), wait until healthy, reload the balancer |
 | `make down` / `restart` / `ps` / `logs` | Stop (volumes kept), restart, status, follow logs (`SERVICE=api`) |
-| `make index` / `reindex` / `drift` / `migrate` / `rebuild-index` | Indexing CLI against the compose Qdrant + Ollama; `rebuild-index FORCE=1` re-creates the collection with the configured embedding |
+| `make index` / `index-portfolio` / `index-code` / `reindex` / `drift` / `migrate` / `rebuild-index` | Indexing CLI against the compose Qdrant + Ollama; `index` covers billing, portfolio and the codebase; `rebuild-index FORCE=1` re-creates the collection with the configured embedding |
 | `make test` / `test-dotnet` / `test-web` / `lint` | Test suites and linters |
-| `make verify` | 17 checks through the load balancer (routing, ports, balancing, SSE, MCP, failover, jobs) |
-| `make eval` / `eval-selection` / … | Evals against the stack's MCP (`SUITE=all`) |
+| `make ci` / `ci-e2e` / `specs` | Locally, what GitHub Actions runs; the end-to-end part alone; strict OpenSpec validation |
+| `make verify` | 31 checks through the load balancer (routing, closed ports, balancing, SSE, MCP, failover, jobs, A2A, compliance reviewer, fee adjustment) |
+| `make screenshots` | Re-take the README screenshots from the running stack (`SHOTS=chat,topology` for some); see §55 of `DECISIONS.md` |
+| `make eval` / `eval-selection` / … / `eval-accept` | Evals against the stack's MCP servers (`SUITE=all`); `eval-accept` makes the result the new baseline |
+| `make ask Q="…"` | Ask one question through the agent and print its trace (`FIRM=firm-a`) |
 | `make dev` | Run mcp/api/web locally without Docker (infra stays in compose); Ctrl-C stops |
 | `make doctor` | Check Docker, .NET SDK, Node, make, `OLLAMA_API_KEY`, `JEV_MAF_LAB` (values never printed) |
 | `make setup` | Install what `doctor` reports missing. Only the unattended, per-user part runs: the .NET SDK `global.json` pins, into `~/.dotnet`. Docker (admin rights), Node (your version manager) and the API key (a secret) are printed as commands, never executed |
@@ -75,6 +161,11 @@ question in the codebase domain, the turn loads only the codebase server's `sear
 `path:start-end`. The right pane switches to **Code snippets**, which shows exactly the snippets the answer used. For
 a question that did not search the code, the tab shows related code, labelled as not used. Other MCP clients can call
 `search_codebase` and `ask_codebase` at `http://localhost:7171/code/mcp` with a dev token.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/code-snippets-dark.png">
+  <img src="docs/screenshots/code-snippets-light.png" alt="A question about the code, answered with path:line citations, and the Code snippets pane showing the snippets the answer used">
+</picture>
 
 ## Asking in another language
 
@@ -213,7 +304,7 @@ follow-up that Jev puts in no domain keeps its conversation's domains, and with 
 question **crosses** the boundary: a procedural question then searches both domains' documentation, each on its own
 server, before the model's first call. The trace records a `domain` event (the verdict), `domain`/`server` on every tool
 event, a `boundary` event whenever a call enters the other domain, and the domain path on `turn.end`; the monitor's
-**Domains** tab draws it, and `make eval SUITE=domain` measures the verdict over 44 labelled questions. Try "Why did
+**Domains** tab draws it, and `make eval SUITE=domain` measures the verdict over 81 labelled questions. Try "Why did
 the fee on A-1042 go up this quarter — did its AUM cross a tier?" as firm-a. `make eval-intent`
 measures the classifier alone over 101 labelled questions in English, Bulgarian and Latin-script Bulgarian. A choice below `Jev:MinConfidence` (0.5), a timeout
 (`Jev:TimeoutSeconds`, 2; 0 disables it), a rejected call or a missing key leaves the turn unforced, and the event
@@ -224,7 +315,7 @@ judge and the answer check. The client keeps its connection alive between reques
 `Jev:PooledConnectionLifetimeMinutes` (10), so a DNS change is still picked up.
 - **Warm-up:** once a service has started, it sends one fixed-text request (`Jev:WarmUp`, on; `Jev:WarmUpTimeoutSeconds`, 5).
   This way the first turn does not pay for TLS set-up.
-  - Every api, mcp-retrieval and mcp-portfolio replica does this.
+  - Every api, mcp-retrieval, mcp-portfolio and mcp-code replica does this.
   - It runs in the background, is skipped without a key, and is not counted in the Jev statistics.
 - **Retries:** a transient failure is retried `Jev:MaxRetries` (1) times, after `Jev:RetryDelayMs` (100, doubled per
   retry) or the server's `Retry-After`. A transient failure is no response, 408, 429 or a 5xx.
@@ -255,14 +346,14 @@ tool result `_meta`, which the model never sees.
 
 ## Local development (without the balancer)
 
-`make dev` bypasses the balancer: web on :5174 (Vite proxies `/api` and `/dev` to :5080), api on :5080, MCP on :5090,
+`make dev` bypasses the balancer: web on :5174 (Vite proxies `/api` and `/dev` to :5080), api on :5080, MCP servers on :5090 (billing), :5091 (portfolio) and :5092 (codebase),
 with Qdrant and Ollama from compose (the compose app services are stopped first). The manual equivalent:
 
 Prerequisites: .NET SDK 10.0.401 (`global.json`), Node 24, Docker, Ollama (host or compose).
 
 ```bash
 docker compose -f compose/docker-compose.yml up -d qdrant     # vector store only
-ollama pull embeddinggemma && ollama pull qwen3:4b
+ollama pull embeddinggemma                                    # (qwen3:4b only for the local chat fallback, see DECISIONS.md)
 
 dotnet run --project src/Maf.Lab.Indexing                     # index data/ (index | drift | status | rebuild --yes | migrate --to <vector>)
 dotnet run --project src/Maf.Lab.Retrieval                    # billing MCP server on :5090
@@ -272,7 +363,7 @@ dotnet run --project src/Maf.Lab.Api                          # agent host on :5
 cd web && npm install && npm run dev                          # UI on :5174
 ```
 
-VS Code: the compound launch **"api + web (with mcp-retrieval and mcp-portfolio)"** starts all four; tasks cover `compose up`, `index`,
+VS Code: the compound launch **"api + web (with mcp-retrieval and mcp-portfolio)"** starts all four (not the codebase server: run `src/Maf.Lab.CodeSearch` by hand); tasks cover `compose up`, `index`,
 `eval` and tests.
 
 Switch the model provider by configuration only, e.g. `Models__Provider=openai Models__OpenAIApiKey=… Models__ChatModel=gpt-4.1-mini`
@@ -295,7 +386,7 @@ GitHub Actions ([`.github/workflows`](.github/workflows)) — `make ci` runs the
 
 | Workflow | Trigger | What runs |
 |---|---|---|
-| **CI** (`ci.yml`) | every push and pull request | `specs` (OpenSpec strict validation) · `dotnet` (build with warnings as errors, unit + Testcontainers integration tests) · `web` (lint, Vitest, build) · `e2e` (full stack behind the balancer on :7171, corpus indexed, `make verify`) |
+| **CI** (`ci.yml`) | every push and pull request | `specs` (OpenSpec strict validation) · `dotnet` (build with warnings as errors, unit + Testcontainers integration tests) · `web` (lint, Vitest, build) · `e2e` (full stack behind the balancer on :7171, corpus indexed, `make verify` and the A2A conformance probe: `make ci-e2e`) |
 | **Evals** (`evals.yml`) | manual (*Actions → Evals → Run workflow*, choose a suite) | real embeddings in compose Ollama + chat on Ollama Cloud and intent on Jev (`OLLAMA_API_KEY` and `JEV_MAF_LAB` repository secrets); reports uploaded as an artifact |
 
 The e2e job needs **no model and no secret**, so it also runs for pull requests from forks. `CI_MODE=1` replaces the
@@ -312,7 +403,7 @@ gh run watch                                   # follow it
 
 ```bash
 make eval                     # all suites against the running stack's MCP
-make eval-selection           # or eval-retrieval / eval-generation / eval-injection
+make eval-selection           # or eval-retrieval / -generation / -injection / -confirmation / -intent / -guardrail / -presentation / -a2a
 dotnet run --project src/Maf.Lab.Eval -- --suite retrieval --rerank   # extra flags: use the CLI directly
 dotnet run --project src/Maf.Lab.Eval -- --import-feedback --suite retrieval
 ```
@@ -320,7 +411,7 @@ dotnet run --project src/Maf.Lab.Eval -- --import-feedback --suite retrieval
 Evals run **on demand**, not on every commit. They are **required** before merging any change to:
 
 - the **system prompt** (`src/Maf.Lab.Api/Prompts/*`) → `selection`, `generation`, `injection`
-- a **tool description or schema** (`src/Maf.Lab.Retrieval/Tools/*`) → `selection`
+- a **tool description or schema** (`src/Maf.Lab.{Retrieval,Portfolio,CodeSearch}/Tools/*`) → `selection`
 - the **model** (chat or embedding, `Models:*`) → `all`
 - the **tool set** (adding/removing a tool) → `selection`, `injection`
 - the **chunking or retrieval configuration** (chunkers, `Indexing:*`, `Retrieval:*`, BM25) → `retrieval`, `generation`
@@ -366,6 +457,11 @@ dotnet run --project src/Maf.Lab.Eval -- --suite retrieval --contextual
 Every audited action — a tool call, a conversation deletion, a compliance export — is one row in a **single ordered
 record**, carrying identifiers only and never message content. Each row is chained: its digest covers its own fields
 and the previous row's digest, so a changed or removed row can be detected and *named*.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/compliance-dark.png">
+  <img src="docs/screenshots/compliance-light.png" alt="The compliance screen: the audit chain verified and the action log of the firm">
+</picture>
 
 **`/admin/compliance`** (FIRM_ADMIN) shows it: whether the chain is intact — in words, with how many records were
 checked and how many predate it — or, when it is broken, which record broke it and that everything before it is
