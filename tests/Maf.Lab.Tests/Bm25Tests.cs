@@ -63,6 +63,21 @@ public class Bm25Tests
         Assert.Equal(model.Terms["alpha"], copy.Terms["alpha"]);
     }
 
+    [Fact]
+    public void Rebuild_over_the_same_texts_reports_no_change_and_keeps_the_version()
+    {
+        var model = Bm25Model.Empty();
+        Assert.True(model.Rebuild(["alpha beta", "beta gamma"]));
+        var version = model.Version;
+
+        Assert.False(model.Rebuild(["beta gamma", "alpha beta"]));
+        Assert.Equal(version, model.Version);
+
+        Assert.True(model.Rebuild(["alpha beta", "beta delta"]));
+        Assert.True(model.Rebuild(["alpha beta", "beta delta", "alpha"]));
+        Assert.True(model.Version > version);
+    }
+
     private static double Dot(SparseVectorData a, SparseVectorData b)
     {
         var map = b.Indices.Zip(b.Values).ToDictionary(x => x.First, x => x.Second);

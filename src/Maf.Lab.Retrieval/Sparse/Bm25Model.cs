@@ -47,9 +47,16 @@ public sealed class Bm25Model
 
     public IEnumerable<string> Tokenize(string text) => Bm25Tokenizer.Tokenize(text, Tokenizer);
 
-    /// <summary>Rebuilds statistics from the full set of chunk texts. Existing term ids are kept stable.</summary>
-    public void Rebuild(IEnumerable<string> chunkTexts)
+    /// <summary>
+    /// Rebuilds statistics from the full set of chunk texts. Existing term ids are kept stable. Returns whether anything
+    /// changed — the vocabulary or any statistic — so an index run over an unchanged corpus writes nothing; only then does
+    /// <see cref="Version"/> move.
+    /// </summary>
+    public bool Rebuild(IEnumerable<string> chunkTexts)
     {
+        var termsBefore = Terms.Count;
+        var (countBefore, lengthBefore) = (DocumentCount, TotalLength);
+        var frequencyBefore = new Dictionary<uint, int>(DocumentFrequency);
         DocumentFrequency.Clear();
         DocumentCount = 0;
         TotalLength = 0;
@@ -64,7 +71,14 @@ public sealed class Bm25Model
                 DocumentFrequency[id] = DocumentFrequency.GetValueOrDefault(id) + 1;
             }
         }
-        Version++;
+        var changed = Terms.Count != termsBefore || DocumentCount != countBefore || TotalLength != lengthBefore
+            || DocumentFrequency.Count != frequencyBefore.Count
+            || DocumentFrequency.Any(f => frequencyBefore.GetValueOrDefault(f.Key) != f.Value);
+        if (changed)
+        {
+            Version++;
+        }
+        return changed;
     }
 
     public uint GetOrAddTermId(string term)

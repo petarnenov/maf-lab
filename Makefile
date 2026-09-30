@@ -60,6 +60,14 @@ PORTFOLIO_ENV := Indexing__CorpusRoot=$(ROOT)/data-portfolio Qdrant__Collection=
 # tokens (well under embeddinggemma's 2048), BM25 over identifiers split into their words (add-codebase-search).
 CODE_ENV := Indexing__Layout=repository Indexing__CorpusRoot=$(ROOT) Indexing__MaxChunkTokens=1024 Indexing__Bm25Tokenizer=code \
             Qdrant__Collection=maf_code_chunks Qdrant__MetaCollection=maf_code_meta
+# The indexer runs from its build output: `dotnet run` re-evaluates and checks the build on every call (3-20 s each,
+# three calls per `make index`), which made a repeat run over an unchanged corpus slow. The dll is rebuilt only when a
+# source, project or build file of it or of a project it references is newer than it, and touched so an up-to-date
+# build is not re-checked next time.
+INDEXER_DLL  := src/Maf.Lab.Indexing/bin/Debug/net10.0/Maf.Lab.Indexing.dll
+INDEXER_SRC  := $(shell find src/Maf.Lab.Indexing src/Maf.Lab.Retrieval src/Maf.Lab.Domain src/Maf.Lab.Hosting -type f \( -name '*.cs' -o -name '*.csproj' -o -name '*.json' \) -not -path '*/bin/*' -not -path '*/obj/*' 2>/dev/null) \
+                Directory.Build.props Directory.Packages.props global.json
+INDEXER      := $(DOTNET) $(INDEXER_DLL)
 
 .PHONY: all help up down restart ps logs clean index index-portfolio index-code reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
         coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-a2a dev doctor banner index-if-empty \
@@ -112,30 +120,35 @@ banner:
 index-if-empty: require-dotnet
 	@$(HOST_ENV) scripts/index_if_empty.sh
 
-index: require-dotnet ## Index both domains' corpora and the codebase (unchanged documents are skipped)
-	$(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- index
-	$(HOST_ENV) $(PORTFOLIO_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- index
-	$(HOST_ENV) $(CODE_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- index
+$(INDEXER_DLL): $(INDEXER_SRC) | require-dotnet
+	@echo "… building the indexer"
+	@$(DOTNET) build src/Maf.Lab.Indexing -v quiet -nologo
+	@touch $@
 
-index-portfolio: require-dotnet ## Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only
-	$(HOST_ENV) $(PORTFOLIO_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- index
+index: require-dotnet $(INDEXER_DLL) ## Index both domains' corpora and the codebase (unchanged documents are skipped)
+	$(HOST_ENV) $(INDEXER) index
+	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) index
+	$(HOST_ENV) $(CODE_ENV) $(INDEXER) index
 
-index-code: require-dotnet ## Index the repository itself (→ maf_code_chunks, served by mcp-code) only; unchanged files are skipped
-	$(HOST_ENV) $(CODE_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- index
+index-portfolio: require-dotnet $(INDEXER_DLL) ## Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only
+	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) index
 
-reindex: require-dotnet ## Re-embed every document of both domains (--force)
-	$(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- index --force
-	$(HOST_ENV) $(PORTFOLIO_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- index --force
-	$(HOST_ENV) $(CODE_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- index --force
+index-code: require-dotnet $(INDEXER_DLL) ## Index the repository itself (→ maf_code_chunks, served by mcp-code) only; unchanged files are skipped
+	$(HOST_ENV) $(CODE_ENV) $(INDEXER) index
 
-drift: require-dotnet ## Report stale documents (source newer than index)
-	$(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- drift
+reindex: require-dotnet $(INDEXER_DLL) ## Re-embed every document of both domains (--force)
+	$(HOST_ENV) $(INDEXER) index --force
+	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) index --force
+	$(HOST_ENV) $(CODE_ENV) $(INDEXER) index --force
 
-rebuild-index: require-dotnet ## Re-create the collection with every configured dense vector and re-index (asks unless FORCE=1)
-	$(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- rebuild $(if $(filter 1,$(FORCE)),--yes,)
+drift: require-dotnet $(INDEXER_DLL) ## Report stale documents (source newer than index)
+	$(HOST_ENV) $(INDEXER) drift
 
-migrate: require-dotnet ## Fill a provisioned dense vector with its configured model (TO=dense_v3)
-	$(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Indexing -- migrate --to $(TO)
+rebuild-index: require-dotnet $(INDEXER_DLL) ## Re-create the collection with every configured dense vector and re-index (asks unless FORCE=1)
+	$(HOST_ENV) $(INDEXER) rebuild $(if $(filter 1,$(FORCE)),--yes,)
+
+migrate: require-dotnet $(INDEXER_DLL) ## Fill a provisioned dense vector with its configured model (TO=dense_v3)
+	$(HOST_ENV) $(INDEXER) migrate --to $(TO)
 
 # ── quality ──────────────────────────────────────────────────────────────────────────────────────────────────────
 test: test-dotnet test-web ## Run all tests (.NET unit + integration, web)

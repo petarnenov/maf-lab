@@ -70,14 +70,24 @@ public sealed class CollectionBootstrapper(
             await AddMissingDenseVectorsAsync(ct);
         }
 
-        await client.CreatePayloadIndexAsync(_qdrant.Collection, ChunkSchema.TenantId, PayloadSchemaType.Keyword,
-            new PayloadIndexParams { KeywordIndexParams = new KeywordIndexParams { IsTenant = true } }, cancellationToken: ct);
+        // Only the payload indexes the collection lacks are created: each creation is a write (a WAL entry), and a
+        // repeat index run over an unchanged corpus should write nothing.
+        var indexed = (await client.GetCollectionInfoAsync(_qdrant.Collection, ct)).PayloadSchema.Keys.ToHashSet(StringComparer.Ordinal);
+        if (!indexed.Contains(ChunkSchema.TenantId))
+        {
+            await client.CreatePayloadIndexAsync(_qdrant.Collection, ChunkSchema.TenantId, PayloadSchemaType.Keyword,
+                new PayloadIndexParams { KeywordIndexParams = new KeywordIndexParams { IsTenant = true } }, cancellationToken: ct);
+        }
         foreach (var field in new[] { ChunkSchema.SourceType, ChunkSchema.DocId, ChunkSchema.ModelVersion }
-                     .Concat(models.Profiles.Keys.Select(ChunkSchema.ModelVersionOf)))
+                     .Concat(models.Profiles.Keys.Select(ChunkSchema.ModelVersionOf))
+                     .Where(f => !indexed.Contains(f)))
         {
             await client.CreatePayloadIndexAsync(_qdrant.Collection, field, PayloadSchemaType.Keyword, cancellationToken: ct);
         }
-        await client.CreatePayloadIndexAsync(_qdrant.Collection, ChunkSchema.UpdatedAt, PayloadSchemaType.Datetime, cancellationToken: ct);
+        if (!indexed.Contains(ChunkSchema.UpdatedAt))
+        {
+            await client.CreatePayloadIndexAsync(_qdrant.Collection, ChunkSchema.UpdatedAt, PayloadSchemaType.Datetime, cancellationToken: ct);
+        }
     }
 
     /// <summary>

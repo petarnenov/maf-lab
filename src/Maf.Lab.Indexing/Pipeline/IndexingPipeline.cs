@@ -46,8 +46,10 @@ public sealed class IndexingPipeline(
         var prepared = corpus.Documents.ToDictionary(d => d.DocId, d => ChunkBuilder.Build(d, _options.ChunkBudget, ceiling), StringComparer.Ordinal);
 
         var model = await bm25Store.LoadAsync(ct, bypassCache: true);
+        var tokenizerChanged = model.Tokenizer != _options.Bm25Tokenizer;
         model.UseTokenizer(_options.Bm25Tokenizer);
-        model.Rebuild(prepared.Values.SelectMany(c => c).Select(c => c.SparseText));
+        // An unchanged corpus leaves the statistics as they are, and then nothing is written: a repeat run is read-only.
+        var bm25Changed = model.Rebuild(prepared.Values.SelectMany(c => c).Select(c => c.SparseText)) || tokenizerChanged;
 
         var tenants = request.Tenants ?? corpus.LayoutTenants;
         var enricher = enrichers.Create(contextual);
@@ -87,7 +89,10 @@ public sealed class IndexingPipeline(
             }
         }
 
-        await bm25Store.SaveAsync(model, ct);
+        if (bm25Changed)
+        {
+            await bm25Store.SaveAsync(model, ct);
+        }
         await enricher.FlushAsync(ct);
 
         logger.LogInformation(
