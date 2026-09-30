@@ -9,5 +9,5 @@
 
 ## 2. Verification
 
-- [ ] 2.1 Push, and check that CI's `.NET build and tests` job passes. Verify: the run is green
+- [x] 2.1 Push, and check that CI's `.NET build and tests` job passes. Verify: the run is green
 - [x] 2.2 `openspec validate stabilize-corpus-fixture --strict` passes
