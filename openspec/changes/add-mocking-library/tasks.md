@@ -18,7 +18,7 @@ No TypeSafe Jev call is added or changed, so the Jev review checklist does not a
 ## 4. Verification
 
 - [x] 4.1 `make lint` and `make test` pass — Done: lint clean; 1063 of 1064 pass. The one failure is `GuardrailTests.A_hanging_Jev_costs_no_more_than_the_timeouts`, a timing test that fails only under the parallel `make test` load and passes alone (seen before this change too)
-- [ ] 4.2 `make` rebuilds the runner image. Then, on http://localhost:7171, start a run with a small budget (e.g. $0.10) on `src/Maf.Lab.A2A/RedisTaskStore.cs`. Verify: the agent writes a test that uses `Substitute.For`, the runner builds it offline, and the coverage moves off 0%
+- [x] 4.2 `make` rebuilds the runner image. Then, on http://localhost:7171, start a run with a small budget (e.g. $0.10) on `src/Maf.Lab.A2A/RedisTaskStore.cs`. Verify: the agent writes a test that uses `Substitute.For`, the runner builds it offline, and the coverage moves off 0% — Done: the runner image holds NSubstitute 6.2.0 and built RedisPushConfigStoreTests offline in a coverage refresh (17/17 lines). A $0.10 run on RedisTaskStore wrote a Substitute-based test in attempt 1 but ran out of budget. An unlimited run (glm-5.3, 12 tool rounds per attempt) wrote tests in attempt 3, fixed their compile errors in attempt 4, reached 100% and passed verification as a candidate ($0.34)
 - [x] 4.3 `openspec validate add-mocking-library --strict` passes
 
 ## 5. Documentation
