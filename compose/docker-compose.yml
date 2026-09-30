@@ -189,6 +189,15 @@ services:
       Telemetry__PrometheusUrl: ${PROMETHEUS_URL:-http://prometheus:9090}
       Telemetry__JaegerUrl: ${JAEGER_URL:-http://localhost:7171/jaeger}
       Telemetry__TraceUrlTemplate: ${TRACE_URL_TEMPLATE:-http://localhost:7171/jaeger/trace/{traceId}}
+      # The Coverage screen (add-coverage-dashboard-and-test-agent): the repository, the runner that measures it and
+      # the agent that writes tests for it. Only the api may write to the repository (branches and merges).
+      Coverage__RepoRoot: ${MAF_LAB_REPO:?set MAF_LAB_REPO to the repository path (make does)}
+      CoverageRunner__BaseUrl: http://coverage-runner:8080
+      TestAgent__BaseUrl: http://test-agent:8080
+      TestAgent__ClientId: maf-lab-assistant
+      TestAgent__ClientSecret: ${TEST_AGENT_CLIENT_SECRET:-assistant-testgen-dev-secret}
+      # Optional: opens GitHub issues for suspected bugs. A token limited to this repository's issues, for the api only.
+      GITHUB_ISSUES_TOKEN: ${GITHUB_ISSUES_TOKEN:-}
     deploy:
       replicas: 2
     # A push webhook points at whatever the caller registered, and the A2A conformance probe registers one on the
@@ -202,6 +211,11 @@ services:
       - ../data:/data
       - ../evals:/evals
       - ../docs:/docs:ro
+      # At the host's own path: the repository's worktrees record host paths.
+      - ${MAF_LAB_REPO}:${MAF_LAB_REPO}
+    networks:
+      - default
+      - runner
     depends_on:
       mcp-retrieval:
         condition: service_healthy
@@ -211,6 +225,63 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  # The test-generation agent: A2A only, internal only. It holds the model key and reads the repository; the tests it
+  # writes are built and run by the coverage runner, never here. Its environment is its own, not x-app-env: it has
+  # no business with Jev, the billing partner or the retrieval settings.
+  test-agent:
+    build:
+      context: ..
+      dockerfile: src/Maf.Lab.TestAgent/Dockerfile
+    deploy:
+      replicas: 1
+    environment:
+      Urls: http://+:8080
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+      Models__Provider: ollama
+      Models__ChatEndpoint: ${CHAT_ENDPOINT:-https://ollama.com}
+      Auth__SigningKey: ${AUTH_SIGNING_KEY:-maf-lab-dev-signing-key-change-me-0123456789}
+      A2A__Audience: maf-lab-test-agent
+      A2A__PublicBaseUrl: http://test-agent:8080
+      A2A__RequiredScope: a2a.testgen.run
+      A2A__StoreKeyspace: testgen
+      A2A__Partners__maf-lab-assistant__Secret: ${TEST_AGENT_CLIENT_SECRET:-assistant-testgen-dev-secret}
+      A2A__Partners__maf-lab-assistant__Scopes__0: a2a.testgen.run
+      TestAgent__RepoRoot: ${MAF_LAB_REPO}
+      TestAgent__WorkRoot: /work
+      TestAgent__RunnerBaseUrl: http://coverage-runner:8080
+      Telemetry__Endpoint: ${TELEMETRY_ENDPOINT:-http://otel-collector:4317}
+      SharedState__ConnectionString: ${REDIS_CONNECTION:-redis:6379}
+    volumes:
+      - ${MAF_LAB_REPO}:${MAF_LAB_REPO}:ro
+      - testagent-work:/work
+    networks:
+      - default
+      - runner
+    depends_on:
+      redis:
+        condition: service_healthy
+      coverage-runner:
+        condition: service_healthy
+
+  # The coverage runner builds and runs model-written tests: on the internal network only (no route out), with no
+  # secret but the key it checks service tokens with, and the repository read-only.
+  coverage-runner:
+    build:
+      context: ..
+      dockerfile: src/Maf.Lab.CoverageRunner/Dockerfile
+    deploy:
+      replicas: 1
+    environment:
+      Urls: http://+:8080
+      Auth__SigningKey: ${AUTH_SIGNING_KEY:-maf-lab-dev-signing-key-change-me-0123456789}
+      Runner__RepoRoot: ${MAF_LAB_REPO}
+      Telemetry__Endpoint: ${TELEMETRY_ENDPOINT:-http://otel-collector:4317}
+    volumes:
+      - ${MAF_LAB_REPO}:${MAF_LAB_REPO}:ro
+      - runner-work:/work
+    networks:
+      - runner
 
   web:
     build:
@@ -239,6 +310,10 @@ services:
     command: ["--config=/etc/otel/collector.yaml"]
     volumes:
       - ./otel/collector.yaml:/etc/otel/collector.yaml:ro
+    # Also on the runner's internal network, so the runner's traces arrive without the runner reaching anything else.
+    networks:
+      - default
+      - runner
     # The image is distroless: no shell, so nothing here can run a health command. The api probes it over HTTP
     # for the topology report, which is where its state is actually reported.
     depends_on:
@@ -297,6 +372,10 @@ services:
         condition: service_healthy
       compliance:
         condition: service_healthy
+      test-agent:
+        condition: service_healthy
+      coverage-runner:
+        condition: service_healthy
       web:
         condition: service_healthy
       prometheus:
@@ -308,7 +387,15 @@ services:
       redis:
         condition: service_healthy
 
+networks:
+  default: {}
+  # No route out: what runs on it can reach the runner and the collector, and nothing on the internet.
+  runner:
+    internal: true
+
 volumes:
+  testagent-work:
+  runner-work:
   qdrant-data:
   ollama-models:
   api-data:

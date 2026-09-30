@@ -30,7 +30,11 @@ OPENSPEC_VERSION ?= 1.13.1
 # Reuse models a host Ollama already pulled, when there is one; set OLLAMA_MODELS_DIR= to use the compose volume.
 OLLAMA_MODELS_DIR ?= $(shell test -d $(HOME)/.ollama && echo $(HOME)/.ollama)
 export CHAT_MODEL OLLAMA_MODELS_DIR
-# OLLAMA_API_KEY and JEV_MAF_LAB are only ever read from the environment (never written to a file or echoed).
+# The repository, mounted into the api (read-write), the test agent and the coverage runner (read-only) at this same path.
+MAF_LAB_REPO  ?= $(ROOT)
+export MAF_LAB_REPO
+# OLLAMA_API_KEY, JEV_MAF_LAB and GITHUB_ISSUES_TOKEN are only ever read from the environment (never written to a
+# file or echoed).
 
 # ── tools ────────────────────────────────────────────────────────────────────────────────────────────────────────
 # Prefer ~/.dotnet (where `make setup` installs the SDK global.json pins) over a system dotnet that may lack it.
@@ -52,7 +56,7 @@ CODE_ENV := Indexing__Layout=repository Indexing__CorpusRoot=$(ROOT) Indexing__M
             Qdrant__Collection=maf_code_chunks Qdrant__MetaCollection=maf_code_meta
 
 .PHONY: all help up down restart ps logs clean index index-portfolio index-code reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
-        eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-a2a dev doctor banner index-if-empty \
+        coverage eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-a2a dev doctor banner index-if-empty \
         specs lint-dotnet lint-web build-web ci ci-e2e setup \
         require-docker require-dotnet require-npm
 
@@ -156,6 +160,9 @@ ci: specs lint-dotnet test-dotnet lint-web test-web build-web ci-e2e ## Run loca
 ci-e2e: require-docker require-dotnet ## Model-free end-to-end: stack with the Ollama stub, index, verify, A2A conformance (CI mode)
 	$(MAKE) up index-if-empty verify eval-a2a CI_MODE=1
 
+coverage: require-docker ## Refresh the coverage snapshot at main (both toolchains, through the running stack)
+	@scripts/coverage_refresh.sh $(BASE_URL)
+
 verify: ## Verify the running stack through the load balancer (35 checks)
 	scripts/verify_lb.sh $(BASE_URL)
 
@@ -210,7 +217,7 @@ dev: require-docker require-dotnet require-npm ## Run mcp/api/web locally withou
 	DOTNET=$(DOTNET) NPM=$(NPM) scripts/dev.sh
 
 # ── setup ────────────────────────────────────────────────────────────────────────────────────────────────────────
-doctor: ## Check prerequisites (Docker, .NET SDK, Node/npm, make, OLLAMA_API_KEY, JEV_MAF_LAB)
+doctor: ## Check prerequisites (Docker, .NET SDK, Node/npm, make, OLLAMA_API_KEY, JEV_MAF_LAB, MAF_LAB_REPO, GITHUB_ISSUES_TOKEN)
 	@DOTNET=$(DOTNET) NPM=$(NPM) scripts/doctor.sh
 
 setup: ## Install what 'make doctor' reports missing (.NET SDK unattended; prints the rest)

@@ -2084,3 +2084,23 @@ said which account the conversation was about.
 - **The GitHub token is named, not fixed.** `GitHub:TokenVariable` (default `GITHUB_ISSUES_TOKEN`) names the
   environment variable, and `GitHub:Repository` defaults to the origin remote. The token is sent only as the bearer
   header. A write that fails (GitHub down) is reported with the decision and never blocks it.
+- **Compose.** Two new services, `test-agent` and `coverage-runner`.
+  - **The agent's environment is its own, not `x-app-env`.** It gets the model key, the signing key, telemetry and
+    shared state, and nothing about Jev, the billing partner or retrieval.
+  - **The runner gets only the signing key it checks tokens with.** It sits on the `runner` network, which is
+    `internal: true`. The api, the agent and the collector join that network, so it is reachable and its traces
+    arrive, while it has no route out.
+  - **The repository is mounted at its host path** (`MAF_LAB_REPO`, exported by `make`): read-write for the api only,
+    read-only elsewhere. The api image gains git, and both images set `safe.directory`.
+  - **CI.** It names the detached checkout `main` and sets `MAF_LAB_REPO`. The Ollama stub answers the test agent for
+    the e2e fixture with one `write_file` call.
+  - **Known limit (Linux hosts).** git runs as root inside the api container, so files it writes under `.git`
+    (branch refs, merge objects) are owned by root on a Linux host. Docker Desktop on macOS maps ownership to the
+    user. Running the api as the host UID is left for when the lab runs on Linux.
+- **Topology.** `test-agent` and `coverage-runner` are nodes, each probed on `/health`; the agent's card is also read.
+  The new edges are api→agent (A2A), agent→runner, api→runner (verify, refresh), agent→chat provider, plus the
+  shared-state and OTLP edges. The drawing puts both in the free top-left band; the page routes the lines.
+- **Telemetry.** The agent writes `testgen.run` and `testgen.attempt` spans; the runner writes `runner.run`, with the
+  context of the request that submitted the job, so a job that runs later on a worker stays in its trace. A test
+  proves that one run is one trace from the api's request through A2A, the attempts, the model calls and the runner.
+  The spans carry only structure: attempts, percentages, counts, tokens and cost.

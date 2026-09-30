@@ -170,6 +170,51 @@ def answer_for(messages: list[dict]) -> str:
     return f"Stub answer for CI (no tools used) to: {question[:80]}"
 
 
+# The test agent (add-coverage-dashboard-and-test-agent): given the e2e fixture as its target, the stub writes one test
+# that covers every line of it, then says it is done — enough for the model-free e2e to run a whole test-generation
+# run: A2A, the attempt loop, the runner, verification, the candidate branch and the merge.
+TESTGEN_MARKER = "You write automated tests"
+E2E_TARGET = "src/Maf.Lab.Api/Coverage/Fixtures/E2eTarget.cs"
+E2E_TEST_PATH = "tests/Maf.Lab.Tests/E2eTargetTests.cs"
+E2E_TEST = """using Maf.Lab.Api.Coverage.Fixtures;
+
+namespace Maf.Lab.Tests;
+
+/// <summary>Written by the CI stub model for the model-free test-generation e2e.</summary>
+public sealed class E2eTargetTests
+{
+    [Fact]
+    public void Sign_names_each_case()
+    {
+        Assert.Equal("negative", E2eTarget.Sign(-2));
+        Assert.Equal("zero", E2eTarget.Sign(0));
+        Assert.Equal("positive", E2eTarget.Sign(3));
+    }
+
+    [Fact]
+    public void Clamp_keeps_a_value_in_range()
+    {
+        Assert.Equal(0, E2eTarget.Clamp(-5, 0, 10));
+        Assert.Equal(10, E2eTarget.Clamp(50, 0, 10));
+        Assert.Equal(4, E2eTarget.Clamp(4, 0, 10));
+    }
+}
+"""
+
+
+def testgen_turn(messages: list[dict]) -> dict | None:
+    """The test agent's turn, or None when this is not the test agent talking."""
+    if not any(TESTGEN_MARKER in (m.get("content") or "") for m in messages):
+        return None
+    if any(m.get("role") == "tool" for m in messages):
+        return {"role": "assistant", "content": "Done: wrote tests for the fixture."}
+    prompt = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
+    if E2E_TARGET not in prompt:
+        return {"role": "assistant", "content": "Nothing to write for this file in CI."}
+    return {"role": "assistant", "content": "", "tool_calls": [
+        {"function": {"name": "write_file", "arguments": {"path": E2E_TEST_PATH, "content": E2E_TEST}}}]}
+
+
 def now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -221,6 +266,19 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"model": model, "embeddings": vectors, "total_duration": 1, "prompt_eval_count": len(inputs)})
         if self.path == "/api/chat":
             messages = body.get("messages", [])
+            turn = testgen_turn(messages)
+            if turn is not None:
+                done = {"model": model, "created_at": now(), "message": turn, "done": True, "done_reason": "stop",
+                        "total_duration": 1, "eval_count": 50, "prompt_eval_count": 500}
+                if not body.get("stream", True):
+                    return self._json(200, done)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/x-ndjson")
+                self.send_header("Transfer-Encoding", "chunked")
+                self.end_headers()
+                self._chunk(done)
+                self.wfile.write(b"0\r\n\r\n")
+                return
             if is_translation(messages):
                 text = translate(messages)
             else:

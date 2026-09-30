@@ -12,8 +12,10 @@ namespace Maf.Lab.CoverageRunner;
 public sealed class JobQueue(JobExecutor executor, IOptions<RunnerOptions> options, TimeProvider time, ILogger<JobQueue> logger)
     : BackgroundService
 {
-    private sealed class Job(string id, RunnerRequest request, long order)
+    private sealed class Job(string id, RunnerRequest request, long order, System.Diagnostics.ActivityContext parent)
     {
+        /// <summary>The trace of the request that submitted it: the job runs later, on a worker, but in that trace.</summary>
+        public System.Diagnostics.ActivityContext Parent { get; } = parent;
         public string Id { get; } = id;
         public RunnerRequest Request { get; } = request;
         public long Order { get; } = order;
@@ -29,7 +31,8 @@ public sealed class JobQueue(JobExecutor executor, IOptions<RunnerOptions> optio
     public RunnerJob Submit(RunnerRequest request)
     {
         Forget();
-        var job = new Job($"job_{Guid.NewGuid():N}", request, Interlocked.Increment(ref _order));
+        var job = new Job($"job_{Guid.NewGuid():N}", request, Interlocked.Increment(ref _order),
+            System.Diagnostics.Activity.Current?.Context ?? default);
         _jobs[job.Id] = job;
         _queue.Writer.TryWrite(job);
         return View(job);
@@ -45,6 +48,8 @@ public sealed class JobQueue(JobExecutor executor, IOptions<RunnerOptions> optio
         await foreach (var job in _queue.Reader.ReadAllAsync(ct))
         {
             job.State = RunnerJobState.Running;
+            using var span = Maf.Lab.Hosting.LabTelemetry.Source.StartActivity("runner.run", System.Diagnostics.ActivityKind.Internal, job.Parent);
+            span?.SetTag("runner.toolchain", job.Request.Toolchain);
             RunnerResult result;
             try
             {
@@ -55,6 +60,11 @@ public sealed class JobQueue(JobExecutor executor, IOptions<RunnerOptions> optio
                 logger.LogError("runner job failed ({ErrorType})", ex.GetType().Name);
                 result = RunnerResult.Failed(RunnerStatus.Error, 0);
             }
+            span?.SetTag("runner.status", result.Status);
+            span?.SetTag("runner.build", result.Build);
+            span?.SetTag("runner.tests.passed", result.Tests.Passed);
+            span?.SetTag("runner.tests.failed", result.Tests.Failed);
+            span?.SetTag("runner.duration_ms", result.DurationMs);
             job.Result = result;
             job.DoneAt = time.GetUtcNow();
             job.State = RunnerJobState.Done;

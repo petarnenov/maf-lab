@@ -48,7 +48,8 @@ internal sealed class RecordingTaskStore : global::A2A.ITaskStore
 /// The test agent on a real socket, over a temp repository, with a scripted model and a fake runner: what a test
 /// drives is the handler's loop, the tools and the protocol, not a model or a build.
 /// </summary>
-internal sealed class TestAgentFactory(TempGitRepo repo, IChatClient model, FakeCoverageRunner runner) : IAsyncDisposable
+internal sealed class TestAgentFactory(TempGitRepo repo, IChatClient model, FakeCoverageRunner runner, Uri? realRunner = null)
+    : IAsyncDisposable
 {
     private WebApplication? _app;
 
@@ -79,8 +80,12 @@ internal sealed class TestAgentFactory(TempGitRepo repo, IChatClient model, Fake
                 builder.Services.AddSingleton<global::A2A.ITaskStore>(Tasks);
                 builder.Services.AddSingleton<IPushConfigStore>(new FakePushConfigStore());
                 builder.Services.AddSingleton<IChatClientFactory>(new FixedChatClientFactory(model));
-                builder.Services.AddSingleton(new CoverageRunnerClient(
-                    new HttpClient(runner) { BaseAddress = new Uri("http://runner.test/") }, _ => Task.FromResult("t"), TimeSpan.FromMilliseconds(10)));
+                builder.Services.AddSingleton(realRunner is null
+                    ? new CoverageRunnerClient(new HttpClient(runner) { BaseAddress = new Uri("http://runner.test/") },
+                        _ => Task.FromResult("t"), TimeSpan.FromMilliseconds(10))
+                    : new CoverageRunnerClient(new HttpClient { BaseAddress = realRunner },
+                        _ => Task.FromResult(PartnerJwt.Issue(new AuthOptions(), new A2AOptions { Audience = CoverageRunnerClient.Audience },
+                            "maf-lab-test-agent", [CoverageRunnerClient.ScopeRun]).Token), TimeSpan.FromMilliseconds(20)));
             });
             await _app.StartAsync();
         }

@@ -43,6 +43,11 @@ public sealed class TestGenerationHandler(
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopping);
         _running[context.TaskId] = cts;
         var work = cts.Token;
+        // One span for the run, under the caller's trace (propagated with the request); structure only, no content.
+        using var span = Maf.Lab.Hosting.LabTelemetry.Source.StartActivity("testgen.run");
+        span?.SetTag("testgen.toolchain", request.Toolchain);
+        span?.SetTag("testgen.target_pct", request.TargetLinePct);
+        span?.SetTag("testgen.max_attempts", request.MaxAttempts);
         try
         {
             await RunAsync(context.TaskId, request, updater, work);
@@ -128,6 +133,8 @@ public sealed class TestGenerationHandler(
                     break;
                 }
 
+                using var attemptSpan = Maf.Lab.Hosting.LabTelemetry.Source.StartActivity("testgen.attempt");
+                attemptSpan?.SetTag("testgen.attempt", n);
                 await ProgressAsync(updater, request, n, AttemptPhase.Generating, current, usage, ct);
                 tools.BeginAttempt();
                 var (inputBefore, outputBefore) = (usage.InputTokens, usage.OutputTokens);
@@ -184,6 +191,12 @@ public sealed class TestGenerationHandler(
                     return;
                 }
                 tools.Measured(result);
+                attemptSpan?.SetTag("testgen.pct", result.TargetPct);
+                attemptSpan?.SetTag("testgen.build", result.Build);
+                attemptSpan?.SetTag("testgen.tests_failed", result.Tests.Failed);
+                attemptSpan?.SetTag("testgen.violations", violations.Count);
+                attemptSpan?.SetTag("testgen.tokens", usage.Tokens);
+                attemptSpan?.SetTag("testgen.cost_usd", usage.CostUsd);
 
                 var before = current;
                 if (result.Measured)
@@ -220,6 +233,7 @@ public sealed class TestGenerationHandler(
             await updater.AddArtifactAsync(
                 [new Part { Data = JsonSerializer.SerializeToElement(report, TestGenKinds.Json) }],
                 name: TestGenKinds.ReportArtifact, cancellationToken: ct);
+            System.Diagnostics.Activity.Current?.SetTag("testgen.stop", stop);
             _logger.LogInformation("test run done task={TaskId} stop={Stop} attempts={Attempts} final={Final} tokens={Tokens}",
                 taskId, stop, attempts.Count, best.Pct, usage.Tokens);
             await updater.CompleteAsync(Say(stop == StopReason.Target

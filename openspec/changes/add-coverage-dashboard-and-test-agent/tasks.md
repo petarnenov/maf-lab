@@ -189,14 +189,14 @@
   volumes. Give the api read-write access to `${MAF_LAB_REPO}` and a place on `runner`, give the collector a place on
   `runner`, and point the CI compose at the Ollama stub with a scripted test answer. Verify that `make` brings
   everything up healthy and that `docker compose exec coverage-runner env` shows no `OLLAMA_API_KEY` or `JEV_MAF_LAB`.
-- [ ] 9.2 Export `MAF_LAB_REPO` and the host UID and GID from the Makefile, add the `coverage` target (with help text,
+- [x] 9.2 Export `MAF_LAB_REPO` and the host UID and GID from the Makefile, add the `coverage` target (with help text,
   a non-zero exit when the stack is down), and extend `make doctor` to check `MAF_LAB_REPO` and to report the optional `GITHUB_ISSUES_TOKEN` without printing it.
   Pass `GITHUB_ISSUES_TOKEN` to the api service only. Verify that `make help`
   lists `coverage` and that `make coverage` with the stack down exits non-zero.
-- [ ] 9.3 Add `TestAgent` and `CoverageRunner` to `TopologyOptions`, add their probes, ids and edges in
+- [x] 9.3 Add `TestAgent` and `CoverageRunner` to `TopologyOptions`, add their probes, ids and edges in
   `TopologyProbe`, and add their boxes to `docs/topology.drawio` without overlap. Verify that `TopologyTests` pass
   (every node drawn, no overlaps).
-- [ ] 9.4 Add `testgen.run`, `testgen.attempt` and `runner.run` spans with structural attributes only, with trace
+- [x] 9.4 Add `testgen.run`, `testgen.attempt` and `runner.run` spans with structural attributes only, with trace
   context carried across the api, agent and runner. Verify with a test that a run through fakes yields one trace id
   across all three services' spans.
 

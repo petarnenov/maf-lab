@@ -67,8 +67,13 @@ jobs:
     name: End-to-end stack (model-free)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      # The repository the Coverage screen reads and the test agent writes tests for, mounted at this same path.
+      MAF_LAB_REPO: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v7
+      # Coverage is measured at main, and an accepted run merges into it: the checkout is detached, so name it main.
+      - run: git checkout -q -B main
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -281,5 +282,79 @@ public sealed class TestGenRunsApiTests
         var cancel = await advisor.PostAsync("/api/coverage/runs/r_x/cancel", null, Ct);
 
         Assert.Equal((HttpStatusCode.Forbidden, HttpStatusCode.Forbidden), (start.StatusCode, cancel.StatusCode));
+    }
+
+    [Fact]
+    public async Task A_run_is_one_trace_across_the_api_the_agent_and_the_runner()
+    {
+        var spans = new ConcurrentQueue<System.Diagnostics.Activity>();
+        using var listener = new System.Diagnostics.ActivityListener
+        {
+            ShouldListenTo = _ => true,
+            Sample = (ref System.Diagnostics.ActivityCreationOptions<System.Diagnostics.ActivityContext> _) =>
+                System.Diagnostics.ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = spans.Enqueue,
+        };
+        System.Diagnostics.ActivitySource.AddActivityListener(listener);
+
+        var repo = await TempGitRepo.CreateAsync(new Dictionary<string, string>
+        {
+            [Target] = "a\nb\nc\nd\n",
+        }, Ct);
+        // A real runner (its toolchain faked) behind a real socket, so the agent reaches it over HTTP.
+        await using var runnerApp = await RealRunnerAsync(repo);
+        var runnerUrl = new Uri(runnerApp.Services.GetRequiredService<Microsoft.AspNetCore.Hosting.Server.IServer>().Features
+            .Get<Microsoft.AspNetCore.Hosting.Server.Features.IServerAddressesFeature>()!.Addresses.First() + "/");
+        var fake = new FakeCoverageRunner();
+        var model = new AttemptModel(n => new Move(new Dictionary<string, string> { ["tests/Lab.Tests/CalcTests.cs"] = TestFile(n) }));
+        await using var agent = new TestAgentFactory(repo, model, fake, runnerUrl);
+        var agentUrl = (await agent.ClientAsync(authenticated: false)).BaseAddress!.ToString();
+        using var api = CoverageApi.Create(repo, fake, new Dictionary<string, string?>
+        {
+            ["TestAgent:BaseUrl"] = agentUrl,
+            ["TestAgent:ClientSecret"] = "assistant-secret",
+            ["TestAgent:FollowerPollEvery"] = "00:00:00.100",
+        });
+        await CoverageApi.IngestAsync(api, await repo.HeadAsync(Ct), Toolchains.Dotnet, SnapshotKind.Official, null, (Target, 1, 4));
+
+        var response = await api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN)
+            .PostAsJsonAsync("/api/coverage/runs", new CoverageEndpoints.StartRunRequest(Target, 85, "glm-5.3:cloud"), Ct);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        System.Diagnostics.Activity? run = null;
+        for (var i = 0; i < 300 && run is null; i++)
+        {
+            run = spans.FirstOrDefault(a => a.OperationName == "testgen.run");
+            await Task.Delay(50, Ct);
+        }
+
+        Assert.NotNull(run);
+        var trace = run.TraceId;
+        var inTrace = spans.Where(a => a.TraceId == trace).ToList();
+        Assert.Contains(inTrace, a => a.OperationName == "testgen.attempt");
+        Assert.Contains(inTrace, a => a.OperationName == "runner.run");
+        // The model calls are in it too, and its root is a request the api received: the one that started the run.
+        Assert.Contains(inTrace, a => a.Source.Name == "Experimental.Microsoft.Extensions.AI" && a.OperationName == "chat");
+        Assert.Contains(inTrace, a => a.Source.Name == "Microsoft.AspNetCore" && a.ParentSpanId == default);
+        // Structure only: no source text, test code or prompt in any tag of the trace.
+        var tags = string.Join("\n", inTrace.SelectMany(a => a.TagObjects).Select(t => $"{t.Key}={t.Value}"));
+        Assert.DoesNotContain("Assert.Equal", tags);
+        Assert.DoesNotContain("You write automated tests", tags);
+    }
+
+    private static async Task<Microsoft.AspNetCore.Builder.WebApplication> RealRunnerAsync(TempGitRepo repo)
+    {
+        var app = Maf.Lab.CoverageRunner.Program.BuildApp([], builder =>
+        {
+            Microsoft.AspNetCore.Hosting.HostingAbstractionsWebHostBuilderExtensions.UseUrls(builder.WebHost, "http://127.0.0.1:0");
+            Microsoft.Extensions.Configuration.MemoryConfigurationBuilderExtensions.AddInMemoryCollection(builder.Configuration,
+                new Dictionary<string, string?>
+                {
+                    ["Runner:RepoRoot"] = repo.Root,
+                    ["Runner:WorkRoot"] = Directory.CreateTempSubdirectory("maf-runner-trace-").FullName,
+                });
+            builder.Services.AddSingleton<Maf.Lab.CoverageRunner.IToolchainRunner>(new FakeToolchain());
+        });
+        await app.StartAsync(Ct);
+        return app;
     }
 }

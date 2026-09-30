@@ -15,6 +15,9 @@ public sealed class TopologyOptions
     public string CodeService { get; set; } = "mcp-code";
     /// <summary>The second agent's container name, resolved the same way the others are.</summary>
     public string ComplianceService { get; set; } = "compliance";
+    /// <summary>The test-generation agent and the coverage runner (add-coverage-dashboard-and-test-agent).</summary>
+    public string TestAgentService { get; set; } = "test-agent";
+    public string CoverageRunnerService { get; set; } = "coverage-runner";
     /// <summary>Port both hosts listen on inside the network.</summary>
     public int ServicePort { get; set; } = 8080;
     public string LoadBalancerHealthUrl { get; set; } = "http://lb/lb-health";
