@@ -6,6 +6,7 @@ using Maf.Lab.Api.Endpoints;
 using Maf.Lab.Domain.Admin;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.TestGen;
+using Maf.Lab.TestGen.Coverage;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Maf.Lab.Tests;

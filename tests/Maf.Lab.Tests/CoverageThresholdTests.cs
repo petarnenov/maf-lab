@@ -6,6 +6,7 @@ using Maf.Lab.Api.Endpoints;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Retrieval.Models;
+using Maf.Lab.TestGen.Coverage;
 using Maf.Lab.TestSupport;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;

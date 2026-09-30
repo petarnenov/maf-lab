@@ -24,6 +24,7 @@
     <ProjectReference Include="..\..\src\Maf.Lab.TestGen\Maf.Lab.TestGen.csproj" />
     <ProjectReference Include="..\..\src\Maf.Lab.ComplianceAgent\Maf.Lab.ComplianceAgent.csproj" />
     <ProjectReference Include="..\..\src\Maf.Lab.TestAgent\Maf.Lab.TestAgent.csproj" />
+    <ProjectReference Include="..\..\src\Maf.Lab.CoverageRunner\Maf.Lab.CoverageRunner.csproj" />
     <ProjectReference Include="..\..\src\Maf.Lab.Indexing\Maf.Lab.Indexing.csproj" />
     <ProjectReference Include="..\..\src\Maf.Lab.Eval\Maf.Lab.Eval.csproj" />
     <!-- One direction only: the tests may look at the probe, the probe never looks at src/. -->

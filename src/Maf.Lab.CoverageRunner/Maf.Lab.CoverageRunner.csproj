@@ -1,0 +1,13 @@
+<!-- The coverage runner: builds and runs this repository's tests with coverage for a commit plus a diff, in a fresh
+     workspace each time. It runs model-written code, so it holds no model key and has no route to the internet. -->
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="..\Maf.Lab.A2A\Maf.Lab.A2A.csproj" />
+    <ProjectReference Include="..\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />
+    <ProjectReference Include="..\Maf.Lab.Hosting\Maf.Lab.Hosting.csproj" />
+    <ProjectReference Include="..\Maf.Lab.TestGen\Maf.Lab.TestGen.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Maf.Lab.Tests" />
+  </ItemGroup>
+</Project>

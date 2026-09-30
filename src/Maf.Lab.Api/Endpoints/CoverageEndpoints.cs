@@ -2,6 +2,7 @@ using Maf.Lab.Api.Coverage;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.Retrieval.Auth;
 using Maf.Lab.TestGen;
+using Maf.Lab.TestGen.Coverage;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;

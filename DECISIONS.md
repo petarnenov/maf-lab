@@ -2047,3 +2047,17 @@ said which account the conversation was about.
     brief's OpenAI-compatible `/v1` would be a second client path.
 - **Provider refusals are told apart in one place.** `ProviderRefusal` (in `Maf.Lab.TestGen`) is shared by the
   picker's availability check and the agent.
+- **The coverage runner (`Maf.Lab.CoverageRunner`).**
+  - **Toolchain results from the console.** With Microsoft.Testing.Platform, xunit.v3 offers no `--report-*` option
+    here, so the runner reads the `dotnet test` summary, the `failed <name>` blocks and the `error CS…` lines. Vitest
+    reports as JSON. A test file that does not load counts as the web's "build failed". `--coverage.reportOnFailure`
+    keeps the coverage even when a test fails.
+  - **A clean environment for everything it starts.** Child processes get only `PATH`, `HOME`, the locale, temp and
+    the toolchain caches. The runner's own `Auth__SigningKey` is never visible to model-written code, which could
+    otherwise print it into a failure message that goes back to the model.
+  - **Offline by construction.** The image restores `tests/Maf.Lab.Tests`, with its `src/` and `tools/` references,
+    into `/opt/nuget`, and installs `web/` dependencies into `/opt/web/node_modules`. At run time a workspace symlinks
+    them in. Verified with `docker run --network none`: 899 .NET and 438 web tests, with Cobertura from both. The
+    image has its own `Dockerfile.dockerignore`, because the repository's ignore file leaves out `tests/` and `web/`.
+  - **git reads a repository it does not own.** The mount belongs to the host user, so the image sets
+    `safe.directory '*'` system-wide. Tests run as the unprivileged `runner` user (uid 10001).

@@ -108,13 +108,13 @@
 
 ## 6. Coverage runner service
 
-- [ ] 6.1 Create `src/Maf.Lab.CoverageRunner` with `POST /runs` (commit, toolchain, diff?, target?), service-token
+- [x] 6.1 Create `src/Maf.Lab.CoverageRunner` with `POST /runs` (commit, toolchain, diff?, target?), service-token
   auth, a fresh workspace per request (`git worktree add --detach` from the read-only repo into its own work dir),
   `git apply --check` and apply, build and test with coverage to a nonce path, and a result DTO. Verify with tests on
   a fixture repo for a diff that applies, a diff that does not apply (no build), and a clean workspace between runs.
-- [ ] 6.2 Add the time limit, bounded concurrency with a queue position, and the non-root execution. Verify with tests
+- [x] 6.2 Add the time limit, bounded concurrency with a queue position, and the non-root execution. Verify with tests
   that a hanging test is stopped and reported timed out, and that the second request reports queue position 1.
-- [ ] 6.3 Add a Dockerfile: SDK 10.0.401, Node 24 and git, with NuGet and npm restores pre-seeded at build and a
+- [x] 6.3 Add a Dockerfile: SDK 10.0.401, Node 24 and git, with NuGet and npm restores pre-seeded at build and a
   non-root user. Verify that the image builds and that a run inside it succeeds with `--network none`.
 
 ## 7. A2A wiring and run orchestration (api)

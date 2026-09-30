@@ -1,4 +1,4 @@
-namespace Maf.Lab.Api.Coverage;
+namespace Maf.Lab.TestGen.Coverage;
 
 /// <summary>The two toolchains whose reports the lab ingests.</summary>
 public static class Toolchains

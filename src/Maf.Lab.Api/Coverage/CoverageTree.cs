@@ -1,4 +1,5 @@
 using Maf.Lab.Api.Storage;
+using Maf.Lab.TestGen.Coverage;
 
 namespace Maf.Lab.Api.Coverage;
 

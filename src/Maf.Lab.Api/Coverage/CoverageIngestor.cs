@@ -1,4 +1,5 @@
 using System.Text;
+using Maf.Lab.TestGen.Coverage;
 
 namespace Maf.Lab.Api.Coverage;
 

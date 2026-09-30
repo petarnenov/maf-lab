@@ -1,4 +1,5 @@
 using Maf.Lab.TestGen;
+using Maf.Lab.TestGen.Coverage;
 using Microsoft.Extensions.Options;
 
 namespace Maf.Lab.Api.Coverage;

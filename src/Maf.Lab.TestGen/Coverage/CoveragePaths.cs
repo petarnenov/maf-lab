@@ -1,4 +1,4 @@
-namespace Maf.Lab.Api.Coverage;
+namespace Maf.Lab.TestGen.Coverage;
 
 /// <summary>
 /// Turns the file names a report uses into repo-relative paths, and decides which files are coverage targets.

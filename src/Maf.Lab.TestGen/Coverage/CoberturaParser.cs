@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 
-namespace Maf.Lab.Api.Coverage;
+namespace Maf.Lab.TestGen.Coverage;
 
 /// <summary>A report that is not Cobertura. Its message is safe to show: it never quotes the input.</summary>
 public sealed class CoberturaFormatException(string message) : Exception(message);

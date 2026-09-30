@@ -1,6 +1,7 @@
 using Maf.Lab.Api.Admin;
 using Maf.Lab.Domain.Admin;
 using Maf.Lab.TestGen;
+using Maf.Lab.TestGen.Coverage;
 using Microsoft.Extensions.Options;
 
 namespace Maf.Lab.Api.Coverage;

@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Text.Json;
 using Maf.Lab.Api.Storage;
+using Maf.Lab.TestGen.Coverage;
 using Microsoft.EntityFrameworkCore;
 
 namespace Maf.Lab.Api.Coverage;
