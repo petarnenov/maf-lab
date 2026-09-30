@@ -1987,3 +1987,14 @@ said which account the conversation was about.
 - **Web coverage.** `@vitest/coverage-v8` 5.0.1, pinned to the same version as `vitest`, as the provider requires.
   `vitest run --coverage` writes `web/coverage/cobertura-coverage.xml` with `<source>` = the `web` directory and
   source-relative file names. Test files and `src/test/` are excluded.
+- **`.gitignore` names `web/coverage/` only.** The old `coverage/` rule, on a case-insensitive file system, also hid
+  `src/Maf.Lab.Api/Coverage/`.
+- **One shared library, `Maf.Lab.TestGen`.** It holds what the api, the test agent and the runner must agree on: the
+  runner's wire contracts and client, and the single git runner (arguments as a list, no shell, no prompt, a time
+  limit). It is not `Maf.Lab.Domain`, which is contracts about principals and tenants only.
+- **A refresh is an admin job.** Design D10 planned a Redis lock. `AdminJobRunner` already gives single-flight across
+  replicas (a unique index on running jobs), a heartbeat and recovery from a dead replica. A refresh runs under the
+  scope key `_repository`. That is a table key, not a tenant: coverage describes the repository.
+- **Service tokens to the runner.** The api and the agent sign a short-lived `PartnerJwt` with audience
+  `maf-lab-coverage-runner` and scope `runner.run`. The runner checks audience, partner and scope, and holds no secret
+  besides the signing key it checks with. No new secret was added.

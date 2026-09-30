@@ -25,14 +25,14 @@
 
 ## 2. Coverage API
 
-- [ ] 2.1 Map `/api/coverage` in `Endpoints/CoverageEndpoints.cs` with `GET /tree`. Aggregate folders weighted by
+- [x] 2.1 Map `/api/coverage` in `Endpoints/CoverageEndpoints.cs` with `GET /tree`. Aggregate folders weighted by
   lines, add effective thresholds, the candidate and the active run. Verify with a WebApplicationFactory test for the
   10-line/90-line = 10% case and a 401 without a token.
-- [ ] 2.2 Add `GET /files?path=` (source from `git show <sha>:<path>`, only for paths in a snapshot) and
+- [x] 2.2 Add `GET /files?path=` (source from `git show <sha>:<path>`, only for paths in a snapshot) and
   `GET /files/history?path=`. Verify with tests for the detail, newest-first history and `../../etc/passwd` → 404.
-- [ ] 2.3 Add `POST /reports` (admin, multipart Cobertura with commit and toolchain). Verify with tests for admin
+- [x] 2.3 Add `POST /reports` (admin, multipart Cobertura with commit and toolchain). Verify with tests for admin
   success, non-admin 403 and malformed 400 with nothing stored.
-- [ ] 2.4 Add the `CoverageRunnerClient` (typed HttpClient, service token) and `POST /refresh` (admin, both toolchains
+- [x] 2.4 Add the `CoverageRunnerClient` (typed HttpClient, service token) and `POST /refresh` (admin, both toolchains
   at `main`, single-flight through a Redis lock returning the in-progress refresh). Verify with a test against a fake
   runner, where two concurrent refreshes start one run.
 

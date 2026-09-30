@@ -1,0 +1,7 @@
+<!-- What the api, the test-generation agent and the coverage runner must agree on: the wire contracts between them,
+     the test-path allowlist, the test guardrails and the one way this lab runs git. No host, no model, no storage. -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <InternalsVisibleTo Include="Maf.Lab.Tests" />
+  </ItemGroup>
+</Project>
