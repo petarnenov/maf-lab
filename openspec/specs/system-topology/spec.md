@@ -9,7 +9,7 @@ and keeps that report in step with the drawn diagram that the UI renders it on.
 ### Requirement: Topology report
 The system SHALL expose, to any signed-in user, a report of the stack it is running in. The report SHALL contain one
 entry per service the lab is made of: the load balancer, the api, the MCP server of every domain (billing, portfolio and codebase), the compliance
-reviewer, the shared state store, the vector store, the
+reviewer, the test-generation agent, the coverage runner, the shared state store, the vector store, the
 model provider used for chat, the model provider used for embeddings, the web app, the telemetry collector, the
 metrics store and the trace store. Each entry SHALL carry a
 stable id, a display name, a health state of `healthy`, `degraded` or `unreachable`, the instances found for it (each with its
@@ -52,6 +52,12 @@ particular, a configured API key SHALL never be reported, only whether one is co
 #### Scenario: No secrets
 - **WHEN** the chat provider is configured with an API key
 - **THEN** the report states that a key is configured and never contains the key
+
+#### Scenario: The test-generation services are part of the stack
+- **WHEN** the topology is requested
+- **THEN** the test-generation agent and the coverage runner each have an entry with their instances and health, with
+  edges from the api to the agent, from the agent to the runner and to the chat model provider, and from the api to
+  the runner
 
 ### Requirement: Health is measured, not assumed
 Each service's health SHALL be determined by contacting it, not by assuming it is up because the api is. Every probe
