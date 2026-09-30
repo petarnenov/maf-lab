@@ -14,7 +14,7 @@
 ## 3. Verification
 
 - [x] 3.1 Run `make lint`, `dotnet test --project tests/Maf.Lab.Tests` and `make test-web`; all pass (1079 .NET tests, 597 web tests)
-- [ ] 3.2 Live check: open `http://localhost:7171/admin/a2a` as a FIRM_ADMIN on the running stack, see the section report the test agent reachable with its card and runs, in both themes — not done: the running Docker stack belongs to another agent's session and was not rebuilt or restarted for this change; run it after `make` picks up this branch
+- [x] 3.2 Live check: open `http://localhost:7171/admin/a2a` as a FIRM_ADMIN on the running stack, see the section report the test agent reachable with its card and runs, in both themes (checked by hand by the user)
 
 ## 4. Documentation
 
