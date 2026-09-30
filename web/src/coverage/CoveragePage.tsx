@@ -12,6 +12,7 @@ import { when } from './format';
 import { coverageKeys } from './keys';
 import { RunActivityButton } from './RunActivity';
 import { RunStatus } from './RunStatus';
+import { agentHas } from './treeRuns';
 import { useRunEvents } from './useRunEvents';
 import { ThresholdControl } from './ThresholdControl';
 import styles from './CoveragePage.module.css';
@@ -28,6 +29,8 @@ export function CoveragePage() {
     queryKey: coverageKeys.tree,
     queryFn: () => api<Tree>('/api/coverage/tree'),
     enabled: !!session,
+    // Rows beyond the few followed live still move while the agent works.
+    refetchInterval: (q) => (q.state.data?.files.some((f) => agentHas(f.run)) ? 10_000 : false),
   });
 
   const file = useQuery({
@@ -79,7 +82,11 @@ export function CoveragePage() {
                   <CandidatePanel run={file.data.run} canDecide={isAdmin} />
                 )}
                 {isAdmin ? (
-                  <ThresholdControl key={`${file.data.path}:${file.data.summary.threshold}`} detail={file.data} />
+                  <ThresholdControl
+                    key={`${file.data.path}:${file.data.summary.threshold}`}
+                    detail={file.data}
+                    defaultThreshold={tree.data.defaultThresholdPct}
+                  />
                 ) : (
                   file.data.run && <LiveRunStatus run={file.data.run} />
                 )}

@@ -73,6 +73,9 @@ public sealed class TestGenRunRow
     public string? Phase { get; set; }
     /// <summary>Whether the activity record hit its cap and its oldest entries were dropped.</summary>
     public bool ActivityDropped { get; set; }
+    /// <summary>The caps the administrator chose at start; null is unlimited (and is what rows from before caps read as).</summary>
+    public long? BudgetTokens { get; set; }
+    public double? BudgetCostUsd { get; set; }
 }
 
 /// <summary>

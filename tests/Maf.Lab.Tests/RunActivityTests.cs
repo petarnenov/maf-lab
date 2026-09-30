@@ -98,6 +98,31 @@ public sealed class RunActivityTests : IAsyncLifetime
         Assert.True((await check.TestGenRuns.SingleAsync(r => r.Id == "r1", Ct)).ActivityDropped);
     }
 
+    [Fact]
+    public async Task A_database_from_before_budgets_gains_them_and_its_runs_read_as_unlimited()
+    {
+        await using (var db = await _db.CreateDbContextAsync(Ct))
+        {
+            db.TestGenRuns.Add(new TestGenRunRow
+            {
+                Id = "old", Path = "src/Lab/Calc.cs", Toolchain = "dotnet", CommitSha = new string('a', 40), Model = "m",
+                State = TestGenRunState.CompletedNoChange, CreatedBy = "alice",
+            });
+            await db.SaveChangesAsync(Ct);
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE TestGenRuns DROP COLUMN BudgetTokens", Ct);
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE TestGenRuns DROP COLUMN BudgetCostUsd", Ct);
+        }
+
+        await using (var db = await _db.CreateDbContextAsync(Ct))
+        {
+            await DatabaseInitializer.InitializeAsync(db, Ct);
+        }
+
+        await using var check = await _db.CreateDbContextAsync(Ct);
+        var run = RunSummary.Of(await check.TestGenRuns.SingleAsync(r => r.Id == "old", Ct));
+        Assert.Equal(new RunBudget(null, null), run.Budget);
+    }
+
     private static RunSummary Summary(string state = TestGenRunState.Working, string? phase = null, string? reason = null) =>
         new("r1", "src/Lab/Calc.cs", state, reason, 1, 5, 40, 85, "m", 0, 0, null, DateTime.UnixEpoch, DateTime.UnixEpoch, phase);
 
@@ -191,6 +216,29 @@ public sealed class RunActivityTests : IAsyncLifetime
             e => Assert.Equal("Which lines?", Assert.IsType<ReasoningMessageContentEvent>(e).Delta),
             e => Assert.IsType<ReasoningMessageEndEvent>(e),
             e => Assert.IsType<ReasoningEndEvent>(e));
+    }
+
+    [Fact]
+    public async Task The_stop_finishes_the_open_step_and_says_why_before_the_run_ends()
+    {
+        var view = new RunActivityProjection("r1");
+        var stopped = Entry(3, ActivityType.Stopped, attempt: 2) with { Stop = new StoppedActivity(StopReason.Budget, 2, 0, NotStarted: 3) };
+
+        var events = (await ProjectAsync(view, [Phase(1, AttemptPhase.Building, 2), Phase(2, AttemptPhase.Measuring, 2), stopped]))
+            .Concat(view.Summary(Summary(TestGenRunState.CompletedNoChange, reason: StopReason.Budget)))
+            .Concat(view.Ended(Summary(TestGenRunState.CompletedNoChange, reason: StopReason.Budget)))
+            .ToList();
+
+        Assert.Equal("attempt 2: measuring", Assert.IsType<StepFinishedEvent>(events[3]).StepName);
+        var stop = Assert.IsType<CustomEvent>(events[4]);
+        Assert.Equal(RunActivityProjection.StoppedEvent, stop.Name);
+        var value = (JsonElement)stop.Value!;
+        Assert.Equal(("budget", 2, 3), (value.GetProperty("reason").GetString(), value.GetProperty("lastAttempt").GetInt32(),
+            value.GetProperty("notStarted").GetInt32()));
+        Assert.Equal("budget", Assert.IsType<StateSnapshotEvent>(events[5]).Snapshot.GetProperty("reason").GetString());
+        // The step was closed by the stop, so the run ends at once and nothing follows it.
+        Assert.IsType<RunFinishedEvent>(events[6]);
+        Assert.Equal(7, events.Count);
     }
 
     [Fact]

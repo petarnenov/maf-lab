@@ -3,22 +3,30 @@ import { useEffect } from 'react';
 import type { AgentModel, AgentModels } from '../api/types';
 import { useApi } from '../auth/useAuth';
 import page from '../components/Page.module.css';
+import { type BudgetInput, describeBudget, parseBudget } from './budget';
 import { usd } from './format';
 import { coverageKeys } from './keys';
 import styles from './CoveragePage.module.css';
 
-/** Exactly one model from the server's allowlist; one the account cannot use cannot be picked. */
+/**
+ * Exactly one model from the server's allowlist; one the account cannot use cannot be picked. Beside it, the run's
+ * optional budget: both caps start empty, which is unlimited, and then only the attempt cap stops the run.
+ */
 export function ModelPicker({
   path,
   selected,
   onSelect,
   onDefault,
+  budget,
+  onBudget,
 }: {
   path: string;
   selected: string | null;
   onSelect: (tag: string) => void;
   /** Told the default model once the list arrives, if it is available, so it can be preselected. */
   onDefault?: (tag: string) => void;
+  budget: BudgetInput;
+  onBudget: (budget: BudgetInput) => void;
 }) {
   const api = useApi();
   const models = useQuery({
@@ -40,6 +48,9 @@ export function ModelPicker({
     );
 
   const chosen = models.data.models.find((m) => m.tag === selected);
+  const { budget: caps, errors } = parseBudget(budget);
+  const overBudget =
+    chosen?.estimate != null && caps?.maxCostUsd != null && chosen.estimate.costUsd > caps.maxCostUsd;
   return (
     <div>
       <fieldset className={styles.models}>
@@ -48,6 +59,23 @@ export function ModelPicker({
           <ModelOption key={m.tag} model={m} checked={m.tag === selected} onSelect={onSelect} />
         ))}
       </fieldset>
+      <fieldset className={styles.budget}>
+        <legend>Budget (optional)</legend>
+        <BudgetField
+          label="Max tokens"
+          value={budget.maxTokens}
+          error={errors.maxTokens}
+          inputMode="numeric"
+          onChange={(maxTokens) => onBudget({ ...budget, maxTokens })}
+        />
+        <BudgetField
+          label="Max cost (USD)"
+          value={budget.maxCostUsd}
+          error={errors.maxCostUsd}
+          inputMode="decimal"
+          onChange={(maxCostUsd) => onBudget({ ...budget, maxCostUsd })}
+        />
+      </fieldset>
       <p className={styles.estimate}>
         {chosen?.estimate ? (
           <>
@@ -55,10 +83,52 @@ export function ModelPicker({
             {chosen.priceIsEstimate && ' (prices are estimates)'}.{' '}
           </>
         ) : null}
-        The run stops at {usd(models.data.maxCostUsd)} or {models.data.maxTokens.toLocaleString()} tokens,
-        whichever comes first.
+        {caps == null
+          ? `Budget: unlimited. The run stops after at most ${models.data.maxAttempts} attempts.`
+          : `The run stops at ${describeBudget(caps)}, whichever comes first, or after ${models.data.maxAttempts} attempts.`}
       </p>
+      {overBudget && (
+        <p className={styles.errorText} role="status">
+          The estimate is above this budget, so the run may stop before it reaches the target.
+        </p>
+      )}
     </div>
+  );
+}
+
+function BudgetField({
+  label,
+  value,
+  error,
+  inputMode,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  error?: string;
+  inputMode: 'numeric' | 'decimal';
+  onChange: (value: string) => void;
+}) {
+  const id = `budget-${label.replace(/\W+/g, '-').toLowerCase()}`;
+  return (
+    <label className={styles.budgetField} htmlFor={id}>
+      <span>{label}</span>
+      <input
+        id={id}
+        type="text"
+        inputMode={inputMode}
+        placeholder="unlimited"
+        value={value}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? `${id}-error` : undefined}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {error && (
+        <span id={`${id}-error`} className={styles.errorText}>
+          {error}
+        </span>
+      )}
+    </label>
   );
 }
 

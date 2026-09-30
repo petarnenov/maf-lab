@@ -1,7 +1,9 @@
 import { useMemo, useRef, useState } from 'react';
 import type { CoverageTree as Tree } from '../api/types';
 import { buildTree, flatten, type SortKey, type TreeView } from './treeModel';
-import { pct, RUN_LABELS } from './format';
+import { pct } from './format';
+import { TreeRunBadge } from './TreeRunBadge';
+import { liveRunIds } from './treeRuns';
 import { useWindowedList } from './useWindowedList';
 import styles from './CoveragePage.module.css';
 
@@ -20,6 +22,7 @@ export function CoverageTree({
   const [view, setView] = useState<TreeView>({ sort: 'name', dir: 'asc', filter: '', belowOnly: false });
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const nodes = useMemo(() => buildTree(tree, view), [tree, view]);
+  const live = useMemo(() => liveRunIds(tree.files), [tree]);
   const rows = useMemo(() => flatten(nodes, collapsed), [nodes, collapsed]);
   const scroller = useRef<HTMLDivElement>(null);
   const windowed = useWindowedList(scroller, rows.length, ROW_HEIGHT, 20);
@@ -111,13 +114,7 @@ export function CoverageTree({
                     {node.file.candidate && (
                       <span className={styles.candidate}>candidate {pct(node.file.candidate.pct)}</span>
                     )}
-                    {node.file.run?.active && node.file.run.state !== 'candidate' && (
-                      <span className={styles.runBadge}>
-                        {RUN_LABELS[node.file.run.state]}
-                        {node.file.run.state === 'working' &&
-                          ` ${node.file.run.attempt}/${node.file.run.maxAttempts}`}
-                      </span>
-                    )}
+                    <TreeRunBadge file={node.file} live={!!node.file.run && live.has(node.file.run.id)} />
                     <span className={styles.pct}>{pct(node.pct)}</span>
                     <span className={styles.threshold}>/ {node.file.threshold}%</span>
                   </button>

@@ -129,8 +129,11 @@ public sealed class TestGenerationHandler(
             var current = baseline.TargetPct;
             string? feedback = baseline.Uncovered.Count > 0 ? Instructions.Feedback(baseline with { Failures = [] }, []) : null;
             var stop = StopReason.Attempts;
+            int? notStarted = null;
+            // The workspace's diff is cumulative: an attempt that leaves it as it was wrote nothing.
+            var previousDiff = "";
             long largestInput = 0, largestOutput = 0;
-            IChatClient chat = BuildChatClient(request.Model, usage, opts, reporter);
+            IChatClient chat = BuildChatClient(request.Model, usage, opts, reporter, out var nudge);
 
             for (var n = 1; n <= request.MaxAttempts; n++)
             {
@@ -139,6 +142,7 @@ public sealed class TestGenerationHandler(
                 if (usage.WouldExceed(Math.Max(estimatedInput, largestInput), Math.Max(estimatedOutput, largestOutput)))
                 {
                     stop = StopReason.Budget;
+                    notStarted = n;
                     break;
                 }
 
@@ -147,6 +151,7 @@ public sealed class TestGenerationHandler(
                 reporter.Attempt = n;
                 await ProgressAsync(updater, reporter, request, n, AttemptPhase.Generating, current, usage, ct);
                 tools.BeginAttempt();
+                nudge.BeginAttempt();
                 var (inputBefore, outputBefore) = (usage.InputTokens, usage.OutputTokens);
                 var errors = new List<string>();
                 try
@@ -162,7 +167,7 @@ public sealed class TestGenerationHandler(
                         },
                     }, loggers);
                     // Streamed, so the model's text and reasoning reach the activity as they are written.
-                    await foreach (var update in agent.RunStreamingAsync(Instructions.Attempt(request, n, current, feedback),
+                    await foreach (var update in agent.RunStreamingAsync(Instructions.Attempt(request, n, current, feedback, opts.MaxToolRoundsPerAttempt),
                         session: null, options: null, ct))
                     {
                         foreach (var content in update.Contents)
@@ -183,6 +188,7 @@ public sealed class TestGenerationHandler(
                 catch (BudgetExceededException)
                 {
                     stop = StopReason.Budget;
+                    notStarted = n < request.MaxAttempts ? n + 1 : null;
                     break;
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException && ProviderRefusal.Is(ex))
@@ -249,7 +255,8 @@ public sealed class TestGenerationHandler(
                     stop = StopReason.Target;
                     break;
                 }
-                feedback = Instructions.Feedback(result, violations);
+                feedback = Instructions.Feedback(result, violations, diff == previousDiff ? n : null);
+                previousDiff = diff;
             }
 
             if (Encoding.UTF8.GetByteCount(best.Diff) > TestGenFailure.MaxDiffBytes)
@@ -258,6 +265,8 @@ public sealed class TestGenerationHandler(
                 return;
             }
 
+            // The timeline ends on why the work stopped, not on the last open phase.
+            await reporter.StoppedAsync(new StoppedActivity(stop, reporter.Attempt, best.Pct, notStarted), ct);
             var report = new TestGenReport(TestGenKinds.Report, stop == StopReason.Target, stop, request.TargetLinePct,
                 baseline.TargetPct, best.Pct, attempts, usage.Snapshot(), best.Diff, best.Bugs);
             await updater.AddArtifactAsync(
@@ -275,14 +284,17 @@ public sealed class TestGenerationHandler(
     private sealed record Best(double? Pct, string Diff, IReadOnlyList<SuspectedBug> Bugs);
 
     /// <summary>
-    /// provider → usage counting → the tool loop. The counter sits on the provider so every call the loop makes is
-    /// counted; the tool loop has a round cap and turns a refused tool call into text the model can act on.
+    /// provider → usage counting → round nudge → the tool loop. The counter sits on the provider so every call the loop
+    /// makes is counted; the nudge tells the model to write when few rounds remain; the tool loop has a round cap and
+    /// turns a refused tool call into text the model can act on.
     /// </summary>
-    private IChatClient BuildChatClient(string model, RunUsage usage, TestAgentOptions opts, ActivityReporter reporter)
+    private IChatClient BuildChatClient(string model, RunUsage usage, TestAgentOptions opts, ActivityReporter reporter,
+        out RoundNudgeChatClient nudge)
     {
         var provider = new OpenTelemetryChatClient(models.CreateChatClient(model));
         var budgeted = new BudgetedChatClient(provider, usage);
-        return new FunctionInvokingChatClient(budgeted, loggers)
+        nudge = new RoundNudgeChatClient(budgeted, opts.MaxToolRoundsPerAttempt);
+        return new FunctionInvokingChatClient(nudge, loggers)
         {
             MaximumIterationsPerRequest = opts.MaxToolRoundsPerAttempt,
             FunctionInvoker = async (context, ct) =>

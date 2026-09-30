@@ -27,3 +27,30 @@ export const RUN_LABELS: Record<RunState, string> = {
   canceled: 'Canceled',
   verification_failed: 'Verification failed',
 };
+
+/** Why the agent stopped, in a word or two, beside a run's state ("No change · budget"). */
+export const STOP_LABELS: Record<string, string> = {
+  target: 'target reached',
+  attempts: 'all attempts used',
+  budget: 'budget',
+};
+
+/** A run's reason in user-facing words: a stop reason by its label, any other reason as the server said it. */
+export const reasonLabel = (reason: string | null | undefined): string | null =>
+  reason ? (STOP_LABELS[reason] ?? reason) : null;
+
+/** The agent's stop as the timeline's closing line. */
+export function stopSentence(stop: { reason: string; lastAttempt: number; notStarted?: number | null }): string {
+  switch (stop.reason) {
+    case 'target':
+      return `Reached the target in attempt ${stop.lastAttempt}.`;
+    case 'attempts':
+      return `Used all ${stop.lastAttempt} attempts without reaching the target.`;
+    case 'budget':
+      return stop.notStarted != null
+        ? `Stopped before attempt ${stop.notStarted}: the budget would be exceeded.`
+        : `Stopped in attempt ${stop.lastAttempt}: the budget was spent.`;
+    default:
+      return `Stopped (${stop.reason}).`;
+  }
+}

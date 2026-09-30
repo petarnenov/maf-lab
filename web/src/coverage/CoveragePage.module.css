@@ -161,6 +161,7 @@
 
 .candidate,
 .runBadge {
+  white-space: nowrap;
   font-size: 0.7rem;
   padding: 1px 6px;
   border-radius: 999px;
@@ -421,6 +422,29 @@
   font-size: 0.875rem;
 }
 
+.budget {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.budgetField {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.875rem;
+  min-width: 10rem;
+  flex: 1;
+}
+
+.budgetField input {
+  width: 100%;
+}
+
 /* Candidate */
 
 .candidatePanel {
@@ -578,4 +602,49 @@
   border-color: var(--accent);
   color: var(--on-accent);
   font-size: 0.8rem;
+}
+
+/* The agent is working now: a pulsing dot, still under reduced motion. */
+.liveDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+  animation: livePulse 1.2s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.7);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liveDot {
+    animation: none;
+  }
+}
+
+.timelineStopped {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--accent);
+  font-weight: 600;
+}
+
+.lastOutcome {
+  white-space: nowrap;
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
 }

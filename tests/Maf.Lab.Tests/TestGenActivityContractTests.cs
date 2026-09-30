@@ -16,6 +16,8 @@ public sealed class TestGenActivityContractTests
         new TestGenActivity(TestGenKinds.Activity, 4, DateTimeOffset.UnixEpoch, 2, ActivityType.Text, Text: "Looking at "),
         new TestGenActivity(TestGenKinds.Activity, 5, DateTimeOffset.UnixEpoch, 2, ActivityType.Text, Continues: 4, Text: "the file.",
             Truncated: true),
+        new TestGenActivity(TestGenKinds.Activity, 6, DateTimeOffset.UnixEpoch, 2, ActivityType.Stopped,
+            Stop: new StoppedActivity(StopReason.Budget, 2, 0, NotStarted: 3)),
     };
 
     [Theory]

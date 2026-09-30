@@ -10,16 +10,17 @@ import { useRunEvents } from './useRunEvents';
 import styles from './CoveragePage.module.css';
 
 /**
- * A file's threshold, for an admin. Lowering, keeping, clearing, or raising to what coverage already meets saves at
- * once; raising above coverage opens the confirmation. While a run is active the control is locked and shows it.
+ * A file's threshold, for an admin. A threshold above the file's coverage means "reach it": saving one — raised, kept
+ * or lowered, or the default when clearing an override — opens the confirmation to start a run, which can also save
+ * without one. A threshold coverage already meets saves at once. While a run is active the control is locked.
  */
-export function ThresholdControl({ detail }: { detail: CoverageFileDetail }) {
+export function ThresholdControl({ detail, defaultThreshold }: { detail: CoverageFileDetail; defaultThreshold: number }) {
   const api = useApi();
   const client = useQueryClient();
   const { summary, path } = detail;
   const run = useRunEvents(detail.run);
   const [value, setValue] = useState(String(summary.threshold));
-  const [raising, setRaising] = useState<number | null>(null);
+  const [raising, setRaising] = useState<{ target: number; useDefault: boolean } | null>(null);
   const activity = useRunActivity(run, true);
 
   const save = useMutation({
@@ -33,8 +34,13 @@ export function ThresholdControl({ detail }: { detail: CoverageFileDetail }) {
 
   const submit = () => {
     if (!valid) return;
-    if (parsed > summary.threshold && parsed > summary.pct) setRaising(parsed);
+    if (parsed > summary.pct) setRaising({ target: parsed, useDefault: false });
     else save.mutate(parsed);
+  };
+
+  const useDefault = () => {
+    if (defaultThreshold > summary.pct) setRaising({ target: defaultThreshold, useDefault: true });
+    else save.mutate(null);
   };
 
   const control = run?.active ? (
@@ -62,7 +68,7 @@ export function ThresholdControl({ detail }: { detail: CoverageFileDetail }) {
         Save
       </button>
       {summary.thresholdIsOverride && (
-        <button type="button" onClick={() => save.mutate(null)} disabled={save.isPending}>
+        <button type="button" onClick={useDefault} disabled={save.isPending}>
           Use default
         </button>
       )}
@@ -78,7 +84,8 @@ export function ThresholdControl({ detail }: { detail: CoverageFileDetail }) {
         <RaiseThresholdDialog
           path={path}
           currentPct={summary.pct}
-          targetPct={raising}
+          targetPct={raising.target}
+          useDefault={raising.useDefault}
           onClose={() => setRaising(null)}
         />
       )}

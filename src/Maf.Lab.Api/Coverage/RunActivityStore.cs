@@ -75,6 +75,7 @@ public sealed class RunActivityStore(IDbContextFactory<MafDbContext> dbFactory)
                 Phase = entry.Phase,
                 DataJson = entry.Tool is { } tool ? JsonSerializer.Serialize(tool, TestGenKinds.Json)
                     : entry.Result is { } result ? JsonSerializer.Serialize(result, TestGenKinds.Json)
+                    : entry.Stop is { } stop ? JsonSerializer.Serialize(stop, TestGenKinds.Json)
                     : null,
                 Text = entry.Text,
                 Truncated = entry.Truncated,

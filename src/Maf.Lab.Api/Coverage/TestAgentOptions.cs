@@ -14,14 +14,7 @@ public sealed class AgentModelOption
     public bool PriceIsEstimate { get; set; } = true;
 }
 
-/// <summary>A run's hard caps. The agent stops before an attempt that would cross either.</summary>
-public sealed class RunBudget
-{
-    public long MaxTokens { get; set; } = 400_000;
-    public double MaxCostUsd { get; set; } = 2.0;
-}
-
-/// <summary>Where the test-generation agent is, who the api is to it, and what a run may use.</summary>
+/// <summary>Where the test-generation agent is, who the api is to it, and how many attempts a run has.</summary>
 public sealed class TestAgentOptions
 {
     public const string Section = "TestAgent";
@@ -35,8 +28,8 @@ public sealed class TestAgentOptions
     public TimeSpan RunDeadline { get; set; } = TimeSpan.FromMinutes(45);
     public TimeSpan CardCacheFor { get; set; } = TimeSpan.FromMinutes(5);
 
+    /// <summary>The attempt cap: with no budget chosen, this is what bounds a run (with the deadline).</summary>
     public int MaxAttempts { get; set; } = 5;
-    public RunBudget Budget { get; set; } = new();
 
     /// <summary>
     /// The allowlist. Configuration only (appsettings), with no default in code: binding appends to a non-empty

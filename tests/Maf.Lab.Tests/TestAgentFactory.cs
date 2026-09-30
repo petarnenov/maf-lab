@@ -101,7 +101,7 @@ internal sealed class TestAgentFactory(TempGitRepo repo, IChatClient model, Fake
         return client;
     }
 
-    public static TestGenRequest Request(string commit, int target = 85, int attempts = 5, double maxCost = 5, long maxTokens = 1_000_000) =>
+    public static TestGenRequest Request(string commit, int target = 85, int attempts = 5, double? maxCost = 5, long? maxTokens = 1_000_000) =>
         new(TestGenKinds.Request, "r_1", commit, "src/Lab/Calc.cs", "dotnet", target, attempts, "glm-5.3:cloud",
             new ModelPrice(0.6, 2.2), new TestGenBudget(maxTokens, maxCost));
 

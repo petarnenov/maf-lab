@@ -6,7 +6,7 @@ import type { RunSummary } from '../api/types';
 import { jsonResponse, makeSession, renderWithProviders, sse, streamResponse } from '../test/render';
 import { CoveragePage } from './CoveragePage';
 import { detail } from './CoveragePage.test';
-import { ATTEMPT_EVENT, initialRunStream, reduceRunEvent, type RunStreamState } from './runStream';
+import { ATTEMPT_EVENT, initialRunStream, reduceRunEvent, STOPPED_EVENT, type RunStreamState } from './runStream';
 import { sampleTree } from './treeModel.test';
 
 const run = (overrides: Partial<RunSummary> = {}): RunSummary => ({
@@ -200,6 +200,51 @@ describe('Run activity', () => {
     expect(within(dialog).getByRole('list', { name: 'Run activity' })).toHaveTextContent('Attempt 1');
     expect(within(dialog).getByLabelText('Run')).toHaveTextContent('Failed');
     expect(within(dialog).queryByRole('button', { name: 'Cancel run' })).toBeNull();
+  });
+
+  it('ends a run stopped by its budget on why, in the header and the timeline', async () => {
+    const done = run({
+      state: 'completed_no_change',
+      reason: 'budget',
+      attempt: 2,
+      active: false,
+      budget: { maxTokens: 400000, maxCostUsd: null },
+    });
+    stubApi(done, () =>
+      streamResponse([
+        started,
+        state(done),
+        ...attemptOne,
+        sse(EventType.STEP_STARTED, { stepName: 'attempt 2: measuring' }),
+        sse(EventType.STEP_FINISHED, { stepName: 'attempt 2: measuring' }),
+        sse(EventType.CUSTOM, { name: STOPPED_EVENT, value: { reason: 'budget', lastAttempt: 2, bestPct: 0, notStarted: 3 } }),
+        sse(EventType.RUN_FINISHED, { threadId: 'testgen:r_1', runId: 'r_1', result: done }),
+      ]),
+    );
+    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
+
+    const dialog = await openActivity();
+
+    const timeline = within(dialog).getByRole('list', { name: 'Run activity' });
+    expect(await within(timeline).findByText('Stopped before attempt 3: the budget would be exceeded.')).toBeInTheDocument();
+    expect(timeline.lastElementChild).toHaveTextContent('Stopped before attempt 3');
+    const header = within(dialog).getByLabelText('Run');
+    expect(header).toHaveTextContent('No change · budget');
+    expect(header).toHaveTextContent('400,000 tokens');
+    expect(within(header).queryByRole('img', { name: 'Agent working' })).toBeNull();
+  });
+
+  it('shows the budget as unlimited, and that the agent is working, while a run without one is live', async () => {
+    const streams = liveStreams();
+    stubApi(run(), streams.open);
+    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
+
+    const dialog = await openActivity();
+    await streams.push([started, state(run())]);
+
+    const header = within(dialog).getByLabelText('Run');
+    expect(header).toHaveTextContent('unlimited');
+    expect(within(header).getByRole('img', { name: 'Agent working' })).toBeInTheDocument();
   });
 
   it('says so when a run recorded no activity', async () => {

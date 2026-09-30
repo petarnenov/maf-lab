@@ -36,7 +36,7 @@ public sealed partial class RunVerifier(
         var bugs = report.SuspectedBugs ?? [];
         if (report.Diff.Length == 0)
         {
-            await runs.FinishAsync(runId, TestGenRunState.CompletedNoChange, null, ct);
+            await runs.FinishAsync(runId, TestGenRunState.CompletedNoChange, report.StopReason, ct);
             return;
         }
 
@@ -118,7 +118,7 @@ public sealed partial class RunVerifier(
         var branch = RepoWriter.BranchFor(run.Path, runId);
         await repo.CommitBranchAsync(copy, branch,
             $"Add tests for {run.Path} ({Pct(report.Baseline)} → {Pct(measured.TargetPct)})\n\nTest-agent run {runId}, model {run.Model}.", ct);
-        await runs.FinishAsync(runId, TestGenRunState.Candidate, null, ct, r =>
+        await runs.FinishAsync(runId, TestGenRunState.Candidate, report.StopReason, ct, r =>
         {
             r.Branch = branch;
             r.LastPct = measured.TargetPct;

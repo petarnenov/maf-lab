@@ -904,6 +904,14 @@ export interface RunSummary {
   active: boolean;
   /** The attempt's phase the agent last reported: generating, building, testing or measuring. */
   phase?: string | null;
+  /** The caps chosen at start; a missing or null cap is unlimited. */
+  budget?: RunBudget | null;
+}
+
+/** A run's caps; null is unlimited. */
+export interface RunBudget {
+  maxTokens: number | null;
+  maxCostUsd: number | null;
 }
 
 export interface CandidateCoverage {
@@ -1000,8 +1008,6 @@ export interface AgentModel {
 export interface AgentModels {
   models: AgentModel[];
   maxAttempts: number;
-  maxTokens: number;
-  maxCostUsd: number;
 }
 
 export interface SuspectedBug {
