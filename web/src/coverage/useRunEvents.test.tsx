@@ -1,10 +1,12 @@
 import { EventType } from '@ag-ui/core';
-import { screen } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { RunSummary } from '../api/types';
 import { jsonResponse, makeSession, renderWithProviders, sse, streamResponse } from '../test/render';
 import { CoveragePage } from './CoveragePage';
 import { detail } from './CoveragePage.test';
+import { openRunStreams, useRunStream } from './runStream';
 import { sampleTree } from './treeModel.test';
 
 const run = (overrides: Partial<RunSummary> = {}): RunSummary => ({
@@ -78,5 +80,71 @@ describe('run events (AG-UI)', () => {
 
     expect(await screen.findByRole('status', { name: 'Run status' })).toHaveTextContent('Candidate ready');
     expect(calls.some((u) => u.includes('/events'))).toBe(false);
+  });
+
+  describe('one stream per run, shared', () => {
+    function Follower({ id }: { id: string }) {
+      const { summary } = useRunStream(id);
+      return <p data-testid="follower">{summary ? `attempt ${summary.attempt}` : 'waiting'}</p>;
+    }
+
+    function stubStream() {
+      const opened: string[] = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string, init?: RequestInit) => {
+          opened.push(url);
+          // Held open until the subscribers leave, like a live run.
+          const body = new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode(state(run({ attempt: 2 }))));
+              init?.signal?.addEventListener('abort', () => controller.error(new DOMException('aborted', 'AbortError')));
+            },
+          });
+          return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+        }),
+      );
+      return opened;
+    }
+
+    it('opens one request for two subscribers and closes it when both leave', async () => {
+      const opened = stubStream();
+
+      const view = renderWithProviders(
+        <>
+          <Follower id="r_1" />
+          <Follower id="r_1" />
+        </>,
+        { session: makeSession('FIRM_ADMIN') },
+      );
+
+      await vi.waitFor(() => expect(screen.getAllByTestId('follower').map((p) => p.textContent)).toEqual(['attempt 2', 'attempt 2']));
+      expect(opened).toHaveLength(1);
+      expect(openRunStreams()).toBe(1);
+
+      view.unmount();
+      expect(openRunStreams()).toBe(0);
+    });
+
+    it('gives a late subscriber the current state at once', async () => {
+      stubStream();
+      function Later() {
+        const [second, setSecond] = useState(false);
+        return (
+          <>
+            <Follower id="r_1" />
+            {second ? <Follower id="r_1" /> : <button onClick={() => setSecond(true)}>add</button>}
+          </>
+        );
+      }
+      const view = renderWithProviders(<Later />, { session: makeSession('FIRM_ADMIN') });
+      await vi.waitFor(() => expect(screen.getByTestId('follower')).toHaveTextContent('attempt 2'));
+
+      await act(async () => screen.getByRole('button', { name: 'add' }).click());
+
+      // No wait: the second one reads the shared state on its first render.
+      expect(screen.getAllByTestId('follower').map((p) => p.textContent)).toEqual(['attempt 2', 'attempt 2']);
+      view.unmount();
+    });
   });
 });

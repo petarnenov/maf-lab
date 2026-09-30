@@ -7,13 +7,17 @@ namespace Maf.Lab.Api.Coverage;
 /// <summary>A run as the tree and the file view show it: state and progress, no report.</summary>
 public sealed record RunSummary(string Id, string Path, string State, string? Reason, int Attempt, int MaxAttempts,
     double? LastPct, int TargetPct, string Model, long Tokens, double CostUsd, string? Branch, DateTime CreatedAt, DateTime UpdatedAt,
-    string? Phase = null)
+    string? Phase = null, RunBudget? Budget = null)
 {
     public bool Active => TestGenRunState.Active.Contains(State);
 
     public static RunSummary Of(TestGenRunRow r) => new(r.Id, r.Path, r.State, r.Reason, r.Attempt, r.MaxAttempts, r.LastPct,
-        r.TargetPct, r.Model, r.Tokens, r.CostUsd, r.Branch, r.CreatedAt, r.UpdatedAt, r.Phase);
+        r.TargetPct, r.Model, r.Tokens, r.CostUsd, r.Branch, r.CreatedAt, r.UpdatedAt, r.Phase,
+        new RunBudget(r.BudgetTokens, r.BudgetCostUsd));
 }
+
+/// <summary>A run's caps as the administrator chose them; a null cap is unlimited.</summary>
+public sealed record RunBudget(long? MaxTokens, double? MaxCostUsd);
 
 /// <summary>An issue a run's confirmed bug opened.</summary>
 public sealed record RunIssue(string TestKey, string Title, int? Number, string? Url);

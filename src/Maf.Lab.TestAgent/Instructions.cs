@@ -6,6 +6,12 @@ namespace Maf.Lab.TestAgent;
 /// <summary>What the model is told: the rules once, and each attempt's task with what the last one taught.</summary>
 public static class Instructions
 {
+    /// <summary>Told to the model when this many tool rounds of the attempt remain.</summary>
+    public const int NudgeAtRoundsLeft = 3;
+
+    public static string Nudge(int roundsLeft) =>
+        $"{roundsLeft} tool rounds remain in this attempt. Write or improve a test file now; stop reading.";
+
     public const string System = """
         You write automated tests for one source file of the maf-lab repository, to raise its line coverage.
 
@@ -26,12 +32,14 @@ public static class Instructions
         - Use run_tests to check your work; finish when the tests build, pass, and cover what you can.
         """;
 
-    public static string Attempt(TestGenRequest request, int attempt, double? currentPct, string? feedback)
+    public static string Attempt(TestGenRequest request, int attempt, double? currentPct, string? feedback, int toolRounds)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"Target file: {request.TargetFile} ({request.Toolchain}).");
         sb.AppendLine($"Goal: at least {request.TargetLinePct}% line coverage. Now: {(currentPct is { } p ? $"{p:0.0}%" : "not measured")}.");
         sb.AppendLine($"This is attempt {attempt} of {request.MaxAttempts}.");
+        sb.AppendLine($"You have {toolRounds} tool rounds in this attempt. Read only what you need, and write a test file " +
+            "within the first half of them: an attempt that ends without writing a test makes no progress.");
         if (feedback is { Length: > 0 })
         {
             sb.AppendLine();
@@ -44,9 +52,14 @@ public static class Instructions
     }
 
     /// <summary>What the next attempt needs to know from this one: errors, failures, violations, what is still uncovered.</summary>
-    public static string Feedback(RunnerResult result, IReadOnlyList<GuardrailViolation> violations)
+    /// <param name="wroteNothing">The attempt number, when that attempt added or changed no test file.</param>
+    public static string Feedback(RunnerResult result, IReadOnlyList<GuardrailViolation> violations, int? wroteNothing = null)
     {
         var sb = new StringBuilder();
+        if (wroteNothing is { } idle)
+        {
+            sb.AppendLine($"- Attempt {idle} wrote no test file. Reading without writing is not progress: write a test in this attempt.");
+        }
         if (result.Status == RunnerStatus.DiffRejected)
         {
             sb.AppendLine("- Your changes could not be applied to the commit.");

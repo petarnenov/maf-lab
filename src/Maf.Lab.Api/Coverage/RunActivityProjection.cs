@@ -16,6 +16,7 @@ public sealed class RunActivityProjection(string runId)
 {
     public const string AttemptEvent = "maf-lab/testgen-attempt";
     public const string DroppedEvent = "maf-lab/testgen-activity-dropped";
+    public const string StoppedEvent = "maf-lab/testgen-stopped";
 
     private readonly Dictionary<long, int> _sent = [];
     private string? _summary;
@@ -109,6 +110,25 @@ public sealed class RunActivityProjection(string runId)
                             tests = result.Tests,
                             errors = result.Errors,
                             violations = result.Violations,
+                        }, AGUIStream.Json),
+                    };
+                    break;
+                case ActivityType.Stopped when Data<StoppedActivity>(row) is { } stop:
+                    // The agent is done: its last step is over, and the timeline closes on why.
+                    if (_step is { } open)
+                    {
+                        _step = null;
+                        yield return new StepFinishedEvent { StepName = open };
+                    }
+                    yield return new CustomEvent
+                    {
+                        Name = StoppedEvent,
+                        Value = JsonSerializer.SerializeToElement(new
+                        {
+                            reason = stop.Reason,
+                            lastAttempt = stop.LastAttempt,
+                            bestPct = stop.BestPct,
+                            notStarted = stop.NotStarted,
                         }, AGUIStream.Json),
                     };
                     break;

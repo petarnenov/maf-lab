@@ -1,5 +1,5 @@
 import { EventType } from '@ag-ui/core';
-import { useEffect, useReducer } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 import { authHeaders } from '../api/client';
 import type { RunSummary } from '../api/types';
 import { useAuth } from '../auth/useAuth';
@@ -8,6 +8,14 @@ import { SseParser } from '../chat/sseParser';
 /** The custom events a run's AG-UI stream adds; their names match the server's. */
 export const ATTEMPT_EVENT = 'maf-lab/testgen-attempt';
 export const DROPPED_EVENT = 'maf-lab/testgen-activity-dropped';
+export const STOPPED_EVENT = 'maf-lab/testgen-stopped';
+
+export interface StopInfo {
+  reason: string;
+  lastAttempt: number;
+  bestPct?: number | null;
+  notStarted?: number | null;
+}
 
 export interface AttemptResult {
   attempt: number;
@@ -25,7 +33,8 @@ export type TimelineItem =
   | { kind: 'tool'; id: string; name: string; path: string | null; outcome: string | null; summary: string | null }
   | { kind: 'text' | 'reasoning'; id: string; text: string; done: boolean }
   | ({ kind: 'attempt'; id: string } & AttemptResult)
-  | { kind: 'notice'; id: string; text: string };
+  | { kind: 'notice'; id: string; text: string }
+  | ({ kind: 'stopped'; id: string } & StopInfo);
 
 export type RunEnd = { outcome: 'finished' } | { outcome: 'error'; code: string; message: string };
 
@@ -129,6 +138,9 @@ export function reduceRunEvent(state: RunStreamState, event: AguiEvent): RunStre
         const value = event.value as AttemptResult;
         return { ...state, timeline: [...timeline, { kind: 'attempt', id: `attempt-${timeline.length}`, ...value }] };
       }
+      if (event.name === STOPPED_EVENT) {
+        return { ...state, timeline: [...timeline, { kind: 'stopped', id: 'stopped', ...(event.value as StopInfo) }] };
+      }
       if (event.name === DROPPED_EVENT) {
         const text = 'The oldest activity of this run was dropped to keep it within its cap.';
         return { ...state, timeline: [{ kind: 'notice', id: 'dropped', text }, ...timeline] };
@@ -151,59 +163,103 @@ export function reduceRunEvent(state: RunStreamState, event: AguiEvent): RunStre
   }
 }
 
-type Action = { kind: 'reset' } | { kind: 'event'; event: AguiEvent };
-
-const reducer = (state: RunStreamState, action: Action): RunStreamState =>
-  action.kind === 'reset' ? initialRunStream : reduceRunEvent(state, action.event);
-
 /** How long to wait before reading a dropped stream again (it replays from the start). */
 const RETRY_MS = 2000;
 
 /**
+ * One stream per run, shared by everyone on the page who follows it (the file's status, the Activity modal, the
+ * tree row): the browser holds only a few connections to the server at a time, so they must not each open their own.
+ * The stream opens with the first subscriber, keeps its state for a late one, and closes with the last.
+ */
+interface SharedStream {
+  state: RunStreamState;
+  listeners: Set<() => void>;
+  abort: AbortController;
+}
+
+const streams = new Map<string, SharedStream>();
+
+const streamKey = (runId: string, token: string | null) => `${runId}\u0000${token ?? ''}`;
+
+/** How many run streams are open now; for tests. */
+export const openRunStreams = () => streams.size;
+
+function openStream(runId: string, token: string | null): SharedStream {
+  const shared: SharedStream = { state: initialRunStream, listeners: new Set(), abort: new AbortController() };
+  const set = (next: RunStreamState) => {
+    shared.state = next;
+    shared.listeners.forEach((listener) => listener());
+  };
+  const { signal } = shared.abort;
+  void (async () => {
+    let ended = false;
+    while (!ended && !signal.aborted) {
+      try {
+        const response = await fetch(`/api/coverage/runs/${encodeURIComponent(runId)}/events`, {
+          headers: { Accept: 'text/event-stream', ...authHeaders(token) },
+          signal,
+        });
+        if (!response.ok || !response.body) return;
+        // The stream replays the run from the start, so what an earlier connection showed is replaced.
+        let state = initialRunStream;
+        set(state);
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        const parser = new SseParser();
+        for (;;) {
+          const { done, value } = await reader.read();
+          const frames = done ? parser.flush() : parser.push(decoder.decode(value, { stream: true }));
+          for (const frame of frames) {
+            if (!frame.data) continue;
+            const event = JSON.parse(frame.data) as AguiEvent;
+            state = reduceRunEvent(state, event);
+            if (event.type === EventType.RUN_FINISHED || event.type === EventType.RUN_ERROR) ended = true;
+          }
+          if (frames.length > 0 && !signal.aborted) set(state);
+          if (done) break;
+        }
+      } catch {
+        // Aborted by the last subscriber leaving, or the connection dropped: read again below unless told to stop.
+      }
+      if (!ended && !signal.aborted) await new Promise((resolve) => setTimeout(resolve, RETRY_MS));
+    }
+  })();
+  return shared;
+}
+
+function subscribe(runId: string, token: string | null, listener: () => void): () => void {
+  const key = streamKey(runId, token);
+  let shared = streams.get(key);
+  if (!shared) {
+    shared = openStream(runId, token);
+    streams.set(key, shared);
+  }
+  shared.listeners.add(listener);
+  const mine = shared;
+  return () => {
+    mine.listeners.delete(listener);
+    if (mine.listeners.size === 0 && streams.get(key) === mine) {
+      streams.delete(key);
+      mine.abort.abort();
+    }
+  };
+}
+
+/**
  * A test-generation run as its AG-UI stream tells it: replayed from the start, then live until the run's terminal
- * event. A stream that drops before then is read again from the start. Null `runId` follows nothing.
+ * event. A stream that drops before then is read again from the start. Null `runId` follows nothing. Every caller for
+ * the same run shares one stream.
  */
 export function useRunStream(runId: string | null): RunStreamState {
   const { session } = useAuth();
   const token = session?.token ?? null;
-  const [state, dispatch] = useReducer(reducer, initialRunStream);
-
-  useEffect(() => {
-    dispatch({ kind: 'reset' });
-    if (!runId) return;
-    const abort = new AbortController();
-    void (async () => {
-      let ended = false;
-      while (!ended && !abort.signal.aborted) {
-        try {
-          const response = await fetch(`/api/coverage/runs/${encodeURIComponent(runId)}/events`, {
-            headers: { Accept: 'text/event-stream', ...authHeaders(token) },
-            signal: abort.signal,
-          });
-          if (!response.ok || !response.body) return;
-          dispatch({ kind: 'reset' });
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder();
-          const parser = new SseParser();
-          for (;;) {
-            const { done, value } = await reader.read();
-            const frames = done ? parser.flush() : parser.push(decoder.decode(value, { stream: true }));
-            for (const frame of frames) {
-              if (!frame.data) continue;
-              const event = JSON.parse(frame.data) as AguiEvent;
-              dispatch({ kind: 'event', event });
-              if (event.type === EventType.RUN_FINISHED || event.type === EventType.RUN_ERROR) ended = true;
-            }
-            if (done) break;
-          }
-        } catch {
-          // Aborted on unmount, or the connection dropped: read again below unless we were told to stop.
-        }
-        if (!ended && !abort.signal.aborted) await new Promise((resolve) => setTimeout(resolve, RETRY_MS));
-      }
-    })();
-    return () => abort.abort();
-  }, [runId, token]);
-
-  return state;
+  const subscribeTo = useCallback(
+    (listener: () => void) => (runId ? subscribe(runId, token, listener) : () => {}),
+    [runId, token],
+  );
+  const snapshot = useCallback(
+    () => (runId ? (streams.get(streamKey(runId, token))?.state ?? initialRunStream) : initialRunStream),
+    [runId, token],
+  );
+  return useSyncExternalStore(subscribeTo, snapshot, snapshot);
 }

@@ -2,7 +2,9 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { RunSummary } from '../api/types';
 import { useApi } from '../auth/useAuth';
-import { instant, pct, RUN_LABELS, usd } from './format';
+import { describeBudget } from './budget';
+import { instant, pct, reasonLabel, RUN_LABELS, stopSentence, usd } from './format';
+import { LiveMarker } from './LiveMarker';
 import { coverageKeys } from './keys';
 import { useRunStream, type RunEnd, type TimelineItem } from './runStream';
 import { useRunActivity } from './useRunActivity';
@@ -130,8 +132,12 @@ function RunHeader({ summary, ended, live }: { summary: RunSummary; ended: RunEn
       <div>
         <dt>State</dt>
         <dd>
-          <strong>{RUN_LABELS[summary.state] ?? summary.state}</strong>
-          {ended?.outcome === 'error' && <span className={styles.errorText}> ({ended.code})</span>}
+          {live && <LiveMarker />} <strong>{RUN_LABELS[summary.state] ?? summary.state}</strong>
+          {ended?.outcome === 'error' ? (
+            <span className={styles.errorText}> ({ended.code})</span>
+          ) : (
+            !live && summary.reason && <span> · {reasonLabel(summary.reason)}</span>
+          )}
         </dd>
       </div>
       <div>
@@ -150,6 +156,10 @@ function RunHeader({ summary, ended, live }: { summary: RunSummary; ended: RunEn
       <div>
         <dt>Model</dt>
         <dd>{summary.model}</dd>
+      </div>
+      <div>
+        <dt>Budget</dt>
+        <dd>{describeBudget(summary.budget)}</dd>
       </div>
       <div>
         <dt>Tokens · cost</dt>
@@ -214,6 +224,8 @@ function TimelineRow({ item }: { item: TimelineItem }) {
       );
     case 'notice':
       return <li className={styles.muted}>{item.text}</li>;
+    case 'stopped':
+      return <li className={styles.timelineStopped}>{stopSentence(item)}</li>;
   }
 }
 

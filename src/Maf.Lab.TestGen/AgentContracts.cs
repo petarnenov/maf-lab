@@ -23,7 +23,20 @@ public static class TestGenKinds
     };
 }
 
-public sealed record TestGenBudget(long MaxTokens, double MaxCostUsd);
+/// <summary>The run's caps. A cap left null is unlimited in that dimension; with neither set, only the attempt cap, a
+/// cancel or the caller's deadline ends the run early.</summary>
+public sealed record TestGenBudget(long? MaxTokens = null, double? MaxCostUsd = null)
+{
+    public static readonly TestGenBudget Unlimited = new();
+
+    public bool IsUnlimited => MaxTokens is null && MaxCostUsd is null;
+
+    /// <summary>What is wrong with the caps, in words for the caller; null when they can be used.</summary>
+    public string? Problem() =>
+        MaxTokens is <= 0 ? "budget.maxTokens must be positive when set."
+        : MaxCostUsd is { } cost && !(cost > 0) ? "budget.maxCostUsd must be positive when set."
+        : null;
+}
 
 /// <summary>The model's price, sent with the task so the agent can count cost the way the picker estimated it.</summary>
 public sealed record ModelPrice(double InputPerMTok, double OutputPerMTok);
@@ -38,7 +51,7 @@ public sealed record TestGenRequest(
     int MaxAttempts,
     string Model,
     ModelPrice Price,
-    TestGenBudget Budget)
+    TestGenBudget? Budget)
 {
     public const int AttemptLimit = 5;
 
@@ -52,7 +65,7 @@ public sealed record TestGenRequest(
         if (TargetLinePct is < 1 or > 100) return "targetLinePct must be from 1 to 100.";
         if (MaxAttempts is < 1 or > AttemptLimit) return $"maxAttempts must be from 1 to {AttemptLimit}.";
         if (string.IsNullOrWhiteSpace(Model)) return "model is required.";
-        if (Budget is null || Budget.MaxTokens <= 0 || Budget.MaxCostUsd <= 0) return "budget must set positive caps.";
+        if (Budget?.Problem() is { } budget) return budget;
         if (Price is null || Price.InputPerMTok < 0 || Price.OutputPerMTok < 0) return "price must not be negative.";
         return null;
     }
@@ -77,6 +90,7 @@ public static class ActivityType
     public const string Attempt = "attempt";
     public const string Text = "text";
     public const string Reasoning = "reasoning";
+    public const string Stopped = "stopped";
 }
 
 public static class ToolOutcome
@@ -94,6 +108,12 @@ public sealed record AttemptActivity(double? Before, double? After, string Build
     int Violations);
 
 /// <summary>
+/// Why the agent's work on a task is over: the last entry of a completed task. <see cref="NotStarted"/> names the
+/// attempt a budget stop did not start.
+/// </summary>
+public sealed record StoppedActivity(string Reason, int LastAttempt, double? BestPct, int? NotStarted = null);
+
+/// <summary>
 /// One thing the agent did, in order (<see cref="Seq"/> increases within a task). Model text and reasoning stream as
 /// chunks: the first chunk is an entry of its own, each later one names the entry it <see cref="Continues"/>. Only
 /// the api's activity record and the browser ever see this; it is never logged or traced.
@@ -109,7 +129,8 @@ public sealed record TestGenActivity(
     AttemptActivity? Result = null,
     long? Continues = null,
     string? Text = null,
-    bool Truncated = false)
+    bool Truncated = false,
+    StoppedActivity? Stop = null)
 {
     /// <summary>The most text one entry holds, however many chunks it streamed in.</summary>
     public const int MaxTextBytes = 4 * 1024;

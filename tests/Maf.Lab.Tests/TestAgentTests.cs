@@ -185,6 +185,8 @@ public sealed class TestAgentTests
         Assert.Contains(activity, e => e.Tool is { Name: "write_file", Path: "tests/Lab.Tests/CalcTests.cs", Outcome: ToolOutcome.Ok } t
             && t.Summary.StartsWith("created"));
         Assert.Contains(activity, e => e.Type == ActivityType.Text && e.Text == "Done.");
+        // The timeline ends on why the agent stopped.
+        Assert.Equal(new StoppedActivity(StopReason.Target, 2, 86), activity[^1].Stop);
         // A tool's summary is counts and sizes, never the file it wrote.
         Assert.DoesNotContain(activity, e => JsonSerializer.Serialize(e, TestGenKinds.Json).Contains("Calc.Add(1, 1)"));
     }
@@ -203,6 +205,8 @@ public sealed class TestAgentTests
         Assert.Equal(StopReason.Attempts, report.StopReason);
         Assert.Equal(5, report.Attempts.Count);
         Assert.Equal(55.0, report.Final);
+        var last = TestAgentFactory.Activity(task)[^1];
+        Assert.Equal((ActivityType.Stopped, new StoppedActivity(StopReason.Attempts, 5, 55)), (last.Type, last.Stop));
     }
 
     [Fact]
@@ -220,6 +224,38 @@ public sealed class TestAgentTests
         Assert.Equal((false, StopReason.Budget), (report.GoalReached, report.StopReason));
         Assert.Single(report.Attempts);
         Assert.Equal(60_000, report.Usage.InputTokens + report.Usage.OutputTokens);
+        // The stop names the attempt it did not start.
+        var last = TestAgentFactory.Activity(task)[^1];
+        Assert.Equal((ActivityType.Stopped, 1, new StoppedActivity(StopReason.Budget, 1, 60, NotStarted: 2)), (last.Type, last.Attempt, last.Stop));
+    }
+
+    [Fact]
+    public async Task An_attempt_that_wrote_nothing_is_told_so_in_the_next()
+    {
+        var repo = await RepoAsync();
+        var model = new AttemptModel(n => n == 1 ? new Move(new Dictionary<string, string>()) : Writes(n));
+        await using var agent = new TestAgentFactory(repo, model, Runner(n => n == 1 ? 40 : 86));
+
+        await TestAgentFactory.RpcAsync(await agent.ClientAsync(), "message/send",
+            TestAgentFactory.Send(TestAgentFactory.Request(await repo.HeadAsync(Ct))), Ct);
+
+        Assert.Contains("Attempt 1 wrote no test file", model.Prompts.ElementAt(1));
+        Assert.Contains("tool rounds in this attempt", model.Prompts.First());
+    }
+
+    [Fact]
+    public async Task Without_caps_it_never_stops_for_the_budget()
+    {
+        var repo = await RepoAsync();
+        // Far more per attempt than any configured cap used to allow.
+        var model = new AttemptModel(n => Writes(n) with { Tokens = 2_000_000 });
+        await using var agent = new TestAgentFactory(repo, model, Runner(n => 50 + n));
+
+        var task = await TestAgentFactory.RpcAsync(await agent.ClientAsync(), "message/send",
+            TestAgentFactory.Send(TestAgentFactory.Request(await repo.HeadAsync(Ct), maxCost: null, maxTokens: null)), Ct);
+
+        var report = TestAgentFactory.Report(task);
+        Assert.Equal((StopReason.Attempts, 5), (report.StopReason, report.Attempts.Count));
     }
 
     [Fact]
@@ -271,6 +307,8 @@ public sealed class TestAgentTests
         var status = task.GetProperty("status");
         Assert.Equal("failed", status.GetProperty("state").GetString());
         Assert.Contains(TestGenFailure.ModelUnavailable, status.GetProperty("message").GetRawText());
+        // A failed task ends with its error, not a stop entry.
+        Assert.DoesNotContain(TestAgentFactory.Activity(task), e => e.Type == ActivityType.Stopped);
     }
 
     [Theory]

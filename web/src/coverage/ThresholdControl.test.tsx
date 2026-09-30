@@ -9,8 +9,6 @@ import { sampleTree } from './treeModel.test';
 
 const models: AgentModels = {
   maxAttempts: 5,
-  maxTokens: 400000,
-  maxCostUsd: 2,
   models: [
     {
       tag: 'glm-5.3:cloud',
@@ -130,15 +128,96 @@ describe('threshold control', () => {
     expect(glm).toBeChecked();
     expect(dialog).toHaveTextContent('$0.092');
     expect(dialog).toHaveTextContent('prices are estimates');
-    expect(dialog).toHaveTextContent('$2.00 or 400,000 tokens');
+    // No budget entered: unlimited, bounded only by the attempts.
+    expect(dialog).toHaveTextContent('Budget: unlimited. The run stops after at most 5 attempts.');
 
     await userEvent.click(within(dialog).getByRole('radio', { name: /GLM 5\.3 Flash/ }));
     expect(dialog).toHaveTextContent('$0.016');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Start run' }));
 
-    expect(calls.some((c) => c.method === 'POST' && c.url === '/api/coverage/runs')).toBe(true);
+    const post = calls.find((c) => c.method === 'POST' && c.url === '/api/coverage/runs');
+    expect(JSON.parse(post!.body!)).toMatchObject({ model: 'glm-5.3-flash:cloud', budget: null });
     expect(calls.some((c) => c.method === 'PUT')).toBe(false);
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('sends only the cap that was entered, and warns when the estimate is above it', async () => {
+    const calls = open({ '/api/coverage/runs': () => jsonResponse(run({ state: 'submitted' })) });
+    await setThreshold('85');
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Continue' }));
+    await within(dialog).findByRole('radio', { name: /^GLM 5\.3\s*recommended/ });
+
+    await userEvent.type(within(dialog).getByLabelText('Max cost (USD)'), '0.05');
+
+    expect(dialog).toHaveTextContent('The run stops at $0.05, whichever comes first, or after 5 attempts.');
+    expect(dialog).toHaveTextContent('The estimate is above this budget');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Start run' }));
+    const post = calls.find((c) => c.method === 'POST' && c.url === '/api/coverage/runs');
+    expect(JSON.parse(post!.body!).budget).toEqual({ maxTokens: null, maxCostUsd: 0.05 });
+  });
+
+  it('keeps Start disabled while a cap is not a positive number', async () => {
+    open();
+    await setThreshold('85');
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Continue' }));
+    await within(dialog).findByRole('radio', { name: /^GLM 5\.3\s*recommended/ });
+
+    const tokens = within(dialog).getByLabelText('Max tokens');
+    await userEvent.type(tokens, '0');
+
+    expect(tokens).toHaveAttribute('aria-invalid', 'true');
+    expect(within(dialog).getByRole('button', { name: 'Start run' })).toBeDisabled();
+    await userEvent.clear(tokens);
+    expect(within(dialog).getByRole('button', { name: 'Start run' })).toBeEnabled();
+  });
+
+  it('treats Save on the default a file is below as "reach it"', async () => {
+    const calls = open();
+
+    // The file is at 66.7% under the 80% default: saving 80% asks to start a run to reach it.
+    await setThreshold('80');
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Reach 80%?');
+    expect(calls.some((c) => c.method === 'PUT')).toBe(false);
+  });
+
+  it('asks the same when a threshold is lowered but still above coverage', async () => {
+    open({}, { summary: { ...detail().summary, threshold: 90, thresholdIsOverride: true } });
+
+    await setThreshold('85');
+
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Reach 85%?');
+  });
+
+  it('saves without a run when asked to', async () => {
+    const calls = open({ '/api/coverage/thresholds': () => jsonResponse({}) });
+    await setThreshold('85');
+
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Save without a run' }));
+
+    const put = calls.find((c) => c.method === 'PUT');
+    expect(JSON.parse(put!.body!)).toEqual({ pct: 85 });
+    expect(calls.some((c) => c.url === '/api/coverage/runs')).toBe(false);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('asks to reach the default when clearing an override leaves the file below it', async () => {
+    const calls = open(
+      { '/api/coverage/thresholds': () => jsonResponse({}) },
+      { summary: { ...detail().summary, threshold: 60, thresholdIsOverride: true } },
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Use default' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Reach 80%?');
+    expect(dialog).toHaveTextContent('(the default)');
+
+    // Saving it without a run clears the override rather than storing 80%.
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save without a run' }));
+    expect(JSON.parse(calls.find((c) => c.method === 'PUT')!.body!)).toEqual({ pct: null });
   });
 
   it('changes nothing when the confirmation is cancelled', async () => {

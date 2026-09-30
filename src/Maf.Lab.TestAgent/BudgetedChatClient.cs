@@ -39,8 +39,9 @@ public sealed class BudgetedChatClient(IChatClient inner, RunUsage usage) : Dele
 }
 
 /// <summary>What the run has used so far, and what it may use.</summary>
-public sealed class RunUsage(TestGenBudget budget, ModelPrice price)
+public sealed class RunUsage(TestGenBudget? caps, ModelPrice price)
 {
+    private readonly TestGenBudget budget = caps ?? TestGenBudget.Unlimited;
     private long _input;
     private long _output;
 
@@ -59,6 +60,7 @@ public sealed class RunUsage(TestGenBudget budget, ModelPrice price)
         Interlocked.Add(ref _output, details.OutputTokenCount ?? 0);
     }
 
+    // A null cap compares false, so an unset cap never stops the run.
     public bool Spent => Tokens > budget.MaxTokens || CostUsd > budget.MaxCostUsd;
 
     public void ThrowIfSpent()

@@ -41,10 +41,10 @@ public static class CoverageEndpoints
     public sealed record ModelDto(string Tag, string DisplayName, double InputPerMTok, double OutputPerMTok, string BestFor,
         bool IsDefault, bool PriceIsEstimate, bool Available, string? UnavailableReason, CostEstimate? Estimate);
 
-    /// <summary>A request to raise a file's threshold with a run of the test agent.</summary>
-    public sealed record StartRunRequest(string Path, int Pct, string Model);
+    /// <summary>A request to raise a file's threshold with a run of the test agent; no budget is an unlimited one.</summary>
+    public sealed record StartRunRequest(string Path, int Pct, string Model, RunBudget? Budget = null);
 
-    public sealed record ModelsDto(IReadOnlyList<ModelDto> Models, int MaxAttempts, long MaxTokens, double MaxCostUsd);
+    public sealed record ModelsDto(IReadOnlyList<ModelDto> Models, int MaxAttempts);
 
     public static IEndpointRouteBuilder MapCoverage(this IEndpointRouteBuilder app)
     {
@@ -144,11 +144,11 @@ public static class CoverageEndpoints
             var models = agent.Models.Select((m, i) => new ModelDto(m.Tag, m.DisplayName, m.InputPerMTok, m.OutputPerMTok, m.BestFor,
                 m.Default, m.PriceIsEstimate, checks[i].Available, checks[i].Reason,
                 bytes is { } b ? CostEstimator.Estimate(b, agent.MaxAttempts, m) : null)).ToList();
-            return Results.Ok(new ModelsDto(models, agent.MaxAttempts, agent.Budget.MaxTokens, agent.Budget.MaxCostUsd));
+            return Results.Ok(new ModelsDto(models, agent.MaxAttempts));
         }).RequireAuthorization(AuthPolicies.FirmAdmin);
 
         admin.MapPost("/runs", async (StartRunRequest request, IPrincipalAccessor principals, TestGenRuns runs, CancellationToken ct) =>
-            await runs.StartAsync(request.Path ?? "", request.Pct, request.Model ?? "", principals.Current.UserId, ct) switch
+            await runs.StartAsync(request.Path ?? "", request.Pct, request.Model ?? "", request.Budget, principals.Current.UserId, ct) switch
             {
                 StartOutcome.Started started => Results.Created($"/api/coverage/runs/{started.Run.Id}", started.Run),
                 StartOutcome.NotFound => NotFound(),

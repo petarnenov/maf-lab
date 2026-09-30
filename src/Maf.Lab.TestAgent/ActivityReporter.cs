@@ -43,6 +43,10 @@ public sealed class ActivityReporter(
             Result = result with { Errors = result.Errors.Take(TestGenActivity.MaxErrors).ToList() },
         }, ct);
 
+    /// <summary>The agent's work is over: the last entry of a completed task, saying why it stopped.</summary>
+    public Task StoppedAsync(StoppedActivity stop, CancellationToken ct) =>
+        EntryAsync(seq => Entry(seq, ActivityType.Stopped) with { Stop = stop }, ct);
+
     /// <summary>Model text or reasoning as it streams; it goes out in chunks, each continuing the reply's entry.</summary>
     public async Task TextAsync(string type, string delta, CancellationToken ct)
     {

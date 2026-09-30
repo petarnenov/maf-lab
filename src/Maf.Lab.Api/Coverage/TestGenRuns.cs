@@ -42,7 +42,7 @@ public sealed class TestGenRuns(
     /// Starts a run that raises a file's threshold. The run's row is written first, so the database's one-active-run
     /// index decides a race between two replicas; the threshold is saved only once the agent has accepted the task.
     /// </summary>
-    public async Task<StartOutcome> StartAsync(string path, int pct, string model, string userId, CancellationToken ct)
+    public async Task<StartOutcome> StartAsync(string path, int pct, string model, RunBudget? budget, string userId, CancellationToken ct)
     {
         if (CoveragePaths.Clean(path) != path || await store.CurrentAsync(path, ct) is not { } current)
         {
@@ -55,6 +55,12 @@ public sealed class TestGenRuns(
         if (current.Totals.LinePct >= pct)
         {
             return new StartOutcome.Invalid("pct", "The file already meets that threshold; save it without a run.");
+        }
+        // The run gets exactly the caps chosen at start; none chosen is unlimited, bounded by the attempts and the deadline.
+        var caps = new TestGenBudget(budget?.MaxTokens, budget?.MaxCostUsd);
+        if (caps.Problem() is { } problem)
+        {
+            return new StartOutcome.Invalid("budget", problem);
         }
         var opts = agentOptions.Value;
         if (opts.Models.FirstOrDefault(m => m.Tag == model) is not { } chosen)
@@ -86,6 +92,8 @@ public sealed class TestGenRuns(
             CreatedAt = now,
             UpdatedAt = now,
             CreatedBy = userId,
+            BudgetTokens = caps.MaxTokens,
+            BudgetCostUsd = caps.MaxCostUsd,
         };
         await using (var db = await dbFactory.CreateDbContextAsync(ct))
         {
@@ -104,7 +112,7 @@ public sealed class TestGenRuns(
         }
 
         var request = new TestGenRequest(TestGenKinds.Request, row.Id, commit, path, row.Toolchain, pct, opts.MaxAttempts, chosen.Tag,
-            new ModelPrice(chosen.InputPerMTok, chosen.OutputPerMTok), new TestGenBudget(opts.Budget.MaxTokens, opts.Budget.MaxCostUsd));
+            new ModelPrice(chosen.InputPerMTok, chosen.OutputPerMTok), caps);
         TaskObservation accepted;
         try
         {
@@ -129,7 +137,9 @@ public sealed class TestGenRuns(
             var saved = await db.TestGenRuns.SingleAsync(r => r.Id == row.Id, ct);
             saved.TaskId = accepted.TaskId;
             saved.UpdatedAt = time.GetUtcNow().UtcDateTime;
-            await CoverageEndpoints.SaveThresholdAsync(db, path, pct, userId, ct);
+            // A run to the default leaves the file on the default, so it follows the default if that changes.
+            var threshold = pct == coverageOptions.Value.DefaultThresholdPct ? (int?)null : pct;
+            await CoverageEndpoints.SaveThresholdAsync(db, path, threshold, userId, ct);
             await tx.CommitAsync(ct);
             row = saved;
         }
@@ -168,6 +178,8 @@ public sealed class TestGenRuns(
             run.CostUsd = report.Usage.EstimatedCostUsd;
             run.LastPct = report.Final ?? run.LastPct;
             run.Attempt = report.Attempts.Count;
+            // Why the agent stopped stays with the run; a verification failure later replaces it.
+            run.Reason = report.StopReason;
         }
         switch (seen.State)
         {

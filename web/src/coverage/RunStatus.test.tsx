@@ -32,4 +32,15 @@ describe('RunStatus', () => {
     render(<RunStatus run={run({ state: 'failed', active: false, phase: 'measuring' })} />);
     expect(screen.getByRole('status', { name: 'Run status' })).not.toHaveTextContent('measuring');
   });
+
+  it('says why a run stopped, in words', () => {
+    render(<RunStatus run={run({ state: 'completed_no_change', reason: 'budget', active: false, lastPct: 0 })} />);
+    expect(screen.getByRole('status', { name: 'Run status' })).toHaveTextContent('No change · attempt 2/5 · 0.0% · target 85%');
+    expect(screen.getByRole('status', { name: 'Run status' })).toHaveTextContent('· budget');
+  });
+
+  it('keeps a reason that is not a stop as the server gave it', () => {
+    render(<RunStatus run={run({ state: 'failed', reason: 'deadline', active: false })} />);
+    expect(screen.getByRole('status', { name: 'Run status' })).toHaveTextContent('· deadline');
+  });
 });

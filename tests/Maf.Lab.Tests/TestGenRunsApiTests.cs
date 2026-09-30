@@ -81,8 +81,8 @@ public sealed class TestGenRunsApiTests
         return new Stack(repo, api, agent, runner, model);
     }
 
-    private static Task<HttpResponseMessage> StartAsync(Stack s, int pct = 85, string model = "glm-5.3:cloud") =>
-        s.Admin.PostAsJsonAsync("/api/coverage/runs", new CoverageEndpoints.StartRunRequest(Target, pct, model), Ct);
+    private static Task<HttpResponseMessage> StartAsync(Stack s, int pct = 85, string model = "glm-5.3:cloud", RunBudget? budget = null) =>
+        s.Admin.PostAsJsonAsync("/api/coverage/runs", new CoverageEndpoints.StartRunRequest(Target, pct, model, budget), Ct);
 
     private static async Task<RunSummary> UntilAsync(Stack s, string runId, Func<RunSummary, bool> done, int seconds = 30)
     {
@@ -104,6 +104,77 @@ public sealed class TestGenRunsApiTests
         return (await db.CoverageThresholds.FindAsync([Target], Ct))?.Pct ?? 80;
     }
 
+    /// <summary>A stack whose model uses 2M tokens (about $2 at the test price) per attempt and never reaches the target.</summary>
+    private static Task<Stack> CostlyStackAsync() => StackAsync(
+        script: n => new Move(new Dictionary<string, string> { ["tests/Lab.Tests/CalcTests.cs"] = TestFile(n) }, Tokens: 2_000_000),
+        runnerAnswer: r => FakeCoverageRunner.Result(FakeCoverageRunner.Report("/work/job", (Target, 5, 10)), targetPct: 50));
+
+    [Fact]
+    public async Task A_run_started_without_a_budget_is_unlimited()
+    {
+        await using var s = await CostlyStackAsync();
+
+        var started = (await (await StartAsync(s)).Content.ReadFromJsonAsync<RunSummary>(Json, Ct))!;
+        var run = await UntilAsync(s, started.Id, r => TestGenRunState.Final.Contains(r.State) || r.State == TestGenRunState.Candidate, 60);
+
+        Assert.Equal(new RunBudget(null, null), started.Budget);
+        // No cap was added on the way: all five attempts ran, however much they cost.
+        Assert.Equal((5, StopReason.Attempts), (run.Attempt, run.Reason));
+    }
+
+    [Fact]
+    public async Task A_run_carries_exactly_the_budget_chosen_at_start()
+    {
+        await using var s = await CostlyStackAsync();
+
+        var started = (await (await StartAsync(s, budget: new RunBudget(null, 0.5))).Content.ReadFromJsonAsync<RunSummary>(Json, Ct))!;
+        var run = await UntilAsync(s, started.Id, r => TestGenRunState.Final.Contains(r.State) || r.State == TestGenRunState.Candidate, 60);
+
+        Assert.Equal(new RunBudget(null, 0.5), started.Budget);
+        Assert.Equal(new RunBudget(null, 0.5), run.Budget);
+        Assert.Equal(StopReason.Budget, run.Reason);
+    }
+
+    [Theory]
+    [InlineData(0L, null)]
+    [InlineData(null, -1.0)]
+    public async Task A_budget_that_is_not_positive_is_refused_and_nothing_changes(long? tokens, double? cost)
+    {
+        await using var s = await StackAsync();
+
+        var response = await StartAsync(s, budget: new RunBudget(tokens, cost));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(80, await ThresholdAsync(s));
+        await using var db = await s.Get<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(Ct);
+        Assert.False(await db.TestGenRuns.AnyAsync(Ct));
+    }
+
+    [Fact]
+    public async Task A_run_that_changed_nothing_keeps_why_it_stopped()
+    {
+        // The model writes nothing, and the budget is gone after one attempt.
+        await using var s = await StackAsync(script: _ => new Move(new Dictionary<string, string>()));
+
+        var started = (await (await StartAsync(s, budget: new RunBudget(1_500, null))).Content.ReadFromJsonAsync<RunSummary>(Json, Ct))!;
+        var run = await UntilAsync(s, started.Id, r => TestGenRunState.Final.Contains(r.State));
+
+        Assert.Equal((TestGenRunState.CompletedNoChange, StopReason.Budget), (run.State, run.Reason));
+    }
+
+    [Fact]
+    public async Task A_run_to_the_default_leaves_the_file_on_the_default()
+    {
+        await using var s = await StackAsync();
+
+        var response = await StartAsync(s, pct: 80);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        await using var db = await s.Get<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(Ct);
+        Assert.Null(await db.CoverageThresholds.FindAsync([Target], Ct));
+        Assert.Equal(80, await ThresholdAsync(s));
+    }
+
     [Fact]
     public async Task A_run_goes_from_the_agent_to_a_verified_candidate()
     {
@@ -120,6 +191,7 @@ public sealed class TestGenRunsApiTests
 
         var run = await UntilAsync(s, started.Id, r => TestGenRunState.Final.Contains(r.State) || r.State == TestGenRunState.Candidate);
         Assert.Equal(TestGenRunState.Candidate, run.State);
+        Assert.Equal(StopReason.Target, run.Reason);
         Assert.Equal(90.0, run.LastPct);
         Assert.StartsWith("test-agent/", run.Branch);
 
