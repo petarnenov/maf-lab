@@ -19,7 +19,7 @@ No TypeSafe Jev call is added or changed, so the Jev review checklist does not a
 
 - [x] 4.1 `make lint` and `make test` pass — Done: lint clean; 1063 of 1064 pass. The one failure is `GuardrailTests.A_hanging_Jev_costs_no_more_than_the_timeouts`, a timing test that fails only under the parallel `make test` load and passes alone (seen before this change too)
 - [ ] 4.2 `make` rebuilds the runner image. Then, on http://localhost:7171, start a run with a small budget (e.g. $0.10) on `src/Maf.Lab.A2A/RedisTaskStore.cs`. Verify: the agent writes a test that uses `Substitute.For`, the runner builds it offline, and the coverage moves off 0%
-- [ ] 4.3 `openspec validate add-mocking-library --strict` passes
+- [x] 4.3 `openspec validate add-mocking-library --strict` passes
 
 ## 5. Documentation
 
