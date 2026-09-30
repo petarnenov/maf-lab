@@ -53,7 +53,8 @@ public sealed record TestGenRequest(
     ModelPrice Price,
     TestGenBudget? Budget)
 {
-    public const int AttemptLimit = 5;
+    /// <summary>The attempt cap: the one place it is set. The api asks for this many by default; the agent refuses more.</summary>
+    public const int AttemptLimit = 10;
 
     /// <summary>What is wrong with the request, in words for the caller; null when it can be worked on.</summary>
     public string? Problem()

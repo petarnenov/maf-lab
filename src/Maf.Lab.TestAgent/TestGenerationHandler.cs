@@ -12,7 +12,7 @@ using MessageRole = A2A.Role;
 namespace Maf.Lab.TestAgent;
 
 /// <summary>
-/// One run: up to five attempts of "the model writes tests, the runner builds and measures them". The loop is code —
+/// One run: up to the attempt cap of "the model writes tests, the runner builds and measures them". The loop is code —
 /// the model does not decide when to stop, so it cannot talk its way past the attempt cap, the budget or a cancel.
 /// The run belongs to its task, not to the connection that asked for it: it stops for a cancel, for the host
 /// shutting down, and for nothing else.

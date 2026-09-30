@@ -118,8 +118,8 @@ public sealed class TestGenRunsApiTests
         var run = await UntilAsync(s, started.Id, r => TestGenRunState.Final.Contains(r.State) || r.State == TestGenRunState.Candidate, 60);
 
         Assert.Equal(new RunBudget(null, null), started.Budget);
-        // No cap was added on the way: all five attempts ran, however much they cost.
-        Assert.Equal((5, StopReason.Attempts), (run.Attempt, run.Reason));
+        // No cap was added on the way: every attempt ran, however much they cost.
+        Assert.Equal((TestGenRequest.AttemptLimit, StopReason.Attempts), (run.Attempt, run.Reason));
     }
 
     [Fact]

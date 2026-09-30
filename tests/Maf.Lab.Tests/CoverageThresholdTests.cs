@@ -210,7 +210,7 @@ public sealed class CoverageThresholdTests
         Assert.Equal((false, ModelAvailability.NotInPlan), (kimi.Available, kimi.UnavailableReason));
         Assert.All(picker.Models.Where(m => m.Tag != "kimi-k3:cloud"), m => Assert.True(m.Available));
         Assert.All(picker.Models, m => Assert.True(m.Estimate!.CostUsd > 0));
-        Assert.Equal(5, picker.MaxAttempts);
+        Assert.Equal(Maf.Lab.TestGen.TestGenRequest.AttemptLimit, picker.MaxAttempts);
 
         // The answer is reused: a second look does not ask the provider again.
         var asked = models.Asked.Count;

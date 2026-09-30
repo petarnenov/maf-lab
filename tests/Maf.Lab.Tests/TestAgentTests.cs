@@ -210,6 +210,19 @@ public sealed class TestAgentTests
     }
 
     [Fact]
+    public async Task A_task_may_ask_for_ten_attempts()
+    {
+        var repo = await RepoAsync();
+        await using var agent = new TestAgentFactory(repo, new AttemptModel(Writes), Runner(n => 50 + n));
+
+        var task = await TestAgentFactory.RpcAsync(await agent.ClientAsync(), "message/send",
+            TestAgentFactory.Send(TestAgentFactory.Request(await repo.HeadAsync(Ct), attempts: 10)), Ct);
+
+        var report = TestAgentFactory.Report(task);
+        Assert.Equal((StopReason.Attempts, 10), (report.StopReason, report.Attempts.Count));
+    }
+
+    [Fact]
     public async Task It_stops_before_an_attempt_that_would_cross_the_budget()
     {
         var repo = await RepoAsync();
@@ -312,7 +325,7 @@ public sealed class TestAgentTests
     }
 
     [Theory]
-    [InlineData(8, "src/Lab/Calc.cs")]
+    [InlineData(TestGenRequest.AttemptLimit + 1, "src/Lab/Calc.cs")]
     [InlineData(5, "src/Lab/Missing.cs")]
     [InlineData(5, "tests/Lab.Tests/Existing.cs")]
     public async Task Invalid_input_is_rejected_before_any_model_call(int attempts, string target)

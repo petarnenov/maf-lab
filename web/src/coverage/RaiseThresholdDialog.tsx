@@ -67,7 +67,7 @@ export function RaiseThresholdDialog({
           <>
             <p>
               This file is at <strong>{pct(currentPct)}</strong>. A threshold of <strong>{targetPct}%</strong>{' '}
-              {useDefault ? '(the default) ' : ''}starts an agent run that writes tests for it, in up to five attempts.
+              {useDefault ? '(the default) ' : ''}starts an agent run that writes tests for it.
             </p>
             {saveOnly.isError && (
               <p className={styles.errorText} role="alert">

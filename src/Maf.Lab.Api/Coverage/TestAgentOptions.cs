@@ -24,12 +24,19 @@ public sealed class TestAgentOptions
     public string ClientId { get; set; } = "maf-lab-assistant";
     public string ClientSecret { get; set; } = "";
 
-    /// <summary>How long a whole run may take before the api cancels it: long enough for five attempts.</summary>
-    public TimeSpan RunDeadline { get; set; } = TimeSpan.FromMinutes(45);
+    /// <summary>
+    /// How long a whole run may take before the api cancels it: long enough for the attempt cap. Runs took 3–4 min
+    /// per attempt at 12 tool rounds; attempts may now use up to 40.
+    /// </summary>
+    public TimeSpan RunDeadline { get; set; } = TimeSpan.FromHours(2);
     public TimeSpan CardCacheFor { get; set; } = TimeSpan.FromMinutes(5);
 
-    /// <summary>The attempt cap: with no budget chosen, this is what bounds a run (with the deadline).</summary>
-    public int MaxAttempts { get; set; } = 5;
+    /// <summary>
+    /// How many attempts a run asks for: with no budget chosen, this bounds a run (with the deadline). It defaults to,
+    /// and may not exceed, the contract's <see cref="Maf.Lab.TestGen.TestGenRequest.AttemptLimit"/>; set it only to
+    /// run fewer.
+    /// </summary>
+    public int MaxAttempts { get; set; } = Maf.Lab.TestGen.TestGenRequest.AttemptLimit;
 
     /// <summary>
     /// The allowlist. Configuration only (appsettings), with no default in code: binding appends to a non-empty

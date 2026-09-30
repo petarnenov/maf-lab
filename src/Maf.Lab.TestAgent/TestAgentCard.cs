@@ -13,7 +13,7 @@ public static class TestAgentCard
         Name: "maf-lab test agent",
         Description:
             "Writes tests for one source file of the maf-lab repository until its line coverage reaches a target, in "
-            + "at most five attempts, and returns a report and a diff of the test changes.",
+            + $"at most {Maf.Lab.TestGen.TestGenRequest.AttemptLimit} attempts, and returns a report and a diff of the test changes.",
         PublicSkills:
         [
             new AgentSkill
