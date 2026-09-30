@@ -263,7 +263,9 @@ against the service.
 
 **`/admin/a2a`** (FIRM_ADMIN) is where that traffic is visible: what arrived from partners, what this system
 asked of the reviewer, and every push delivery — each with its state, when it happened and how long it took. A
-task still running can be cancelled from there, through the same protocol call a partner would make.
+task still running can be cancelled from there, through the same protocol call a partner would make. The same
+page shows the test-generation agent, through the api: whether its card answers, what the card says, what a run
+gets by default, and its runs by state with the most recent ones, each file opening on the Coverage page.
 
 ## A second agent it consults (A2A, the other way round)
 

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { A2AActivity } from '../api/types';
 import { jsonResponse, makeSession, renderWithProviders } from '../test/render';
 import { A2AAdminPage } from './A2AAdminPage';
+import { reachableAgent } from './testAgentFixtures';
 
 const activity: A2AActivity = {
   inbound: [
@@ -68,12 +69,15 @@ const activity: A2AActivity = {
 
 const empty: A2AActivity = { inbound: [], outbound: [], deliveries: [] };
 
+/** The api as the page sees it: the activity, and the test agent overview beside it. */
+const serve = (body: A2AActivity) =>
+  vi.fn(async (url: string) =>
+    jsonResponse(url === '/api/admin/a2a/test-agent' ? reachableAgent : body),
+  );
+
 describe('A2AAdminPage', () => {
   it('shows what arrived, what was asked and what was delivered', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => jsonResponse(activity)),
-    );
+    vi.stubGlobal('fetch', serve(activity));
     renderWithProviders(<A2AAdminPage />);
 
     expect(await screen.findByTestId('a2a-inbound')).toBeInTheDocument();
@@ -90,10 +94,7 @@ describe('A2AAdminPage', () => {
   });
 
   it('offers to cancel only a task that is still running', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => jsonResponse(activity)),
-    );
+    vi.stubGlobal('fetch', serve(activity));
     renderWithProviders(<A2AAdminPage />);
 
     await screen.findByTestId('a2a-inbound');
@@ -106,9 +107,9 @@ describe('A2AAdminPage', () => {
       'fetch',
       vi.fn(async (url: string, init?: RequestInit) => {
         calls.push(`${init?.method ?? 'GET'} ${url}`);
-        return url.includes('/cancel')
-          ? jsonResponse({ taskId: 'task-running-1234', state: 'Canceled' })
-          : jsonResponse(activity);
+        if (url.includes('/cancel'))
+          return jsonResponse({ taskId: 'task-running-1234', state: 'Canceled' });
+        return jsonResponse(url === '/api/admin/a2a/test-agent' ? reachableAgent : activity);
       }),
     );
     renderWithProviders(<A2AAdminPage />);
@@ -126,10 +127,7 @@ describe('A2AAdminPage', () => {
   });
 
   it('is refused to an advisor, as the other admin screens are', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => jsonResponse(activity)),
-    );
+    vi.stubGlobal('fetch', serve(activity));
     const { RequireAdmin } = await import('../components/RequireAdmin');
     renderWithProviders(
       <RequireAdmin>
@@ -143,13 +141,72 @@ describe('A2AAdminPage', () => {
   });
 
   it('says so when no agent has talked to this system', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => jsonResponse(empty)),
-    );
+    vi.stubGlobal('fetch', serve(empty));
     renderWithProviders(<A2AAdminPage />);
 
     expect(await screen.findByTestId('a2a-empty')).toBeInTheDocument();
     expect(screen.queryByTestId('a2a-inbound')).not.toBeInTheDocument();
+  });
+  it('shows the test agent even when no partner has talked to this system', async () => {
+    vi.stubGlobal('fetch', serve(empty));
+    renderWithProviders(<A2AAdminPage />);
+
+    expect(await screen.findByTestId('a2a-empty')).toBeInTheDocument();
+    expect(await screen.findByTestId('test-agent-status')).toHaveTextContent('Reachable');
+  });
+
+  it('shows themed progress for each part while the api has not answered', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+    renderWithProviders(<A2AAdminPage />);
+
+    expect(
+      await screen.findByRole('progressbar', { name: 'Loading the A2A activity…' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('progressbar', { name: 'Checking the test agent…' }),
+    ).toBeInTheDocument();
+    // A refresh cannot be started while the first answer is still coming.
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeDisabled();
+  });
+
+  it('refreshes both parts with one press', async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        calls.push(url);
+        return jsonResponse(url === '/api/admin/a2a/test-agent' ? reachableAgent : activity);
+      }),
+    );
+    renderWithProviders(<A2AAdminPage />);
+
+    await screen.findByTestId('test-agent-status');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled());
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+
+    await waitFor(() =>
+      expect(calls.filter((c) => c === '/api/admin/a2a/test-agent').length).toBe(2),
+    );
+    expect(calls.filter((c) => c === '/api/admin/a2a').length).toBe(2);
+  });
+
+  it('keeps the partner activity when the test agent overview fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url === '/api/admin/a2a/test-agent'
+          ? jsonResponse({ title: 'boom' }, 500)
+          : jsonResponse(activity),
+      ),
+    );
+    renderWithProviders(<A2AAdminPage />);
+
+    expect(await screen.findByTestId('a2a-inbound')).toBeInTheDocument();
+    expect(
+      await screen.findByText('The test agent overview could not be loaded.'),
+    ).toBeInTheDocument();
   });
 });

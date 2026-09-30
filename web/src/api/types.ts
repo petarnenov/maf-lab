@@ -530,6 +530,72 @@ export interface A2AActivity {
   deliveries: PushDelivery[];
 }
 
+/** Whether the test agent's card answered just now; reachable means the card answered, not that a run would succeed. */
+export interface TestAgentStatus {
+  configured: boolean;
+  reachable: boolean;
+  reason: string | null;
+  latencyMs: number;
+  checkedAt: string;
+}
+
+export interface TestAgentSkill {
+  id: string;
+  name: string;
+  description: string;
+  tags: string[];
+}
+
+/** What the test agent's public card says. */
+export interface TestAgentCard {
+  name: string;
+  description: string;
+  version: string | null;
+  skills: TestAgentSkill[];
+  endpoint: string | null;
+  protocolVersion: string | null;
+  requiredScopes: string[];
+  streaming: boolean;
+  pushNotifications: boolean;
+}
+
+export interface TestAgentRunCounts {
+  running: number;
+  candidates: number;
+  accepted: number;
+  failed: number;
+  other: number;
+  total: number;
+}
+
+export interface TestAgentRun {
+  id: string;
+  path: string;
+  state: RunState;
+  reason: string | null;
+  attempt: number;
+  maxAttempts: number;
+  lastPct: number | null;
+  targetPct: number;
+  model: string;
+  updatedAt: string;
+}
+
+/** The test-generation agent as the agents page shows it. See docs/http-api.md. */
+export interface TestAgentOverview {
+  status: TestAgentStatus;
+  card: TestAgentCard | null;
+  /** How the api reaches the agent; never the secret. Null when no agent is configured. */
+  connection: { baseUrl: string; clientId: string } | null;
+  defaultModel: { tag: string; displayName: string } | null;
+  modelsAllowed: number;
+  limits: RunLimits;
+  /** What a run gets when no budget is chosen: null caps, i.e. unlimited. */
+  defaultBudget: { maxTokens: number | null; maxCostUsd: number | null };
+  runs: TestAgentRunCounts;
+  recent: TestAgentRun[];
+}
+
 // ---- Telemetry (what the stack measured about itself). See docs/http-api.md. ----
 
 export interface TelemetrySeries {

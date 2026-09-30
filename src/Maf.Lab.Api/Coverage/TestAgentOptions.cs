@@ -57,4 +57,10 @@ public sealed class TestAgentOptions
 
     /// <summary>How long a model's availability answer is reused.</summary>
     public TimeSpan AvailabilityCacheFor { get; set; } = TimeSpan.FromMinutes(10);
+
+    /// <summary>How long the agents page waits for the agent's card before calling it unreachable.</summary>
+    public TimeSpan ProbeTimeout { get; set; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>How long the agents page reuses one card check, so opening it repeatedly never becomes a probe storm.</summary>
+    public TimeSpan ProbeCacheFor { get; set; } = TimeSpan.FromSeconds(10);
 }

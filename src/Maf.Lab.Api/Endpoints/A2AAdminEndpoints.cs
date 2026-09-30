@@ -87,6 +87,16 @@ public static class A2AAdminEndpoints
             return Results.Ok(new A2AActivity(inbound, outbound, deliveries));
         });
 
+        // The test-generation agent, as far as the api knows it: its card (asked on the internal network, anonymously and
+        // briefly), how the api reaches it, what a run gets by default, and its runs. Read-only; the browser never reaches
+        // the agent. Runs describe the repository, not a firm, so there is nothing to scope and no parameter to take.
+        api.MapGet("/test-agent", async (Coverage.TestAgentProbe probe, Microsoft.Extensions.Options.IOptions<Coverage.TestAgentOptions> options,
+            IDbContextFactory<MafDbContext> db, CancellationToken ct) =>
+        {
+            await using var context = await db.CreateDbContextAsync(ct);
+            return Results.Ok(await Coverage.TestAgentOverview.BuildAsync(probe, options.Value, context, ct));
+        });
+
         // The firm whose data is being worked on may stop the work. It ends the way a partner's cancel ends,
         // through the same server, so the task's final state and its events are the same either way.
         api.MapPost("/tasks/{id}/cancel", async (string id, IPrincipalAccessor principals,

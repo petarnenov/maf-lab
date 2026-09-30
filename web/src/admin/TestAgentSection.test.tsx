@@ -1,0 +1,117 @@
+import { screen, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { jsonResponse, makeSession, renderWithProviders } from '../test/render';
+import { TestAgentSection } from './TestAgentSection';
+import { reachableAgent, unconfiguredAgent, unreachableAgent } from './testAgentFixtures';
+
+const admin = { session: makeSession('FIRM_ADMIN') };
+
+describe('TestAgentSection', () => {
+  it('shows a reachable agent: its card, its defaults, its runs by state and the recent ones', async () => {
+    const fetch = vi.fn<(url: string) => Promise<Response>>(async () =>
+      jsonResponse(reachableAgent),
+    );
+    vi.stubGlobal('fetch', fetch);
+    renderWithProviders(<TestAgentSection />, admin);
+
+    expect(await screen.findByTestId('test-agent-status')).toHaveTextContent(/Reachable.*12 ms/);
+    // Everything comes through the api; the browser never asks the agent.
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][0]).toBe('/api/admin/a2a/test-agent');
+
+    const card = screen.getByTestId('test-agent-card');
+    expect(card).toHaveTextContent('maf-lab test agent');
+    expect(card).toHaveTextContent('1.0.0');
+    expect(card).toHaveTextContent('generate-tests');
+    expect(card).toHaveTextContent('http://test-agent:8080/a2a');
+    expect(card).toHaveTextContent('a2a.testgen.run');
+    expect(card).toHaveTextContent('maf-lab-assistant');
+
+    const defaults = screen.getByTestId('test-agent-defaults');
+    expect(defaults).toHaveTextContent('GLM 5.3');
+    expect(within(defaults).getByText('Attempts').closest('tr')).toHaveTextContent('10 (1–10)');
+    expect(within(defaults).getByText('Tool rounds per attempt').closest('tr')).toHaveTextContent(
+      '40 (1–40)',
+    );
+    expect(within(defaults).getByText('Test runs per attempt').closest('tr')).toHaveTextContent(
+      '2 (0–2)',
+    );
+    expect(within(defaults).getByText('Suspected bugs').closest('tr')).toHaveTextContent('3 (0–3)');
+    expect(within(defaults).getByText('Deadline').closest('tr')).toHaveTextContent(
+      '2 h (10 min–2 h)',
+    );
+    expect(defaults).toHaveTextContent(/Budget\s*None/);
+
+    const counts = screen.getByTestId('test-agent-counts');
+    expect(within(counts).getByText('Running now').parentElement).toHaveTextContent('1');
+    expect(within(counts).getByText('Accepted').parentElement).toHaveTextContent('2');
+    expect(screen.getByRole('link', { name: /Open Coverage/ })).toHaveAttribute(
+      'href',
+      '/coverage',
+    );
+
+    const rows = within(screen.getByTestId('test-agent-runs')).getAllByRole('row').slice(1);
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toHaveTextContent('Working');
+    expect(rows[0]).toHaveTextContent('3/10');
+    expect(rows[0]).toHaveTextContent('72.4% → 85%');
+    expect(rows[1]).toHaveTextContent('Failed');
+    expect(rows[1]).toHaveTextContent('deadline');
+    expect(rows[2]).toHaveTextContent('all attempts used');
+    expect(within(rows[0]).getByRole('link')).toHaveAttribute(
+      'href',
+      '/coverage?file=src%2FMaf.Lab.Api%2FCoverage%2FCoverageTree.cs',
+    );
+  });
+
+  it('says an unreachable agent is unreachable, and still shows its defaults and runs', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse(unreachableAgent)),
+    );
+    renderWithProviders(<TestAgentSection />, admin);
+
+    expect(await screen.findByTestId('test-agent-status')).toHaveTextContent(
+      /Unreachable.*No answer within 2 s\./,
+    );
+    expect(screen.getByTestId('test-agent-card')).toHaveTextContent('The card could not be read.');
+    expect(screen.getByTestId('test-agent-defaults')).toHaveTextContent('GLM 5.3');
+    expect(screen.getByTestId('test-agent-runs')).toBeInTheDocument();
+  });
+
+  it('says when no agent is configured and nothing has run', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse(unconfiguredAgent)),
+    );
+    renderWithProviders(<TestAgentSection />, admin);
+
+    expect(await screen.findByTestId('test-agent-status')).toHaveTextContent(/Not configured/);
+    expect(screen.getByTestId('test-agent-no-runs')).toBeInTheDocument();
+    expect(screen.queryByText('The api signs in as')).not.toBeInTheDocument();
+  });
+
+  it('shows themed progress while the api has not answered', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+    renderWithProviders(<TestAgentSection />, admin);
+
+    expect(
+      await screen.findByRole('progressbar', { name: 'Checking the test agent…' }),
+    ).toBeInTheDocument();
+  });
+
+  it('says so when the overview cannot be loaded', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ title: 'boom' }, 500)),
+    );
+    renderWithProviders(<TestAgentSection />, admin);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The test agent overview could not be loaded.',
+    );
+  });
+});

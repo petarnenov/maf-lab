@@ -278,6 +278,7 @@ secret — the chat provider reports only *whether* its key is configured. The r
 |---|---|---|---|
 | GET | `/api/admin/a2a` | — | `{ inbound, outbound, deliveries }` |
 | POST | `/api/admin/a2a/tasks/{id}/cancel` | — | `{ taskId, state }`, `404` unknown, `409` already finished |
+| GET | `/api/admin/a2a/test-agent` | — | `{ status, card, connection, defaultModel, modelsAllowed, limits, defaultBudget, runs, recent }` |
 
 `inbound` is one row per task a partner started — partner, operation, state, when it started and last changed,
 how long it took, and whether it can still be cancelled. `outbound` is one row per consultation this system asked
@@ -288,6 +289,21 @@ Both are scoped by the caller's firm, taken from the principal. An inbound task 
 entitled to act for, stamped when the task was created; a task belonging to another firm answers `404`, not
 `403`, because its existence is not the caller's business. Cancelling goes through the same `CancelTask` a
 partner's cancel does, and is itself audited as `a2a.cancel`.
+
+`test-agent` is the test-generation agent as the api knows it; the browser never reaches the agent, which is on the
+internal network only. `status` is `{ configured, reachable, reason, latencyMs, checkedAt }`: the api fetches the
+agent's public card from `TestAgent:BaseUrl` anonymously, within `TestAgent:ProbeTimeout` (2 s), and reuses the answer
+for `TestAgent:ProbeCacheFor` (10 s). Reachable means the card answered, not that a run would succeed; `reason` is a
+short sentence, never an exception. `card` (null when it could not be read) is
+`{ name, description, version, skills: [{ id, name, description, tags }], endpoint, protocolVersion, requiredScopes,
+streaming, pushNotifications }`, as the card states it. `connection` is `{ baseUrl, clientId }` — where the api
+reaches the agent and the partner id it signs in as; the secret is never included. `defaultModel` is the allowlist's
+default, and `limits` is the same `{ maxAttempts, toolRoundsPerAttempt, testRunsPerAttempt, deadlineMinutes,
+maxSuspectedBugs }` of `{ min, max, default }` that `/api/coverage/models` returns; `defaultBudget` has null caps,
+because a run started without a budget has none. `runs` is `{ running, candidates, accepted, failed, other, total }`
+(running is submitted, working or verifying; failed includes verification failed), and `recent` is the ten runs that
+changed last, `[{ id, path, state, reason, attempt, maxAttempts, lastPct, targetPct, model, updatedAt }]`. Runs
+describe the repository, not a firm, so nothing here is scoped by tenant and the route takes no parameter.
 
 ## Compliance (FIRM_ADMIN only, otherwise `403`)
 
