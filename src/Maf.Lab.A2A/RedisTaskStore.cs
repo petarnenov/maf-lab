@@ -1,18 +1,20 @@
 using System.Text.Json;
 using A2A;
+using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 
-namespace Maf.Lab.ComplianceAgent;
+namespace Maf.Lab.A2A;
 
 /// <summary>
-/// The reviewer's tasks in the store its replicas share. The SDK ships only <see cref="InMemoryTaskStore"/>, and
+/// An agent's tasks in the store its replicas share (the compliance reviewer's and the test agent's, each under its
+/// own <see cref="A2AOptions.StoreKeyspace"/>). The SDK ships only <see cref="InMemoryTaskStore"/>, and
 /// two replicas behind a balancer cannot share one: a task started on one is invisible on the other, and a caller
 /// asking the wrong replica is told its task does not exist.
 ///
 /// Unlike the assistant, this agent has no database and no page that reads its tasks alongside anything else, so
 /// there is nothing here to join and the shared store is simply where they live.
 /// </summary>
-public sealed class RedisTaskStore(IConnectionMultiplexer redis, TimeProvider time) : ITaskStore
+public sealed class RedisTaskStore(IConnectionMultiplexer redis, TimeProvider time, IOptions<A2AOptions> options) : ITaskStore
 {
     private static readonly JsonSerializerOptions Json = A2AJsonUtilities.DefaultOptions;
 
@@ -20,9 +22,9 @@ public sealed class RedisTaskStore(IConnectionMultiplexer redis, TimeProvider ti
     private static readonly TimeSpan Retention = TimeSpan.FromDays(7);
 
     /// <summary>The tasks, newest last, so a listing does not have to look at every key in the store.</summary>
-    private static readonly RedisKey Index = "task:compliance:index";
+    private RedisKey Index => $"task:{options.Value.StoreKeyspace}:index";
 
-    private static RedisKey Key(string taskId) => $"task:compliance:{taskId}";
+    private RedisKey Key(string taskId) => $"task:{options.Value.StoreKeyspace}:{taskId}";
 
     public async Task<AgentTask?> GetTaskAsync(string taskId, CancellationToken cancellationToken = default)
     {

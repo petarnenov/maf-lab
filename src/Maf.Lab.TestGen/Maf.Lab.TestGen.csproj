@@ -2,6 +2,9 @@
      the test-path allowlist, the test guardrails and the one way this lab runs git. No host, no model, no storage. -->
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="Maf.Lab.Tests" />
   </ItemGroup>
 </Project>

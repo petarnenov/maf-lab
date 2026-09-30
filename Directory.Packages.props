@@ -29,6 +29,8 @@
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
     <PackageVersion Include="Microsoft.ML.Tokenizers" Version="2.0.0" />
     <PackageVersion Include="Microsoft.ML.Tokenizers.Data.O200kBase" Version="2.0.0" />
+    <!-- Test guardrails read generated C# tests as syntax, not text (see DECISIONS.md) -->
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
     <!-- Indexing -->
     <PackageVersion Include="Markdig" Version="1.3.2" />
     <!-- Transitive security pins -->

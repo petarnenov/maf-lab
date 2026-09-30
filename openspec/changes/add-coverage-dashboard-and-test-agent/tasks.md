@@ -75,13 +75,13 @@
   Redis task and push stores, `AddLabTelemetry("maf-lab-test-agent")`, `/health`, a card with the one skill
   `generate-tests`, and `A2A:Audience` `maf-lab-test-agent`. Verify with a test that the card is served and that a
   task without a token gets 401.
-- [ ] 5.3 Implement `WorkspacePaths.Resolve` (design D7) in a shared place used by the agent and the api. Verify with
+- [x] 5.3 Implement `WorkspacePaths.Resolve` (design D7) in a shared place used by the agent and the api. Verify with
   tests for the production path, `tests/../src`, absolute paths, a symlink escape, `.git/`, and allowed test paths for
   both toolchains.
-- [ ] 5.4 Implement `TestGuardrails.Check` (design D8): Roslyn for C#, and the TS compiler API through a node script
+- [x] 5.4 Implement `TestGuardrails.Check` (design D8): Roslyn for C#, and the TS compiler API through a node script
   for TS. Verify with fixture tests for `Skip=`, `.only`, `xit`, an assertion-free test, a swallowed expected
   exception, and a clean test that passes.
-- [ ] 5.4a Extend `TestGuardrails` for suspected bugs (design D19): allow skips only when they carry a
+- [x] 5.4a Extend `TestGuardrails` for suspected bugs (design D19): allow skips only when they carry a
   `suspected-bug:` marker and are listed, reject more than 3, and flag test code that writes, moves or deletes files
   under `src/` or `web/src/`. Verify with fixture tests for an allowed suspected-bug skip, an unlisted skip, a
   fourth bug, and `File.WriteAllText("src/…")` / `fs.writeFileSync('web/src/…')`.

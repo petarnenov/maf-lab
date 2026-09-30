@@ -69,6 +69,11 @@ public sealed class A2AOptions
     public int SubscribePollMs { get; set; } = 250;
     /// <summary>How long a resubscription follows a task before giving the connection back.</summary>
     public TimeSpan SubscribeTimeout { get; set; } = TimeSpan.FromMinutes(10);
+    /// <summary>
+    /// The prefix this agent's tasks and webhooks are kept under in the shared store. The default is the reviewer's,
+    /// whose keys these were before the store was shared; every other agent sets its own.
+    /// </summary>
+    public string StoreKeyspace { get; set; } = "compliance";
 }
 
 /// <summary>Issues and reads partner tokens. Mirrors DevJwt, with a different audience and different claims.</summary>

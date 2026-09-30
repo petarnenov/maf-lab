@@ -2021,3 +2021,14 @@ said which account the conversation was about.
 - **The browser decides when to confirm; the server decides what is saved.** The threshold control opens the
   confirmation when the new value is above both the threshold and the coverage it has. `PUT /thresholds` still
   refuses a raise that needs a run (`409 run_required`), and only `POST /runs` saves a raised threshold.
+- **Guardrails in code: Roslyn for C#, a scanner for TypeScript.** `Microsoft.CodeAnalysis.CSharp` 5.9.0 is new, in
+  `Maf.Lab.TestGen` only. It reads generated xUnit tests as syntax: `Skip=`, missing assertions, a `catch` that
+  swallows the exception, and `File.*`/`Directory.*` writes to `src/`. Design D8 planned the TypeScript compiler API
+  through node. The api and the agent both check diffs, and neither carries node, so TypeScript is read by a small
+  scanner instead. It blanks comments, strings and template literals, then matches `it`/`test` calls with balanced
+  parentheses. Every test file in the lab (162 at the time) passes both, and a test keeps it that way.
+- **A suspected bug is the one allowed skip.** It must carry the `suspected-bug` marker and be listed in the report,
+  with at most 3 per run, and it still needs an assertion (design D19).
+- **The Redis task stores moved to `Maf.Lab.A2A`.** They were the compliance reviewer's; the test agent needs the
+  same. Their key prefix is `A2A:StoreKeyspace`, defaulting to the reviewer's `compliance`, so its keys are
+  unchanged.
