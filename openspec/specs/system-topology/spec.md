@@ -8,7 +8,8 @@ and keeps that report in step with the drawn diagram that the UI renders it on.
 
 ### Requirement: Topology report
 The system SHALL expose, to any signed-in user, a report of the stack it is running in. The report SHALL contain one
-entry per service the lab is made of: the load balancer, the api, the MCP retrieval server, the vector store, the
+entry per service the lab is made of: the load balancer, the api, the MCP server of every domain (billing, portfolio and codebase), the compliance
+reviewer, the shared state store, the vector store, the
 model provider used for chat, the model provider used for embeddings, the web app, the telemetry collector, the
 metrics store and the trace store. Each entry SHALL carry a
 stable id, a display name, a health state of `healthy`, `degraded` or `unreachable`, the instances found for it (each with its
@@ -21,6 +22,11 @@ particular, a configured API key SHALL never be reported, only whether one is co
 #### Scenario: Every service is reported
 - **WHEN** a signed-in user requests the topology
 - **THEN** the report contains an entry for each service and the edges between them
+
+#### Scenario: Every domain's MCP server is reported
+- **WHEN** the topology is requested
+- **THEN** the billing, portfolio and codebase MCP servers each have an entry with their replicas, their endpoint and
+  the tools they offer, and an edge from the api
 
 #### Scenario: The telemetry services are part of the stack
 - **WHEN** the topology is requested
