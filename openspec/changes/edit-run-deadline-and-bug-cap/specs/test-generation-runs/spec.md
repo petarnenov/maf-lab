@@ -8,7 +8,7 @@ minutes and the suspected bugs the run may report. A limit that is absent SHALL 
 configured deadline and 3). The api SHALL reject a limit outside its bounds (attempts 1–10, tool rounds 1–40, test runs
 0–2, deadline from 10 minutes to the configured deadline, suspected bugs 0–3) as invalid, before any run is created and
 without changing the threshold. The api SHALL store the limits on the run, SHALL pass the attempt, round, test-run and
-suspected-bug limits to the task, and SHALL return all of them in the run's summary. The api SHALL cancel a run when
+suspected-bug limits to the task, and SHALL return all of them in the run's summary (a run without its own deadline shows none, meaning the configured one). The api SHALL cancel a run when
 its own deadline passes, and SHALL verify a candidate against the run's own suspected-bug limit. A run stored before
 limits existed SHALL read as having the defaults.
 
@@ -29,5 +29,5 @@ limits existed SHALL read as having the defaults.
 - **THEN** it is canceled and fails with reason `deadline`
 
 #### Scenario: Verified with the run's bug limit
-- **WHEN** a run started with a suspected-bug limit of 1 returns a candidate that reports 2 suspected bugs
-- **THEN** its verification fails on the guardrail for one suspected bug too many
+- **WHEN** a run started with a suspected-bug limit of 0 returns a candidate that reports a suspected bug
+- **THEN** its verification fails on a guardrail, no proof run starts, and no issue is opened

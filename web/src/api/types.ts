@@ -915,6 +915,9 @@ export interface RunLimitsSummary {
   maxAttempts: number;
   toolRoundsPerAttempt: number;
   testRunsPerAttempt: number;
+  /** The run's own deadline; null is the configured one. */
+  deadlineMinutes?: number | null;
+  maxSuspectedBugs?: number;
 }
 
 /** The limits a start request may carry; one left out takes its default. */
@@ -922,6 +925,8 @@ export interface RunLimitsInput {
   maxAttempts?: number;
   toolRoundsPerAttempt?: number;
   testRunsPerAttempt?: number;
+  deadlineMinutes?: number;
+  maxSuspectedBugs?: number;
 }
 
 /** A run's caps; null is unlimited. */
@@ -1019,13 +1024,13 @@ export interface LimitBounds {
   default: number;
 }
 
-/** Every limit a run has: the ones the picker may change, and the fixed ones. */
+/** Every limit a run may set, with its bounds and default. */
 export interface RunLimits {
   maxAttempts: LimitBounds;
   toolRoundsPerAttempt: LimitBounds;
   testRunsPerAttempt: LimitBounds;
-  deadlineMinutes: number;
-  maxSuspectedBugs: number;
+  deadlineMinutes: LimitBounds;
+  maxSuspectedBugs: LimitBounds;
 }
 
 /** One model the test agent may use, as the server's allowlist has it. */

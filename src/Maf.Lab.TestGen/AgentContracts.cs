@@ -53,7 +53,8 @@ public sealed record TestGenRequest(
     ModelPrice Price,
     TestGenBudget? Budget,
     int? ToolRoundsPerAttempt = null,
-    int? TestRunsPerAttempt = null)
+    int? TestRunsPerAttempt = null,
+    int? MaxSuspectedBugs = null)
 {
     /// <summary>The attempt cap, <see cref="RunLimits.Attempts"/>' maximum. The api asks for this many by default; the agent refuses more.</summary>
     public const int AttemptLimit = RunLimits.MaxAttempts;
@@ -66,6 +67,10 @@ public sealed record TestGenRequest(
     [JsonIgnore]
     public int TestRuns => TestRunsPerAttempt ?? RunLimits.TestRunsPerAttempt.Default;
 
+    /// <summary>How many suspected bugs the run may report: the task's, or the default.</summary>
+    [JsonIgnore]
+    public int SuspectedBugLimit => MaxSuspectedBugs ?? RunLimits.SuspectedBugs.Default;
+
     /// <summary>What is wrong with the request, in words for the caller; null when it can be worked on.</summary>
     public string? Problem()
     {
@@ -77,6 +82,7 @@ public sealed record TestGenRequest(
         if (RunLimits.Attempts.Problem("maxAttempts", MaxAttempts) is { } attempts) return attempts;
         if (RunLimits.ToolRoundsPerAttempt.Problem("toolRoundsPerAttempt", ToolRoundsPerAttempt) is { } rounds) return rounds;
         if (RunLimits.TestRunsPerAttempt.Problem("testRunsPerAttempt", TestRunsPerAttempt) is { } runs) return runs;
+        if (RunLimits.SuspectedBugs.Problem("maxSuspectedBugs", MaxSuspectedBugs) is { } bugs) return bugs;
         if (string.IsNullOrWhiteSpace(Model)) return "model is required.";
         if (Budget?.Problem() is { } budget) return budget;
         if (Price is null || Price.InputPerMTok < 0 || Price.OutputPerMTok < 0) return "price must not be negative.";
@@ -179,6 +185,7 @@ public sealed record AttemptLog(
 public sealed record SuspectedBug(
     string TestFile, string Test, string Title, string Description, string Expected, string Actual, string Failure)
 {
+    /// <summary>The most a run may report, and the default; a task may set fewer (<see cref="RunLimits.SuspectedBugs"/>).</summary>
     public const int MaxPerRun = 3;
     public const string Marker = "suspected-bug";
 

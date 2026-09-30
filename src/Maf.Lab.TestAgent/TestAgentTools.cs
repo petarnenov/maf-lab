@@ -13,7 +13,7 @@ public sealed record Written(string Path, bool Created, int Bytes);
 public sealed record TestRun(string Status, string Build, IReadOnlyList<string> Diagnostics, TestCounts Tests,
     IReadOnlyList<TestFailure> Failures, double? TargetPct, IReadOnlyList<int[]> Uncovered, string? Note);
 public sealed record Coverage(string Path, double? Pct, IReadOnlyList<int[]> Uncovered);
-public sealed record BugRecorded(bool Recorded, int Count, string? Note);
+public sealed record BugRecorded(bool Recorded, int Count, string? Note, int Limit);
 
 /// <summary>
 /// The agent's six tools, bound to one task's workspace. Every path goes through <see cref="WorkspacePaths"/>:
@@ -130,7 +130,7 @@ public sealed class TestAgentTools(Workspace workspace, TestGenRequest request, 
         return new Coverage(request.TargetFile, _last?.TargetPct, _last?.Uncovered ?? []);
     }
 
-    [Description("Report that a test you wrote shows the production code does not behave as intended. Keep the test and its assertion, skip it with the reason 'suspected-bug: <title>', and never change production code or the assertion to make it pass. At most three per run.")]
+    [Description("Report that a test you wrote shows the production code does not behave as intended. Keep the test and its assertion, skip it with the reason 'suspected-bug: <title>', and never change production code or the assertion to make it pass. At most as many per run as the instructions say.")]
     public BugRecorded ReportSuspectedBug(
         [Description("The test file, relative to the repository root.")] string testFile,
         [Description("The test's name: the method name for xUnit, the test's title for Vitest.")] string test,
@@ -142,13 +142,14 @@ public sealed class TestAgentTools(Workspace workspace, TestGenRequest request, 
     {
         var file = WorkspacePaths.Relative(testFile);
         _bugs.RemoveAll(b => b.TestFile == file && b.Test == test);
-        if (_bugs.Count >= SuspectedBug.MaxPerRun)
+        if (_bugs.Count >= request.SuspectedBugLimit)
         {
-            return new BugRecorded(false, _bugs.Count, "A run reports at most three suspected bugs; this one was not recorded.");
+            return new BugRecorded(false, _bugs.Count,
+                $"This run reports at most {request.SuspectedBugLimit} suspected bug{(request.SuspectedBugLimit == 1 ? "" : "s")}; this one was not recorded.", request.SuspectedBugLimit);
         }
         _bugs.Add(new SuspectedBug(file, test, Clip(title, 120), Clip(description, 2_000), Clip(expected, 500), Clip(actual, 500),
             Clip(failure, 2_000)));
-        return new BugRecorded(true, _bugs.Count, null);
+        return new BugRecorded(true, _bugs.Count, null, request.SuspectedBugLimit);
     }
 
     public static TestRun Summary(RunnerResult r) => new(r.Status, r.Build, r.Diagnostics.Take(30).ToList(), r.Tests,
@@ -185,7 +186,7 @@ public static class ToolSummaries
             "write_file" => $"{(Bool(r, "created") ? "created" : "updated")}, {Int(r, "bytes")} bytes",
             "run_tests" => RunSummary(r),
             "read_coverage" => $"{Pct(r, "pct")}, {Count(r, "uncovered")} uncovered ranges",
-            "report_suspected_bug" => Bool(r, "recorded") ? $"recorded ({Int(r, "count")} of {SuspectedBug.MaxPerRun})" : Str(r, "note") ?? "not recorded",
+            "report_suspected_bug" => Bool(r, "recorded") ? $"recorded ({Int(r, "count")} of {Int(r, "limit")})" : Str(r, "note") ?? "not recorded",
             _ => "done",
         };
         return new ToolActivity(name, path, outcome, summary);

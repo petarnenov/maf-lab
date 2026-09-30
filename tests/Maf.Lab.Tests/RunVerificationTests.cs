@@ -128,7 +128,8 @@ public sealed class RunVerificationTests
     private const string GoodTest = "[Fact] public void Adds() { Assert.Equal(2, Calc.Add(1, 1)); }";
 
     /// <summary>A run in the state a completed task leaves it: verifying, with the agent's report.</summary>
-    private static async Task<string> VerifyingRunAsync(Harness h, string diff, double reported = 88, IReadOnlyList<SuspectedBug>? bugs = null)
+    private static async Task<string> VerifyingRunAsync(Harness h, string diff, double reported = 88, IReadOnlyList<SuspectedBug>? bugs = null,
+        int? maxBugs = null)
     {
         var id = $"r_{Guid.NewGuid():N}";
         var report = new TestGenReport(TestGenKinds.Report, true, StopReason.Target, 85, 50, reported, [], new TestGenUsage(1, 1, 0.01), diff, bugs);
@@ -140,6 +141,7 @@ public sealed class RunVerificationTests
         row.Follower = "this-test";
         row.FollowerHeartbeatAt = DateTime.UtcNow.AddHours(1);
         row.ReportJson = JsonSerializer.Serialize(report, TestGenKinds.Json);
+        row.MaxSuspectedBugs = maxBugs;
         db.TestGenRuns.Add(row);
         await db.SaveChangesAsync(Ct);
         return id;
@@ -269,6 +271,20 @@ public sealed class RunVerificationTests
                 // The un-skipped proof ran once, then the real verification.
         Assert.Equal(2, h.Runner.Requests.Count);
         Assert.DoesNotContain("Skip = ", h.Runner.Requests.First().Diff);
+    }
+
+    [Fact]
+    public async Task A_run_that_allows_no_bugs_fails_verification_on_one_and_opens_nothing()
+    {
+        using var h = await HarnessAsync(runner: BugRunner);
+
+        var run = await VerifyAsync(h, await VerifyingRunAsync(h, NewTest(BugTest), bugs: [Bug], maxBugs: 0));
+
+        // With no bug allowed, its skip is one nobody may make: the guardrails stop it before any proof runs.
+        Assert.Equal(TestGenRunState.VerificationFailed, run.State);
+        Assert.StartsWith("guardrail:", run.Reason);
+        Assert.Empty(h.Runner.Requests);
+        Assert.Empty(h.GitHub.Issues);
     }
 
     [Fact]

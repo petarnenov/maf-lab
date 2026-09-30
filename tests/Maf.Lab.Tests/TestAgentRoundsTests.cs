@@ -44,6 +44,13 @@ public sealed class TestAgentRoundsTests
 
         Assert.Contains("You have 40 tool rounds in this attempt", input);
         Assert.Contains("run_tests at most 2 times", input);
+        Assert.Contains("at most 3 suspected bugs", input);
+    }
+
+    [Fact]
+    public void A_task_without_bug_reports_is_told_so()
+    {
+        Assert.Contains("This run reports no suspected bugs", Instructions.Attempt(Request with { MaxSuspectedBugs = 0 }, 1, 40, null));
     }
 
     [Fact]

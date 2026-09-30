@@ -79,6 +79,9 @@ public sealed class TestGenRunRow
     /// <summary>The attempt limits chosen at start; null (rows from before limits) reads as the defaults.</summary>
     public int? ToolRoundsPerAttempt { get; set; }
     public int? TestRunsPerAttempt { get; set; }
+    /// <summary>The run's own deadline, when chosen at start; null is the configured one.</summary>
+    public int? DeadlineMinutes { get; set; }
+    public int? MaxSuspectedBugs { get; set; }
 }
 
 /// <summary>

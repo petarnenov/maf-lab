@@ -54,7 +54,7 @@ public sealed partial class RunVerifier(
             return;
         }
         var files = await copy.ChangedFilesAsync(ct);
-        if (TestGuardrails.Check(files, bugs) is { Count: > 0 } violations)
+        if (TestGuardrails.Check(files, bugs, run.MaxSuspectedBugs ?? SuspectedBug.MaxPerRun) is { Count: > 0 } violations)
         {
             await FailAsync(runId, $"guardrail: {violations[0]}", ct);
             return;

@@ -31,8 +31,8 @@ editable here (it is the threshold the dialog raises); sending the deadline to t
 3. **Stored as given.** The run row gains `DeadlineMinutes` and `MaxSuspectedBugs` (nullable). The api stores a
    deadline only when the start request names one, so a run without one keeps using the configured `RunDeadline`
    exactly (including sub-minute test values); `RunFollower` uses `row.DeadlineMinutes` when set. The bug limit is
-   stored resolved. `RunVerifier` checks guardrails with the row's limit (null → 3). `RunSummary.Limits` gains both,
-   the deadline reading as the configured one when null.
+   stored resolved. `RunVerifier` checks guardrails with the row's limit (null → 3). `RunSummary.Limits` gains both; a
+   null deadline there means the configured one.
 4. **Wire shapes.** `RunLimitsDto.DeadlineMinutes` and `MaxSuspectedBugs` become `LimitBounds`; `RunLimitsInput` and
    `RunLimitsSummary` gain `DeadlineMinutes` and `MaxSuspectedBugs`. The web `LimitKey` set grows by two, so the
    picker renders them with the existing field and validation; the read-only list keeps only the target.

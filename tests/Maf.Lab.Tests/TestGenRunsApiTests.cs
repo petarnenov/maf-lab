@@ -156,19 +156,33 @@ public sealed class TestGenRunsApiTests
 
         var started = (await (await StartAsync(s)).Content.ReadFromJsonAsync<RunSummary>(Json, Ct))!;
 
-        Assert.Equal(new RunLimitsSummary(10, 40, 2), started.Limits);
+        Assert.Equal(new RunLimitsSummary(10, 40, 2, null, 3), started.Limits);
     }
 
-    [Theory]
-    [InlineData(11, null, null)]
-    [InlineData(null, 0, null)]
-    [InlineData(null, 41, null)]
-    [InlineData(null, null, 3)]
-    public async Task A_limit_out_of_bounds_is_refused_and_nothing_changes(int? attempts, int? rounds, int? testRuns)
+    [Fact]
+    public async Task A_run_keeps_its_deadline_and_bug_limit()
     {
         await using var s = await StackAsync();
 
-        var response = await StartAsync(s, limits: new RunLimitsInput(attempts, rounds, testRuns));
+        var started = (await (await StartAsync(s, limits: new RunLimitsInput(DeadlineMinutes: 30, MaxSuspectedBugs: 1)))
+            .Content.ReadFromJsonAsync<RunSummary>(Json, Ct))!;
+
+        Assert.Equal(new RunLimitsSummary(10, 40, 2, 30, 1), started.Limits);
+    }
+
+    [Theory]
+    [InlineData(11, null, null, null, null)]
+    [InlineData(null, 0, null, null, null)]
+    [InlineData(null, 41, null, null, null)]
+    [InlineData(null, null, 3, null, null)]
+    [InlineData(null, null, null, 5, null)]
+    [InlineData(null, null, null, 121, null)]
+    [InlineData(null, null, null, null, 4)]
+    public async Task A_limit_out_of_bounds_is_refused_and_nothing_changes(int? attempts, int? rounds, int? testRuns, int? deadline, int? bugs)
+    {
+        await using var s = await StackAsync();
+
+        var response = await StartAsync(s, limits: new RunLimitsInput(attempts, rounds, testRuns, deadline, bugs));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(80, await ThresholdAsync(s));
@@ -457,6 +471,33 @@ public sealed class TestGenRunsApiTests
         await using var stream = await RunStream.OpenAsync(s.Admin, started.Id);
         var last = (await stream.ReadAsync())[^1];
         Assert.Equal(("RUN_ERROR", "deadline"), (last.Name, last.Data.GetProperty("code").GetString()));
+    }
+
+    [Fact]
+    public async Task A_run_past_its_own_deadline_is_cancelled_and_fails()
+    {
+        await using var s = await StackAsync(
+            script: n => new Move(new Dictionary<string, string> { ["tests/Lab.Tests/CalcTests.cs"] = TestFile(n) },
+                Before: ct => Task.Delay(Timeout.Infinite, ct)));
+        var started = (await (await StartAsync(s)).Content.ReadFromJsonAsync<RunSummary>(Json, Ct))!;
+        await UntilAsync(s, started.Id, r => r.State == TestGenRunState.Working);
+        // A run with a 30-minute deadline that started 31 minutes ago, under the configured 2 hours: its own deadline decides.
+        await using (var db = await s.Get<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(Ct))
+        {
+            var run = await db.TestGenRuns.SingleAsync(Ct);
+            db.TestGenRuns.Add(new TestGenRunRow
+            {
+                Id = "r_short", Path = "src/Lab/Other.cs", Toolchain = "dotnet", CommitSha = run.CommitSha, TargetPct = 85,
+                Model = run.Model, TaskId = run.TaskId, State = TestGenRunState.Working, MaxAttempts = 10,
+                CreatedAt = DateTime.UtcNow.AddMinutes(-31), UpdatedAt = DateTime.UtcNow, CreatedBy = "alice",
+                Follower = "dead-replica", FollowerHeartbeatAt = DateTime.UtcNow.AddMinutes(-10), DeadlineMinutes = 30,
+            });
+            await db.SaveChangesAsync(Ct);
+        }
+
+        var shortRun = await UntilAsync(s, "r_short", r => TestGenRunState.Final.Contains(r.State));
+
+        Assert.Equal((TestGenRunState.Failed, "deadline"), (shortRun.State, shortRun.Reason));
     }
 
     [Fact]

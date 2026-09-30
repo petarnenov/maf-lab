@@ -22,7 +22,7 @@ public sealed record GuardrailViolation(string Path, string Test, string Rule)
 public static partial class TestGuardrails
 {
     public const string Skipped = "is skipped without being reported as a suspected bug";
-    public const string TooManyBugs = "is one suspected bug too many: a run reports at most 3";
+    public const string TooManyBugs = "is one suspected bug too many for this run's limit";
     public const string ModifiesProduction = "writes, moves or deletes production code: a test never changes the code it tests";
     public const string Focused = "is focused (.only / fit): it would silence every other test";
     public const string NoAssertion = "asserts nothing";
@@ -30,17 +30,17 @@ public static partial class TestGuardrails
 
     /// <summary>
     /// The violations in <paramref name="files"/>. A skip is allowed only for a test in <paramref name="suspectedBugs"/>
-    /// whose skip carries the suspected-bug marker, and only for the first <see cref="SuspectedBug.MaxPerRun"/>.
+    /// whose skip carries the suspected-bug marker, and only for the first <paramref name="maxBugs"/> (the run's limit).
     /// </summary>
     public static IReadOnlyList<GuardrailViolation> Check(IReadOnlyDictionary<string, string> files,
-        IReadOnlyList<SuspectedBug>? suspectedBugs = null)
+        IReadOnlyList<SuspectedBug>? suspectedBugs = null, int maxBugs = SuspectedBug.MaxPerRun)
     {
         var bugs = suspectedBugs ?? [];
-        var allowed = bugs.Take(SuspectedBug.MaxPerRun).ToList();
+        var allowed = bugs.Take(maxBugs).ToList();
         var violations = files.SelectMany(f => f.Key.EndsWith(".cs", StringComparison.Ordinal) ? CheckCSharp(f.Key, f.Value, allowed)
             : f.Key.EndsWith(".ts", StringComparison.Ordinal) || f.Key.EndsWith(".tsx", StringComparison.Ordinal) ? CheckTypeScript(f.Key, f.Value, allowed)
             : []).ToList();
-        violations.AddRange(bugs.Skip(SuspectedBug.MaxPerRun).Select(b => new GuardrailViolation(b.TestFile, b.Test, TooManyBugs)));
+        violations.AddRange(bugs.Skip(maxBugs).Select(b => new GuardrailViolation(b.TestFile, b.Test, TooManyBugs)));
         return violations;
     }
 

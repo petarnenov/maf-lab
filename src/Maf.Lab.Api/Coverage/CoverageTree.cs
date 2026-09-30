@@ -15,14 +15,17 @@ public sealed record RunSummary(string Id, string Path, string State, string? Re
         r.TargetPct, r.Model, r.Tokens, r.CostUsd, r.Branch, r.CreatedAt, r.UpdatedAt, r.Phase,
         new RunBudget(r.BudgetTokens, r.BudgetCostUsd),
         new RunLimitsSummary(r.MaxAttempts, r.ToolRoundsPerAttempt ?? RunLimits.ToolRoundsPerAttempt.Default,
-            r.TestRunsPerAttempt ?? RunLimits.TestRunsPerAttempt.Default));
+            r.TestRunsPerAttempt ?? RunLimits.TestRunsPerAttempt.Default, r.DeadlineMinutes,
+            r.MaxSuspectedBugs ?? RunLimits.SuspectedBugs.Default));
 }
 
 /// <summary>A run's limits as chosen at start; one left out took its default.</summary>
-public sealed record RunLimitsInput(int? MaxAttempts = null, int? ToolRoundsPerAttempt = null, int? TestRunsPerAttempt = null);
+public sealed record RunLimitsInput(int? MaxAttempts = null, int? ToolRoundsPerAttempt = null, int? TestRunsPerAttempt = null,
+    int? DeadlineMinutes = null, int? MaxSuspectedBugs = null);
 
-/// <summary>The limits a run has.</summary>
-public sealed record RunLimitsSummary(int MaxAttempts, int ToolRoundsPerAttempt, int TestRunsPerAttempt);
+/// <summary>The limits a run has; a null deadline is the configured one.</summary>
+public sealed record RunLimitsSummary(int MaxAttempts, int ToolRoundsPerAttempt, int TestRunsPerAttempt, int? DeadlineMinutes = null,
+    int MaxSuspectedBugs = SuspectedBug.MaxPerRun);
 
 /// <summary>A run's caps as the administrator chose them; a null cap is unlimited.</summary>
 public sealed record RunBudget(long? MaxTokens, double? MaxCostUsd);

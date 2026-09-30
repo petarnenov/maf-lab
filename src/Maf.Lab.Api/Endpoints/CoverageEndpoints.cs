@@ -48,11 +48,10 @@ public static class CoverageEndpoints
     public sealed record StartRunRequest(string Path, int Pct, string Model, RunBudget? Budget = null, RunLimitsInput? Limits = null);
 
     /// <summary>
-    /// Every limit a run has, for the picker: the ones a run may lower with their bounds and default, and the fixed
-    /// ones as values.
+    /// Every limit a run has, for the picker, each with its bounds and the default a run gets when none is chosen.
     /// </summary>
     public sealed record RunLimitsDto(LimitBounds MaxAttempts, LimitBounds ToolRoundsPerAttempt, LimitBounds TestRunsPerAttempt,
-        int DeadlineMinutes, int MaxSuspectedBugs);
+        LimitBounds DeadlineMinutes, LimitBounds MaxSuspectedBugs);
 
     /// <summary>The models, the run's limits, and this file's estimate parts (null when the file cannot be read).</summary>
     public sealed record ModelsDto(IReadOnlyList<ModelDto> Models, RunLimitsDto Limits, EstimateParts? Estimate);
@@ -155,7 +154,7 @@ public static class CoverageEndpoints
             var models = agent.Models.Select((m, i) => new ModelDto(m.Tag, m.DisplayName, m.InputPerMTok, m.OutputPerMTok, m.BestFor,
                 m.Default, m.PriceIsEstimate, checks[i].Available, checks[i].Reason)).ToList();
             var limits = new RunLimitsDto(TestGenRuns.AttemptBounds(agent), RunLimits.ToolRoundsPerAttempt, RunLimits.TestRunsPerAttempt,
-                (int)agent.RunDeadline.TotalMinutes, SuspectedBug.MaxPerRun);
+                TestGenRuns.DeadlineBounds(agent), RunLimits.SuspectedBugs);
             return Results.Ok(new ModelsDto(models, limits, bytes is { } b ? CostEstimator.Parts(b) : null));
         }).RequireAuthorization(AuthPolicies.FirmAdmin);
 

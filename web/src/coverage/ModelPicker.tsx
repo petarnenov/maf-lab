@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import type { AgentModel, RunLimits } from '../api/types';
+import type { AgentModel } from '../api/types';
 import page from '../components/Page.module.css';
 import { type BudgetInput, describeBudget, parseBudget } from './budget';
 import { duration, usd } from './format';
@@ -11,6 +11,8 @@ const LIMIT_LABELS: Record<LimitKey, { label: string; hint: string }> = {
   maxAttempts: { label: 'Max attempts', hint: 'Attempts to reach the target.' },
   toolRoundsPerAttempt: { label: 'Tool rounds per attempt', hint: 'Model calls, each with the tools it asks for.' },
   testRunsPerAttempt: { label: 'Test runs per attempt', hint: 'Runs the model may start itself; each attempt is measured anyway.' },
+  deadlineMinutes: { label: 'Run deadline (minutes)', hint: 'The run is canceled when it has taken this long.' },
+  maxSuspectedBugs: { label: 'Suspected bugs per run', hint: 'Failing tests the agent may report as bugs; 0 reports none.' },
 };
 
 /**
@@ -116,14 +118,16 @@ export function ModelPicker({
             key={key}
             id={`limit-${key}`}
             label={LIMIT_LABELS[key].label}
-            hint={`${LIMIT_LABELS[key].hint} From ${bound[key].min} to ${bound[key].max}; default ${bound[key].default}.`}
+            hint={`${LIMIT_LABELS[key].hint} From ${bound[key].min} to ${bound[key].max}; default ${bound[key].default}${
+              key === 'deadlineMinutes' ? ` (${duration(bound[key].default)})` : ''
+            }.`}
             value={input[key]}
             error={limitErrors[key]}
             inputMode="numeric"
             onChange={(value) => onLimits({ ...input, [key]: value })}
           />
         ))}
-        <FixedLimits limits={bound} targetPct={targetPct} />
+        <FixedLimits targetPct={targetPct} />
       </fieldset>
       <fieldset className={styles.budget}>
         <legend>Budget</legend>
@@ -169,21 +173,13 @@ export function ModelPicker({
   );
 }
 
-/** The limits a run cannot change here, shown so every limit is in view. */
-function FixedLimits({ limits, targetPct }: { limits: RunLimits; targetPct: number }) {
+/** The one limit set elsewhere: the target is the threshold this dialog raises. */
+function FixedLimits({ targetPct }: { targetPct: number }) {
   return (
     <dl className={styles.fixedLimits}>
       <div>
         <dt>Target line coverage</dt>
         <dd>{targetPct}%</dd>
-      </div>
-      <div>
-        <dt>Run deadline</dt>
-        <dd>{duration(limits.deadlineMinutes)}</dd>
-      </div>
-      <div>
-        <dt>Suspected bugs reported</dt>
-        <dd>at most {limits.maxSuspectedBugs}</dd>
       </div>
     </dl>
   );

@@ -479,13 +479,13 @@ public sealed class TestAgentTests
     }
 
     private static async Task<(TestAgentTools Tools, Workspace Workspace)> ToolsAsync(TempGitRepo repo, FakeCoverageRunner? runner = null,
-        int? testRuns = null)
+        int? testRuns = null, int? maxBugs = null)
     {
         var workspace = await Workspace.CreateAsync(repo.Root, Directory.CreateTempSubdirectory("maf-tools-").FullName, "t",
             await repo.HeadAsync(Ct), "dotnet", Ct);
         var client = new CoverageRunnerClient(new HttpClient(runner ?? Runner(_ => 77)) { BaseAddress = new Uri("http://runner.test/") },
             _ => Task.FromResult("t"), TimeSpan.FromMilliseconds(5));
-        var request = TestAgentFactory.Request(await repo.HeadAsync(Ct)) with { TestRunsPerAttempt = testRuns };
+        var request = TestAgentFactory.Request(await repo.HeadAsync(Ct)) with { TestRunsPerAttempt = testRuns, MaxSuspectedBugs = maxBugs };
         return (new TestAgentTools(workspace, request, client), workspace);
     }
 
@@ -568,5 +568,19 @@ public sealed class TestAgentTests
 
         Assert.Equal([true, true, true, false], answers.Select(a => a.Recorded));
         Assert.Equal(3, tools.SuspectedBugs.Count);
+    }
+
+    [Fact]
+    public async Task A_run_with_a_bug_limit_of_one_records_only_one()
+    {
+        var repo = await RepoAsync();
+        var (tools, workspace) = await ToolsAsync(repo, maxBugs: 1);
+        await using var _ = workspace;
+
+        var answers = Enumerable.Range(1, 2)
+            .Select(i => tools.ReportSuspectedBug("tests/Lab.Tests/CalcTests.cs", $"T{i}", "t", "d", "e", "a", "f")).ToList();
+
+        Assert.Equal([true, false], answers.Select(a => a.Recorded));
+        Assert.Contains("at most 1 suspected bug;", answers[1].Note);
     }
 }

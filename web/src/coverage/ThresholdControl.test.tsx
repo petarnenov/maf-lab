@@ -138,7 +138,7 @@ describe('threshold control', () => {
     expect(JSON.parse(post!.body!)).toMatchObject({
       model: 'glm-5.3-flash:cloud',
       budget: null,
-      limits: { maxAttempts: 10, toolRoundsPerAttempt: 40, testRunsPerAttempt: 2 },
+      limits: { maxAttempts: 10, toolRoundsPerAttempt: 40, testRunsPerAttempt: 2, deadlineMinutes: 120, maxSuspectedBugs: 3 },
     });
     expect(calls.some((c) => c.method === 'PUT')).toBe(false);
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -196,10 +196,13 @@ describe('threshold control', () => {
     expect(attempts).toHaveValue('10');
     expect(within(dialog).getByLabelText('Tool rounds per attempt')).toHaveValue('40');
     expect(within(dialog).getByLabelText('Test runs per attempt')).toHaveValue('2');
+    const deadline = within(dialog).getByLabelText('Run deadline (minutes)');
+    expect(deadline).toHaveValue('120');
+    const bugs = within(dialog).getByLabelText('Suspected bugs per run');
+    expect(bugs).toHaveValue('3');
     for (const box of within(dialog).getAllByRole('checkbox', { name: 'Unlimited' })) expect(box).toBeChecked();
     expect(dialog).toHaveTextContent('Target line coverage85%');
-    expect(dialog).toHaveTextContent('Run deadline2 h');
-    expect(dialog).toHaveTextContent('Suspected bugs reportedat most 3');
+    expect(dialog).toHaveTextContent('default 120 (2 h)');
 
     await userEvent.clear(attempts);
     await userEvent.type(attempts, '4');
@@ -215,9 +218,24 @@ describe('threshold control', () => {
 
     await userEvent.clear(rounds);
     await userEvent.type(rounds, '20');
+    await userEvent.clear(deadline);
+    await userEvent.type(deadline, '5');
+    expect(deadline).toHaveAttribute('aria-invalid', 'true');
+    expect(dialog).toHaveTextContent('Enter a whole number from 10 to 120.');
+    expect(within(dialog).getByRole('button', { name: 'Start run' })).toBeDisabled();
+    await userEvent.clear(deadline);
+    await userEvent.type(deadline, '30');
+    await userEvent.clear(bugs);
+    await userEvent.type(bugs, '0');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Start run' }));
     const post = calls.find((c) => c.method === 'POST' && c.url === '/api/coverage/runs');
-    expect(JSON.parse(post!.body!).limits).toEqual({ maxAttempts: 4, toolRoundsPerAttempt: 20, testRunsPerAttempt: 2 });
+    expect(JSON.parse(post!.body!).limits).toEqual({
+      maxAttempts: 4,
+      toolRoundsPerAttempt: 20,
+      testRunsPerAttempt: 2,
+      deadlineMinutes: 30,
+      maxSuspectedBugs: 0,
+    });
   });
 
   it('treats Save on the default a file is below as "reach it"', async () => {

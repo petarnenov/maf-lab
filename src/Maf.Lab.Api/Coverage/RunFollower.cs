@@ -147,7 +147,8 @@ public sealed class RunFollower(
             {
                 return run.State;
             }
-            if (time.GetUtcNow().UtcDateTime - run.CreatedAt > options.Value.RunDeadline)
+            var runDeadline = TestGenRuns.DeadlineOf(run, options.Value);
+            if (time.GetUtcNow().UtcDateTime - run.CreatedAt > runDeadline)
             {
                 try
                 {
@@ -164,7 +165,7 @@ public sealed class RunFollower(
             try
             {
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                deadline.CancelAfter(options.Value.RunDeadline - (time.GetUtcNow().UtcDateTime - run.CreatedAt) + TimeSpan.FromSeconds(1));
+                deadline.CancelAfter(runDeadline - (time.GetUtcNow().UtcDateTime - run.CreatedAt) + TimeSpan.FromSeconds(1));
                 await foreach (var seen in agent.SubscribeAsync(taskId, deadline.Token))
                 {
                     run = await runs.ApplyAsync(runId, seen, ct);

@@ -2230,3 +2230,17 @@ said which account the conversation was about.
   browser prices them for the model, attempts and rounds entered. The xUnit and the Vitest tests pin the same example.
 - **The agent's pre-attempt budget check uses the new figure.** So a small token cap (under about 130k) now stops a
   run before its first attempt, which is what such a cap would have allowed anyway.
+
+## 62. The deadline and the suspected-bug limit are per run (edit-run-deadline-and-bug-cap, 2026-10-01)
+
+- **Why.** After §61 the picker showed the run deadline (2 h) and the suspected-bug limit (3) as text only. They are
+  now fields, filled with their defaults, like the other limits.
+- **Suspected bugs: `RunLimits.SuspectedBugs`, 0–3, default 3.** The task carries `maxSuspectedBugs`. The agent's
+  instructions state it, and with 0 they say the run reports none. `report_suspected_bug` refuses above it. The api
+  stores it on the run, and `RunVerifier` checks the candidate against it. `TestGuardrails.Check` takes the limit, and
+  its violation no longer names 3.
+- **Deadline: from 10 minutes up to the configured `TestAgent:RunDeadline`, which is also the default.** It stays the
+  api's alone: the agent never sees it. The api stores a deadline only when the start request names one, so a run
+  without one keeps the configured value exactly, including the sub-minute values tests use. `RunFollower` cancels a
+  run at its own deadline. The minimum leaves time for the baseline build and an attempt.
+- **Only lower.** As in §61, each default is its maximum, so a run can be made smaller, never larger.

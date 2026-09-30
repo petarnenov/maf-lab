@@ -213,7 +213,8 @@ public sealed class CoverageThresholdTests
         Assert.Equal(new Maf.Lab.TestGen.LimitBounds(1, 10, 10), picker.Limits.MaxAttempts);
         Assert.Equal(new Maf.Lab.TestGen.LimitBounds(1, 40, 40), picker.Limits.ToolRoundsPerAttempt);
         Assert.Equal(new Maf.Lab.TestGen.LimitBounds(0, 2, 2), picker.Limits.TestRunsPerAttempt);
-        Assert.Equal((120, 3), (picker.Limits.DeadlineMinutes, picker.Limits.MaxSuspectedBugs));
+        Assert.Equal(new Maf.Lab.TestGen.LimitBounds(10, 120, 120), picker.Limits.DeadlineMinutes);
+        Assert.Equal(new Maf.Lab.TestGen.LimitBounds(0, 3, 3), picker.Limits.MaxSuspectedBugs);
 
         // The answer is reused: a second look does not ask the provider again.
         var asked = models.Asked.Count;

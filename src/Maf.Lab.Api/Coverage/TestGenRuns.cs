@@ -43,6 +43,20 @@ public sealed class TestGenRuns(
         RunLimits.Attempts with { Default = Math.Clamp(options.MaxAttempts, RunLimits.Attempts.Min, RunLimits.Attempts.Max) };
 
     /// <summary>
+    /// A run's deadline in minutes: up to the configured one (the default), and at least 10 minutes, so a run can finish
+    /// its baseline and an attempt. The configuration owns it, not the contract: the agent never sees it.
+    /// </summary>
+    public static LimitBounds DeadlineBounds(TestAgentOptions options)
+    {
+        var max = Math.Max(1, (int)Math.Ceiling(options.RunDeadline.TotalMinutes));
+        return new LimitBounds(Math.Min(10, max), max, max);
+    }
+
+    /// <summary>How long a run may take: its own deadline when one was chosen, or the configured one.</summary>
+    public static TimeSpan DeadlineOf(TestGenRunRow run, TestAgentOptions options) =>
+        run.DeadlineMinutes is { } minutes ? TimeSpan.FromMinutes(minutes) : options.RunDeadline;
+
+    /// <summary>
     /// Starts a run that raises a file's threshold. The run's row is written first, so the database's one-active-run
     /// index decides a race between two replicas; the threshold is saved only once the agent has accepted the task.
     /// </summary>
@@ -72,9 +86,14 @@ public sealed class TestGenRuns(
         var attempts = limits?.MaxAttempts ?? AttemptBounds(opts).Default;
         var rounds = limits?.ToolRoundsPerAttempt ?? RunLimits.ToolRoundsPerAttempt.Default;
         var testRuns = limits?.TestRunsPerAttempt ?? RunLimits.TestRunsPerAttempt.Default;
+        var maxBugs = limits?.MaxSuspectedBugs ?? RunLimits.SuspectedBugs.Default;
+        // A deadline is stored only when chosen: without one, the configured deadline applies exactly.
+        var deadline = limits?.DeadlineMinutes;
         if ((RunLimits.Attempts.Problem("limits.maxAttempts", attempts)
                 ?? RunLimits.ToolRoundsPerAttempt.Problem("limits.toolRoundsPerAttempt", rounds)
-                ?? RunLimits.TestRunsPerAttempt.Problem("limits.testRunsPerAttempt", testRuns)) is { } limitProblem)
+                ?? RunLimits.TestRunsPerAttempt.Problem("limits.testRunsPerAttempt", testRuns)
+                ?? RunLimits.SuspectedBugs.Problem("limits.maxSuspectedBugs", maxBugs)
+                ?? DeadlineBounds(opts).Problem("limits.deadlineMinutes", deadline)) is { } limitProblem)
         {
             return new StartOutcome.Invalid("limits", limitProblem);
         }
@@ -105,6 +124,8 @@ public sealed class TestGenRuns(
             MaxAttempts = attempts,
             ToolRoundsPerAttempt = rounds,
             TestRunsPerAttempt = testRuns,
+            DeadlineMinutes = deadline,
+            MaxSuspectedBugs = maxBugs,
             LastPct = current.Totals.LinePct,
             CreatedAt = now,
             UpdatedAt = now,
@@ -129,7 +150,7 @@ public sealed class TestGenRuns(
         }
 
         var request = new TestGenRequest(TestGenKinds.Request, row.Id, commit, path, row.Toolchain, pct, attempts, chosen.Tag,
-            new ModelPrice(chosen.InputPerMTok, chosen.OutputPerMTok), caps, rounds, testRuns);
+            new ModelPrice(chosen.InputPerMTok, chosen.OutputPerMTok), caps, rounds, testRuns, maxBugs);
         TaskObservation accepted;
         try
         {

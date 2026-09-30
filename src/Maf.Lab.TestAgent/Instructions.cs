@@ -31,7 +31,7 @@ public static class Instructions
         - If a test fails because the production code does not do what it is meant to, that is a suspected bug. Do not
           change the code and do not bend the assertion. Keep the test, skip it with the reason
           "suspected-bug: <short title>" ([Fact(Skip = "suspected-bug: <title>")] in C#; in TypeScript it.skip(...) with
-          the comment // suspected-bug: <title> on the line before), and call report_suspected_bug. At most three.
+          the comment // suspected-bug: <title> on the line before), and call report_suspected_bug, within the run's limit stated below.
         - Read before you write: the target file, its callers, and the existing tests nearby, and follow their style.
         - Use run_tests to check your work; finish when the tests build, pass, and cover what you can.
         """;
@@ -44,6 +44,9 @@ public static class Instructions
         sb.AppendLine($"This is attempt {attempt} of {request.MaxAttempts}.");
         sb.AppendLine($"You have {request.ToolRounds} tool rounds in this attempt. Read only what you need, and write a test file " +
             "within the first half of them: an attempt that ends without writing a test makes no progress.");
+        sb.AppendLine(request.SuspectedBugLimit > 0
+            ? $"This run may report at most {request.SuspectedBugLimit} suspected bug{(request.SuspectedBugLimit == 1 ? "" : "s")}."
+            : "This run reports no suspected bugs: do not skip a failing test; fix the test or leave it out.");
         sb.AppendLine(request.TestRuns > 0
             ? $"You may call run_tests at most {request.TestRuns} time{(request.TestRuns == 1 ? "" : "s")} in this attempt."
             : "Do not call run_tests in this attempt: it is measured when you finish.");

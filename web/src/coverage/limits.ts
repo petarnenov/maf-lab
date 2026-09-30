@@ -1,22 +1,27 @@
 import type { AgentModel, EstimateParts, LimitBounds, RunLimits, RunLimitsInput } from '../api/types';
 
-/** The three limits a run may lower, as typed. */
+/** The limits a run may lower, as typed. */
 export interface LimitsInput {
   maxAttempts: string;
   toolRoundsPerAttempt: string;
   testRunsPerAttempt: string;
+  deadlineMinutes: string;
+  maxSuspectedBugs: string;
 }
 
 export type LimitKey = keyof LimitsInput;
 
-export const LIMIT_KEYS: LimitKey[] = ['maxAttempts', 'toolRoundsPerAttempt', 'testRunsPerAttempt'];
+export const LIMIT_KEYS: LimitKey[] = [
+  'maxAttempts',
+  'toolRoundsPerAttempt',
+  'testRunsPerAttempt',
+  'deadlineMinutes',
+  'maxSuspectedBugs',
+];
 
 /** The fields filled with the server's defaults. */
-export const defaultLimits = (limits: RunLimits): LimitsInput => ({
-  maxAttempts: String(limits.maxAttempts.default),
-  toolRoundsPerAttempt: String(limits.toolRoundsPerAttempt.default),
-  testRunsPerAttempt: String(limits.testRunsPerAttempt.default),
-});
+export const defaultLimits = (limits: RunLimits): LimitsInput =>
+  Object.fromEntries(LIMIT_KEYS.map((key) => [key, String(limits[key].default)])) as unknown as LimitsInput;
 
 export interface ParsedLimits {
   /** Every limit as a number, or null while any is invalid. */

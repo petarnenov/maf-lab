@@ -208,7 +208,7 @@ public sealed class TestGenerationHandler(
                 largestOutput = Math.Max(largestOutput, usage.OutputTokens - outputBefore);
 
                 var diff = await workspace.DiffAsync(ct);
-                var violations = TestGuardrails.Check(await workspace.ChangedFilesAsync(ct), tools.SuspectedBugs);
+                var violations = TestGuardrails.Check(await workspace.ChangedFilesAsync(ct), tools.SuspectedBugs, request.SuspectedBugLimit);
                 var forbidden = DiffPaths.Forbidden(diff, request.Toolchain);
                 violations = [.. violations, .. forbidden.Select(p => new GuardrailViolation(p, "(file)", WorkspacePaths.WriteRefusal))];
 

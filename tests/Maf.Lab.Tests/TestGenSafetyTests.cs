@@ -97,14 +97,15 @@ public sealed class TestGenSafetyTests
 
     // ---- guardrails: C# ----
 
-    private static IReadOnlyList<GuardrailViolation> Cs(string body, IReadOnlyList<SuspectedBug>? bugs = null) =>
+    private static IReadOnlyList<GuardrailViolation> Cs(string body, IReadOnlyList<SuspectedBug>? bugs = null,
+        int maxBugs = SuspectedBug.MaxPerRun) =>
         TestGuardrails.Check(new Dictionary<string, string> { ["tests/Lab.Tests/CalcTests.cs"] = $$"""
             using Xunit;
             public class CalcTests
             {
             {{body}}
             }
-            """ }, bugs);
+            """ }, bugs, maxBugs);
 
     [Fact]
     public void A_clean_xunit_test_passes()
@@ -226,6 +227,18 @@ public sealed class TestGenSafetyTests
         // The fourth is both one bug too many and a skip nobody may make.
         Assert.Contains(v, x => x.Test == "Bug4" && x.Rule == TestGuardrails.TooManyBugs);
         Assert.Contains(v, x => x.Test == "CalcTests.Bug4" && x.Rule == TestGuardrails.Skipped);
+        Assert.DoesNotContain(v, x => x.Test.EndsWith("Bug1"));
+    }
+
+    [Fact]
+    public void A_run_with_a_lower_bug_limit_flags_the_bug_above_it()
+    {
+        var bugs = Enumerable.Range(1, 2).Select(i => Bug("tests/Lab.Tests/CalcTests.cs", $"Bug{i}")).ToList();
+        var body = string.Join('\n', bugs.Select(b => $$"""[Fact(Skip = "suspected-bug: x")] public void {{b.Test}}() { Assert.True(false); }"""));
+
+        var v = Cs(body, bugs, maxBugs: 1);
+
+        Assert.Contains(v, x => x.Test == "Bug2" && x.Rule == TestGuardrails.TooManyBugs);
         Assert.DoesNotContain(v, x => x.Test.EndsWith("Bug1"));
     }
 

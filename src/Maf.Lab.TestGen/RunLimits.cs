@@ -26,4 +26,7 @@ public static class RunLimits
 
     /// <summary>How often the model may run the tests itself within one attempt; the attempt's own run is extra.</summary>
     public static readonly LimitBounds TestRunsPerAttempt = new(0, 2, 2);
+
+    /// <summary>Suspected bugs a run may report; 0 means none. The run's deadline is the api's (its configuration owns it).</summary>
+    public static readonly LimitBounds SuspectedBugs = new(0, SuspectedBug.MaxPerRun, SuspectedBug.MaxPerRun);
 }

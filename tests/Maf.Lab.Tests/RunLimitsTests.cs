@@ -15,6 +15,7 @@ public sealed class RunLimitsTests
         Assert.Equal((1, 10, 10), (RunLimits.Attempts.Min, RunLimits.Attempts.Max, RunLimits.Attempts.Default));
         Assert.Equal((1, 40, 40), (RunLimits.ToolRoundsPerAttempt.Min, RunLimits.ToolRoundsPerAttempt.Max, RunLimits.ToolRoundsPerAttempt.Default));
         Assert.Equal((0, 2, 2), (RunLimits.TestRunsPerAttempt.Min, RunLimits.TestRunsPerAttempt.Max, RunLimits.TestRunsPerAttempt.Default));
+        Assert.Equal((0, 3, 3), (RunLimits.SuspectedBugs.Min, RunLimits.SuspectedBugs.Max, RunLimits.SuspectedBugs.Default));
         Assert.Equal(TestGenRequest.AttemptLimit, RunLimits.Attempts.Max);
     }
 
@@ -24,7 +25,7 @@ public sealed class RunLimitsTests
         var request = Request();
 
         Assert.Null(request.Problem());
-        Assert.Equal((40, 2), (request.ToolRounds, request.TestRuns));
+        Assert.Equal((40, 2, 3), (request.ToolRounds, request.TestRuns, request.SuspectedBugLimit));
     }
 
     [Theory]
@@ -44,6 +45,16 @@ public sealed class RunLimitsTests
     public void Limits_out_of_bounds_are_rejected(int attempts, int? rounds, int? testRuns, string problem)
     {
         Assert.Equal(problem, Request(attempts, rounds, testRuns).Problem());
+    }
+
+    [Theory]
+    [InlineData(0, null)]
+    [InlineData(3, null)]
+    [InlineData(4, "maxSuspectedBugs must be from 0 to 3.")]
+    [InlineData(-1, "maxSuspectedBugs must be from 0 to 3.")]
+    public void The_suspected_bug_limit_is_bounded(int bugs, string? problem)
+    {
+        Assert.Equal(problem, (Request() with { MaxSuspectedBugs = bugs }).Problem());
     }
 
     [Fact]
