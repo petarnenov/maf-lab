@@ -206,8 +206,16 @@
   at low coverage. It raises the threshold, confirms, picks the stub model, runs, verifies, creates a candidate
   branch, accepts, and checks that official coverage for the file is at or above the target. Verify that
   `make ci-e2e` passes.
-- [ ] 10.2 Run the Jev review checklist (docs/rules/jev-usage.md §7) against this change. Record in the change that no
+- [x] 10.2 Run the Jev review checklist (docs/rules/jev-usage.md §7) against this change. Record in the change that no
   Jev call is added or modified, so no labeled-input set (Bulgarian included) is needed. Verify that the note exists
   in `tasks.md` under this item.
+  - **Jev review note (2026-09-30).** No Jev request is added or changed. Checked against §7: none of the
+    change's decisions is a closed-set judgment over natural language. Threshold against coverage, the allowlist,
+    the path allowlist, guardrail detection, stop conditions, and whether a suspected bug reproduces are all decided
+    by code (§2 "code controls"). The tests are written by the model (§2 "LLM writes"). Side effects (writes, merges,
+    issues) are enforced in code. The remaining items (question design, confidence gating, fallback, pinned
+    version, 429/401 handling, labeled Bulgarian inputs) apply only to a Jev call, and there is none, so no labeled
+    input set is needed. `git grep` over the new projects finds no call to `/v1/systemone`.
+
 - [ ] 10.3 Run `make lint`, `make test`, `make verify` and `openspec validate add-coverage-dashboard-and-test-agent
   --strict`. Verify that all pass.

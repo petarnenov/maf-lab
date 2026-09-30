@@ -33,6 +33,8 @@ export CHAT_MODEL OLLAMA_MODELS_DIR
 # The repository, mounted into the api (read-write), the test agent and the coverage runner (read-only) at this same path.
 MAF_LAB_REPO  ?= $(ROOT)
 export MAF_LAB_REPO
+# The throwaway repository ci-e2e mounts instead, because its test-generation run merges into main.
+E2E_REPO      ?= $(ROOT)/.cache/e2e-repo
 # OLLAMA_API_KEY, JEV_MAF_LAB and GITHUB_ISSUES_TOKEN are only ever read from the environment (never written to a
 # file or echoed).
 
@@ -56,7 +58,7 @@ CODE_ENV := Indexing__Layout=repository Indexing__CorpusRoot=$(ROOT) Indexing__M
             Qdrant__Collection=maf_code_chunks Qdrant__MetaCollection=maf_code_meta
 
 .PHONY: all help up down restart ps logs clean index index-portfolio index-code reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
-        coverage eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-a2a dev doctor banner index-if-empty \
+        coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-a2a dev doctor banner index-if-empty \
         specs lint-dotnet lint-web build-web ci ci-e2e setup \
         require-docker require-dotnet require-npm
 
@@ -157,8 +159,13 @@ specs: require-npm ## Validate all OpenSpec specs and changes (strict)
 
 ci: specs lint-dotnet test-dotnet lint-web test-web build-web ci-e2e ## Run locally what GitHub Actions runs on every push
 
-ci-e2e: require-docker require-dotnet ## Model-free end-to-end: stack with the Ollama stub, index, verify, A2A conformance (CI mode)
-	$(MAKE) up index-if-empty verify eval-a2a CI_MODE=1
+ci-e2e: require-docker require-dotnet ## Model-free end-to-end: stack with the Ollama stub, index, verify, A2A conformance, test generation (CI mode)
+	@# Test generation merges into main: it runs on a fresh clone, never on this checkout's main.
+	rm -rf $(E2E_REPO) && git clone -q --branch main $(ROOT) $(E2E_REPO)
+	$(MAKE) up index-if-empty verify eval-a2a testgen-e2e CI_MODE=1 MAF_LAB_REPO=$(E2E_REPO)
+
+testgen-e2e: ## Model-free test generation end to end: refresh, run, verify, accept (used by ci-e2e, against its clone)
+	scripts/testgen_e2e.sh $(BASE_URL)
 
 coverage: require-docker ## Refresh the coverage snapshot at main (both toolchains, through the running stack)
 	@scripts/coverage_refresh.sh $(BASE_URL)

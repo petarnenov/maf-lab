@@ -17,6 +17,8 @@ namespace Maf.Lab.Tests;
 /// A run end to end inside one process: the api starts it over A2A on a real test agent, follows it, verifies it and
 /// relays it to the browser (test-generation-runs).
 /// </summary>
+// Heavy (git, several hosts): run one after another rather than beside the timing-sensitive tests.
+[Collection("TestGeneration")]
 public sealed class TestGenRunsApiTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

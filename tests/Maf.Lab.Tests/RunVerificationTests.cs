@@ -63,6 +63,8 @@ internal sealed class FakeGitHub : HttpMessageHandler
 /// What the api does with a completed run: verify it, file its bugs, branch it, and merge or discard it
 /// (test-generation-runs: independent verification, suspected bugs, candidate branch, accept and discard).
 /// </summary>
+// Heavy (git, several hosts): run one after another rather than beside the timing-sensitive tests.
+[Collection("TestGeneration")]
 public sealed class RunVerificationTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -134,6 +136,9 @@ public sealed class RunVerificationTests
         var row = CoverageStorageTests.Run(id, Target, TestGenRunState.Verifying);
         row.CommitSha = await h.Repo.HeadAsync(Ct);
         row.TaskId = "task-1";
+        // The test verifies it itself: a live lease keeps the host's own follower from verifying it at the same time.
+        row.Follower = "this-test";
+        row.FollowerHeartbeatAt = DateTime.UtcNow.AddHours(1);
         row.ReportJson = JsonSerializer.Serialize(report, TestGenKinds.Json);
         db.TestGenRuns.Add(row);
         await db.SaveChangesAsync(Ct);

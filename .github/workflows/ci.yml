@@ -67,12 +67,9 @@ jobs:
     name: End-to-end stack (model-free)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    env:
-      # The repository the Coverage screen reads and the test agent writes tests for, mounted at this same path.
-      MAF_LAB_REPO: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v7
-      # Coverage is measured at main, and an accepted run merges into it: the checkout is detached, so name it main.
+      # make ci-e2e clones main for its test-generation run; the checkout is detached, so name it main.
       - run: git checkout -q -B main
       - uses: actions/setup-dotnet@v6
         with:
@@ -88,6 +85,7 @@ jobs:
         if: failure()
         run: |
           mkdir -p e2e-logs
+          export MAF_LAB_REPO="$PWD/.cache/e2e-repo"
           docker compose -f compose/docker-compose.yml -f compose/docker-compose.ci.yml ps -a > e2e-logs/ps.txt 2>&1 || true
           docker compose -f compose/docker-compose.yml -f compose/docker-compose.ci.yml logs --no-color > e2e-logs/compose.log 2>&1 || true
           cat e2e-logs/ps.txt

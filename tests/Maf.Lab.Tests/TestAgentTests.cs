@@ -90,6 +90,8 @@ internal sealed partial class AttemptModel(Func<int, Move> script) : IChatClient
 }
 
 /// <summary>The test-generation agent as the api meets it (test-generation-agent).</summary>
+// Heavy (git, several hosts): run one after another rather than beside the timing-sensitive tests.
+[Collection("TestGeneration")]
 public sealed class TestAgentTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

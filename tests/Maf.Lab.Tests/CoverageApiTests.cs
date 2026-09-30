@@ -12,6 +12,8 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Maf.Lab.Tests;
 
 /// <summary>The Coverage API: tree, file detail, history, upload and refresh (coverage-ingestion, coverage-dashboard).</summary>
+// Heavy (git, several hosts): run one after another rather than beside the timing-sensitive tests.
+[Collection("TestGeneration")]
 public sealed class CoverageApiTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

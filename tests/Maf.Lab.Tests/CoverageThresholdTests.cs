@@ -16,6 +16,8 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 namespace Maf.Lab.Tests;
 
 /// <summary>Per-file thresholds, the allowlist and what a run is expected to cost (coverage-threshold, model-selection).</summary>
+// Heavy (git, several hosts): run one after another rather than beside the timing-sensitive tests.
+[Collection("TestGeneration")]
 public sealed class CoverageThresholdTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

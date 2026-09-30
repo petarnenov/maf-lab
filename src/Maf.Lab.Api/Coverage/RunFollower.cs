@@ -33,6 +33,11 @@ public sealed class RunFollower(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // No agent, no runs to follow: a host without one does not poll for them.
+        if (string.IsNullOrWhiteSpace(options.Value.BaseUrl))
+        {
+            return;
+        }
         using var timer = new PeriodicTimer(options.Value.FollowerPollEvery, time);
         do
         {
@@ -155,11 +160,12 @@ public sealed class RunFollower(
                 return (await runs.FinishAsync(runId, TestGenRunState.Failed, "deadline", ct))?.State ?? TestGenRunState.Failed;
             }
 
+            var taskId = run.TaskId!;
             try
             {
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 deadline.CancelAfter(options.Value.RunDeadline - (time.GetUtcNow().UtcDateTime - run.CreatedAt) + TimeSpan.FromSeconds(1));
-                await foreach (var seen in agent.SubscribeAsync(run.TaskId!, deadline.Token))
+                await foreach (var seen in agent.SubscribeAsync(taskId, deadline.Token))
                 {
                     run = await runs.ApplyAsync(runId, seen, ct);
                     if (run is null || run.State is not (TestGenRunState.Submitted or TestGenRunState.Working))
@@ -168,7 +174,7 @@ public sealed class RunFollower(
                     }
                 }
                 // The stream ended without an end: look, then subscribe again.
-                run = await runs.ApplyAsync(runId, await agent.GetAsync(run!.TaskId!, ct), ct);
+                run = await runs.ApplyAsync(runId, await agent.GetAsync(taskId, ct), ct);
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
@@ -181,7 +187,7 @@ public sealed class RunFollower(
                 agent.Forget();
                 try
                 {
-                    run = await runs.ApplyAsync(runId, await agent.GetAsync(run.TaskId!, ct), ct);
+                    run = await runs.ApplyAsync(runId, await agent.GetAsync(taskId, ct), ct);
                 }
                 catch (Exception pollError) when (pollError is not OperationCanceledException)
                 {

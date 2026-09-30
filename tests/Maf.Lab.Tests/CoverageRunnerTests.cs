@@ -52,6 +52,8 @@ internal sealed class FakeToolchain : IToolchainRunner
 }
 
 /// <summary>The coverage runner as its callers meet it (coverage-runner).</summary>
+// Heavy (git, several hosts): run one after another rather than beside the timing-sensitive tests.
+[Collection("TestGeneration")]
 public sealed class CoverageRunnerTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
