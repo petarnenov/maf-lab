@@ -62,7 +62,7 @@ public class ReviewerSharedStateTests
     {
         // No store registered and none configured: the reviewer says what it needs rather than serving half of it.
         var failure = Assert.Throws<InvalidOperationException>(() =>
-            Maf.Lab.ComplianceAgent.Program.BuildApp([], builder =>
+            Maf.Lab.ComplianceAgent.Program.BuildApp(ProjectDir.ContentRootArgs("Maf.Lab.ComplianceAgent"), builder =>
             {
                 builder.WebHost.UseSetting("urls", "http://127.0.0.1:0");
                 builder.Logging.ClearProviders();

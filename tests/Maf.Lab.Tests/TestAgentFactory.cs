@@ -60,7 +60,7 @@ internal sealed class TestAgentFactory(TempGitRepo repo, IChatClient model, Fake
     {
         if (_app is null)
         {
-            _app = Maf.Lab.TestAgent.Program.BuildApp([], builder =>
+            _app = Maf.Lab.TestAgent.Program.BuildApp(ProjectDir.ContentRootArgs("Maf.Lab.TestAgent"), builder =>
             {
                 builder.WebHost.UseUrls("http://127.0.0.1:0");
                 builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>

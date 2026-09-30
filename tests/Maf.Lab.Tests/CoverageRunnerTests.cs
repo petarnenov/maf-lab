@@ -67,7 +67,7 @@ public sealed class CoverageRunnerTests
         {
             if (_app is null)
             {
-                _app = Maf.Lab.CoverageRunner.Program.BuildApp([], builder =>
+                _app = Maf.Lab.CoverageRunner.Program.BuildApp(ProjectDir.ContentRootArgs("Maf.Lab.CoverageRunner"), builder =>
                 {
                     builder.WebHost.UseUrls("http://127.0.0.1:0");
                     builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>

@@ -345,7 +345,7 @@ public sealed class TestGenRunsApiTests
 
     private static async Task<Microsoft.AspNetCore.Builder.WebApplication> RealRunnerAsync(TempGitRepo repo)
     {
-        var app = Maf.Lab.CoverageRunner.Program.BuildApp([], builder =>
+        var app = Maf.Lab.CoverageRunner.Program.BuildApp(ProjectDir.ContentRootArgs("Maf.Lab.CoverageRunner"), builder =>
         {
             Microsoft.AspNetCore.Hosting.HostingAbstractionsWebHostBuilderExtensions.UseUrls(builder.WebHost, "http://127.0.0.1:0");
             Microsoft.Extensions.Configuration.MemoryConfigurationBuilderExtensions.AddInMemoryCollection(builder.Configuration,
