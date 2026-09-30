@@ -12,8 +12,9 @@ namespace Maf.Lab.Api.Agent.Jev;
 /// Whether, and against what, Jev checks a turn's final answer (add-jev-answer-check). The endpoint, the model and the
 /// key are the shared Jev client's. Each probability is read against a review band (fit-answer-checks-to-code-questions,
 /// D7): below its signal floor the turn is flagged, at or above its pass threshold it passes, and in between it is
-/// <see cref="AnswerVerdict.Uncertain"/> — traced and counted, never a review signal. The band is jev-usage §4.5's
-/// starting point until the labelled answer set moves it (DECISIONS.md).
+/// <see cref="AnswerVerdict.Uncertain"/> — traced and counted, never a review signal. The grounding band was set on the
+/// labelled answer set (<c>make eval-answer-check</c>, DECISIONS.md §63); relevance keeps jev-usage §4.5's starting band,
+/// which the set confirmed.
 /// </summary>
 public sealed class AnswerCheckOptions
 {
@@ -37,14 +38,21 @@ public sealed class AnswerCheckOptions
     /// <summary>Below this probability that the answer addresses the question: <c>not_relevant</c> and a review signal.</summary>
     public double NotRelevantAt { get; set; } = 0.2;
 
-    /// <summary>Below this probability that every claim is supported: <c>not_grounded</c> and a review signal.</summary>
-    public double NotGroundedAt { get; set; } = 0.2;
+    /// <summary>
+    /// Below this probability that every claim is supported: <c>not_grounded</c> and a review signal. 0.3 keeps below the
+    /// recorded g-01 answer (0.33–0.45, faithful by the rubric, DECISIONS §42) and flags every other unsupported row of the
+    /// labelled set but two, which fall in the band (§63).
+    /// </summary>
+    public double NotGroundedAt { get; set; } = 0.3;
 
     /// <summary>At or above this (and grounding at or above its own) the answer passes; between the two, uncertain.</summary>
     public double RelevantPassAt { get; set; } = 0.8;
 
-    /// <summary>At or above this (and relevance at or above its own) the answer passes; between the two, uncertain.</summary>
-    public double GroundedPassAt { get; set; } = 0.8;
+    /// <summary>
+    /// At or above this (and relevance at or above its own) the answer passes; between the two, uncertain. 0.5 is the
+    /// lowest value above every unsupported answer of the labelled set's design split (highest 0.45, §63).
+    /// </summary>
+    public double GroundedPassAt { get; set; } = 0.5;
 
     /// <summary>
     /// The most characters of sources one request carries. Every source is sent whole or not at all; a turn whose own

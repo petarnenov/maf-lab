@@ -48,6 +48,12 @@
         "crossingRecall": 0.75,
         "noneAccuracy": 0.85
       },
+      "answer-check": {
+        "groundedPass": 0.95,
+        "relevantPass": 0.95,
+        "groundedDetection": 0.8,
+        "relevantDetection": 0.9
+      },
       "guardrail": {
         "detection": 0.9,
         "benignPass": 0.98,

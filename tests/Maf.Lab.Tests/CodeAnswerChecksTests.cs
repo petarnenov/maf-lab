@@ -396,6 +396,8 @@ public class CodeAnswerChecksTests
     [Theory]
     [InlineData(0.9, 0.35, AnswerVerdict.Uncertain, new string[0])]
     [InlineData(0.9, 0.15, AnswerVerdict.NotGrounded, new[] { TurnSignal.AnswerNotGrounded })]
+    [InlineData(0.9, 0.25, AnswerVerdict.NotGrounded, new[] { TurnSignal.AnswerNotGrounded })]
+    [InlineData(0.9, 0.55, AnswerVerdict.Pass, new string[0])]
     [InlineData(0.9, 0.85, AnswerVerdict.Pass, new string[0])]
     [InlineData(0.1, 0.1, AnswerVerdict.NotGrounded, new[] { TurnSignal.AnswerNotGrounded, TurnSignal.AnswerNotRelevant })]
     [InlineData(0.15, 0.9, AnswerVerdict.NotRelevant, new[] { TurnSignal.AnswerNotRelevant })]
@@ -408,7 +410,7 @@ public class CodeAnswerChecksTests
 
         Assert.Equal(verdict, result.Verdict);
         Assert.Equal(signals, result.Signals);
-        Assert.Equal((0.2, 0.2, 0.8, 0.8), (result.RelevantFloor, result.GroundedFloor, result.RelevantPassAt, result.GroundedPassAt));
+        Assert.Equal((0.2, 0.3, 0.8, 0.5), (result.RelevantFloor, result.GroundedFloor, result.RelevantPassAt, result.GroundedPassAt));
     }
 
     [Fact]
@@ -431,7 +433,7 @@ public class CodeAnswerChecksTests
         Assert.Equal((0.5, 0.4), (old.NotGroundedAt, old.NotRelevantAt));
         var both = Bind(new() { ["Jev:AnswerCheck:MinGrounded"] = "0.5", ["Jev:AnswerCheck:NotGroundedAt"] = "0.3" });
         Assert.Equal(0.3, both.NotGroundedAt);
-        Assert.Equal((0.2, 0.2, 0.8, 0.8), (new AnswerCheckOptions().NotGroundedAt, new AnswerCheckOptions().NotRelevantAt,
+        Assert.Equal((0.3, 0.2, 0.5, 0.8), (new AnswerCheckOptions().NotGroundedAt, new AnswerCheckOptions().NotRelevantAt,
             new AnswerCheckOptions().GroundedPassAt, new AnswerCheckOptions().RelevantPassAt));
     }
 
@@ -445,8 +447,8 @@ public class CodeAnswerChecksTests
 
         var check = Trace(events).Single(t => t.Kind == TraceKinds.AnswerCheck);
         Assert.Equal(AnswerVerdict.Uncertain, check.Data.GetProperty("verdict").GetString());
-        Assert.EndsWith("grounded 0.35 in 0.20–0.80 — uncertain", check.Title);
-        Assert.Equal(0.8, check.Data.GetProperty("groundedPassAt").GetDouble());
+        Assert.EndsWith("grounded 0.35 in 0.30–0.50 — uncertain", check.Title);
+        Assert.Equal(0.5, check.Data.GetProperty("groundedPassAt").GetDouble());
         Assert.Equal(0, check.Data.GetProperty("duplicates").GetInt32());
         Assert.DoesNotContain(Signals(events), s => s.StartsWith("answer_", StringComparison.Ordinal));
         // No question, answer, snippet or path in any log line; the key only in the bearer header.
