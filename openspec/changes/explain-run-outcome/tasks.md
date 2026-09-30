@@ -31,7 +31,7 @@ No TypeSafe Jev call is added or changed, so the Jev review checklist does not a
 ## 4. Verification
 
 - [x] 4.1 `make test`, `make lint` pass
-- [ ] 4.2 Live check on http://localhost:7171: start a run on a below-threshold file with no budget. Watch the tree marker move and the Activity modal end with a closing line. Then start one with a tiny cost cap (e.g. $0.001) and see it end "No change · budget" on the row, in the status and in the modal
+- [x] 4.2 Live check on http://localhost:7171: start a run on a below-threshold file with no budget. Watch the tree marker move and the Activity modal end with a closing line. Then start one with a tiny cost cap (e.g. $0.001) and see it end "No change · budget" on the row, in the status and in the modal — Done: a $0.001-capped run ended "No change · budget" on the row, the status and the modal (closing line "Stopped before attempt 1: the budget would be exceeded."), with the live row marker seen during it; an unlimited run started from the UI ran all 5 attempts with no caps and was canceled. That run also showed the model still writing no test on this Redis-backed file (see the final report).
 - [x] 4.3 `openspec validate explain-run-outcome --strict` passes
 
 ## 5. Documentation
