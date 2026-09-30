@@ -35,7 +35,7 @@ characters and a trace at 1 MB; `truncated: true` marks a capped event. JSON is 
 | `card` | `{ callId, messageId, activityType, content }` — a data card a carded tool result became; numbers and names only (add-activity-cards) |
 | `signals` | `{ signals: [string] }` |
 | `memory` | `{ stored: [{ role, tokens }] }` |
-| `turn.end` | `{ durationMs, error, answerChars, toolCalls, sourceCount, domainPath: [domain], domainsTouched: [domain], domainsPredicted: [domain], crossings }` — `domainPath` is the domains the turn's calls went to in order (consecutive repeats collapsed), `domainsPredicted` Jev's in-scope domains; the title says "across billing → portfolio" when the turn crossed |
+| `turn.end` | `{ durationMs, error, answerChars, citationMarkersRemoved, toolCalls, sourceCount, domainPath: [domain], domainsTouched: [domain], domainsPredicted: [domain], crossings }` — `domainPath` is the domains the turn's calls went to in order (consecutive repeats collapsed), `domainsPredicted` Jev's in-scope domains; the title says "across billing → portfolio" when the turn crossed; `citationMarkersRemoved` counts the model's inline `【…】` markers taken out of the answer (strip-citation-markers), which `model.response` still shows as written |
 
 `Message` = `{ role, contents: [ { type: "text", text } | { type: "functionCall", callId, name, arguments } | { type: "functionResult", callId, result } ] }`.
 `Candidate` = `{ rank, chunkId, docId, tenantId, sectionPath, score }`.

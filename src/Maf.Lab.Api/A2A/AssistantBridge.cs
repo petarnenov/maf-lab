@@ -58,7 +58,7 @@ public sealed class AssistantBridge(
         chatOptions.Tools = [.. toolSet.Tools];
 
         var agent = new ChatClientAgent(
-                models.CreateChatClient(),
+                new CitationMarkerChatClient(models.CreateChatClient()),
                 new ChatClientAgentOptions { Name = "maf-lab-assistant", ChatOptions = chatOptions },
                 loggers)
             .AsBuilder()

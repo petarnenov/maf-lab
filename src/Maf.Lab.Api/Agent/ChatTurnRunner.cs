@@ -230,6 +230,8 @@ public sealed partial class ChatTurnRunner(
                     reasoning.Flush();
                     chunker.Flush();
                 });
+                // Above the trace, so model.response keeps what the model wrote; everything after it sees the answer clean.
+                chatClient = new CitationMarkerChatClient(chatClient, n => state.CitationMarkersRemoved += n);
                 // tool_choice names one function: a turn that must issue several calls up front — a crossing's searches,
                 // a run's status beside them — is emulated whatever the provider supports, as a routed call is.
                 if (options.Value.EmulateRequiredToolMode || route is not null || forcedSearches.Count > 1 || alongside.Count > 0)
@@ -375,6 +377,7 @@ public sealed partial class ChatTurnRunner(
             ["durationMs"] = sw.ElapsedMilliseconds,
             ["error"] = error,
             ["answerChars"] = text.Length,
+            ["citationMarkersRemoved"] = state.CitationMarkersRemoved,
             ["toolCalls"] = state.ToolCalls.Count,
             ["sourceCount"] = sources.Count,
             // Where the turn actually went, beside where Jev said it would: the two disagreeing is worth a look.
@@ -1261,6 +1264,9 @@ public sealed partial class ChatTurnRunner(
         /// <summary>The data the model was handed this turn, after the guard — what the answer check calls its sources.</summary>
         public List<string> Read { get; } = [];
         public bool Searched { get; set; }
+
+        /// <summary>Inline citation markers taken out of the model's answer (strip-citation-markers).</summary>
+        public int CitationMarkersRemoved { get; set; }
 
         /// <summary>The conversation's previous question, for reading a follow-up; null on a first turn.</summary>
         public string? PreviousQuestion { get; set; }
