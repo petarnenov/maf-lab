@@ -104,7 +104,10 @@ SHALL then carry every activity entry recorded so far, in order, as the protocol
 - reasoning: the protocol's `REASONING_*` events, in the same shape;
 - an attempt's result: a `CUSTOM` event named `maf-lab/testgen-attempt`;
 - the agent's stop: `STEP_FINISHED` for the open step, then a `CUSTOM` event named `maf-lab/testgen-stopped` with the
-  stop reason, the last attempt, the best coverage and, for `budget`, the attempt not started.
+  stop reason, the last attempt, the best coverage and, for `budget`, the attempt not started;
+- the agent's takeover after a restart: `STEP_FINISHED` for the open step, then a `CUSTOM` event named
+  `maf-lab/testgen-resumed` with the attempt it resumes at. The browser SHALL show it in the run's timeline as a notice
+  that the agent restarted and resumed at that attempt.
 
 After the backlog, the stream SHALL carry live events as they are recorded, and a new `STATE_SNAPSHOT` on every
 change of the summary. It SHALL end with exactly one terminal event when the agent's work on the run is over:
@@ -128,6 +131,11 @@ never talk to the agent.
 #### Scenario: The stop closes the timeline
 - **WHEN** the agent stops for `budget` before attempt 3 and the run ends `completed_no_change`
 - **THEN** the stream carries `STEP_FINISHED` for attempt 2 measuring, `CUSTOM maf-lab/testgen-stopped` with reason `budget`, a `STATE_SNAPSHOT` with state `completed_no_change` and reason `budget`, then `RUN_FINISHED`
+
+#### Scenario: The agent restarted
+- **WHEN** the agent restarts during attempt 2 and resumes the task
+- **THEN** the stream carries `STEP_FINISHED` for attempt 2 generating, `CUSTOM maf-lab/testgen-resumed` with attempt
+  2, then `STEP_STARTED` for attempt 2 generating, and the timeline shows the restart notice
 
 #### Scenario: A failed run ends in error
 - **WHEN** a run ends `failed` with reason `runner_unavailable`

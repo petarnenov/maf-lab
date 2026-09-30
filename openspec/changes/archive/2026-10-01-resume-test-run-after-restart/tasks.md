@@ -20,7 +20,7 @@
 ## 4. Verification
 
 - [x] 4.1 Run `make test` and `make lint`; both pass
-- [ ] 4.2 Live check: start a run from the Coverage page, restart the test agent (`docker compose restart test-agent`) during an attempt, and see the run resume on its own within about a minute, the timeline showing the restart notice, and the run reaching a final state
+- [x] 4.2 Live check: start a run from the Coverage page, restart the test agent (`docker compose restart test-agent`) during an attempt, and see the run resume on its own within about a minute, the timeline showing the restart notice, and the run reaching a final state (checked by hand by the user)
 
 ## 5. Documentation
 
