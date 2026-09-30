@@ -209,13 +209,19 @@ public sealed class TestGenRuns(
             run.Tokens = progress.Tokens;
             run.CostUsd = progress.CostUsd;
         }
+        // A task seen only once it is done carries no progress, but its activity says which attempts started.
+        if (seen.Activity.Count > 0)
+        {
+            run.Attempt = Math.Max(run.Attempt, seen.Activity.Max(a => a.Attempt));
+        }
         if (seen.Report is { } report)
         {
             run.ReportJson = JsonSerializer.Serialize(report, TestGenKinds.Json);
             run.Tokens = report.Usage.InputTokens + report.Usage.OutputTokens;
             run.CostUsd = report.Usage.EstimatedCostUsd;
             run.LastPct = report.Final ?? run.LastPct;
-            run.Attempt = report.Attempts.Count;
+            // The report lists finished attempts; one the budget stopped still started. Progress or the activity counted it.
+            run.Attempt = Math.Max(run.Attempt, report.Attempts.Count);
             // Why the agent stopped stays with the run; a verification failure later replaces it.
             run.Reason = report.StopReason;
         }

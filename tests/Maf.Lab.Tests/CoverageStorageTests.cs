@@ -57,6 +57,37 @@ public sealed class CoverageStorageTests
         Assert.Equal(4, await ctx.TestGenRuns.CountAsync(Ct));
     }
 
+    [Fact]
+    public async Task A_run_stored_one_attempt_short_is_corrected_from_its_activity()
+    {
+        var factory = await NewDatabaseAsync();
+        await using (var ctx = await factory.CreateDbContextAsync(Ct))
+        {
+            // r_short: its budget stopped attempt 1, and it was stored at 0. r_right: already right.
+            var stopped = Run("r_short", "src/A.cs", TestGenRunState.CompletedNoChange);
+            var right = Run("r_right", "src/B.cs", TestGenRunState.CompletedNoChange);
+            right.Attempt = 2;
+            ctx.TestGenRuns.AddRange(stopped, right);
+            ctx.TestGenRunActivity.AddRange(Activity("r_short", 1, 0), Activity("r_short", 2, 1),
+                Activity("r_right", 1, 1), Activity("r_right", 2, 2));
+            await ctx.SaveChangesAsync(Ct);
+        }
+
+        await using (var ctx = await factory.CreateDbContextAsync(Ct))
+        {
+            await DatabaseInitializer.InitializeAsync(ctx, Ct);
+        }
+
+        await using var check = await factory.CreateDbContextAsync(Ct);
+        Assert.Equal([("r_right", 2), ("r_short", 1)],
+            (await check.TestGenRuns.OrderBy(r => r.Id).ToListAsync(Ct)).Select(r => (r.Id, r.Attempt)));
+    }
+
+    private static TestGenRunActivityRow Activity(string runId, long seq, int attempt) => new()
+    {
+        RunId = runId, Seq = seq, LastSeq = seq, At = DateTime.UtcNow, Attempt = attempt, Type = "phase",
+    };
+
     internal static TestGenRunRow Run(string id, string path, string state) => new()
     {
         Id = id,

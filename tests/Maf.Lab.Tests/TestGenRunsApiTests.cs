@@ -218,6 +218,18 @@ public sealed class TestGenRunsApiTests
     }
 
     [Fact]
+    public async Task A_run_whose_budget_is_spent_in_attempt_1_ends_at_attempt_1()
+    {
+        // Attempt 1 is expected to fit the cap; it uses 2M tokens, so the budget stops it before it finishes.
+        await using var s = await CostlyStackAsync();
+
+        var started = (await (await StartAsync(s, budget: new RunBudget(500_000, null))).Content.ReadFromJsonAsync<RunSummary>(Json, Ct))!;
+        var run = await UntilAsync(s, started.Id, r => TestGenRunState.Final.Contains(r.State) || r.State == TestGenRunState.Candidate, 60);
+
+        Assert.Equal((1, StopReason.Budget), (run.Attempt, run.Reason));
+    }
+
+    [Fact]
     public async Task A_run_to_the_default_leaves_the_file_on_the_default()
     {
         await using var s = await StackAsync();

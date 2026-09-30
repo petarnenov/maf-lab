@@ -123,6 +123,12 @@ public static partial class DatabaseInitializer
             SET "LastActivityAt" = COALESCE((SELECT MAX(t."CreatedAt") FROM "Turns" t WHERE t."ConversationId" = "Conversations"."Id"), "CreatedAt")
             WHERE "LastActivityAt" IS NULL OR "LastActivityAt" = '' OR "LastActivityAt" LIKE '0001-01-01%'
             """, ct);
+        // A run whose budget stopped an attempt used to be stored one attempt short (keep-attempt-on-budget-stop).
+        await db.Database.ExecuteSqlRawAsync("""
+            UPDATE "TestGenRuns"
+            SET "Attempt" = (SELECT MAX(a."Attempt") FROM "TestGenRunActivity" a WHERE a."RunId" = "TestGenRuns"."Id")
+            WHERE "Attempt" < (SELECT MAX(a."Attempt") FROM "TestGenRunActivity" a WHERE a."RunId" = "TestGenRuns"."Id")
+            """, ct);
     }
 
     internal static IEnumerable<string> Statements(string script) =>

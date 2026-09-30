@@ -18,9 +18,12 @@ which already names the last attempt.
 
 ## Decisions
 
-1. **`run.Attempt = Math.Max(run.Attempt, report.Attempts.Count)`** in `ApplyAsync`. Progress already set the started
-   attempt; a report never lowers it. A stop before attempt n + 1 starts leaves n, which is right. Alternative: add a
-   `LastAttempt` to the report — rejected, a wire change for a value the api already has.
+1. **The attempt count only rises, and reads three sources** in `ApplyAsync`: the progress message (the attempt that
+   started), the highest attempt among the observed activity entries, and the report's finished attempts;
+   `run.Attempt` is the maximum. The activity matters because a follower that first sees the task once it is done
+   gets its final status, which carries no progress (found by the api test: the run stayed at 0 with only the
+   report's count). A stop before attempt n + 1 starts leaves n, which is right. Alternative: add a `LastAttempt` to
+   the report — rejected, a wire change for a value the api already receives.
 2. **Backfill in `DatabaseInitializer.BackfillAsync`**: `UPDATE TestGenRuns SET Attempt = (SELECT MAX(Attempt) FROM
    TestGenRunActivity …) WHERE Attempt < that`. Idempotent, runs on every start like the existing backfill; today it
    corrects exactly one row.
