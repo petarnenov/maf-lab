@@ -51,10 +51,20 @@ public sealed record TestGenRequest(
     int MaxAttempts,
     string Model,
     ModelPrice Price,
-    TestGenBudget? Budget)
+    TestGenBudget? Budget,
+    int? ToolRoundsPerAttempt = null,
+    int? TestRunsPerAttempt = null)
 {
-    /// <summary>The attempt cap: the one place it is set. The api asks for this many by default; the agent refuses more.</summary>
-    public const int AttemptLimit = 10;
+    /// <summary>The attempt cap, <see cref="RunLimits.Attempts"/>' maximum. The api asks for this many by default; the agent refuses more.</summary>
+    public const int AttemptLimit = RunLimits.MaxAttempts;
+
+    /// <summary>The tool rounds each attempt has: the task's, or the default when it names none.</summary>
+    [JsonIgnore]
+    public int ToolRounds => ToolRoundsPerAttempt ?? RunLimits.ToolRoundsPerAttempt.Default;
+
+    /// <summary>How often the model may run the tests itself in one attempt: the task's, or the default.</summary>
+    [JsonIgnore]
+    public int TestRuns => TestRunsPerAttempt ?? RunLimits.TestRunsPerAttempt.Default;
 
     /// <summary>What is wrong with the request, in words for the caller; null when it can be worked on.</summary>
     public string? Problem()
@@ -64,7 +74,9 @@ public sealed record TestGenRequest(
         if (Toolchain is not ("dotnet" or "vitest")) return "toolchain must be dotnet or vitest.";
         if (string.IsNullOrWhiteSpace(TargetFile)) return "targetFile is required.";
         if (TargetLinePct is < 1 or > 100) return "targetLinePct must be from 1 to 100.";
-        if (MaxAttempts is < 1 or > AttemptLimit) return $"maxAttempts must be from 1 to {AttemptLimit}.";
+        if (RunLimits.Attempts.Problem("maxAttempts", MaxAttempts) is { } attempts) return attempts;
+        if (RunLimits.ToolRoundsPerAttempt.Problem("toolRoundsPerAttempt", ToolRoundsPerAttempt) is { } rounds) return rounds;
+        if (RunLimits.TestRunsPerAttempt.Problem("testRunsPerAttempt", TestRunsPerAttempt) is { } runs) return runs;
         if (string.IsNullOrWhiteSpace(Model)) return "model is required.";
         if (Budget?.Problem() is { } budget) return budget;
         if (Price is null || Price.InputPerMTok < 0 || Price.OutputPerMTok < 0) return "price must not be negative.";

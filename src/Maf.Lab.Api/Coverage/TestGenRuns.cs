@@ -38,11 +38,16 @@ public sealed class TestGenRuns(
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
+    /// <summary>The attempts a run may ask for: the contract's bounds, with the configured attempts as the default.</summary>
+    public static LimitBounds AttemptBounds(TestAgentOptions options) =>
+        RunLimits.Attempts with { Default = Math.Clamp(options.MaxAttempts, RunLimits.Attempts.Min, RunLimits.Attempts.Max) };
+
     /// <summary>
     /// Starts a run that raises a file's threshold. The run's row is written first, so the database's one-active-run
     /// index decides a race between two replicas; the threshold is saved only once the agent has accepted the task.
     /// </summary>
-    public async Task<StartOutcome> StartAsync(string path, int pct, string model, RunBudget? budget, string userId, CancellationToken ct)
+    public async Task<StartOutcome> StartAsync(string path, int pct, string model, RunBudget? budget, RunLimitsInput? limits,
+        string userId, CancellationToken ct)
     {
         if (CoveragePaths.Clean(path) != path || await store.CurrentAsync(path, ct) is not { } current)
         {
@@ -63,6 +68,16 @@ public sealed class TestGenRuns(
             return new StartOutcome.Invalid("budget", problem);
         }
         var opts = agentOptions.Value;
+        // A limit left out takes its default; one outside its bounds is refused before anything is written.
+        var attempts = limits?.MaxAttempts ?? AttemptBounds(opts).Default;
+        var rounds = limits?.ToolRoundsPerAttempt ?? RunLimits.ToolRoundsPerAttempt.Default;
+        var testRuns = limits?.TestRunsPerAttempt ?? RunLimits.TestRunsPerAttempt.Default;
+        if ((RunLimits.Attempts.Problem("limits.maxAttempts", attempts)
+                ?? RunLimits.ToolRoundsPerAttempt.Problem("limits.toolRoundsPerAttempt", rounds)
+                ?? RunLimits.TestRunsPerAttempt.Problem("limits.testRunsPerAttempt", testRuns)) is { } limitProblem)
+        {
+            return new StartOutcome.Invalid("limits", limitProblem);
+        }
         if (opts.Models.FirstOrDefault(m => m.Tag == model) is not { } chosen)
         {
             return new StartOutcome.ModelRejected("That model is not on the allowlist.");
@@ -87,7 +102,9 @@ public sealed class TestGenRuns(
             TargetPct = pct,
             Model = chosen.Tag,
             State = TestGenRunState.Submitted,
-            MaxAttempts = opts.MaxAttempts,
+            MaxAttempts = attempts,
+            ToolRoundsPerAttempt = rounds,
+            TestRunsPerAttempt = testRuns,
             LastPct = current.Totals.LinePct,
             CreatedAt = now,
             UpdatedAt = now,
@@ -111,8 +128,8 @@ public sealed class TestGenRuns(
             }
         }
 
-        var request = new TestGenRequest(TestGenKinds.Request, row.Id, commit, path, row.Toolchain, pct, opts.MaxAttempts, chosen.Tag,
-            new ModelPrice(chosen.InputPerMTok, chosen.OutputPerMTok), caps);
+        var request = new TestGenRequest(TestGenKinds.Request, row.Id, commit, path, row.Toolchain, pct, attempts, chosen.Tag,
+            new ModelPrice(chosen.InputPerMTok, chosen.OutputPerMTok), caps, rounds, testRuns);
         TaskObservation accepted;
         try
         {

@@ -209,8 +209,11 @@ public sealed class CoverageThresholdTests
         var kimi = picker.Models.Single(m => m.Tag == "kimi-k3:cloud");
         Assert.Equal((false, ModelAvailability.NotInPlan), (kimi.Available, kimi.UnavailableReason));
         Assert.All(picker.Models.Where(m => m.Tag != "kimi-k3:cloud"), m => Assert.True(m.Available));
-        Assert.All(picker.Models, m => Assert.True(m.Estimate!.CostUsd > 0));
-        Assert.Equal(Maf.Lab.TestGen.TestGenRequest.AttemptLimit, picker.MaxAttempts);
+        Assert.True(picker.Estimate!.FixedInputTokens > 0);
+        Assert.Equal(new Maf.Lab.TestGen.LimitBounds(1, 10, 10), picker.Limits.MaxAttempts);
+        Assert.Equal(new Maf.Lab.TestGen.LimitBounds(1, 40, 40), picker.Limits.ToolRoundsPerAttempt);
+        Assert.Equal(new Maf.Lab.TestGen.LimitBounds(0, 2, 2), picker.Limits.TestRunsPerAttempt);
+        Assert.Equal((120, 3), (picker.Limits.DeadlineMinutes, picker.Limits.MaxSuspectedBugs));
 
         // The answer is reused: a second look does not ask the provider again.
         var asked = models.Asked.Count;
@@ -233,13 +236,14 @@ public sealed class CoverageThresholdTests
         var glm = new AgentModelOption { Tag = "glm-5.3:cloud", InputPerMTok = 0.6, OutputPerMTok = 2.2 };
         var flash = new AgentModelOption { Tag = "glm-5.3-flash:cloud", InputPerMTok = 0.1, OutputPerMTok = 0.4 };
 
-        var five = CostEstimator.Estimate(8_000, 5, glm);
-        var two = CostEstimator.Estimate(8_000, 2, glm);
+        var five = CostEstimator.Estimate(8_000, 5, 40, glm);
+        var two = CostEstimator.Estimate(8_000, 2, 40, glm);
 
-        Assert.True(CostEstimator.Estimate(8_000, 5, flash).CostUsd < five.CostUsd);
+        Assert.True(CostEstimator.Estimate(8_000, 5, 40, flash).CostUsd < five.CostUsd);
         Assert.Equal(five.InputTokens, two.InputTokens / 2 * 5);
-        // (2 000 file tokens × 2 + 6 000) × 1.6 = 16 000 input and 4 000 output tokens per attempt.
-        Assert.Equal((80_000L, 20_000L), (five.InputTokens, five.OutputTokens));
-        Assert.Equal(Math.Round(0.08 * 0.6 + 0.02 * 2.2, 4), five.CostUsd);
+        // 43 000 + 4 × 2 000 file tokens + 4 000 × 20 typical rounds = 131 000 input and 6 000 output tokens per attempt.
+        Assert.Equal((655_000L, 30_000L), (five.InputTokens, five.OutputTokens));
+        Assert.Equal(Math.Round(0.655 * 0.6 + 0.03 * 2.2, 4), five.CostUsd);
+        Assert.Equal(new EstimateParts(51_000, 4_000, 20, 6_000), CostEstimator.Parts(8_000));
     }
 }

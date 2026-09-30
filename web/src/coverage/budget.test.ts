@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { describeBudget, parseBudget } from './budget';
+import { describeBudget, emptyBudget, parseBudget } from './budget';
+
+const typed = (maxTokens: string, maxCostUsd: string) => ({
+  maxTokens,
+  maxCostUsd,
+  tokensUnlimited: false,
+  costUnlimited: false,
+});
 
 describe('budget', () => {
   it('reads empty fields as unlimited', () => {
-    expect(parseBudget({ maxTokens: '', maxCostUsd: '' })).toEqual({ budget: null, errors: {} });
+    expect(parseBudget(typed('', ''))).toEqual({ budget: null, errors: {} });
+    expect(parseBudget(emptyBudget)).toEqual({ budget: null, errors: {} });
     expect(describeBudget(null)).toBe('unlimited');
   });
 
@@ -13,8 +21,15 @@ describe('budget', () => {
   });
 
   it('refuses a cap that is not positive, and tokens that are not whole', () => {
-    expect(parseBudget({ maxTokens: '0', maxCostUsd: '' }).errors.maxTokens).toBeDefined();
-    expect(parseBudget({ maxTokens: '1.5', maxCostUsd: '' }).errors.maxTokens).toBeDefined();
-    expect(parseBudget({ maxTokens: '', maxCostUsd: '-1' }).errors.maxCostUsd).toBeDefined();
+    expect(parseBudget(typed('0', '')).errors.maxTokens).toBeDefined();
+    expect(parseBudget(typed('1.5', '')).errors.maxTokens).toBeDefined();
+    expect(parseBudget(typed('', '-1')).errors.maxCostUsd).toBeDefined();
+  });
+
+  it('ignores what was typed in a cap left unlimited', () => {
+    expect(parseBudget({ ...typed('0', '0.5'), tokensUnlimited: true })).toEqual({
+      budget: { maxTokens: null, maxCostUsd: 0.5 },
+      errors: {},
+    });
   });
 });

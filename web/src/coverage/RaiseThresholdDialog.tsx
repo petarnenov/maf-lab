@@ -6,8 +6,10 @@ import { useApi } from '../auth/useAuth';
 import { coverageKeys } from './keys';
 import { emptyBudget, parseBudget } from './budget';
 import { ModelPicker } from './ModelPicker';
+import { type LimitsInput, parseLimits } from './limits';
 import { pct } from './format';
 import styles from './CoveragePage.module.css';
+import { useAgentModels } from './useAgentModels';
 
 /**
  * Saving a threshold above the file's coverage: confirm, then pick a model, then start. The threshold is saved by
@@ -39,8 +41,12 @@ export function RaiseThresholdDialog({
   const [step, setStep] = useState<'confirm' | 'model'>('confirm');
   const [model, setModel] = useState<string | null>(null);
   const [budgetInput, setBudgetInput] = useState(emptyBudget);
+  const [limitsInput, setLimitsInput] = useState<LimitsInput | null>(null);
   const { budget, errors } = parseBudget(budgetInput);
   const budgetValid = !errors.maxTokens && !errors.maxCostUsd;
+  // The limits' bounds come with the models; the picker's query is shared, so this adds no request.
+  const models = useAgentModels(path);
+  const limits = limitsInput && models.data ? parseLimits(limitsInput, models.data.limits).limits : null;
 
   const saveOnly = useMutation({
     mutationFn: () =>
@@ -56,7 +62,7 @@ export function RaiseThresholdDialog({
 
   const start = useMutation({
     mutationFn: () =>
-      api<RunSummary>('/api/coverage/runs', { method: 'POST', body: { path, pct: targetPct, model, budget } }),
+      api<RunSummary>('/api/coverage/runs', { method: 'POST', body: { path, pct: targetPct, model, budget, limits } }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: coverageKeys.all });
       onClose();
@@ -98,9 +104,12 @@ export function RaiseThresholdDialog({
           <>
             <ModelPicker
               path={path}
+              targetPct={targetPct}
               selected={model}
               onSelect={setModel}
               onDefault={(tag) => setModel((m) => m ?? tag)}
+              limits={limitsInput}
+              onLimits={setLimitsInput}
               budget={budgetInput}
               onBudget={setBudgetInput}
             />
@@ -116,7 +125,7 @@ export function RaiseThresholdDialog({
               <button
                 type="button"
                 className={styles.primary}
-                disabled={!model || !budgetValid || start.isPending}
+                disabled={!model || !limits || !budgetValid || start.isPending}
                 onClick={() => start.mutate()}
               >
                 {start.isPending ? 'Starting…' : 'Start run'}
@@ -134,7 +143,7 @@ function startError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 503) return 'The test agent is unavailable. The threshold was not changed.';
     if (error.status === 409) return 'A run is already active for this file.';
-    if (error.status === 400) return 'The server did not accept these settings. Check the budget and try again.';
+    if (error.status === 400) return 'The server did not accept these settings. Check the limits and budget and try again.';
     if (error.status === 422) return 'That model cannot be used. Pick another.';
   }
   return 'Could not start the run. The threshold was not changed.';

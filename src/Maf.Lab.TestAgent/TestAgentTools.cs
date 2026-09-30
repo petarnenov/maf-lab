@@ -20,7 +20,7 @@ public sealed record BugRecorded(bool Recorded, int Count, string? Note);
 /// reading anywhere in the repository, writing only to the toolchain's test locations. A refusal is a tool error the
 /// model can act on, never the end of the run.
 /// </summary>
-public sealed class TestAgentTools(Workspace workspace, TestGenRequest request, CoverageRunnerClient runner, TestAgentOptions options)
+public sealed class TestAgentTools(Workspace workspace, TestGenRequest request, CoverageRunnerClient runner)
 {
     public const int MaxReadLines = 2_000;
     public const int MaxEntries = 500;
@@ -108,10 +108,10 @@ public sealed class TestAgentTools(Workspace workspace, TestGenRequest request, 
         return new Written(WorkspacePaths.Relative(path), created, bytes);
     }
 
-    [Description("Build and run the tests with your changes and measure the target file's coverage. At most twice per attempt; the attempt is measured again when you finish.")]
+    [Description("Build and run the tests with your changes and measure the target file's coverage. Only as often per attempt as its instructions say; the attempt is measured again when you finish.")]
     public async Task<TestRun> RunTests(CancellationToken ct)
     {
-        if (++_runsThisAttempt > options.MaxTestRunsPerAttempt)
+        if (++_runsThisAttempt > request.TestRuns)
         {
             throw new PathRefusedException("You have run the tests as often as one attempt allows; finish the attempt to have it measured.");
         }

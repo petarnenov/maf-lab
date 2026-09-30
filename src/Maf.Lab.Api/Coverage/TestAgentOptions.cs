@@ -32,9 +32,8 @@ public sealed class TestAgentOptions
     public TimeSpan CardCacheFor { get; set; } = TimeSpan.FromMinutes(5);
 
     /// <summary>
-    /// How many attempts a run asks for: with no budget chosen, this bounds a run (with the deadline). It defaults to,
-    /// and may not exceed, the contract's <see cref="Maf.Lab.TestGen.TestGenRequest.AttemptLimit"/>; set it only to
-    /// run fewer.
+    /// How many attempts a run asks for when the administrator chooses none: the picker's default. It defaults to, and
+    /// may not exceed, the contract's <see cref="Maf.Lab.TestGen.TestGenRequest.AttemptLimit"/>; set it only to run fewer.
     /// </summary>
     public int MaxAttempts { get; set; } = Maf.Lab.TestGen.TestGenRequest.AttemptLimit;
 

@@ -39,7 +39,7 @@ labelled as estimates.
 ### Requirement: Optional run budget
 Next to the model, the picker SHALL offer two optional caps: max tokens (a whole number) and max cost in USD. Each
 SHALL show its default, unlimited, as a checked "Unlimited" control. Unchecking it SHALL enable the field and fill it
-with the selected model's estimate for that dimension, which the administrator may edit. A cap left unlimited SHALL
+with the selected model's estimate for that dimension (a cost rounded up to the cent, so the filled cap is not below the estimate), which the administrator may edit. A cap left unlimited SHALL
 leave that dimension unlimited. A value that is not positive SHALL be shown as invalid, and the Start control SHALL
 stay disabled until it is corrected or the cap is set back to unlimited. The chosen budget SHALL be sent with the
 start request, and the server SHALL validate it again.
@@ -49,8 +49,8 @@ start request, and the server SHALL validate it again.
 - **THEN** both caps show "Unlimited" checked and the run would start without caps
 
 #### Scenario: Setting a cap starts from the estimate
-- **WHEN** the administrator unchecks "Unlimited" for max cost while the estimate is $0.89
-- **THEN** the max cost field is enabled and holds 0.89
+- **WHEN** the administrator unchecks "Unlimited" for max cost while the estimate is $0.883
+- **THEN** the max cost field is enabled, holds 0.89, and no over-budget warning is shown
 
 #### Scenario: Only a cost cap
 - **WHEN** the administrator sets a cost cap of $1.00 and leaves max tokens unlimited

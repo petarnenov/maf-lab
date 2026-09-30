@@ -39,12 +39,23 @@ public static class CoverageEndpoints
         string Detail = "Raising the threshold above the file's coverage needs a confirmed test-generation run.");
 
     public sealed record ModelDto(string Tag, string DisplayName, double InputPerMTok, double OutputPerMTok, string BestFor,
-        bool IsDefault, bool PriceIsEstimate, bool Available, string? UnavailableReason, CostEstimate? Estimate);
+        bool IsDefault, bool PriceIsEstimate, bool Available, string? UnavailableReason);
 
-    /// <summary>A request to raise a file's threshold with a run of the test agent; no budget is an unlimited one.</summary>
-    public sealed record StartRunRequest(string Path, int Pct, string Model, RunBudget? Budget = null);
+    /// <summary>
+    /// A request to raise a file's threshold with a run of the test agent; no budget is an unlimited one, and a limit
+    /// left out takes its default.
+    /// </summary>
+    public sealed record StartRunRequest(string Path, int Pct, string Model, RunBudget? Budget = null, RunLimitsInput? Limits = null);
 
-    public sealed record ModelsDto(IReadOnlyList<ModelDto> Models, int MaxAttempts);
+    /// <summary>
+    /// Every limit a run has, for the picker: the ones a run may lower with their bounds and default, and the fixed
+    /// ones as values.
+    /// </summary>
+    public sealed record RunLimitsDto(LimitBounds MaxAttempts, LimitBounds ToolRoundsPerAttempt, LimitBounds TestRunsPerAttempt,
+        int DeadlineMinutes, int MaxSuspectedBugs);
+
+    /// <summary>The models, the run's limits, and this file's estimate parts (null when the file cannot be read).</summary>
+    public sealed record ModelsDto(IReadOnlyList<ModelDto> Models, RunLimitsDto Limits, EstimateParts? Estimate);
 
     public static IEndpointRouteBuilder MapCoverage(this IEndpointRouteBuilder app)
     {
@@ -142,13 +153,14 @@ public static class CoverageEndpoints
             }
             var checks = await Task.WhenAll(agent.Models.Select(m => availability.CheckAsync(m.Tag, ct)));
             var models = agent.Models.Select((m, i) => new ModelDto(m.Tag, m.DisplayName, m.InputPerMTok, m.OutputPerMTok, m.BestFor,
-                m.Default, m.PriceIsEstimate, checks[i].Available, checks[i].Reason,
-                bytes is { } b ? CostEstimator.Estimate(b, agent.MaxAttempts, m) : null)).ToList();
-            return Results.Ok(new ModelsDto(models, agent.MaxAttempts));
+                m.Default, m.PriceIsEstimate, checks[i].Available, checks[i].Reason)).ToList();
+            var limits = new RunLimitsDto(TestGenRuns.AttemptBounds(agent), RunLimits.ToolRoundsPerAttempt, RunLimits.TestRunsPerAttempt,
+                (int)agent.RunDeadline.TotalMinutes, SuspectedBug.MaxPerRun);
+            return Results.Ok(new ModelsDto(models, limits, bytes is { } b ? CostEstimator.Parts(b) : null));
         }).RequireAuthorization(AuthPolicies.FirmAdmin);
 
         admin.MapPost("/runs", async (StartRunRequest request, IPrincipalAccessor principals, TestGenRuns runs, CancellationToken ct) =>
-            await runs.StartAsync(request.Path ?? "", request.Pct, request.Model ?? "", request.Budget, principals.Current.UserId, ct) switch
+            await runs.StartAsync(request.Path ?? "", request.Pct, request.Model ?? "", request.Budget, request.Limits, principals.Current.UserId, ct) switch
             {
                 StartOutcome.Started started => Results.Created($"/api/coverage/runs/{started.Run.Id}", started.Run),
                 StartOutcome.NotFound => NotFound(),

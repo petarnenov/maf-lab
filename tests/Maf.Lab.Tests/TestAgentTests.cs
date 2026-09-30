@@ -226,17 +226,18 @@ public sealed class TestAgentTests
     public async Task It_stops_before_an_attempt_that_would_cross_the_budget()
     {
         var repo = await RepoAsync();
-        // Each attempt costs 60 000 tokens; the cap is 100 000, so a second one would cross it.
-        var model = new AttemptModel(n => Writes(n) with { Tokens = 30_000 });
+        // Each attempt costs 200 000 tokens, above the ~130 000 estimated; the cap is 300 000, so the first starts and a
+        // second, expected to cost what the first did, would cross it.
+        var model = new AttemptModel(n => Writes(n) with { Tokens = 100_000 });
         await using var agent = new TestAgentFactory(repo, model, Runner(_ => 60));
 
         var task = await TestAgentFactory.RpcAsync(await agent.ClientAsync(), "message/send",
-            TestAgentFactory.Send(TestAgentFactory.Request(await repo.HeadAsync(Ct), maxTokens: 100_000)), Ct);
+            TestAgentFactory.Send(TestAgentFactory.Request(await repo.HeadAsync(Ct), maxTokens: 300_000)), Ct);
 
         var report = TestAgentFactory.Report(task);
         Assert.Equal((false, StopReason.Budget), (report.GoalReached, report.StopReason));
         Assert.Single(report.Attempts);
-        Assert.Equal(60_000, report.Usage.InputTokens + report.Usage.OutputTokens);
+        Assert.Equal(200_000, report.Usage.InputTokens + report.Usage.OutputTokens);
         // The stop names the attempt it did not start.
         var last = TestAgentFactory.Activity(task)[^1];
         Assert.Equal((ActivityType.Stopped, 1, new StoppedActivity(StopReason.Budget, 1, 60, NotStarted: 2)), (last.Type, last.Attempt, last.Stop));
@@ -477,13 +478,15 @@ public sealed class TestAgentTests
         }
     }
 
-    private static async Task<(TestAgentTools Tools, Workspace Workspace)> ToolsAsync(TempGitRepo repo, FakeCoverageRunner? runner = null)
+    private static async Task<(TestAgentTools Tools, Workspace Workspace)> ToolsAsync(TempGitRepo repo, FakeCoverageRunner? runner = null,
+        int? testRuns = null)
     {
         var workspace = await Workspace.CreateAsync(repo.Root, Directory.CreateTempSubdirectory("maf-tools-").FullName, "t",
             await repo.HeadAsync(Ct), "dotnet", Ct);
         var client = new CoverageRunnerClient(new HttpClient(runner ?? Runner(_ => 77)) { BaseAddress = new Uri("http://runner.test/") },
             _ => Task.FromResult("t"), TimeSpan.FromMilliseconds(5));
-        return (new TestAgentTools(workspace, TestAgentFactory.Request(await repo.HeadAsync(Ct)), client, new TestAgentOptions()), workspace);
+        var request = TestAgentFactory.Request(await repo.HeadAsync(Ct)) with { TestRunsPerAttempt = testRuns };
+        return (new TestAgentTools(workspace, request, client), workspace);
     }
 
     [Fact]
@@ -540,6 +543,17 @@ public sealed class TestAgentTests
         await Assert.ThrowsAsync<PathRefusedException>(() => tools.RunTests(Ct));
         Assert.Equal(77, tools.ReadCoverage("src/Lab/Calc.cs").Pct);
         Assert.Throws<PathRefusedException>(() => tools.ReadCoverage("src/Lab/Other.cs"));
+    }
+
+    [Fact]
+    public async Task A_task_without_test_runs_refuses_the_first()
+    {
+        var repo = await RepoAsync();
+        var (tools, workspace) = await ToolsAsync(repo, testRuns: 0);
+        await using var _ = workspace;
+        tools.BeginAttempt();
+
+        await Assert.ThrowsAsync<PathRefusedException>(() => tools.RunTests(Ct));
     }
 
     [Fact]

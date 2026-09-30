@@ -34,7 +34,22 @@ public sealed class TestAgentRoundsTests
     [Fact]
     public void The_attempt_states_its_round_cap()
     {
-        Assert.Contains("You have 12 tool rounds in this attempt", Instructions.Attempt(Request, 1, 40, null, 12));
+        Assert.Contains("You have 12 tool rounds in this attempt", Instructions.Attempt(Request with { ToolRoundsPerAttempt = 12 }, 1, 40, null));
+    }
+
+    [Fact]
+    public void A_task_without_limits_has_the_defaults()
+    {
+        var input = Instructions.Attempt(Request, 1, 40, null);
+
+        Assert.Contains("You have 40 tool rounds in this attempt", input);
+        Assert.Contains("run_tests at most 2 times", input);
+    }
+
+    [Fact]
+    public void A_task_without_test_runs_is_told_not_to_run_them()
+    {
+        Assert.Contains("Do not call run_tests", Instructions.Attempt(Request with { TestRunsPerAttempt = 0 }, 1, 40, null));
     }
 
     [Fact]

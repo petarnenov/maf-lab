@@ -1,12 +1,14 @@
 import type { RunBudget } from '../api/types';
 
-/** The budget fields as typed: empty means that cap is unlimited. */
+/** The budget as entered: each cap is unlimited (its default) or the value typed; empty also reads as unlimited. */
 export interface BudgetInput {
   maxTokens: string;
   maxCostUsd: string;
+  tokensUnlimited: boolean;
+  costUnlimited: boolean;
 }
 
-export const emptyBudget: BudgetInput = { maxTokens: '', maxCostUsd: '' };
+export const emptyBudget: BudgetInput = { maxTokens: '', maxCostUsd: '', tokensUnlimited: true, costUnlimited: true };
 
 export interface ParsedBudget {
   /** What the start request carries; null when both caps are left empty (unlimited). */
@@ -17,8 +19,8 @@ export interface ParsedBudget {
 /** Reads the fields: a cap that is set must be positive, and max tokens a whole number. */
 export function parseBudget(input: BudgetInput): ParsedBudget {
   const errors: ParsedBudget['errors'] = {};
-  const tokensText = input.maxTokens.trim();
-  const costText = input.maxCostUsd.trim();
+  const tokensText = input.tokensUnlimited ? '' : input.maxTokens.trim();
+  const costText = input.costUnlimited ? '' : input.maxCostUsd.trim();
   const tokens = tokensText === '' ? null : Number(tokensText);
   const cost = costText === '' ? null : Number(costText);
   if (tokens !== null && !(Number.isInteger(tokens) && tokens > 0))

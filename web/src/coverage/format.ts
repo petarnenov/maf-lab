@@ -4,6 +4,13 @@ export const pct = (value: number) => `${value.toFixed(1)}%`;
 
 export const usd = (value: number) => `$${value.toFixed(value < 1 ? 3 : 2)}`;
 
+/** A duration in minutes as hours and minutes: "2 h", "1 h 30 min", "45 min". */
+export function duration(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return [h > 0 ? `${h} h` : '', m > 0 || h === 0 ? `${m} min` : ''].filter(Boolean).join(' ');
+}
+
 export const shortSha = (sha: string) => sha.slice(0, 7);
 
 /**

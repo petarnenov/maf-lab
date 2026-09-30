@@ -36,14 +36,17 @@ public static class Instructions
         - Use run_tests to check your work; finish when the tests build, pass, and cover what you can.
         """;
 
-    public static string Attempt(TestGenRequest request, int attempt, double? currentPct, string? feedback, int toolRounds)
+    public static string Attempt(TestGenRequest request, int attempt, double? currentPct, string? feedback)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"Target file: {request.TargetFile} ({request.Toolchain}).");
         sb.AppendLine($"Goal: at least {request.TargetLinePct}% line coverage. Now: {(currentPct is { } p ? $"{p:0.0}%" : "not measured")}.");
         sb.AppendLine($"This is attempt {attempt} of {request.MaxAttempts}.");
-        sb.AppendLine($"You have {toolRounds} tool rounds in this attempt. Read only what you need, and write a test file " +
+        sb.AppendLine($"You have {request.ToolRounds} tool rounds in this attempt. Read only what you need, and write a test file " +
             "within the first half of them: an attempt that ends without writing a test makes no progress.");
+        sb.AppendLine(request.TestRuns > 0
+            ? $"You may call run_tests at most {request.TestRuns} time{(request.TestRuns == 1 ? "" : "s")} in this attempt."
+            : "Do not call run_tests in this attempt: it is measured when you finish.");
         if (feedback is { Length: > 0 })
         {
             sb.AppendLine();

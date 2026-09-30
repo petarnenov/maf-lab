@@ -81,8 +81,9 @@ public sealed class TestGenRunsApiTests
         return new Stack(repo, api, agent, runner, model);
     }
 
-    private static Task<HttpResponseMessage> StartAsync(Stack s, int pct = 85, string model = "glm-5.3:cloud", RunBudget? budget = null) =>
-        s.Admin.PostAsJsonAsync("/api/coverage/runs", new CoverageEndpoints.StartRunRequest(Target, pct, model, budget), Ct);
+    private static Task<HttpResponseMessage> StartAsync(Stack s, int pct = 85, string model = "glm-5.3:cloud", RunBudget? budget = null,
+        RunLimitsInput? limits = null) =>
+        s.Admin.PostAsJsonAsync("/api/coverage/runs", new CoverageEndpoints.StartRunRequest(Target, pct, model, budget, limits), Ct);
 
     private static async Task<RunSummary> UntilAsync(Stack s, string runId, Func<RunSummary, bool> done, int seconds = 30)
     {
@@ -133,6 +134,46 @@ public sealed class TestGenRunsApiTests
         Assert.Equal(new RunBudget(null, 0.5), started.Budget);
         Assert.Equal(new RunBudget(null, 0.5), run.Budget);
         Assert.Equal(StopReason.Budget, run.Reason);
+    }
+
+    [Fact]
+    public async Task A_run_carries_the_limits_chosen_at_start()
+    {
+        await using var s = await CostlyStackAsync();
+
+        var started = (await (await StartAsync(s, limits: new RunLimitsInput(MaxAttempts: 3, ToolRoundsPerAttempt: 20)))
+            .Content.ReadFromJsonAsync<RunSummary>(Json, Ct))!;
+        var run = await UntilAsync(s, started.Id, r => TestGenRunState.Final.Contains(r.State) || r.State == TestGenRunState.Candidate, 60);
+
+        Assert.Equal(new RunLimitsSummary(3, 20, 2), started.Limits);
+        Assert.Equal((3, StopReason.Attempts), (run.Attempt, run.Reason));
+    }
+
+    [Fact]
+    public async Task A_run_started_without_limits_has_the_defaults()
+    {
+        await using var s = await StackAsync();
+
+        var started = (await (await StartAsync(s)).Content.ReadFromJsonAsync<RunSummary>(Json, Ct))!;
+
+        Assert.Equal(new RunLimitsSummary(10, 40, 2), started.Limits);
+    }
+
+    [Theory]
+    [InlineData(11, null, null)]
+    [InlineData(null, 0, null)]
+    [InlineData(null, 41, null)]
+    [InlineData(null, null, 3)]
+    public async Task A_limit_out_of_bounds_is_refused_and_nothing_changes(int? attempts, int? rounds, int? testRuns)
+    {
+        await using var s = await StackAsync();
+
+        var response = await StartAsync(s, limits: new RunLimitsInput(attempts, rounds, testRuns));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(80, await ThresholdAsync(s));
+        await using var db = await s.Get<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(Ct);
+        Assert.False(await db.TestGenRuns.AnyAsync(Ct));
     }
 
     [Theory]

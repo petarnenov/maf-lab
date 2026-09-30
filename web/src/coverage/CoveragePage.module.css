@@ -441,8 +441,39 @@
   flex: 1;
 }
 
-.budgetField input {
+.budgetField input[type='text'] {
   width: 100%;
+}
+
+.unlimitedToggle {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  font-size: 0.8rem;
+}
+
+.fixedLimits {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.fixedLimits div {
+  display: flex;
+  gap: 4px;
+}
+
+.fixedLimits dt::after {
+  content: ':';
+}
+
+.fixedLimits dd {
+  margin: 0;
+  color: var(--text);
 }
 
 /* Candidate */

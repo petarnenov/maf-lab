@@ -5,10 +5,12 @@ import type { AgentModels, RunSummary } from '../api/types';
 import { jsonResponse, makeSession, renderWithProviders } from '../test/render';
 import { CoveragePage } from './CoveragePage';
 import { detail, stubCoverageApi } from './CoveragePage.test';
+import { parts, runLimits } from './limits.test';
 import { sampleTree } from './treeModel.test';
 
 const models: AgentModels = {
-  maxAttempts: 5,
+  limits: runLimits,
+  estimate: parts,
   models: [
     {
       tag: 'glm-5.3:cloud',
@@ -20,7 +22,6 @@ const models: AgentModels = {
       priceIsEstimate: true,
       available: true,
       unavailableReason: null,
-      estimate: { inputTokens: 80000, outputTokens: 20000, costUsd: 0.092 },
     },
     {
       tag: 'kimi-k3:cloud',
@@ -32,7 +33,6 @@ const models: AgentModels = {
       priceIsEstimate: true,
       available: false,
       unavailableReason: 'Not available to this account.',
-      estimate: { inputTokens: 80000, outputTokens: 20000, costUsd: 0.098 },
     },
     {
       tag: 'glm-5.3-flash:cloud',
@@ -44,7 +44,6 @@ const models: AgentModels = {
       priceIsEstimate: true,
       available: true,
       unavailableReason: null,
-      estimate: { inputTokens: 80000, outputTokens: 20000, costUsd: 0.016 },
     },
   ],
 };
@@ -123,20 +122,24 @@ describe('threshold control', () => {
     expect(dialog).toHaveTextContent('agent run');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Continue' }));
 
-    // The default model is preselected; its estimate and the cap are shown.
+    // The default model is preselected; its estimate for the default limits and the cap are shown.
     const glm = await within(dialog).findByRole('radio', { name: /^GLM 5\.3\s*recommended/ });
     expect(glm).toBeChecked();
-    expect(dialog).toHaveTextContent('$0.092');
+    expect(dialog).toHaveTextContent('about $0.089 per attempt');
     expect(dialog).toHaveTextContent('prices are estimates');
     // No budget entered: unlimited, bounded only by the attempts.
-    expect(dialog).toHaveTextContent('Budget: unlimited. The run stops after at most 5 attempts.');
+    expect(dialog).toHaveTextContent('Budget: unlimited. The run stops after at most 10 attempts.');
 
     await userEvent.click(within(dialog).getByRole('radio', { name: /GLM 5\.3 Flash/ }));
-    expect(dialog).toHaveTextContent('$0.016');
+    expect(dialog).toHaveTextContent('up to $0.151 for 10 attempts');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Start run' }));
 
     const post = calls.find((c) => c.method === 'POST' && c.url === '/api/coverage/runs');
-    expect(JSON.parse(post!.body!)).toMatchObject({ model: 'glm-5.3-flash:cloud', budget: null });
+    expect(JSON.parse(post!.body!)).toMatchObject({
+      model: 'glm-5.3-flash:cloud',
+      budget: null,
+      limits: { maxAttempts: 10, toolRoundsPerAttempt: 40, testRunsPerAttempt: 2 },
+    });
     expect(calls.some((c) => c.method === 'PUT')).toBe(false);
     expect(screen.queryByRole('dialog')).toBeNull();
   });
@@ -148,9 +151,16 @@ describe('threshold control', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Continue' }));
     await within(dialog).findByRole('radio', { name: /^GLM 5\.3\s*recommended/ });
 
-    await userEvent.type(within(dialog).getByLabelText('Max cost (USD)'), '0.05');
+    const cost = within(dialog).getByLabelText('Max cost (USD)');
+    expect(cost).toBeDisabled();
+    // Setting a cap starts from the estimate for the model and limits.
+    await userEvent.click(within(dialog).getAllByRole('checkbox', { name: 'Unlimited' })[1]);
+    expect(cost).toHaveValue('0.9');
+    expect(dialog).not.toHaveTextContent('The estimate is above this budget');
+    await userEvent.clear(cost);
+    await userEvent.type(cost, '0.05');
 
-    expect(dialog).toHaveTextContent('The run stops at $0.05, whichever comes first, or after 5 attempts.');
+    expect(dialog).toHaveTextContent('The run stops at $0.05, whichever comes first, or after 10 attempts.');
     expect(dialog).toHaveTextContent('The estimate is above this budget');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Start run' }));
     const post = calls.find((c) => c.method === 'POST' && c.url === '/api/coverage/runs');
@@ -165,12 +175,49 @@ describe('threshold control', () => {
     await within(dialog).findByRole('radio', { name: /^GLM 5\.3\s*recommended/ });
 
     const tokens = within(dialog).getByLabelText('Max tokens');
+    await userEvent.click(within(dialog).getAllByRole('checkbox', { name: 'Unlimited' })[0]);
+    await userEvent.clear(tokens);
     await userEvent.type(tokens, '0');
 
     expect(tokens).toHaveAttribute('aria-invalid', 'true');
     expect(within(dialog).getByRole('button', { name: 'Start run' })).toBeDisabled();
     await userEvent.clear(tokens);
     expect(within(dialog).getByRole('button', { name: 'Start run' })).toBeEnabled();
+  });
+
+  it('shows every limit filled with its default, and prices the limits entered', async () => {
+    const calls = open({ '/api/coverage/runs': () => jsonResponse(run({ state: 'submitted' })) });
+    await setThreshold('85');
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Continue' }));
+    await within(dialog).findByRole('radio', { name: /^GLM 5\.3\s*recommended/ });
+
+    const attempts = within(dialog).getByLabelText('Max attempts');
+    expect(attempts).toHaveValue('10');
+    expect(within(dialog).getByLabelText('Tool rounds per attempt')).toHaveValue('40');
+    expect(within(dialog).getByLabelText('Test runs per attempt')).toHaveValue('2');
+    for (const box of within(dialog).getAllByRole('checkbox', { name: 'Unlimited' })) expect(box).toBeChecked();
+    expect(dialog).toHaveTextContent('Target line coverage85%');
+    expect(dialog).toHaveTextContent('Run deadline2 h');
+    expect(dialog).toHaveTextContent('Suspected bugs reportedat most 3');
+
+    await userEvent.clear(attempts);
+    await userEvent.type(attempts, '4');
+    expect(dialog).toHaveTextContent('up to $0.357 for 4 attempts');
+    expect(dialog).toHaveTextContent('The run stops after at most 4 attempts.');
+
+    const rounds = within(dialog).getByLabelText('Tool rounds per attempt');
+    await userEvent.clear(rounds);
+    await userEvent.type(rounds, '50');
+    expect(rounds).toHaveAttribute('aria-invalid', 'true');
+    expect(dialog).toHaveTextContent('Enter a whole number from 1 to 40.');
+    expect(within(dialog).getByRole('button', { name: 'Start run' })).toBeDisabled();
+
+    await userEvent.clear(rounds);
+    await userEvent.type(rounds, '20');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Start run' }));
+    const post = calls.find((c) => c.method === 'POST' && c.url === '/api/coverage/runs');
+    expect(JSON.parse(post!.body!).limits).toEqual({ maxAttempts: 4, toolRoundsPerAttempt: 20, testRunsPerAttempt: 2 });
   });
 
   it('treats Save on the default a file is below as "reach it"', async () => {

@@ -99,7 +99,7 @@ public sealed class TestGenerationHandler(
             }
 
             var usage = new RunUsage(request.Budget, request.Price);
-            var tools = new TestAgentTools(workspace, request, runner, opts);
+            var tools = new TestAgentTools(workspace, request, runner);
             // Each batch of activity is its own artifact: a resubscribing caller is told of new artifacts, not of
             // parts appended to one it has seen.
             var reporter = new ActivityReporter((entries, token) => updater.AddArtifactAsync(
@@ -109,7 +109,7 @@ public sealed class TestGenerationHandler(
                 TimeProvider.System, _logger);
             var attempts = new List<AttemptLog>();
             var fileBytes = new FileInfo(Path.Combine(workspace.Root, request.TargetFile)).Length;
-            var (estimatedInput, estimatedOutput) = AttemptEstimate.PerAttempt(fileBytes);
+            var (estimatedInput, estimatedOutput) = AttemptEstimate.PerAttempt(fileBytes, request.ToolRounds);
 
             // Where the file starts: the baseline every attempt is compared with. It takes a whole build, so it is
             // reported as it starts rather than leaving the run silent until the first attempt.
@@ -133,7 +133,7 @@ public sealed class TestGenerationHandler(
             // The workspace's diff is cumulative: an attempt that leaves it as it was wrote nothing.
             var previousDiff = "";
             long largestInput = 0, largestOutput = 0;
-            IChatClient chat = BuildChatClient(request.Model, usage, opts, reporter, out var nudge);
+            IChatClient chat = BuildChatClient(request.Model, request.ToolRounds, usage, reporter, out var nudge);
 
             for (var n = 1; n <= request.MaxAttempts; n++)
             {
@@ -167,7 +167,7 @@ public sealed class TestGenerationHandler(
                         },
                     }, loggers);
                     // Streamed, so the model's text and reasoning reach the activity as they are written.
-                    await foreach (var update in agent.RunStreamingAsync(Instructions.Attempt(request, n, current, feedback, opts.MaxToolRoundsPerAttempt),
+                    await foreach (var update in agent.RunStreamingAsync(Instructions.Attempt(request, n, current, feedback),
                         session: null, options: null, ct))
                     {
                         foreach (var content in update.Contents)
@@ -288,15 +288,15 @@ public sealed class TestGenerationHandler(
     /// makes is counted; the nudge tells the model to write when few rounds remain; the tool loop has a round cap and
     /// turns a refused tool call into text the model can act on.
     /// </summary>
-    private IChatClient BuildChatClient(string model, RunUsage usage, TestAgentOptions opts, ActivityReporter reporter,
+    private IChatClient BuildChatClient(string model, int toolRounds, RunUsage usage, ActivityReporter reporter,
         out RoundNudgeChatClient nudge)
     {
         var provider = new OpenTelemetryChatClient(models.CreateChatClient(model));
         var budgeted = new BudgetedChatClient(provider, usage);
-        nudge = new RoundNudgeChatClient(budgeted, opts.MaxToolRoundsPerAttempt);
+        nudge = new RoundNudgeChatClient(budgeted, toolRounds);
         return new FunctionInvokingChatClient(nudge, loggers)
         {
-            MaximumIterationsPerRequest = opts.MaxToolRoundsPerAttempt,
+            MaximumIterationsPerRequest = toolRounds,
             FunctionInvoker = async (context, ct) =>
             {
                 object? result;

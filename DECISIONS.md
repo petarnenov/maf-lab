@@ -2201,8 +2201,32 @@ said which account the conversation was about.
 - **Why.** With the cap at 12 rounds, the agent often spent a whole attempt reading. On
   `src/Maf.Lab.A2A/RedisTaskStore.cs`, `glm-5.3:cloud` read 15 files, planned its tests, and was cut off before its
   first `write_file`. That happened even with the nudge when few rounds remain.
-- **The cap is `TestAgentOptions.MaxToolRoundsPerAttempt`, and only there.** The attempt's instructions, the nudge
+- **The cap is `TestAgentOptions.MaxToolRoundsPerAttempt`, and only there.** (Superseded by §61: the cap now comes with each task, bounded by `RunLimits`.) The attempt's instructions, the nudge
   (`RoundNudgeChatClient`, when `Instructions.NudgeAtRoundsLeft` rounds remain) and the tool loop's
   `MaximumIterationsPerRequest` all read it. No appsettings or compose entry repeats it, so this is its only value.
 - **Cost.** More rounds per attempt means more input tokens per attempt, because each round re-reads the
   conversation. The run's budget (chosen in the picker, unlimited by default) and the 5-attempt cap still bound a run.
+
+## 61. Run limits in the picker, and an estimate fitted to runs (show-run-limits-in-picker, 2026-09-30)
+
+- **Why.** The picker showed only the model and two empty caps. The attempt cap, the tool rounds and test runs per
+  attempt, the deadline and the suspected-bug cap were invisible. The cost estimate was about 10× too low on input.
+- **One place for the limits: `RunLimits` in `Maf.Lab.TestGen`.** Attempts 1–10, tool rounds per attempt 1–40, and
+  test runs per attempt 0–2. Each default is its maximum, so a run can be made smaller, never larger than before. The
+  api serves them from `GET /api/coverage/models` and validates a start against them. The task
+  (`testgen.request/v1`) carries `toolRoundsPerAttempt` and `testRunsPerAttempt` (optional; absent means the
+  default). The agent validates them and enforces them: the instructions, the nudge, `MaximumIterationsPerRequest` and
+  `run_tests`. The agent's `MaxToolRoundsPerAttempt` / `MaxTestRunsPerAttempt` options are gone. The deadline and the
+  suspected-bug cap are shown, not editable.
+- **The caps show their default.** Each cap has an "Unlimited" box, checked by default. Unchecking it fills the field
+  with the estimate for the chosen model and limits, and rounds a cost up to the cent.
+- **The estimate, measured.** There were 13 real attempts on 4 files (1.7–3.7 KB), with `glm-5.3:cloud` and the flash
+  model. The api database had the input per attempt: median 118k tokens (95k–211k), against the old estimate of
+  11–12.6k. Output was 0.7k–17.8k tokens (mean 5.8k). Input follows the tool rounds, not the file size (r = −0.29):
+  attempts took 14–22 rounds, each re-sending the conversation, and the fit is 43k + 4k × rounds.
+  `AttemptEstimate.PerAttempt` is now input = 43 000 + 4 × file tokens + 4 000 × min(rounds, 20), and output = 6 000.
+  The file term is a conservative placeholder, since the data cannot fit it. A 3.7 KB file on glm comes to $0.089 per
+  attempt; the accepted run on that file cost $0.084 per attempt. The api serves the model-independent parts, and the
+  browser prices them for the model, attempts and rounds entered. The xUnit and the Vitest tests pin the same example.
+- **The agent's pre-attempt budget check uses the new figure.** So a small token cap (under about 130k) now stops a
+  run before its first attempt, which is what such a cap would have allowed anyway.

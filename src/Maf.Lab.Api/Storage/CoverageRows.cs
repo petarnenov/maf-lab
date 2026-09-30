@@ -76,6 +76,9 @@ public sealed class TestGenRunRow
     /// <summary>The caps the administrator chose at start; null is unlimited (and is what rows from before caps read as).</summary>
     public long? BudgetTokens { get; set; }
     public double? BudgetCostUsd { get; set; }
+    /// <summary>The attempt limits chosen at start; null (rows from before limits) reads as the defaults.</summary>
+    public int? ToolRoundsPerAttempt { get; set; }
+    public int? TestRunsPerAttempt { get; set; }
 }
 
 /// <summary>

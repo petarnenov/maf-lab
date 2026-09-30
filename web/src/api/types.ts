@@ -906,6 +906,22 @@ export interface RunSummary {
   phase?: string | null;
   /** The caps chosen at start; a missing or null cap is unlimited. */
   budget?: RunBudget | null;
+  /** The limits chosen at start (a run from before limits reads as the defaults). */
+  limits?: RunLimitsSummary | null;
+}
+
+/** The limits a run has. */
+export interface RunLimitsSummary {
+  maxAttempts: number;
+  toolRoundsPerAttempt: number;
+  testRunsPerAttempt: number;
+}
+
+/** The limits a start request may carry; one left out takes its default. */
+export interface RunLimitsInput {
+  maxAttempts?: number;
+  toolRoundsPerAttempt?: number;
+  testRunsPerAttempt?: number;
 }
 
 /** A run's caps; null is unlimited. */
@@ -985,10 +1001,31 @@ export interface CoverageFileDetail {
   run: RunSummary | null;
 }
 
-export interface CostEstimate {
-  inputTokens: number;
-  outputTokens: number;
-  costUsd: number;
+/**
+ * The model-independent parts of a run's estimate for one file. Per attempt: input = fixedInputTokens +
+ * inputTokensPerRound × min(tool rounds, typicalRounds); output = outputTokensPerAttempt.
+ */
+export interface EstimateParts {
+  fixedInputTokens: number;
+  inputTokensPerRound: number;
+  typicalRounds: number;
+  outputTokensPerAttempt: number;
+}
+
+/** A limit a run may lower: its range and the value a run gets when none is chosen. */
+export interface LimitBounds {
+  min: number;
+  max: number;
+  default: number;
+}
+
+/** Every limit a run has: the ones the picker may change, and the fixed ones. */
+export interface RunLimits {
+  maxAttempts: LimitBounds;
+  toolRoundsPerAttempt: LimitBounds;
+  testRunsPerAttempt: LimitBounds;
+  deadlineMinutes: number;
+  maxSuspectedBugs: number;
 }
 
 /** One model the test agent may use, as the server's allowlist has it. */
@@ -1002,12 +1039,13 @@ export interface AgentModel {
   priceIsEstimate: boolean;
   available: boolean;
   unavailableReason: string | null;
-  estimate: CostEstimate | null;
 }
 
 export interface AgentModels {
   models: AgentModel[];
-  maxAttempts: number;
+  limits: RunLimits;
+  /** Null when the file cannot be read: no estimate is shown. */
+  estimate: EstimateParts | null;
 }
 
 export interface SuspectedBug {
