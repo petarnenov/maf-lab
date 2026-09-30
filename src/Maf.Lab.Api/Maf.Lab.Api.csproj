@@ -19,6 +19,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Maf.Lab.A2A\Maf.Lab.A2A.csproj" />
+    <ProjectReference Include="..\Maf.Lab.TestGen\Maf.Lab.TestGen.csproj" />
     <ProjectReference Include="..\Maf.Lab.Hosting\Maf.Lab.Hosting.csproj" />
     <ProjectReference Include="..\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />
     <!-- Admin endpoints reuse the indexing pipeline; chat never queries the store directly (only via MCP tools). -->

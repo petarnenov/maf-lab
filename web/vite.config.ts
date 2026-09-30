@@ -22,5 +22,12 @@ export default defineConfig({
     css: { modules: { classNameStrategy: 'non-scoped' } },
     restoreMocks: true,
     unstubGlobals: true,
+    // Coverage for the Coverage screen: Cobertura, the same format the .NET run writes (see DECISIONS.md).
+    coverage: {
+      provider: 'v8',
+      reporter: ['cobertura', 'text-summary'],
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/**/*.d.ts'],
+    },
   },
 });

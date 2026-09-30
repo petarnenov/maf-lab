@@ -2,6 +2,8 @@
 # Verifies the load-balanced stack end to end (openspec change add-load-balancer).
 # Usage: scripts/verify_lb.sh [base_url]   (default http://localhost:7171; the stack must be up via compose)
 set -euo pipefail
+# compose mounts the repository at MAF_LAB_REPO (make exports it); outside make, it is this checkout.
+export MAF_LAB_REPO="${MAF_LAB_REPO:-$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel)}"
 BASE="${1:-http://localhost:7171}"
 COMPOSE="docker compose -f $(dirname "$0")/../compose/docker-compose.yml"
 export BASE COMPOSE

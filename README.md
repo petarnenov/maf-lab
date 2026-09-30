@@ -177,7 +177,9 @@ make help                  # every target
 | `make docs` | Rewrite the generated blocks in README, project.md, config.yaml and the Copilot instructions |
 | `make docs-check` | Check the docs against the code (generated blocks, routes, make targets, models, links); changes nothing |
 | `make ci` | Run locally what GitHub Actions runs on every push |
-| `make ci-e2e` | Model-free end-to-end: stack with the Ollama stub, index, verify, A2A conformance (CI mode) |
+| `make ci-e2e` | Model-free end-to-end: stack with the Ollama stub, index, verify, A2A conformance, test generation (CI mode) |
+| `make testgen-e2e` | Model-free test generation end to end: refresh, run, verify, accept (used by ci-e2e, against its clone) |
+| `make coverage` | Refresh the coverage snapshot at main (both toolchains, through the running stack) |
 | `make verify` | Verify the running stack through the load balancer (35 checks) |
 | `make eval` | Run evals (SUITE=all\|selection\|retrieval\|generation\|injection\|confirmation\|intent\|domain\|presentation) against the stack's MCP servers |
 | `make ask` | Ask one question through the agent and print its trace (Q="…" FIRM=firm-a), e.g. a cross-domain one |
@@ -193,7 +195,7 @@ make help                  # every target
 | `make eval-presentation` | Eval: do portfolio answers build on their data cards instead of restating them? |
 | `make eval-a2a` | Conformance: an outside client drives the agents through evals/a2a-conformance.jsonl |
 | `make dev` | Run mcp/api/web locally without Docker (infra stays in compose); Ctrl-C stops |
-| `make doctor` | Check prerequisites (Docker, .NET SDK, Node/npm, make, OLLAMA_API_KEY, JEV_MAF_LAB) |
+| `make doctor` | Check prerequisites (Docker, .NET SDK, Node/npm, make, OLLAMA_API_KEY, JEV_MAF_LAB, MAF_LAB_REPO, GITHUB_ISSUES_TOKEN) |
 | `make setup` | Install what 'make doctor' reports missing (.NET SDK unattended; prints the rest) |
 <!-- /generated:make-targets -->
 

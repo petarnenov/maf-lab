@@ -50,6 +50,7 @@ public sealed class TopologyProbe(
     IOptions<ModelOptions> models,
     IOptions<AgentOptions> agent,
     IOptions<A2A.ComplianceOptions> compliance,
+    IOptions<Coverage.TestAgentOptions> testAgent,
     IToolSource tools,
     QdrantClient qdrantClient,
     IHttpClientFactory http,
@@ -95,6 +96,15 @@ public sealed class TopologyProbe(
         new("api", "redis", "shared state"),
         new("mcp", "redis", "idempotency"),
         new("compliance", "redis", "tasks"),
+        // Test generation (add-coverage-dashboard-and-test-agent): the agent writes tests, the runner builds and measures
+        // them — for the agent's attempts and, separately, for the api's own verification.
+        new("api", "test-agent", "A2A"),
+        new("test-agent", "coverage-runner", "run tests"),
+        new("api", "coverage-runner", "verify, refresh"),
+        new("test-agent", "chat-provider", "write tests"),
+        new("test-agent", "redis", "tasks"),
+        new("test-agent", "otel-collector", "OTLP"),
+        new("coverage-runner", "otel-collector", "OTLP"),
     ];
 
     private readonly ILogger _logger = loggers.CreateLogger<TopologyProbe>();
@@ -102,8 +112,8 @@ public sealed class TopologyProbe(
     /// <summary>Node ids the report always contains; the drawn diagram must hold exactly these.</summary>
     public static IReadOnlyList<string> NodeIds { get; } =
     [
-        "lb", "web", "api", "mcp", "mcp-portfolio", "mcp-code", "compliance", "qdrant", "ollama-embeddings", "chat-provider",
-        "otel-collector", "prometheus", "jaeger", "redis",
+        "lb", "web", "api", "mcp", "mcp-portfolio", "mcp-code", "compliance", "test-agent", "coverage-runner", "qdrant",
+        "ollama-embeddings", "chat-provider", "otel-collector", "prometheus", "jaeger", "redis",
     ];
 
     public async Task<TopologyReport> GetAsync(string bearerToken, CancellationToken ct)
@@ -129,6 +139,8 @@ public sealed class TopologyProbe(
         var portfolioAddresses = await resolver.ResolveAsync(o.PortfolioService, ct);
         var codeAddresses = await resolver.ResolveAsync(o.CodeService, ct);
         var complianceAddresses = await resolver.ResolveAsync(o.ComplianceService, ct);
+        var testAgentAddresses = await resolver.ResolveAsync(o.TestAgentService, ct);
+        var runnerAddresses = await resolver.ResolveAsync(o.CoverageRunnerService, ct);
         var discovery = apiAddresses.Count > 0 || mcpAddresses.Count > 0 || portfolioAddresses.Count > 0 || codeAddresses.Count > 0;
 
         var lb = Http("lb", "lb", o.LoadBalancerHealthUrl, timeout, ct);
@@ -140,6 +152,8 @@ public sealed class TopologyProbe(
         var portfolio = DomainServerAsync("mcp-portfolio", Domains.Portfolio, portfolioAddresses, offered, timeout, ct);
         var code = DomainServerAsync("mcp-code", Domains.Codebase, codeAddresses, offered, timeout, ct);
         var compliance = ComplianceAsync(complianceAddresses, timeout, ct);
+        var agentNode = TestAgentAsync(testAgentAddresses, timeout, ct);
+        var runnerNode = ReplicasAsync("coverage-runner", "coverage runner", runnerAddresses, timeout, ct);
         var store = QdrantAsync(timeout, ct);
         var embeddings = EmbeddingsAsync(timeout, ct);
         var collector = Http("otel-collector", "otel collector", o.CollectorHealthUrl, timeout, ct);
@@ -147,7 +161,8 @@ public sealed class TopologyProbe(
         var traces = Http("jaeger", "jaeger", o.JaegerHealthUrl, timeout, ct);
         var shared = SharedStateAsync(ct);
 
-        var probed = await Task.WhenAll(lb, web, api, mcp, portfolio, code, compliance, store, embeddings, collector, metrics, traces, shared);
+        var probed = await Task.WhenAll(lb, web, api, mcp, portfolio, code, compliance, agentNode, runnerNode, store, embeddings, collector,
+            metrics, traces, shared);
         var byId = probed.Append(ChatProvider()).ToDictionary(n => n.Id);
         var ordered = NodeIds.Select(id => byId[id]).ToList();
 
@@ -225,6 +240,36 @@ public sealed class TopologyProbe(
             facts["agent"] = card.TryGetProperty("name", out var name) ? name.GetString() ?? "?" : "?";
             facts["skills"] = string.Join(", ", card.GetProperty("skills").EnumerateArray()
                 .Select(s => s.GetProperty("id").GetString()));
+        }
+        catch (Exception ex)
+        {
+            return node with
+            {
+                Facts = facts,
+                Health = node.Instances.Any(i => i.Health == NodeHealth.Healthy) ? NodeHealth.Degraded : node.Health,
+                Reason = Describe(ex, timeout),
+            };
+        }
+        return node with { Facts = facts };
+    }
+
+    /// <summary>The test agent: its replicas, and what its card says it offers. Unconfigured is degraded, not down.</summary>
+    private async Task<TopologyNode> TestAgentAsync(IReadOnlyList<string> addresses, TimeSpan timeout, CancellationToken ct)
+    {
+        var node = await ReplicasAsync("test-agent", "test agent", addresses, timeout, ct);
+        var baseUrl = testAgent.Value.BaseUrl;
+        var facts = new Dictionary<string, string>(node.Facts) { ["baseUrl"] = baseUrl };
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            return node with { Facts = facts, Health = NodeHealth.Degraded, Reason = "no test agent is configured" };
+        }
+        try
+        {
+            using var cts = Linked(timeout, ct);
+            var card = await http.CreateClient("topology").GetFromJsonAsync<System.Text.Json.JsonElement>(
+                $"{baseUrl.TrimEnd('/')}{Maf.Lab.A2A.AgentCardFactory.WellKnownPath}", cts.Token);
+            facts["agent"] = card.TryGetProperty("name", out var name) ? name.GetString() ?? "?" : "?";
+            facts["skills"] = string.Join(", ", card.GetProperty("skills").EnumerateArray().Select(s => s.GetProperty("id").GetString()));
         }
         catch (Exception ex)
         {

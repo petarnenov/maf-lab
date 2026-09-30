@@ -14,6 +14,7 @@ describe('parseDiagram', () => {
       'api',
       'chat-provider',
       'compliance',
+      'coverage-runner',
       'jaeger',
       'lb',
       'mcp',
@@ -24,6 +25,7 @@ describe('parseDiagram', () => {
       'prometheus',
       'qdrant',
       'redis',
+      'test-agent',
       'web',
     ]);
     const api = diagram.nodes.find((n) => n.id === 'api')!;

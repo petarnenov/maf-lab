@@ -23,6 +23,7 @@ public class TopologyProbeTests(QdrantFixture qdrant)
             Options.Create(new ModelOptions()),
             Options.Create(new AgentOptions()),
             Options.Create(new Maf.Lab.Api.A2A.ComplianceOptions()),
+            Options.Create(new Maf.Lab.Api.Coverage.TestAgentOptions()),
             new FakeToolSource(),
             client,
             new StubHttpClientFactory(),

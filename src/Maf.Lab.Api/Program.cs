@@ -109,6 +109,28 @@ public partial class Program
         builder.Services.AddSingleton<Storage.MessageRetentionService>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<Storage.MessageRetentionService>());
         builder.Services.AddHostedService(sp => sp.GetRequiredService<Agent.Tracing.TraceRetentionService>());
+        // The Coverage screen (add-coverage-dashboard-and-test-agent): snapshots, thresholds, and the runner that measures.
+        builder.Services.Configure<Coverage.CoverageOptions>(builder.Configuration.GetSection(Coverage.CoverageOptions.Section));
+        builder.Services.Configure<Coverage.CoverageRunnerOptions>(builder.Configuration.GetSection(Coverage.CoverageRunnerOptions.Section));
+        builder.Services.AddSingleton<Coverage.IRepository, Coverage.GitRepository>();
+        builder.Services.AddSingleton<Coverage.CoverageStore>();
+        builder.Services.AddSingleton<Coverage.CoverageIngestor>();
+        builder.Services.AddSingleton<Coverage.CoverageRefresher>();
+        builder.Services.Configure<Coverage.TestAgentOptions>(builder.Configuration.GetSection(Coverage.TestAgentOptions.Section));
+        builder.Services.AddSingleton<Coverage.ModelAvailability>();
+        builder.Services.AddHttpClient(Coverage.TestAgentClient.HttpClientName);
+        builder.Services.AddSingleton<Coverage.TestAgentClient>();
+        builder.Services.AddSingleton<Coverage.TestGenRuns>();
+        builder.Services.Configure<Coverage.GitHubOptions>(builder.Configuration.GetSection(Coverage.GitHubOptions.Section));
+        builder.Services.AddHttpClient(Coverage.GitHubIssues.HttpClientName);
+        builder.Services.AddSingleton<Coverage.GitHubIssues>();
+        builder.Services.AddSingleton(sp => (Coverage.GitRepository)sp.GetRequiredService<Coverage.IRepository>());
+        builder.Services.AddSingleton<Coverage.RepoWriter>();
+        builder.Services.AddSingleton<Coverage.IRunVerifier, Coverage.RunVerifier>();
+        builder.Services.AddSingleton<Coverage.CandidateDecisions>();
+        builder.Services.AddSingleton<Coverage.RunFollower>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<Coverage.RunFollower>());
+        Coverage.CoverageRunnerRegistration.AddCoverageRunnerClient(builder.Services);
 
         var app = builder.Build();
         // Resolved now so a missing JEV_MAF_LAB is reported once at startup, not on the first turn.
@@ -142,6 +164,7 @@ public partial class Program
         app.MapJevStats();
         app.MapCodeSnippets();
         app.MapA2AAdmin();
+        app.MapCoverage();
         app.MapA2ASurface();
         app.MapA2AProtocol();
         return app;

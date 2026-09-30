@@ -868,3 +868,176 @@ export interface CodeSearchResult {
   truncated: boolean;
   refineHint: string | null;
 }
+
+// Coverage screen (add-coverage-dashboard-and-test-agent).
+
+export type Toolchain = 'dotnet' | 'vitest';
+
+export type RunState =
+  | 'submitted'
+  | 'working'
+  | 'verifying'
+  | 'candidate'
+  | 'accepted'
+  | 'discarded'
+  | 'completed_no_change'
+  | 'failed'
+  | 'canceled'
+  | 'verification_failed';
+
+/** A test-generation run as the tree and the file view show it. */
+export interface RunSummary {
+  id: string;
+  path: string;
+  state: RunState;
+  reason: string | null;
+  attempt: number;
+  maxAttempts: number;
+  lastPct: number | null;
+  targetPct: number;
+  model: string;
+  tokens: number;
+  costUsd: number;
+  branch: string | null;
+  createdAt: string;
+  updatedAt: string;
+  active: boolean;
+}
+
+export interface CandidateCoverage {
+  runId: string;
+  pct: number;
+  linesCovered: number;
+  linesTotal: number;
+}
+
+export interface CoverageTreeFile {
+  path: string;
+  toolchain: Toolchain | null;
+  linesTotal: number;
+  linesCovered: number;
+  branchesTotal: number;
+  branchesCovered: number;
+  pct: number;
+  threshold: number;
+  thresholdIsOverride: boolean;
+  belowThreshold: boolean;
+  commit: string;
+  measuredAt: string;
+  candidate: CandidateCoverage | null;
+  run: RunSummary | null;
+}
+
+export interface CoverageTreeFolder {
+  path: string;
+  linesTotal: number;
+  linesCovered: number;
+  pct: number;
+  files: number;
+  filesBelowThreshold: number;
+}
+
+export interface CoverageTree {
+  hasSnapshot: boolean;
+  defaultThresholdPct: number;
+  files: CoverageTreeFile[];
+  folders: CoverageTreeFolder[];
+}
+
+export type LineStatus = 'covered' | 'uncovered' | 'partial';
+
+export interface CoverageLine {
+  line: number;
+  hits: number;
+  branchesCovered: number;
+  branchesTotal: number;
+  status: LineStatus;
+}
+
+export interface CoverageFileDetail {
+  path: string;
+  toolchain: Toolchain | null;
+  commit: string;
+  measuredAt: string;
+  dirty: boolean;
+  kind: 'official' | 'candidate';
+  summary: {
+    linesTotal: number;
+    linesCovered: number;
+    branchesTotal: number;
+    branchesCovered: number;
+    pct: number;
+    threshold: number;
+    thresholdIsOverride: boolean;
+  };
+  source: string;
+  lines: CoverageLine[];
+  run: RunSummary | null;
+}
+
+export interface CostEstimate {
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+}
+
+/** One model the test agent may use, as the server's allowlist has it. */
+export interface AgentModel {
+  tag: string;
+  displayName: string;
+  inputPerMTok: number;
+  outputPerMTok: number;
+  bestFor: string;
+  isDefault: boolean;
+  priceIsEstimate: boolean;
+  available: boolean;
+  unavailableReason: string | null;
+  estimate: CostEstimate | null;
+}
+
+export interface AgentModels {
+  models: AgentModel[];
+  maxAttempts: number;
+  maxTokens: number;
+  maxCostUsd: number;
+}
+
+export interface SuspectedBug {
+  testFile: string;
+  test: string;
+  title: string;
+  description: string;
+  expected: string;
+  actual: string;
+  failure: string;
+}
+
+export interface TestGenReport {
+  goalReached: boolean;
+  stopReason: string;
+  target: number;
+  baseline: number | null;
+  final: number | null;
+  attempts: { n: number; before: number | null; after: number | null; build: string }[];
+  usage: { inputTokens: number; outputTokens: number; estimatedCostUsd: number };
+  diff: string;
+  suspectedBugs?: SuspectedBug[] | null;
+}
+
+export interface RunIssue {
+  testKey: string;
+  title: string;
+  number: number | null;
+  url: string | null;
+}
+
+export interface RunDetail {
+  run: RunSummary;
+  report: TestGenReport | null;
+  issues: RunIssue[];
+}
+
+export interface RunDecision {
+  run: RunSummary;
+  gitHubProblems: string[];
+}

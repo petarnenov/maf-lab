@@ -313,6 +313,30 @@ recipient can recompute it: the literal section names `conversations`, `turns`, 
 followed by one line per row, fields joined with `U+001F` in the order the DTOs declare them, timestamps as UTC
 `yyyy-MM-ddTHH:mm:ss.fffZ`, booleans as `true`/`false`, nulls as the empty string, rows terminated by `\n`.
 
+## Coverage (any authenticated role reads; FIRM_ADMIN changes, otherwise `403`)
+
+The Coverage screen's API. Coverage describes the repository, so nothing here is scoped to a firm. A run's
+lifecycle is `submitted → working → verifying → candidate → accepted | discarded`, or it ends `failed`,
+`canceled`, `verification_failed` or `completed_no_change`.
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | `/api/coverage/tree` | — | `{ hasSnapshot, defaultThresholdPct, files: [{ path, pct, threshold, belowThreshold, candidate, run, … }], folders: [{ path, pct, … }] }` (folders line-weighted) |
+| GET | `/api/coverage/files?path=&run=` | — | `{ path, commit, measuredAt, summary, source, lines: [{ line, hits, branchesCovered, branchesTotal, status }], run }`; `run=` shows that run's candidate. `404` for a path no snapshot has |
+| GET | `/api/coverage/files/history?path=` | — | `[{ snapshotId, commit, measuredAt, pct, kind }]`, newest first |
+| PUT | `/api/coverage/thresholds?path=` | `{ pct \| null }` | `200` saved; `409 run_required { currentPct, targetPct }` for a raise above coverage; `409 run_active`; `400` out of range. Admin |
+| GET | `/api/coverage/models?path=` | — | `{ models: [{ tag, displayName, inputPerMTok, outputPerMTok, bestFor, isDefault, priceIsEstimate, available, unavailableReason, estimate }], maxAttempts, maxTokens, maxCostUsd }`. Admin |
+| POST | `/api/coverage/runs` | `{ path, pct, model }` | `201` run (saves the threshold); `409 run_active`; `422 model_rejected`; `503 agent_unavailable`, threshold unchanged. Admin |
+| GET | `/api/coverage/runs?path=` | — | `[run]`, newest first |
+| GET | `/api/coverage/runs/{id}` | — | `{ run, report, issues: [{ testKey, title, number, url }] }` |
+| GET | `/api/coverage/runs/{id}/events` | — | `text/event-stream`: `snapshot` first, then `update`, `end` at a final state |
+| POST | `/api/coverage/runs/{id}/cancel` | — | `200` run, `409 not_cancellable`. Admin |
+| POST | `/api/coverage/runs/{id}/accept` | — | `200 { run, gitHubProblems }` merged into main; `409 merge_conflict \| main_dirty \| branch_missing \| not_candidate`. Admin |
+| POST | `/api/coverage/runs/{id}/discard` | — | `200 { run, gitHubProblems }`, branch deleted, issues closed. Admin |
+| POST | `/api/coverage/refresh` | — | `202` admin job (one at a time: a second answers with the first). Admin |
+| GET | `/api/coverage/refresh` · `/api/coverage/refresh/{jobId}` | — | the current or named refresh job, `204` when there is none |
+| POST | `/api/coverage/reports` | multipart `commit`, `toolchain`, `report`, `root?`, `dirty?` | `200 { snapshotId, files, dropped }`; `400` for a report that is not Cobertura. Admin |
+
 ## Evals (any authenticated role)
 
 | Method | Path | Response |

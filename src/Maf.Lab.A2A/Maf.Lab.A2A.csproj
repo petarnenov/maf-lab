@@ -9,6 +9,8 @@
     <PackageReference Include="A2A.AspNetCore" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
+    <!-- The shared task and webhook stores both agents keep their tasks in. -->
+    <PackageReference Include="StackExchange.Redis" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />

@@ -3,6 +3,8 @@
 # On timeout (or a failed one-shot) prints the offending services with their last 30 log lines and exits 1.
 # Usage: scripts/wait_healthy.sh [timeout_seconds]   (compose file: $COMPOSE_FILE or compose/docker-compose.yml)
 set -euo pipefail
+# compose mounts the repository at MAF_LAB_REPO (make exports it); outside make, it is this checkout.
+export MAF_LAB_REPO="${MAF_LAB_REPO:-$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel)}"
 TIMEOUT="${1:-300}"
 FILE="${COMPOSE_FILE:-$(cd "$(dirname "$0")/.." && pwd)/compose/docker-compose.yml}"
 compose() { docker compose -f "$FILE" "$@"; }

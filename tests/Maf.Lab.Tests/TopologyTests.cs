@@ -19,11 +19,15 @@ public class TopologyTests
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private static ApiFactory Api(StubHandler handler, IReadOnlyDictionary<string, string[]>? dns = null,
-        string complianceUrl = "http://compliance", FakeToolSource? tools = null)
+        string complianceUrl = "http://compliance", FakeToolSource? tools = null, string testAgentUrl = "")
     {
         var api = new ApiFactory(ApiFactory.ProceduralModel(), tools)
         {
-            ExtraSettings = new Dictionary<string, string?> { ["Compliance:BaseUrl"] = complianceUrl },
+            ExtraSettings = new Dictionary<string, string?>
+            {
+                ["Compliance:BaseUrl"] = complianceUrl,
+                ["TestAgent:BaseUrl"] = testAgentUrl,
+            },
         };
         api.ConfigureTestServices = s =>
         {
@@ -39,6 +43,37 @@ public class TopologyTests
         var response = await api.ClientFor("adam", "firm-a", role).GetAsync("/api/topology", Ct);
         response.EnsureSuccessStatusCode();
         return JsonSerializer.Deserialize<TopologyReport>(await response.Content.ReadAsStringAsync(Ct), Json)!;
+    }
+
+    [Fact]
+    public async Task The_test_generation_services_are_part_of_the_stack()
+    {
+        using var api = Api(StubHandler.AllHealthy(),
+            new Dictionary<string, string[]> { ["test-agent"] = ["10.0.0.21"], ["coverage-runner"] = ["10.0.0.22"] },
+            testAgentUrl: "http://test-agent:8080");
+
+        var report = await GetAsync(api);
+
+        var agent = Assert.Single(report.Nodes, n => n.Id == "test-agent");
+        var runner = Assert.Single(report.Nodes, n => n.Id == "coverage-runner");
+        Assert.Equal((NodeHealth.Healthy, NodeHealth.Healthy), (agent.Health, runner.Health));
+        Assert.Single(agent.Instances);
+        Assert.Single(runner.Instances);
+        foreach (var (from, to) in new[] { ("api", "test-agent"), ("test-agent", "coverage-runner"), ("test-agent", "chat-provider"), ("api", "coverage-runner") })
+        {
+            Assert.Contains(report.Edges, e => e.From == from && e.To == to);
+        }
+    }
+
+    [Fact]
+    public async Task An_unconfigured_test_agent_is_degraded_and_says_so()
+    {
+        using var api = Api(StubHandler.AllHealthy());
+
+        var node = Assert.Single((await GetAsync(api)).Nodes, n => n.Id == "test-agent");
+
+        Assert.Equal(NodeHealth.Degraded, node.Health);
+        Assert.Contains("configured", node.Reason!);
     }
 
     [Fact]

@@ -20,6 +20,12 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
     public DbSet<A2APushConfigRow> A2APushConfigs => Set<A2APushConfigRow>();
     public DbSet<A2APushDeliveryRow> A2APushDeliveries => Set<A2APushDeliveryRow>();
     public DbSet<PendingAdjustmentRow> PendingAdjustments => Set<PendingAdjustmentRow>();
+    public DbSet<CoverageSnapshotRow> CoverageSnapshots => Set<CoverageSnapshotRow>();
+    public DbSet<CoverageFileRow> CoverageFiles => Set<CoverageFileRow>();
+    public DbSet<CoverageThresholdRow> CoverageThresholds => Set<CoverageThresholdRow>();
+    public DbSet<TestGenRunRow> TestGenRuns => Set<TestGenRunRow>();
+    public DbSet<TestGenRunEventRow> TestGenRunEvents => Set<TestGenRunEventRow>();
+    public DbSet<TestGenIssueRow> TestGenIssues => Set<TestGenIssueRow>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -50,6 +56,19 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
         b.Entity<PendingAdjustmentRow>().HasKey(x => x.Id);
         b.Entity<PendingAdjustmentRow>().HasIndex(x => new { x.FirmId, x.UserId, x.UpdatedAt });
         b.Entity<PendingAdjustmentRow>().HasIndex(x => new { x.ConversationId, x.UpdatedAt });
+        b.Entity<CoverageSnapshotRow>().HasKey(x => x.Id);
+        b.Entity<CoverageSnapshotRow>().HasIndex(x => new { x.Kind, x.CreatedAt });
+        b.Entity<CoverageSnapshotRow>().HasIndex(x => x.RunId);
+        b.Entity<CoverageFileRow>().HasKey(x => new { x.SnapshotId, x.Path });
+        b.Entity<CoverageFileRow>().HasIndex(x => new { x.Path, x.SnapshotId });
+        b.Entity<CoverageThresholdRow>().HasKey(x => x.Path);
+        b.Entity<TestGenRunRow>().HasKey(x => x.Id);
+        b.Entity<TestGenRunRow>().HasIndex(x => new { x.Path, x.CreatedAt });
+        // At most one active run per file, enforced by the database across replicas.
+        b.Entity<TestGenRunRow>().HasIndex(x => x.Path).IsUnique().HasFilter($"\"State\" IN ({TestGenRunState.ActiveSql})")
+            .HasDatabaseName("IX_TestGenRuns_Path_Active");
+        b.Entity<TestGenRunEventRow>().HasIndex(x => new { x.RunId, x.Seq }).IsUnique();
+        b.Entity<TestGenIssueRow>().HasKey(x => new { x.RunId, x.TestKey });
     }
 }
 

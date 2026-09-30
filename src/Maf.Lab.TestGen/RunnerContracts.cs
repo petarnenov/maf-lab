@@ -1,0 +1,61 @@
+namespace Maf.Lab.TestGen;
+
+/// <summary>
+/// A request to the coverage runner: build and test one toolchain at one commit, optionally with a diff applied,
+/// optionally reporting one file. The runner answers with a job; the caller polls it until it is done.
+/// </summary>
+public sealed record RunnerRequest(string Commit, string Toolchain, string? Diff = null, string? TargetFile = null);
+
+/// <summary>A runner job as the caller sees it while it waits.</summary>
+public sealed record RunnerJob(string Id, string State, int QueuePosition, RunnerResult? Result);
+
+public static class RunnerJobState
+{
+    public const string Queued = "queued";
+    public const string Running = "running";
+    public const string Done = "done";
+}
+
+/// <summary>
+/// What one runner job found. <see cref="Status"/> says whether it got as far as measuring:
+/// ok | diff_rejected | timed_out | restore_failed | checkout_failed | error.
+/// </summary>
+public sealed record RunnerResult(
+    string Status,
+    string Build,
+    IReadOnlyList<string> Diagnostics,
+    TestCounts Tests,
+    IReadOnlyList<TestFailure> Failures,
+    string? CoberturaXml,
+    string? MeasuredRoot,
+    double? TargetPct,
+    IReadOnlyList<int[]> Uncovered,
+    long DurationMs)
+{
+    public bool Measured => Status == RunnerStatus.Ok && Build == BuildOutcome.Ok;
+    public bool Green => Measured && Tests.Failed == 0;
+
+    public static RunnerResult Failed(string status, long durationMs, IReadOnlyList<string>? diagnostics = null) =>
+        new(status, BuildOutcome.Skipped, diagnostics ?? [], new TestCounts(0, 0, 0), [], null, null, null, [], durationMs);
+}
+
+public sealed record TestCounts(int Passed, int Failed, int Skipped);
+
+public sealed record TestFailure(string Name, string Message);
+
+public static class RunnerStatus
+{
+    public const string Ok = "ok";
+    public const string DiffRejected = "diff_rejected";
+    public const string TimedOut = "timed_out";
+    public const string RestoreFailed = "restore_failed";
+    public const string CheckoutFailed = "checkout_failed";
+    public const string Error = "error";
+}
+
+public static class BuildOutcome
+{
+    public const string Ok = "ok";
+    public const string Failed = "failed";
+    public const string Skipped = "skipped";
+}

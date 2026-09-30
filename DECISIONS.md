@@ -536,6 +536,13 @@ referenced web projects' config files never collide.
   and both are required here — a partner asking about another firm's run, and a run whose period is missing. The
   handler is therefore ours, and the assistant's own answers are produced by running the same `ChatClientAgent`
   the chat UI runs, under a token minted for the partner's firm.
+- **Re-checked for the test agent (add-coverage-dashboard-and-test-agent, 2026-09-30).** The metadata of
+  `Microsoft.Agents.AI.Hosting.A2A` 1.22.0-preview.260918.1 (net10.0) now shows `AddA2AServer` (five overloads) and
+  `A2AServerRegistrationOptions`/`AgentRunMode` as public. `A2AAgentHandler` and `ArtifactStreamWriter` are still
+  `internal`. The server can host an `AIAgent` and nothing else. The test agent needs three things that setup
+  cannot give: `rejected` for invalid input, progress status updates carrying its own data part, and a loop that
+  owns cancellation and the attempt cap. The conclusion above therefore stands. The test agent uses `Maf.Lab.A2A`
+  like the compliance reviewer, and the hosting package stays unpinned.
 - **Both transports are mapped, gRPC is not.** `MapA2A` (JSON-RPC) and `MapHttpA2A` (HTTP+JSON) both answer behind
   the partner policy. The SDK ships no gRPC server, so the card does not advertise one.
 
@@ -2001,3 +2008,133 @@ said which account the conversation was about.
   fails an active change that has no `## Documentation impact` section. A model reading prose against a diff is not
   reproducible, so the archive-time review in `openspec/config.yaml` suggests fixes and never blocks.
 - **Descriptions live next to the code.** Each `.csproj` has a `<Description>`, and it is the layout's source.
+
+## 57. Coverage screen and test-generation agent (add-coverage-dashboard-and-test-agent, 2026-09-30)
+
+- **.NET coverage on Microsoft.Testing.Platform.** `Microsoft.Testing.Extensions.CodeCoverage` 18.11.2, referenced by
+  `tests/Maf.Lab.Tests` only. It depends on `Microsoft.Testing.Platform` 2.4.0, the version xunit.v3 4.0.1 already
+  brings. The brief named coverlet's `XPlat Code Coverage`, but that is a VSTest data collector and `global.json` runs
+  tests on MTP, so it would not attach. `coverlet.MTP` was the alternative; the Microsoft extension needs no
+  runsettings and writes Cobertura directly. Settings live in `tests/Maf.Lab.Tests/coverage.config.xml`: `src/`
+  assemblies only, generated code and `[ExcludeFromCodeCoverage]` excluded. The report names files by absolute path
+  and carries no `<source>`; ingestion makes them repo-relative.
+- **Web coverage.** `@vitest/coverage-v8` 5.0.1, pinned to the same version as `vitest`, as the provider requires.
+  `vitest run --coverage` writes `web/coverage/cobertura-coverage.xml` with `<source>` = the `web` directory and
+  source-relative file names. Test files and `src/test/` are excluded.
+- **`.gitignore` names `web/coverage/` only.** The old `coverage/` rule, on a case-insensitive file system, also hid
+  `src/Maf.Lab.Api/Coverage/`.
+- **One shared library, `Maf.Lab.TestGen`.** It holds what the api, the test agent and the runner must agree on: the
+  runner's wire contracts and client, and the single git runner (arguments as a list, no shell, no prompt, a time
+  limit). It is not `Maf.Lab.Domain`, which is contracts about principals and tenants only.
+- **A refresh is an admin job.** Design D10 planned a Redis lock. `AdminJobRunner` already gives single-flight across
+  replicas (a unique index on running jobs), a heartbeat and recovery from a dead replica. A refresh runs under the
+  scope key `_repository`. That is a table key, not a tenant: coverage describes the repository.
+- **Service tokens to the runner.** The api and the agent sign a short-lived `PartnerJwt` with audience
+  `maf-lab-coverage-runner` and scope `runner.run`. The runner checks audience, partner and scope, and holds no secret
+  besides the signing key it checks with. No new secret was added.
+- **Windowing without a dependency.** `web/src/coverage/useWindowedList.ts` (fixed row height, overscan) renders only
+  the rows near the viewport, for both the file view and the tree. `react-window` is the fallback if it proves too
+  small. Tests in jsdom assume a 600 px viewport, because jsdom measures nothing.
+- **`web/src/coverage/treeModel.ts`, not `coverageTree.ts`.** Next to `CoverageTree.tsx`, the name differed only in
+  case, and on macOS the import resolved to the component.
+- **Model allowlist and prices.** `TestAgent:Models` in the api's appsettings holds the five models named in the brief.
+  The user authorised this new model use for the test agent only; the chat model is untouched. The prices are the
+  lab's guesses, marked `PriceIsEstimate` and labelled "estimate" in the picker, until the real prices are confirmed
+  (proposal, open question). The list lives in appsettings only, because binding appends to a list default in code.
+- **Availability is asked, per replica.** A one-token request with a fixed probe string and no repository content.
+  A refusal (401, 403, 404, 402, or Ollama's "not included in your … usage") marks a model unavailable for 10
+  minutes; a timeout or 5xx is kept for 30 s only. The answer is cached in `IMemoryCache`, not Redis as design D14
+  said. Both replicas asking separately costs two one-token calls, and sharing the answer would need another store.
+- **The browser decides when to confirm; the server decides what is saved.** The threshold control opens the
+  confirmation when the new value is above both the threshold and the coverage it has. `PUT /thresholds` still
+  refuses a raise that needs a run (`409 run_required`), and only `POST /runs` saves a raised threshold.
+- **Guardrails in code: Roslyn for C#, a scanner for TypeScript.** `Microsoft.CodeAnalysis.CSharp` 5.9.0 is new, in
+  `Maf.Lab.TestGen` only. It reads generated xUnit tests as syntax: `Skip=`, missing assertions, a `catch` that
+  swallows the exception, and `File.*`/`Directory.*` writes to `src/`. Design D8 planned the TypeScript compiler API
+  through node. The api and the agent both check diffs, and neither carries node, so TypeScript is read by a small
+  scanner instead. It blanks comments, strings and template literals, then matches `it`/`test` calls with balanced
+  parentheses. Every test file in the lab (162 at the time) passes both, and a test keeps it that way.
+- **A suspected bug is the one allowed skip.** It must carry the `suspected-bug` marker and be listed in the report,
+  with at most 3 per run, and it still needs an assertion (design D19).
+- **The Redis task stores moved to `Maf.Lab.A2A`.** They were the compliance reviewer's; the test agent needs the
+  same. Their key prefix is `A2A:StoreKeyspace`, defaulting to the reviewer's `compliance`, so its keys are
+  unchanged.
+- **The test agent (`Maf.Lab.TestAgent`).**
+  - **Clone, not worktree.** Each task gets a `git clone --shared` of the read-only repository, checked out at the
+    task's commit. A worktree would need write access to the source `.git`.
+  - **The model gets what it can act on.** The tool loop is a `FunctionInvokingChatClient` with a round cap. Its
+    invoker turns a refused path, or an unavailable runner, into text the model reads. Any other tool failure becomes
+    "The tool failed." — never an exception message, which could carry a host path.
+  - **Every call is counted.** A `BudgetedChatClient` sits on the provider client and counts each call's
+    `UsageDetails`. Before an attempt, the agent stops if the estimate (or the dearest attempt so far) would cross a
+    cap. A call that crosses a cap mid-attempt stops the run with `budget`.
+  - **The result is the best clean attempt.** Clean means it builds, all tests pass, and no rule is broken. The last
+    attempt may be worse than an earlier one, and a broken attempt is never returned.
+  - **Chat client.** `ModelProviders` (native Ollama API, `OLLAMA_API_KEY`) serves the model the task names. The
+    brief's OpenAI-compatible `/v1` would be a second client path.
+- **Provider refusals are told apart in one place.** `ProviderRefusal` (in `Maf.Lab.TestGen`) is shared by the
+  picker's availability check and the agent.
+- **The coverage runner (`Maf.Lab.CoverageRunner`).**
+  - **Toolchain results from the console.** With Microsoft.Testing.Platform, xunit.v3 offers no `--report-*` option
+    here, so the runner reads the `dotnet test` summary, the `failed <name>` blocks and the `error CS…` lines. Vitest
+    reports as JSON. A test file that does not load counts as the web's "build failed". `--coverage.reportOnFailure`
+    keeps the coverage even when a test fails.
+  - **A clean environment for everything it starts.** Child processes get only `PATH`, `HOME`, the locale, temp and
+    the toolchain caches. The runner's own `Auth__SigningKey` is never visible to model-written code, which could
+    otherwise print it into a failure message that goes back to the model.
+  - **Offline by construction.** The image restores `tests/Maf.Lab.Tests`, with its `src/` and `tools/` references,
+    into `/opt/nuget`, and installs `web/` dependencies into `/opt/web/node_modules`. At run time a workspace symlinks
+    them in. Verified with `docker run --network none`: 899 .NET and 438 web tests, with Cobertura from both. The
+    image has its own `Dockerfile.dockerignore`, because the repository's ignore file leaves out `tests/` and `web/`.
+  - **git reads a repository it does not own.** The mount belongs to the host user, so the image sets
+    `safe.directory '*'` system-wide. Tests run as the unprivileged `runner` user (uid 10001).
+- **The api follows a run with the SDK's A2A client.** Design D3 planned the Agent Framework's `A2AAgent`. It turns
+  chat messages into A2A messages, but the test agent's request is a data part, and a run is followed, polled and
+  cancelled by task id (`tasks/resubscribe`, `tasks/get`, `tasks/cancel`), none of which it exposes. The client
+  therefore uses `A2AClient` directly, found by card and authenticated as itself, like the compliance consultant.
+  §23 records the gap.
+- **The follower's lease is a database row.** Design D10 planned a Redis lease. Each run has `Follower` and
+  `FollowerHeartbeatAt`, taken by a conditional update, renewed while followed, and taken over when stale, the way
+  `AdminJobRunner` works. The browser's event stream reads `TestGenRunEvents` from the shared database once a
+  second. There is no Redis pub/sub (design D11): any replica can serve the stream, and nothing new was added to
+  the shared state. The stream ends at a final state; a candidate is not final, so it stays open until the decision.
+- **Issues are opened after the verification run passes, not before (refines design D19).** The order is: prove
+  each bug with its test un-skipped, run the tests, and only then open issues and rewrite the skip markers. A run
+  that fails verification leaves no issue behind.
+- **Merging without `git merge-tree --write-tree`.** It needs git 2.38, and the host has 2.33. When nobody has main
+  checked out, the merge is made in a temporary detached worktree at main, and main is moved by
+  `update-ref <new> <old>` (compare-and-swap), once more if it moved. Candidate branches are also committed in a
+  temporary worktree, so no one's checkout is touched.
+- **Repository writes are serialised in-process.** One semaphore covers worktree, branch and merge operations. Two
+  api replicas rely on git's own ref and index locks between them; a lost race fails that call, and the person can
+  press Accept again.
+- **The GitHub token is named, not fixed.** `GitHub:TokenVariable` (default `GITHUB_ISSUES_TOKEN`) names the
+  environment variable, and `GitHub:Repository` defaults to the origin remote. The token is sent only as the bearer
+  header. A write that fails (GitHub down) is reported with the decision and never blocks it.
+- **Compose.** Two new services, `test-agent` and `coverage-runner`.
+  - **The agent's environment is its own, not `x-app-env`.** It gets the model key, the signing key, telemetry and
+    shared state, and nothing about Jev, the billing partner or retrieval.
+  - **The runner gets only the signing key it checks tokens with.** It sits on the `runner` network, which is
+    `internal: true`. The api, the agent and the collector join that network, so it is reachable and its traces
+    arrive, while it has no route out.
+  - **The repository is mounted at its host path** (`MAF_LAB_REPO`, exported by `make`): read-write for the api only,
+    read-only elsewhere. The api image gains git, and both images set `safe.directory`.
+  - **CI.** It names the detached checkout `main` and sets `MAF_LAB_REPO`. The Ollama stub answers the test agent for
+    the e2e fixture with one `write_file` call.
+  - **Known limit (Linux hosts).** git runs as root inside the api container, so files it writes under `.git`
+    (branch refs, merge objects) are owned by root on a Linux host. Docker Desktop on macOS maps ownership to the
+    user. Running the api as the host UID is left for when the lab runs on Linux.
+- **Topology.** `test-agent` and `coverage-runner` are nodes, each probed on `/health`; the agent's card is also read.
+  The new edges are api→agent (A2A), agent→runner, api→runner (verify, refresh), agent→chat provider, plus the
+  shared-state and OTLP edges. The drawing puts both in the free top-left band; the page routes the lines.
+- **Telemetry.** The agent writes `testgen.run` and `testgen.attempt` spans; the runner writes `runner.run`, with the
+  context of the request that submitted the job, so a job that runs later on a worker stays in its trace. A test
+  proves that one run is one trace from the api's request through A2A, the attempts, the model calls and the runner.
+  The spans carry only structure: attempts, percentages, counts, tokens and cost.
+- **Verified on the real stack (2026-09-30).**
+  - `make ci-e2e` passed: the stub model covered the fixture, the lab's own runner verified it, and Accept merged it
+    into the clone's main (0% → 100%).
+  - `make` with the standard models came up healthy, and `make verify` passed.
+  - The runner container carries no model, Jev or GitHub key and cannot reach the internet.
+  - A full .NET build per job fills Docker Desktop's disk quickly when build cache piles up. A job that died with
+    "No space left on device" looked like a build failure. Keep Docker's disk pruned before long e2e runs.

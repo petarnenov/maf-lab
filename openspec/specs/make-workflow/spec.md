@@ -25,10 +25,12 @@ steps fails.
 
 ### Requirement: Target catalogue and help
 The Makefile SHALL provide targets for lifecycle (`up`, `down`, `restart`, `ps`, `logs`, `clean`), data (`index`,
-`reindex`, `drift`, `migrate`), quality (`test`, `test-dotnet`, `test-web`, `lint`, `verify`, `eval`, and
-`eval-selection`, `eval-retrieval`, `eval-generation`, `eval-injection`), documentation (`docs`, `docs-check`), local
-development (`dev`) and setup (`doctor`, `help`). `make help` SHALL list every target with a one-line description, and
-README SHALL carry the same list, generated from the same descriptions.
+`reindex`, `drift`, `migrate`), quality (`test`, `test-dotnet`, `test-web`, `lint`, `verify`, `eval`,
+`eval-selection`, `eval-retrieval`, `eval-generation`, `eval-injection`, and `coverage`), documentation (`docs`,
+`docs-check`), local development (`dev`) and setup (`doctor`, `help`). `make help` SHALL list every target with a
+one-line description, and README SHALL carry the same list, generated from the same descriptions. `make coverage`
+SHALL refresh the coverage snapshot at `main`'s commit through the running stack. It SHALL exit non-zero if the
+stack is not up or the refresh fails.
 
 #### Scenario: Help lists targets
 - **WHEN** `make help` is run
@@ -46,10 +48,19 @@ README SHALL carry the same list, generated from the same descriptions.
 - **WHEN** `make nonexistent` is run
 - **THEN** make exits non-zero
 
+#### Scenario: Coverage refresh
+- **WHEN** `make coverage` is run with the stack up
+- **THEN** a new official snapshot for both toolchains is ingested and the target exits zero
+
+#### Scenario: Coverage without the stack
+- **WHEN** `make coverage` is run with the stack down
+- **THEN** it exits non-zero and says the stack is not running
+
 ### Requirement: Prerequisite checks
 `make doctor` SHALL report, per prerequisite, whether Docker (with compose), the .NET SDK version pinned in
-`global.json`, Node/npm and GNU make are available, and whether `OLLAMA_API_KEY` and `JEV_MAF_LAB` are set, without
-printing either value. Targets that need a missing tool SHALL fail early with a message naming the missing prerequisite.
+`global.json`, Node/npm and GNU make are available, whether `OLLAMA_API_KEY` and `JEV_MAF_LAB` are set, whether
+`MAF_LAB_REPO` names a git repository, and whether the optional `GITHUB_ISSUES_TOKEN` is set, without printing any
+secret value. Targets that need a missing tool SHALL fail early with a message naming the missing prerequisite.
 
 #### Scenario: Missing API key
 - **WHEN** `OLLAMA_API_KEY` is not set and `make doctor` runs
@@ -62,6 +73,11 @@ printing either value. Targets that need a missing tool SHALL fail early with a 
 #### Scenario: Missing tool
 - **WHEN** `dotnet` cannot be found and `make test-dotnet` runs
 - **THEN** it fails immediately with a message naming the .NET SDK
+
+#### Scenario: No issue token
+- **WHEN** `GITHUB_ISSUES_TOKEN` is not set and `make doctor` runs
+- **THEN** the report marks it as optional and missing, and says that suspected bugs will be skipped without a GitHub
+  issue
 
 ### Requirement: Configuration through variables
 Targets SHALL accept overrides through make or environment variables, at least `CHAT_MODEL`, `API_REPLICAS`,

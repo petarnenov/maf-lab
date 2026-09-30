@@ -8,6 +8,7 @@ const LINKS = [
   { to: '/evals', label: 'Evals' },
   { to: '/topology', label: 'Topology' },
   { to: '/telemetry', label: 'Telemetry' },
+  { to: '/coverage', label: 'Coverage' },
   { to: '/admin/index', label: 'Index admin' },
   { to: '/admin/feedback', label: 'Feedback review' },
   { to: '/admin/compliance', label: 'Compliance' },

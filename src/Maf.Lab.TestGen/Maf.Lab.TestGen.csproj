@@ -1,0 +1,13 @@
+<!-- What the api, the test-generation agent and the coverage runner must agree on: the wire contracts between them,
+     the test-path allowlist, the test guardrails and the one way this lab runs git. No host, no model, no storage. -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>What the api, the test agent and the runner share: wire contracts, the test-path allowlist, guardrails, Cobertura, git</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Maf.Lab.Tests" />
+  </ItemGroup>
+</Project>

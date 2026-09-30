@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Microsoft.Testing.Extensions.CodeCoverage settings for the Coverage screen.
+     Only the lab's own src/ assemblies are measured; tests, tools and third-party code are not. -->
+<Configuration>
+  <Format>cobertura</Format>
+  <CodeCoverage>
+    <ModulePaths>
+      <Include>
+        <ModulePath>.*Maf\.Lab\.(Api|Retrieval|Portfolio|CodeSearch|ComplianceAgent|A2A|Hosting|Domain|Indexing|Eval|TestAgent|CoverageRunner)\.dll$</ModulePath>
+      </Include>
+      <Exclude>
+        <ModulePath>.*Maf\.Lab\.Tests\.dll$</ModulePath>
+        <ModulePath>.*Maf\.Lab\.A2AProbe\.dll$</ModulePath>
+      </Exclude>
+    </ModulePaths>
+    <Attributes>
+      <Exclude>
+        <Attribute>^System\.CodeDom\.Compiler\.GeneratedCodeAttribute$</Attribute>
+        <Attribute>^System\.Diagnostics\.CodeAnalysis\.ExcludeFromCodeCoverageAttribute$</Attribute>
+      </Exclude>
+    </Attributes>
+  </CodeCoverage>
+</Configuration>

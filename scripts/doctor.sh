@@ -62,6 +62,20 @@ else
   warn jev-key "JEV_MAF_LAB" "missing — intent classification uses TypeSafe Jev and needs it (without it nothing is forced to search); export it in your shell"
 fi
 
+# The repository the Coverage screen reads and the test agent writes tests for, at the path compose mounts it.
+repo="${MAF_LAB_REPO:-$(pwd)}"
+if git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  ok repo "MAF_LAB_REPO" "$repo is a git repository"
+else
+  bad repo "MAF_LAB_REPO" "$repo is not a git repository — the Coverage screen and the test agent need one (make sets it)"
+fi
+
+if [ -n "${GITHUB_ISSUES_TOKEN:-}" ]; then
+  ok github-token "GITHUB_ISSUES_TOKEN (optional)" "set"
+else
+  warn github-token "GITHUB_ISSUES_TOKEN (optional)" "missing — suspected bugs the test agent finds are still skipped, but without a GitHub issue; a fine-grained token with Issues read/write on this repository enables them"
+fi
+
 # An Ollama of your own on :11434, if you happen to run one — NOT the stack's Ollama, which compose starts
 # in a container on :11435. This only decides whether compose can reuse models you already pulled.
 if curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; then

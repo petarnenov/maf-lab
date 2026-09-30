@@ -6,6 +6,10 @@ COPY src/ src/
 RUN dotnet publish src/Maf.Lab.Api/Maf.Lab.Api.csproj -c Release -o /app /p:UseAppHost=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.12-noble
+# git: the Coverage screen reads files at a commit, and a verified test run is committed to a branch and merged.
+# The repository is mounted from the host and owned by the host user.
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/* \
+    && git config --system --add safe.directory '*'
 WORKDIR /app
 COPY --from=build /app .
 ENV ASPNETCORE_URLS=http://+:8080 \

@@ -2,6 +2,8 @@
 # Local development without the balancer: Qdrant + Ollama in compose, mcp-retrieval (:5090), mcp-portfolio (:5091),
 # mcp-code (:5092), api (:5080) and the Vite dev server (:5174) as foreground processes with prefixed output. Ctrl-C stops all.
 set -euo pipefail
+# compose mounts the repository at MAF_LAB_REPO (make exports it); outside make, it is this checkout.
+export MAF_LAB_REPO="${MAF_LAB_REPO:-$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel)}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FILE="$ROOT/compose/docker-compose.yml"
 DOTNET="${DOTNET:-dotnet}"

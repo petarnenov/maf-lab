@@ -12,7 +12,7 @@ TestResults/
 # Node / web
 node_modules/
 dist/
-coverage/
+/web/coverage/
 *.tsbuildinfo
 .vite/
 

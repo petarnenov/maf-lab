@@ -30,7 +30,13 @@ OPENSPEC_VERSION ?= 1.13.1
 # Reuse models a host Ollama already pulled, when there is one; set OLLAMA_MODELS_DIR= to use the compose volume.
 OLLAMA_MODELS_DIR ?= $(shell test -d $(HOME)/.ollama && echo $(HOME)/.ollama)
 export CHAT_MODEL OLLAMA_MODELS_DIR
-# OLLAMA_API_KEY and JEV_MAF_LAB are only ever read from the environment (never written to a file or echoed).
+# The repository, mounted into the api (read-write), the test agent and the coverage runner (read-only) at this same path.
+MAF_LAB_REPO  ?= $(ROOT)
+export MAF_LAB_REPO
+# The throwaway repository ci-e2e mounts instead, because its test-generation run merges into main.
+E2E_REPO      ?= $(ROOT)/.cache/e2e-repo
+# OLLAMA_API_KEY, JEV_MAF_LAB and GITHUB_ISSUES_TOKEN are only ever read from the environment (never written to a
+# file or echoed).
 
 # ── tools ────────────────────────────────────────────────────────────────────────────────────────────────────────
 # Prefer ~/.dotnet (where `make setup` installs the SDK global.json pins) over a system dotnet that may lack it.
@@ -52,7 +58,7 @@ CODE_ENV := Indexing__Layout=repository Indexing__CorpusRoot=$(ROOT) Indexing__M
             Qdrant__Collection=maf_code_chunks Qdrant__MetaCollection=maf_code_meta
 
 .PHONY: all help up down restart ps logs clean index index-portfolio index-code reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
-        eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-a2a dev doctor banner index-if-empty \
+        coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-a2a dev doctor banner index-if-empty \
         specs docs docs-check lint-dotnet lint-web build-web ci ci-e2e setup \
         require-docker require-dotnet require-npm require-python
 
@@ -160,8 +166,17 @@ docs-check: require-python ## Check the docs against the code (generated blocks,
 
 ci: specs docs-check lint-dotnet test-dotnet lint-web test-web build-web ci-e2e ## Run locally what GitHub Actions runs on every push
 
-ci-e2e: require-docker require-dotnet ## Model-free end-to-end: stack with the Ollama stub, index, verify, A2A conformance (CI mode)
-	$(MAKE) up index-if-empty verify eval-a2a CI_MODE=1
+ci-e2e: require-docker require-dotnet ## Model-free end-to-end: stack with the Ollama stub, index, verify, A2A conformance, test generation (CI mode)
+	@# Test generation merges into main: it runs on a fresh clone of the committed HEAD, never on this checkout's main.
+	@# The clone's main is this checkout's HEAD: the commit under test, not whatever local main happens to be.
+	rm -rf $(E2E_REPO) && git clone -q $(ROOT) $(E2E_REPO) && git -C $(E2E_REPO) checkout -q -B main $$(git rev-parse HEAD)
+	$(MAKE) up index-if-empty verify eval-a2a testgen-e2e CI_MODE=1 MAF_LAB_REPO=$(E2E_REPO)
+
+testgen-e2e: ## Model-free test generation end to end: refresh, run, verify, accept (used by ci-e2e, against its clone)
+	scripts/testgen_e2e.sh $(BASE_URL)
+
+coverage: require-docker ## Refresh the coverage snapshot at main (both toolchains, through the running stack)
+	@scripts/coverage_refresh.sh $(BASE_URL)
 
 verify: ## Verify the running stack through the load balancer (35 checks)
 	scripts/verify_lb.sh $(BASE_URL)
@@ -217,7 +232,7 @@ dev: require-docker require-dotnet require-npm ## Run mcp/api/web locally withou
 	DOTNET=$(DOTNET) NPM=$(NPM) scripts/dev.sh
 
 # ── setup ────────────────────────────────────────────────────────────────────────────────────────────────────────
-doctor: ## Check prerequisites (Docker, .NET SDK, Node/npm, make, OLLAMA_API_KEY, JEV_MAF_LAB)
+doctor: ## Check prerequisites (Docker, .NET SDK, Node/npm, make, OLLAMA_API_KEY, JEV_MAF_LAB, MAF_LAB_REPO, GITHUB_ISSUES_TOKEN)
 	@DOTNET=$(DOTNET) NPM=$(NPM) scripts/doctor.sh
 
 setup: ## Install what 'make doctor' reports missing (.NET SDK unattended; prints the rest)

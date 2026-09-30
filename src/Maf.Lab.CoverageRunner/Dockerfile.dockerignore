@@ -1,0 +1,16 @@
+# The coverage runner's own build context: like the repository's .dockerignore, but tests/ and web/ are in —
+# their dependencies are restored into the image.
+**/bin/
+**/obj/
+**/node_modules/
+**/*.db
+.git/
+.vs/
+.vscode/
+.cache/
+data/
+data-portfolio/
+evals/
+openspec/
+web/dist/
+web/coverage/

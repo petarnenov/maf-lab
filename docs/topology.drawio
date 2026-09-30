@@ -65,6 +65,12 @@
         <mxCell id="jaeger" value="jaeger&#10;traces" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
           <mxGeometry x="120" y="720" width="140" height="80" as="geometry" />
         </mxCell>
+        <mxCell id="test-agent" value="test-agent&#10;A2A test generation" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="300" y="90" width="160" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="coverage-runner" value="coverage-runner&#10;build + test, no egress" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="90" width="170" height="80" as="geometry" />
+        </mxCell>
         <mxCell id="e-lb-web" value="/" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="lb" target="web">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
@@ -147,6 +153,27 @@
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e-code-otel" value="OTLP" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;" edge="1" parent="1" source="mcp-code" target="otel-collector">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-api-testagent" value="A2A" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="api" target="test-agent">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-testagent-runner" value="run tests" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="test-agent" target="coverage-runner">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-api-runner" value="verify, refresh" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="api" target="coverage-runner">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-testagent-chat" value="write tests" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="test-agent" target="chat-provider">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-testagent-redis" value="tasks" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;" edge="1" parent="1" source="test-agent" target="redis">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-testagent-otel" value="OTLP" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;" edge="1" parent="1" source="test-agent" target="otel-collector">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-runner-otel" value="OTLP" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;" edge="1" parent="1" source="coverage-runner" target="otel-collector">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
       </root>

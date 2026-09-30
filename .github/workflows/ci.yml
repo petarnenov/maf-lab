@@ -71,6 +71,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+      # make ci-e2e clones main for its test-generation run; the checkout is detached, so name it main.
+      - run: git checkout -q -B main
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
@@ -85,6 +87,7 @@ jobs:
         if: failure()
         run: |
           mkdir -p e2e-logs
+          export MAF_LAB_REPO="$PWD/.cache/e2e-repo"
           docker compose -f compose/docker-compose.yml -f compose/docker-compose.ci.yml ps -a > e2e-logs/ps.txt 2>&1 || true
           docker compose -f compose/docker-compose.yml -f compose/docker-compose.ci.yml logs --no-color > e2e-logs/compose.log 2>&1 || true
           cat e2e-logs/ps.txt
