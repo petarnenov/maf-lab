@@ -5,6 +5,8 @@
 - [x] 1.1 A first attempt had `CorpusIndexFixture` wait for a Green, optimizer-idle collection. CI failed the same way, and the wait was reverted. Verify: CI run 36686257369 failed identically, and `CorpusIndexFixture.cs` is back to its previous content
 - [x] 1.2 Assert that the gated ranking equals the same search's fused candidates (`diagnostics.Fused`), not a second search. Verify: `RelevanceGateAcceptanceTests` passes locally
 
+- [x] 1.3 Make the two `AgentMcpIntegrationTests` span tests send their own trace id, check only the spans in that trace, and collect into a `ConcurrentQueue`. Verify: CI run 36687005201 failed on another test's spans, and the integration project passes locally
+
 ## 2. Verification
 
 - [ ] 2.1 Push, and check that CI's `.NET build and tests` job passes. Verify: the run is green

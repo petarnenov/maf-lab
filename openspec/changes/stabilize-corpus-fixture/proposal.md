@@ -18,6 +18,10 @@ way, so that was not the cause, and the wait was taken out again.
 - The test compares the gated ranking with the fused candidates of **the same** search, which the search's
   diagnostics already record, instead of with a second search. That is exactly its claim: a judge that does not
   answer leaves the search as fusion produced it. A gate that emptied or reordered the list still fails it.
+- With that fixed, CI showed the next test sharing the process: the `AgentMcpIntegrationTests` span tests listen to
+  every `maf-lab` activity in the process, and a search from a test running alongside put its `retrieval.*` spans
+  under another trace. Both tests now send their own trace id and check only the spans in that trace. They collect
+  spans in a thread-safe queue, since spans stop on many threads.
 - No product code changes.
 
 ## Capabilities
@@ -30,7 +34,7 @@ way, so that was not the cause, and the wait was taken out again.
 
 ## Impact
 
-- `tests/Maf.Lab.IntegrationTests/RelevanceGateAcceptanceTests.cs`.
+- `tests/Maf.Lab.IntegrationTests/RelevanceGateAcceptanceTests.cs`, `AgentMcpIntegrationTests.cs`.
 - Ties in the ranking can order differently between identical queries. That is a property of the product, and it
   is noted here rather than changed. The neighbouring test that compares two searches' top 10 has not failed, and it
   is left as it is.

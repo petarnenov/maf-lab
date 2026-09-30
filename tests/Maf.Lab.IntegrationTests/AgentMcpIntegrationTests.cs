@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Hosting;
@@ -58,15 +59,18 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
     [Fact]
     public async Task A_real_search_writes_the_spans_no_library_writes_for_it()
     {
-        var spans = new List<Activity>();
+        // The listener hears every test running in this process, so the call carries a trace of its own and only the
+        // spans in that trace are this search's.
+        var spans = new ConcurrentQueue<Activity>();
         using var listener = new ActivityListener
         {
             ShouldListenTo = source => source.Name == LabTelemetry.SourceName,
             Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
-            ActivityStopped = spans.Add,
+            ActivityStopped = spans.Enqueue,
         };
         ActivitySource.AddActivityListener(listener);
 
+        var traceId = ActivityTraceId.CreateRandom();
         var values = corpus.Qdrant.Config(corpus.Collection, corpus.CorpusRoot);
         await using var server = new WebApplicationFactory<Maf.Lab.Retrieval.Program>().WithWebHostBuilder(b =>
         {
@@ -78,25 +82,24 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
                 s.AddSingleton<IDenseEncoder>(FakeDenseEncoder.Default());
             });
         });
+        var sending = new SendingHandler($"00-{traceId.ToHexString()}-{ActivitySpanId.CreateRandom().ToHexString()}-01");
         var source = new McpToolSource(Options.Create(new AgentOptions { McpEndpoint = new Uri(server.Server.BaseAddress, "/mcp").ToString() }),
-            NullLoggerFactory.Instance, new ServerHttpClientFactory(server));
+            NullLoggerFactory.Instance, new ServerHttpClientFactory(server, sending));
         var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.ADVISOR, []);
         await using var tools = await source.GetToolsAsync(token, null, TestContext.Current.CancellationToken);
         var search = (AIFunction)tools.Tools.Single(t => t.Name == "search_documents");
 
         await search.InvokeAsync(new AIFunctionArguments { ["query"] = "household rebalancing fee" }, TestContext.Current.CancellationToken);
 
-        var names = spans.Select(a => a.OperationName).ToList();
+        // The stages happened inside the tool call, and the query itself is in none of them.
+        var ours = spans.Where(a => a.TraceId == traceId).ToList();
+        var names = ours.Select(a => a.OperationName).ToList();
         Assert.Contains("mcp.tool", names);
         Assert.Contains("retrieval.embed", names);
         Assert.Contains("retrieval.sparse_encode", names);
         Assert.Contains("retrieval.query", names);
-
-        // The stages happened inside the tool call, and the query itself is in none of them.
-        var tool = spans.Single(a => a.OperationName == "mcp.tool");
-        Assert.All(spans.Where(a => a.OperationName.StartsWith("retrieval.")), a => Assert.Equal(tool.TraceId, a.TraceId));
         Assert.DoesNotContain("household rebalancing", string.Join(" ",
-            spans.SelectMany(a => a.TagObjects).Select(t => $"{t.Key}={t.Value}")));
+            ours.SelectMany(a => a.TagObjects).Select(t => $"{t.Key}={t.Value}")));
     }
 
     [Fact]
@@ -105,12 +108,12 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
         // Injection is the HTTP stack's job and a test server has no HTTP stack; what this system decides is the
         // other half — that the server reads the incoming context and hangs its work under it. A trace id nothing
         // in this process knows proves it came off the header and not from an ambient activity.
-        var spans = new List<Activity>();
+        var spans = new ConcurrentQueue<Activity>();
         using var listener = new ActivityListener
         {
             ShouldListenTo = source => source.Name == LabTelemetry.SourceName,
             Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
-            ActivityStopped = spans.Add,
+            ActivityStopped = spans.Enqueue,
         };
         ActivitySource.AddActivityListener(listener);
 
@@ -135,9 +138,11 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
         var search = (AIFunction)tools.Tools.Single(t => t.Name == "search_documents");
         await search.InvokeAsync(new AIFunctionArguments { ["query"] = "household rebalancing fee" }, TestContext.Current.CancellationToken);
 
-        var tool = spans.Single(a => a.OperationName == "mcp.tool");
-        Assert.Equal(traceId, tool.TraceId);
-        Assert.All(spans.Where(a => a.OperationName.StartsWith("retrieval.")), a => Assert.Equal(traceId, a.TraceId));
+        // Other tests' searches run alongside this one, so the question is whether this call's work is under the sent
+        // trace, not whether every span in the process is.
+        var ours = spans.Where(a => a.TraceId == traceId).Select(a => a.OperationName).ToList();
+        Assert.Contains("mcp.tool", ours);
+        Assert.Contains("retrieval.query", ours);
     }
 
     private sealed class ServerHttpClientFactory(WebApplicationFactory<Maf.Lab.Retrieval.Program> server, DelegatingHandler? handler = null)
