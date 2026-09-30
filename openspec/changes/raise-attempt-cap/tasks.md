@@ -12,5 +12,5 @@ No TypeSafe Jev call is added or changed, so the Jev review checklist does not a
 ## 2. Verification
 
 - [x] 2.1 `make lint` and `make test` pass — Done: lint clean; 1071 of 1072 pass. The one failure is the known timing test `GuardrailTests.A_hanging_Jev_costs_no_more_than_the_timeouts`, which fails only under the parallel `make test` load
-- [ ] 2.2 After `make`, the model picker on http://localhost:7171 says "up to 10 attempts". Verify: read it in the page
+- [x] 2.2 After `make`, the model picker on http://localhost:7171 says "up to 10 attempts". Verify: read it in the page — Done: the picker reads "Estimated cost for up to 10 attempts … Budget: unlimited", and the confirmation no longer says "five"
 - [x] 2.3 `openspec validate raise-attempt-cap --strict` passes
