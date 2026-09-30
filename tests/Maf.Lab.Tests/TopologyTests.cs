@@ -19,9 +19,9 @@ public class TopologyTests
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private static ApiFactory Api(StubHandler handler, IReadOnlyDictionary<string, string[]>? dns = null,
-        string complianceUrl = "http://compliance")
+        string complianceUrl = "http://compliance", FakeToolSource? tools = null)
     {
-        var api = new ApiFactory(ApiFactory.ProceduralModel())
+        var api = new ApiFactory(ApiFactory.ProceduralModel(), tools)
         {
             ExtraSettings = new Dictionary<string, string?> { ["Compliance:BaseUrl"] = complianceUrl },
         };
@@ -89,6 +89,24 @@ public class TopologyTests
         using var api = Api(StubHandler.AllHealthy());
         var response = await api.CreateClient().GetAsync("/api/topology", Ct);
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task The_codebase_server_is_reported_with_its_replicas_and_tools()
+    {
+        using var api = Api(StubHandler.AllHealthy(), new Dictionary<string, string[]> { ["mcp-code"] = ["10.0.0.21", "10.0.0.22"] },
+            tools: new FakeToolSource { WithCodebase = true });
+
+        var report = await GetAsync(api);
+
+        var node = Assert.Single(report.Nodes, n => n.Id == "mcp-code");
+        Assert.Equal(NodeHealth.Healthy, node.Health);
+        Assert.Equal(2, node.Instances.Count);
+        Assert.Equal("codebase", node.Facts["domain"]);
+        Assert.Contains("search_codebase", node.Facts["tools"]);
+        Assert.Equal("http://localhost:5092/mcp", node.Facts["endpoint"]);
+        Assert.Contains(report.Edges, e => e is { From: "api", To: "mcp-code" });
+        Assert.Contains(report.Edges, e => e is { From: "mcp-code", To: "qdrant" });
     }
 
     [Fact]

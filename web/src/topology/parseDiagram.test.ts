@@ -17,6 +17,7 @@ describe('parseDiagram', () => {
       'jaeger',
       'lb',
       'mcp',
+      'mcp-code',
       'mcp-portfolio',
       'ollama-embeddings',
       'otel-collector',
@@ -32,6 +33,9 @@ describe('parseDiagram', () => {
     expect(diagram.edges).toContainEqual(expect.objectContaining({ source: 'api', target: 'mcp' }));
     expect(diagram.edges).toContainEqual(
       expect.objectContaining({ source: 'api', target: 'mcp-portfolio' }),
+    );
+    expect(diagram.edges).toContainEqual(
+      expect.objectContaining({ source: 'api', target: 'mcp-code' }),
     );
     // The extent covers every box with a margin, so it can be used as a viewBox.
     expect(diagram.extent.width).toBeGreaterThan(

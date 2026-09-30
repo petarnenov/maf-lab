@@ -77,6 +77,12 @@ public sealed class TopologyProbe(
         new("mcp-portfolio", "qdrant", "gRPC"),
         new("mcp-portfolio", "ollama-embeddings", "embed"),
         new("mcp-portfolio", "otel-collector", "OTLP"),
+        // The codebase domain's server (add-codebase-domain): its own collection, and ask_codebase writes an answer.
+        new("api", "mcp-code", "/code/mcp via lb"),
+        new("mcp-code", "qdrant", "gRPC"),
+        new("mcp-code", "ollama-embeddings", "embed"),
+        new("mcp-code", "chat-provider", "ask_codebase"),
+        new("mcp-code", "otel-collector", "OTLP"),
         // Where everything the lab emits about itself goes, and where it is kept.
         new("api", "otel-collector", "OTLP"),
         new("mcp", "otel-collector", "OTLP"),
@@ -96,7 +102,7 @@ public sealed class TopologyProbe(
     /// <summary>Node ids the report always contains; the drawn diagram must hold exactly these.</summary>
     public static IReadOnlyList<string> NodeIds { get; } =
     [
-        "lb", "web", "api", "mcp", "mcp-portfolio", "compliance", "qdrant", "ollama-embeddings", "chat-provider",
+        "lb", "web", "api", "mcp", "mcp-portfolio", "mcp-code", "compliance", "qdrant", "ollama-embeddings", "chat-provider",
         "otel-collector", "prometheus", "jaeger", "redis",
     ];
 
@@ -121,8 +127,9 @@ public sealed class TopologyProbe(
         var apiAddresses = await resolver.ResolveAsync(o.ApiService, ct);
         var mcpAddresses = await resolver.ResolveAsync(o.McpService, ct);
         var portfolioAddresses = await resolver.ResolveAsync(o.PortfolioService, ct);
+        var codeAddresses = await resolver.ResolveAsync(o.CodeService, ct);
         var complianceAddresses = await resolver.ResolveAsync(o.ComplianceService, ct);
-        var discovery = apiAddresses.Count > 0 || mcpAddresses.Count > 0 || portfolioAddresses.Count > 0;
+        var discovery = apiAddresses.Count > 0 || mcpAddresses.Count > 0 || portfolioAddresses.Count > 0 || codeAddresses.Count > 0;
 
         var lb = Http("lb", "lb", o.LoadBalancerHealthUrl, timeout, ct);
         var web = Http("web", "web", o.WebHealthUrl, timeout, ct);
@@ -130,7 +137,8 @@ public sealed class TopologyProbe(
         // One tools/list per server for the whole report: each domain's node reads its own tools from the same answer.
         var offered = OfferedAsync(bearerToken, timeout, ct);
         var mcp = McpAsync(mcpAddresses, offered, timeout, ct);
-        var portfolio = PortfolioAsync(portfolioAddresses, offered, timeout, ct);
+        var portfolio = DomainServerAsync("mcp-portfolio", Domains.Portfolio, portfolioAddresses, offered, timeout, ct);
+        var code = DomainServerAsync("mcp-code", Domains.Codebase, codeAddresses, offered, timeout, ct);
         var compliance = ComplianceAsync(complianceAddresses, timeout, ct);
         var store = QdrantAsync(timeout, ct);
         var embeddings = EmbeddingsAsync(timeout, ct);
@@ -139,7 +147,7 @@ public sealed class TopologyProbe(
         var traces = Http("jaeger", "jaeger", o.JaegerHealthUrl, timeout, ct);
         var shared = SharedStateAsync(ct);
 
-        var probed = await Task.WhenAll(lb, web, api, mcp, portfolio, compliance, store, embeddings, collector, metrics, traces, shared);
+        var probed = await Task.WhenAll(lb, web, api, mcp, portfolio, code, compliance, store, embeddings, collector, metrics, traces, shared);
         var byId = probed.Append(ChatProvider()).ToDictionary(n => n.Id);
         var ordered = NodeIds.Select(id => byId[id]).ToList();
 
@@ -253,24 +261,26 @@ public sealed class TopologyProbe(
         return WithTools(node, await offered, Domains.Billing, agent.Value.McpEndpoint);
     }
 
-    private async Task<TopologyNode> PortfolioAsync(IReadOnlyList<string> addresses, Task<Offered> offered, TimeSpan timeout, CancellationToken ct)
+    /// <summary>A domain's own MCP server beside billing's (portfolio, codebase): configured through Agent:Servers.</summary>
+    private async Task<TopologyNode> DomainServerAsync(string id, string domain, IReadOnlyList<string> addresses, Task<Offered> offered,
+        TimeSpan timeout, CancellationToken ct)
     {
-        var endpoint = agent.Value.Servers.FirstOrDefault(s => s.Domain == Domains.Portfolio)?.Endpoint;
-        var node = await ReplicasAsync("mcp-portfolio", "mcp-portfolio", addresses, timeout, ct);
+        var endpoint = agent.Value.Servers.FirstOrDefault(s => s.Domain == domain)?.Endpoint;
+        var node = await ReplicasAsync(id, id, addresses, timeout, ct);
         if (string.IsNullOrWhiteSpace(endpoint))
         {
             return node with
             {
                 Facts = new Dictionary<string, string>(node.Facts) { ["endpoint"] = "not configured" },
                 Health = NodeHealth.Degraded,
-                Reason = "no portfolio MCP server is configured (Agent:Servers)",
+                Reason = $"no {domain} MCP server is configured (Agent:Servers)",
             };
         }
         var o = await offered;
         // Its own tools/list failing shows up as the domain being unavailable, not as the whole call failing.
-        return o.Unavailable.Contains(Domains.Portfolio)
-            ? WithTools(node, o with { Error = "tools/list failed" }, Domains.Portfolio, endpoint)
-            : WithTools(node, o, Domains.Portfolio, endpoint);
+        return o.Unavailable.Contains(domain)
+            ? WithTools(node, o with { Error = "tools/list failed" }, domain, endpoint)
+            : WithTools(node, o, domain, endpoint);
     }
 
     /// <summary>The domain's tools on its node; a failed tools/list degrades it, or makes it unreachable if no replica answers.</summary>

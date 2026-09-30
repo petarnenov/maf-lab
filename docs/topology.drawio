@@ -35,6 +35,10 @@
           <mxGeometry x="700" y="120" width="160" height="70" as="geometry" />
         </mxCell>
 
+        <mxCell id="mcp-code" value="mcp-code&#10;MCP server (codebase)" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="930" y="120" width="140" height="70" as="geometry" />
+        </mxCell>
+
         <mxCell id="qdrant" value="qdrant&#10;vector store" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
           <mxGeometry x="930" y="290" width="140" height="80" as="geometry" />
         </mxCell>
@@ -128,6 +132,21 @@
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e-compliance-redis" value="tasks" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;" edge="1" parent="1" source="compliance" target="redis">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-api-code" value="/code/mcp via lb" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="api" target="mcp-code">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-code-qdrant" value="gRPC" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="mcp-code" target="qdrant">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-code-embeddings" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="mcp-code" target="ollama-embeddings">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-code-chat" value="ask_codebase" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="mcp-code" target="chat-provider">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-code-otel" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;" edge="1" parent="1" source="mcp-code" target="otel-collector">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
       </root>
