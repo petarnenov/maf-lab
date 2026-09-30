@@ -160,8 +160,9 @@ specs: require-npm ## Validate all OpenSpec specs and changes (strict)
 ci: specs lint-dotnet test-dotnet lint-web test-web build-web ci-e2e ## Run locally what GitHub Actions runs on every push
 
 ci-e2e: require-docker require-dotnet ## Model-free end-to-end: stack with the Ollama stub, index, verify, A2A conformance, test generation (CI mode)
-	@# Test generation merges into main: it runs on a fresh clone, never on this checkout's main.
-	rm -rf $(E2E_REPO) && git clone -q --branch main $(ROOT) $(E2E_REPO)
+	@# Test generation merges into main: it runs on a fresh clone of the committed HEAD, never on this checkout's main.
+	@# The clone's main is this checkout's HEAD: the commit under test, not whatever local main happens to be.
+	rm -rf $(E2E_REPO) && git clone -q $(ROOT) $(E2E_REPO) && git -C $(E2E_REPO) checkout -q -B main $$(git rev-parse HEAD)
 	$(MAKE) up index-if-empty verify eval-a2a testgen-e2e CI_MODE=1 MAF_LAB_REPO=$(E2E_REPO)
 
 testgen-e2e: ## Model-free test generation end to end: refresh, run, verify, accept (used by ci-e2e, against its clone)
