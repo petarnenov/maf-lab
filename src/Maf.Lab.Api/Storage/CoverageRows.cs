@@ -69,6 +69,31 @@ public sealed class TestGenRunRow
     /// <summary>The replica following the run's task, and when it last said so: a lease any replica can take over.</summary>
     public string? Follower { get; set; }
     public DateTime? FollowerHeartbeatAt { get; set; }
+    /// <summary>The attempt's phase the agent last reported (generating, building, testing, measuring).</summary>
+    public string? Phase { get; set; }
+    /// <summary>Whether the activity record hit its cap and its oldest entries were dropped.</summary>
+    public bool ActivityDropped { get; set; }
+}
+
+/// <summary>
+/// One entry of what the agent did during a run (add-run-activity-view), keyed by the agent's own sequence number so a
+/// replayed update is stored once. Model text streams in chunks: each chunk after the first is applied to its entry and
+/// moves <see cref="LastSeq"/> on, which is also how a stream finds what changed since it last looked. Content: it is
+/// shown to the browser and never logged or traced.
+/// </summary>
+public sealed class TestGenRunActivityRow
+{
+    public required string RunId { get; set; }
+    public long Seq { get; set; }
+    public long LastSeq { get; set; }
+    public DateTime At { get; set; }
+    public int Attempt { get; set; }
+    public required string Type { get; set; }
+    public string? Phase { get; set; }
+    /// <summary>The tool call or the attempt's result, as JSON.</summary>
+    public string? DataJson { get; set; }
+    public string? Text { get; set; }
+    public bool Truncated { get; set; }
 }
 
 /// <summary>Every update a run went through, in order: what a late SSE subscriber is replayed from.</summary>

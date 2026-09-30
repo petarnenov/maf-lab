@@ -159,3 +159,86 @@ public sealed class TestAgentTools(Workspace workspace, TestGenRequest request, 
 
     private static string Clip(string text, int max) => text.Length <= max ? text : text[..max];
 }
+
+/// <summary>
+/// A tool call as the run's activity shows it: which tool, the path it concerned, and a one-line summary read from
+/// the tool's result — counts, sizes, outcomes, never the text of a file.
+/// </summary>
+public static class ToolSummaries
+{
+    private const int MaxPath = 300;
+
+    public static ToolActivity Of(string name, IEnumerable<KeyValuePair<string, object?>> arguments, object? result, string outcome,
+        string? problem)
+    {
+        var args = arguments.ToDictionary(a => a.Key, a => a.Value, StringComparer.OrdinalIgnoreCase);
+        var path = Arg(args, "path") ?? Arg(args, "testFile") ?? Arg(args, "dir");
+        if (outcome != ToolOutcome.Ok)
+        {
+            return new ToolActivity(name, path, outcome, problem ?? "The tool failed.");
+        }
+        var r = result is System.Text.Json.JsonElement e ? e : System.Text.Json.JsonSerializer.SerializeToElement(result, TestGenKinds.Json);
+        var summary = name switch
+        {
+            "read_file" => $"{Int(r, "lines")} lines{(Bool(r, "truncated") ? " (truncated)" : "")}",
+            "list_files" => $"{Count(r, "entries")} entries{(Bool(r, "truncated") ? " (truncated)" : "")}",
+            "write_file" => $"{(Bool(r, "created") ? "created" : "updated")}, {Int(r, "bytes")} bytes",
+            "run_tests" => RunSummary(r),
+            "read_coverage" => $"{Pct(r, "pct")}, {Count(r, "uncovered")} uncovered ranges",
+            "report_suspected_bug" => Bool(r, "recorded") ? $"recorded ({Int(r, "count")} of {SuspectedBug.MaxPerRun})" : Str(r, "note") ?? "not recorded",
+            _ => "done",
+        };
+        return new ToolActivity(name, path, outcome, summary);
+    }
+
+    private static string RunSummary(System.Text.Json.JsonElement r)
+    {
+        var tests = Prop(r, "tests");
+        var text = $"build {Str(r, "build") ?? "?"}, {(tests is { } t ? Int(t, "passed") : 0)} passed, "
+            + $"{(tests is { } f ? Int(f, "failed") : 0)} failed, {Pct(r, "targetPct")}";
+        return Str(r, "note") is { Length: > 0 } note ? $"{text} — {note}" : text;
+    }
+
+    private static string? Arg(Dictionary<string, object?> args, string key) =>
+        args.TryGetValue(key, out var value) ? Clip(value switch
+        {
+            string s => s,
+            System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.String } j => j.GetString(),
+            _ => null,
+        }) : null;
+
+    private static string? Clip(string? text) => text is null ? null : text.Length <= MaxPath ? text : text[..MaxPath];
+
+    private static System.Text.Json.JsonElement? Prop(System.Text.Json.JsonElement e, string name)
+    {
+        if (e.ValueKind != System.Text.Json.JsonValueKind.Object)
+        {
+            return null;
+        }
+        foreach (var p in e.EnumerateObject())
+        {
+            if (string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                return p.Value;
+            }
+        }
+        return null;
+    }
+
+    private static int Int(System.Text.Json.JsonElement e, string name) =>
+        Prop(e, name) is { ValueKind: System.Text.Json.JsonValueKind.Number } v && v.TryGetInt32(out var i) ? i : 0;
+
+    private static bool Bool(System.Text.Json.JsonElement e, string name) =>
+        Prop(e, name) is { ValueKind: System.Text.Json.JsonValueKind.True };
+
+    private static string? Str(System.Text.Json.JsonElement e, string name) =>
+        Prop(e, name) is { ValueKind: System.Text.Json.JsonValueKind.String } v ? v.GetString() : null;
+
+    private static int Count(System.Text.Json.JsonElement e, string name) =>
+        Prop(e, name) is { ValueKind: System.Text.Json.JsonValueKind.Array } v ? v.GetArrayLength() : 0;
+
+    private static string Pct(System.Text.Json.JsonElement e, string name) =>
+        Prop(e, name) is { ValueKind: System.Text.Json.JsonValueKind.Number } v
+            ? v.GetDouble().ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "%"
+            : "not measured";
+}

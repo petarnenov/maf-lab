@@ -460,3 +460,122 @@
   gap: 8px;
   margin-top: 8px;
 }
+
+/* Run activity (add-run-activity-view) */
+
+.activityDialog {
+  width: min(820px, 100%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.activityPath {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-weight: normal;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.activityHeader {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 6px 16px;
+  margin: 0 0 10px;
+  font-size: 0.85rem;
+}
+
+.activityHeader dt {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.activityHeader dd {
+  margin: 0;
+}
+
+.activityBody {
+  position: relative;
+  min-height: 0;
+}
+
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 55vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+}
+
+.timelineStep {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+}
+
+.timelineStep:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.timelineTool {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.timelineTool code {
+  overflow-wrap: anywhere;
+}
+
+.toolName {
+  font-family: var(--mono, ui-monospace, monospace);
+  color: var(--kind-tool);
+}
+
+.timelineText summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.timelineText p {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.timelineAttempt {
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.timelineAttempt code {
+  overflow-wrap: anywhere;
+}
+
+.newActivity {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-size: 0.8rem;
+}

@@ -13,6 +13,9 @@ public static class TestGenKinds
     public const string Progress = "testgen.progress/v1";
     public const string Report = "testgen.report/v1";
     public const string ReportArtifact = "testgen-report";
+    public const string Activity = "testgen.activity/v1";
+    /// <summary>The name of every activity artifact; each batch is its own artifact, so a resubscription sees it.</summary>
+    public const string ActivityArtifact = "testgen-activity";
 
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -65,6 +68,55 @@ public static class AttemptPhase
 
 public sealed record TestGenProgress(
     string Kind, int Attempt, int MaxAttempts, string Phase, double? LastLinePct, long Tokens, double CostUsd);
+
+/// <summary>What an activity entry records.</summary>
+public static class ActivityType
+{
+    public const string Phase = "phase";
+    public const string Tool = "tool";
+    public const string Attempt = "attempt";
+    public const string Text = "text";
+    public const string Reasoning = "reasoning";
+}
+
+public static class ToolOutcome
+{
+    public const string Ok = "ok";
+    public const string Refused = "refused";
+    public const string Failed = "failed";
+}
+
+/// <summary>A tool call as the activity shows it: the tool, the path it concerned, and a summary — never file text.</summary>
+public sealed record ToolActivity(string Name, string? Path, string Outcome, string Summary);
+
+/// <summary>An attempt's result as the activity shows it.</summary>
+public sealed record AttemptActivity(double? Before, double? After, string Build, TestCounts Tests, IReadOnlyList<string> Errors,
+    int Violations);
+
+/// <summary>
+/// One thing the agent did, in order (<see cref="Seq"/> increases within a task). Model text and reasoning stream as
+/// chunks: the first chunk is an entry of its own, each later one names the entry it <see cref="Continues"/>. Only
+/// the api's activity record and the browser ever see this; it is never logged or traced.
+/// </summary>
+public sealed record TestGenActivity(
+    string Kind,
+    long Seq,
+    DateTimeOffset At,
+    int Attempt,
+    string Type,
+    string? Phase = null,
+    ToolActivity? Tool = null,
+    AttemptActivity? Result = null,
+    long? Continues = null,
+    string? Text = null,
+    bool Truncated = false)
+{
+    /// <summary>The most text one entry holds, however many chunks it streamed in.</summary>
+    public const int MaxTextBytes = 4 * 1024;
+
+    /// <summary>The most error lines an attempt entry carries.</summary>
+    public const int MaxErrors = 10;
+}
 
 public static class StopReason
 {

@@ -205,6 +205,44 @@ describe('CoveragePage', () => {
     expect(within(alert).queryByRole('button', { name: 'Refresh coverage' })).toBeNull();
   });
 
+  const refreshJob = (state: string, summary: string | null) => ({
+    jobId: 'j1',
+    kind: 'coverage.refresh',
+    state,
+    startedAt: '2026-09-30T12:15:56Z',
+    finishedAt: '2026-09-30T12:16:00Z',
+    summary,
+  });
+
+  it.each([
+    ['interrupted', 'The job was interrupted (its server instance stopped); start it again.'],
+    ['runner down', 'The coverage runner could not be reached.'],
+  ])('says when and why the last refresh did not succeed (%s)', async (_case, summary) => {
+    stubCoverageApi({
+      '/api/coverage/tree': () => jsonResponse(sampleTree),
+      '/api/coverage/refresh': () => jsonResponse(refreshJob('failed', summary)),
+    });
+
+    renderWithProviders(<CoveragePage />, { session: makeSession('FIRM_ADMIN') });
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(`The last refresh failed at ${new Date('2026-09-30T12:16:00Z').toLocaleString()}: ${summary}`);
+    expect(alert).toHaveTextContent(`Current coverage was measured at ${new Date('2026-09-30T10:00:00Z').toLocaleString()}.`);
+    expect(alert).not.toHaveTextContent('/app-data');
+  });
+
+  it('shows no refresh failure once a later refresh succeeded', async () => {
+    stubCoverageApi({
+      '/api/coverage/tree': () => jsonResponse(sampleTree),
+      '/api/coverage/refresh': () => jsonResponse(refreshJob('succeeded', '24e09c9 — dotnet: 237 files')),
+    });
+
+    renderWithProviders(<CoveragePage />, { session: makeSession('FIRM_ADMIN') });
+
+    expect(await screen.findByRole('button', { name: 'Refresh coverage' })).toBeInTheDocument();
+    expect(screen.queryByText(/The last refresh failed/)).toBeNull();
+  });
+
   it('keeps a failing file view to itself, without internal detail', async () => {
     stubCoverageApi({
       '/api/coverage/tree': () => jsonResponse(sampleTree),

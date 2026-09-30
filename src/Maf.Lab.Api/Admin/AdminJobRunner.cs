@@ -12,6 +12,9 @@ public sealed class AdminJobOptions
     public TimeSpan StaleAfter { get; set; } = TimeSpan.FromSeconds(60);
 }
 
+/// <summary>A job that failed for a reason its summary may name: the message is shown to the administrator.</summary>
+public sealed class AdminJobFailure(string reason, Exception? inner = null) : Exception(reason, inner);
+
 /// <summary>
 /// Runs admin jobs (index, migrate) with their state in the shared database, so any api replica can report a job's
 /// status and at most one job per firm and kind runs at a time across replicas. The replica that starts a job runs it
@@ -93,7 +96,11 @@ public sealed class AdminJobRunner(
         catch (Exception ex)
         {
             logger.LogError("admin job {Kind} failed: {ErrorType}", kind, ex.GetType().Name);
-            (state, summary) = (AdminJobStates.Failed, "The job failed; see server logs.");
+            // Say why in words a person can act on: the service stopping is not the job failing.
+            (state, summary) = (AdminJobStates.Failed,
+                stopping.IsCancellationRequested ? Interrupted
+                : ex is AdminJobFailure failure ? failure.Message
+                : "The job failed; see server logs.");
         }
         await heartbeatStop.CancelAsync();
         try

@@ -18,7 +18,11 @@ namespace Maf.Lab.Api.Coverage;
 public sealed class AgentUnavailableException(string reason, Exception? inner = null) : Exception(reason, inner);
 
 /// <summary>What the api learns about a task from one update, whatever form the update came in.</summary>
-public sealed record TaskObservation(string TaskId, TaskState? State, TestGenProgress? Progress, TestGenReport? Report, string? StatusText);
+public sealed record TaskObservation(string TaskId, TaskState? State, TestGenProgress? Progress, TestGenReport? Report, string? StatusText)
+{
+    /// <summary>The activity entries this update carried: all of them for a whole task, the new batch for an artifact update.</summary>
+    public IReadOnlyList<TestGenActivity> Activity { get; init; } = [];
+}
 
 /// <summary>
 /// The api's side of the test agent's A2A contract. Like the compliance consultant: found by its card, this system
@@ -135,16 +139,30 @@ public sealed class TestAgentClient(
         : update.StatusUpdate is { } status ? new TaskObservation(status.TaskId ?? "", status.Status?.State,
             Progress(status.Status?.Message), null, Text(status.Status?.Message))
         : update.ArtifactUpdate is { } artifact ? new TaskObservation(artifact.TaskId ?? "", null, null, Report(artifact.Artifact is { } a ? [a] : []), null)
+        {
+            Activity = Activity(artifact.Artifact is { } b ? [b] : []),
+        }
         : null;
 
     internal static TaskObservation Observe(AgentTask task) =>
-        new(task.Id ?? "", task.Status?.State, Progress(task.Status?.Message), Report(task.Artifacts ?? []), Text(task.Status?.Message));
+        new(task.Id ?? "", task.Status?.State, Progress(task.Status?.Message), Report(task.Artifacts ?? []), Text(task.Status?.Message))
+        {
+            Activity = Activity(task.Artifacts ?? []),
+        };
 
     private static TestGenProgress? Progress(Message? message) =>
         DataOfKind(message?.Parts ?? [], TestGenKinds.Progress)?.Deserialize<TestGenProgress>(TestGenKinds.Json);
 
     private static TestGenReport? Report(IEnumerable<Artifact> artifacts) =>
         DataOfKind(artifacts.SelectMany(a => a.Parts ?? []), TestGenKinds.Report)?.Deserialize<TestGenReport>(TestGenKinds.Json);
+
+    private static IReadOnlyList<TestGenActivity> Activity(IEnumerable<Artifact> artifacts) =>
+        artifacts.Where(a => a.Name == TestGenKinds.ActivityArtifact)
+            .SelectMany(a => a.Parts ?? [])
+            .Select(p => p.Data)
+            .Where(d => d is { ValueKind: JsonValueKind.Object } data && data.TryGetProperty("kind", out var k) && k.GetString() == TestGenKinds.Activity)
+            .Select(d => d!.Value.Deserialize<TestGenActivity>(TestGenKinds.Json)!)
+            .ToList();
 
     private static JsonElement? DataOfKind(IEnumerable<Part> parts, string kind) =>
         parts.Select(p => p.Data).FirstOrDefault(d => d is { ValueKind: JsonValueKind.Object } data

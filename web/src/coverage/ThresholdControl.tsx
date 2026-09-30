@@ -4,6 +4,7 @@ import type { CoverageFileDetail } from '../api/types';
 import { useApi } from '../auth/useAuth';
 import { coverageKeys } from './keys';
 import { RaiseThresholdDialog } from './RaiseThresholdDialog';
+import { useRunActivity } from './useRunActivity';
 import { RunStatus } from './RunStatus';
 import { useRunEvents } from './useRunEvents';
 import styles from './CoveragePage.module.css';
@@ -19,23 +20,13 @@ export function ThresholdControl({ detail }: { detail: CoverageFileDetail }) {
   const run = useRunEvents(detail.run);
   const [value, setValue] = useState(String(summary.threshold));
   const [raising, setRaising] = useState<number | null>(null);
+  const activity = useRunActivity(run, true);
 
   const save = useMutation({
     mutationFn: (pct: number | null) =>
       api(`/api/coverage/thresholds?path=${encodeURIComponent(path)}`, { method: 'PUT', body: { pct } }),
     onSuccess: () => void client.invalidateQueries({ queryKey: coverageKeys.all }),
   });
-
-  if (run?.active) {
-    return (
-      <div className={styles.thresholdControl} aria-label="Threshold">
-        <span>
-          Threshold {summary.threshold}% — locked while a run is active.
-        </span>
-        <RunStatus run={run} />
-      </div>
-    );
-  }
 
   const parsed = Number(value);
   const valid = value.trim() !== '' && Number.isInteger(parsed) && parsed >= 0 && parsed <= 100;
@@ -46,7 +37,13 @@ export function ThresholdControl({ detail }: { detail: CoverageFileDetail }) {
     else save.mutate(parsed);
   };
 
-  return (
+  const control = run?.active ? (
+    <div className={styles.thresholdControl} aria-label="Threshold">
+      <span>Threshold {summary.threshold}% — locked while a run is active.</span>
+      <RunStatus run={run} />
+      {activity.button}
+    </div>
+  ) : (
     <div className={styles.thresholdControl}>
       <label>
         Threshold{' '}
@@ -69,6 +66,7 @@ export function ThresholdControl({ detail }: { detail: CoverageFileDetail }) {
           Use default
         </button>
       )}
+      {activity.button}
       {!valid && <span className={styles.errorText}>Enter a whole number from 0 to 100.</span>}
       {save.isError && (
         <span className={styles.errorText} role="alert">
@@ -85,5 +83,13 @@ export function ThresholdControl({ detail }: { detail: CoverageFileDetail }) {
         />
       )}
     </div>
+  );
+
+  // The Activity dialog has one place outside both layouts, so the lock lifting at the run's end does not remount it.
+  return (
+    <>
+      {control}
+      {activity.dialog}
+    </>
   );
 }

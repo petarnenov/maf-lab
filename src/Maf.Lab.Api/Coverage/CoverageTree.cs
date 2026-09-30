@@ -6,12 +6,13 @@ namespace Maf.Lab.Api.Coverage;
 
 /// <summary>A run as the tree and the file view show it: state and progress, no report.</summary>
 public sealed record RunSummary(string Id, string Path, string State, string? Reason, int Attempt, int MaxAttempts,
-    double? LastPct, int TargetPct, string Model, long Tokens, double CostUsd, string? Branch, DateTime CreatedAt, DateTime UpdatedAt)
+    double? LastPct, int TargetPct, string Model, long Tokens, double CostUsd, string? Branch, DateTime CreatedAt, DateTime UpdatedAt,
+    string? Phase = null)
 {
     public bool Active => TestGenRunState.Active.Contains(State);
 
     public static RunSummary Of(TestGenRunRow r) => new(r.Id, r.Path, r.State, r.Reason, r.Attempt, r.MaxAttempts, r.LastPct,
-        r.TargetPct, r.Model, r.Tokens, r.CostUsd, r.Branch, r.CreatedAt, r.UpdatedAt);
+        r.TargetPct, r.Model, r.Tokens, r.CostUsd, r.Branch, r.CreatedAt, r.UpdatedAt, r.Phase);
 }
 
 /// <summary>An issue a run's confirmed bug opened.</summary>

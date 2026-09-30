@@ -13,6 +13,7 @@ export function RunStatus({ run }: { run: RunSummary }) {
           · attempt {run.attempt}/{run.maxAttempts}
         </span>
       )}
+      {run.active && run.phase && <span> · {run.phase}</span>}
       {run.lastPct != null && <span> · {pct(run.lastPct)}</span>}
       <span> · target {run.targetPct}%</span>
       {run.costUsd > 0 && <span> · ${run.costUsd.toFixed(3)}</span>}

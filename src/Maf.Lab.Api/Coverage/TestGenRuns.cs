@@ -30,6 +30,7 @@ public sealed class TestGenRuns(
     IRepository repository,
     ModelAvailability availability,
     TestAgentClient agent,
+    RunActivityStore activity,
     IOptions<TestAgentOptions> agentOptions,
     IOptions<CoverageOptions> coverageOptions,
     TimeProvider time,
@@ -148,9 +149,12 @@ public sealed class TestGenRuns(
         {
             return run;
         }
-        var before = (run.State, run.Attempt, run.LastPct, run.Tokens);
+        // What the agent did is kept before what it says about the run, so a stream never shows a state ahead of it.
+        await activity.AddAsync(runId, seen.Activity, ct);
+        var before = (run.State, run.Attempt, run.LastPct, run.Tokens, run.Phase);
         if (seen.Progress is { } progress)
         {
+            run.Phase = progress.Phase;
             run.Attempt = progress.Attempt;
             run.MaxAttempts = progress.MaxAttempts;
             run.LastPct = progress.LastLinePct ?? run.LastPct;
@@ -190,7 +194,7 @@ public sealed class TestGenRuns(
                 run.State = TestGenRunState.Canceled;
                 break;
         }
-        if (before == (run.State, run.Attempt, run.LastPct, run.Tokens) && seen.Report is null)
+        if (before == (run.State, run.Attempt, run.LastPct, run.Tokens, run.Phase) && seen.Report is null)
         {
             return run;
         }

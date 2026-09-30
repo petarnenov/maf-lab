@@ -60,6 +60,27 @@ check("the candidate is on its own branch", detail["run"]["branch"].startswith("
 status, decided = req(f"/api/coverage/runs/{run['id']}/accept", "POST", {}, token)
 check("accept merges it into main", status == 200 and decided["run"]["state"] == "accepted", str(decided)[:300])
 
+# The run as the Coverage screen's Activity sees it: its AG-UI stream, replayed now that the run is over.
+def stream(path, token):
+    r = urllib.request.Request(base + path, headers={"Accept": "text/event-stream", "Authorization": f"Bearer {token}"})
+    events = []
+    with urllib.request.urlopen(r, timeout=60) as resp:
+        for raw in resp:
+            line = raw.decode().rstrip("\n")
+            if line.startswith("data: "):
+                events.append(json.loads(line[len("data: "):]))
+    return events
+
+events = stream(f"/api/coverage/runs/{run['id']}/events", token)
+names = [e.get("type") for e in events]
+terminals = [n for n in names if n in ("RUN_FINISHED", "RUN_ERROR")]
+check("the run's AG-UI stream starts once and ends once",
+      names[:1] == ["RUN_STARTED"] and len(terminals) == 1 and names[-1] == terminals[0], f"{names[:3]} … {names[-3:]}")
+check("it carries the agent's steps, tool calls, text and attempt results",
+      {"STATE_SNAPSHOT", "STEP_STARTED", "TOOL_CALL_START", "TOOL_CALL_RESULT", "TEXT_MESSAGE_CONTENT"} <= set(names)
+      and any(e.get("name") == "maf-lab/testgen-attempt" for e in events), str(sorted(set(names))))
+print(f"  … {len(events)} AG-UI events; reasoning {'streamed' if 'REASONING_MESSAGE_CONTENT' in names else 'not returned by the provider'}", flush=True)
+
 status, after = req(f"/api/coverage/files?path={q}", token=token)
 check("the file's coverage is now at least its new threshold",
       status == 200 and after["summary"]["pct"] >= 90 and after["summary"]["threshold"] == 90, str(after.get("summary") if isinstance(after, dict) else after)[:200])

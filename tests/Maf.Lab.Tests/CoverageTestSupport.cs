@@ -126,7 +126,9 @@ internal sealed class FakeCoverageRunner : HttpMessageHandler
 internal static class CoverageApi
 {
     /// <summary>The api over a temp repository and a fake runner.</summary>
-    public static ApiFactory Create(TempGitRepo repo, FakeCoverageRunner? runner = null, IReadOnlyDictionary<string, string?>? extra = null)
+    /// <param name="dataDir">Another api's data directory: a second replica over the same database.</param>
+    public static ApiFactory Create(TempGitRepo repo, FakeCoverageRunner? runner = null, IReadOnlyDictionary<string, string?>? extra = null,
+        string? dataDir = null)
     {
         runner ??= new FakeCoverageRunner();
         var settings = new Dictionary<string, string?>
@@ -140,7 +142,7 @@ internal static class CoverageApi
         {
             settings[k] = v;
         }
-        return new ApiFactory(ApiFactory.ProceduralModel())
+        return new ApiFactory(ApiFactory.ProceduralModel(), dataDir: dataDir)
         {
             ExtraSettings = settings,
             ConfigureTestServices = s => s.AddHttpClient(CoverageRunnerRegistration.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => runner),
