@@ -9,17 +9,17 @@
 - [x] 1.2 Add `@vitest/coverage-v8` and a `test.coverage` block in `web/vite.config.ts` (v8, cobertura plus
   text-summary, include `src/**`, exclude tests and `src/test`), and note it in DECISIONS.md. Verify that
   `npx vitest run --coverage` writes `coverage/cobertura-coverage.xml`.
-- [ ] 1.3 Add the SQLite tables from design D10 (`CoverageSnapshots`, `CoverageFiles`, `CoverageThresholds`,
+- [x] 1.3 Add the SQLite tables from design D10 (`CoverageSnapshots`, `CoverageFiles`, `CoverageThresholds`,
   `TestGenRuns` with the partial unique index, `TestGenRunEvents`) to `MafDbContext` and `DatabaseInitializer`.
   Verify with a test that initialising twice is idempotent and that a second non-final run for the same path violates
   the index.
-- [ ] 1.4 Implement `CoberturaParser`: parse into the normalised model, handle `condition-coverage` for partial lines,
+- [x] 1.4 Implement `CoberturaParser`: parse into the normalised model, handle `condition-coverage` for partial lines,
   and reject malformed XML. Verify with xUnit tests on fixture reports from both toolchains, including a partial-branch
   line.
-- [ ] 1.5 Implement `CoveragePaths.Normalise`: resolve absolute or source-relative paths to repo-relative ones, drop
+- [x] 1.5 Implement `CoveragePaths.Normalise`: resolve absolute or source-relative paths to repo-relative ones, drop
   and count paths outside the repo, and exclude test and generated files. Verify with tests for the `/src/src/...`
   case, the `web/src`-relative case, the outside-repo case and the traversal case.
-- [ ] 1.6 Implement `CoverageStore`: ingest a snapshot (kind, commit, dirty, toolchain), keep the latest official
+- [x] 1.6 Implement `CoverageStore`: ingest a snapshot (kind, commit, dirty, toolchain), keep the latest official
   snapshot per file, handle candidates linked to runs, and promote a candidate. Verify with tests for "latest per
   file", "candidate does not replace official" and "promotion".
 

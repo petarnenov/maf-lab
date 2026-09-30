@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<coverage line-rate="0.6" branch-rate="0.5" complexity="3" version="1.9" timestamp="1790757239" lines-covered="3" lines-valid="5" branches-covered="3" branches-valid="6">
+  <packages>
+    <package line-rate="0.6" branch-rate="0.5" complexity="3" name="Maf.Lab.Api">
+      <classes>
+        <class line-rate="0.6" branch-rate="0.5" complexity="2" name="Maf.Lab.Api.Coverage.CoverageTree" filename="/src/src/Maf.Lab.Api/Coverage/CoverageTree.cs">
+          <methods>
+            <method line-rate="1" branch-rate="1" complexity="1" name="Build" signature="()">
+              <lines>
+                <line number="10" hits="4" branch="False" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="10" hits="4" branch="False" />
+            <line number="11" hits="4" branch="True" condition-coverage="50% (1/2)" />
+            <line number="12" hits="0" branch="False" />
+          </lines>
+        </class>
+        <class line-rate="1" branch-rate="1" complexity="1" name="Maf.Lab.Api.Coverage.CoverageTree/&lt;&gt;c" filename="/src/src/Maf.Lab.Api/Coverage/CoverageTree.cs">
+          <lines>
+            <line number="11" hits="6" branch="True" condition-coverage="100% (2/2)" />
+            <line number="20" hits="1" branch="False" />
+          </lines>
+        </class>
+        <class line-rate="0" branch-rate="0" complexity="1" name="Other" filename="/opt/elsewhere/Other.cs">
+          <lines>
+            <line number="1" hits="0" branch="False" />
+          </lines>
+        </class>
+      </classes>
+    </package>
+  </packages>
+</coverage>
