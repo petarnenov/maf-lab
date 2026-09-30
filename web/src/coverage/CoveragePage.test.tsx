@@ -157,6 +157,54 @@ describe('CoveragePage', () => {
     expect(screen.getByText('Loading coverage…')).toBeInTheDocument();
   });
 
+  const unavailable = () =>
+    jsonResponse(
+      {
+        type: 'source_unavailable',
+        title: 'Source unavailable',
+        status: 409,
+        detail:
+          'This file was measured at commit 041553f5c412, which this repository does not have. Refresh coverage to measure it again.',
+        commit: '041553f5c412f9db52cd6a8374d7f9b9b5e16dac',
+      },
+      409,
+    );
+
+  it('says a file was measured at a commit the repository lacks, and offers an admin a refresh there', async () => {
+    const calls = stubCoverageApi({
+      '/api/coverage/tree': () => jsonResponse(sampleTree),
+      '/api/coverage/files': unavailable,
+      '/api/coverage/refresh': (method) =>
+        method === 'POST'
+          ? jsonResponse({ jobId: 'j1', kind: 'coverage.refresh', state: 'running', startedAt: '', finishedAt: null, summary: null })
+          : jsonResponse(undefined, 204),
+    });
+
+    renderWithProviders(<CoveragePage />, {
+      route: '/coverage?file=src%2FLab%2FBeta.cs',
+      session: makeSession('FIRM_ADMIN'),
+    });
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('measured at commit 041553f5c412, which this repository does not have');
+    expect(screen.queryByText('Could not load this file.')).toBeNull();
+    await userEvent.click(within(alert).getByRole('button', { name: 'Refresh coverage' }));
+    expect(calls.some((c) => c.url === '/api/coverage/refresh' && c.method === 'POST')).toBe(true);
+  });
+
+  it('explains an unavailable commit to someone who is not an admin, without a refresh', async () => {
+    stubCoverageApi({
+      '/api/coverage/tree': () => jsonResponse(sampleTree),
+      '/api/coverage/files': unavailable,
+    });
+
+    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs' });
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('which this repository does not have');
+    expect(within(alert).queryByRole('button', { name: 'Refresh coverage' })).toBeNull();
+  });
+
   it('keeps a failing file view to itself, without internal detail', async () => {
     stubCoverageApi({
       '/api/coverage/tree': () => jsonResponse(sampleTree),

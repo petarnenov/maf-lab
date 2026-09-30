@@ -103,6 +103,28 @@ public sealed class CoverageApiTests
     }
 
     [Fact]
+    public async Task A_file_measured_at_a_commit_the_repository_lacks_is_a_conflict_that_names_the_commit()
+    {
+        var repo = await RepoAsync();
+        using var api = CoverageApi.Create(repo);
+        // What a ci-e2e clone's merge left behind: measured at a commit the repository then no longer has.
+        var missing = await repo.CommitAsync(new Dictionary<string, string> { ["src/Lab/Small.cs"] = "merged\n" }, "merge", Ct);
+        await CoverageApi.IngestAsync(api, missing, Toolchains.Dotnet, SnapshotKind.Official, null, ("src/Lab/Small.cs", 4, 10));
+        await repo.GitAsync(Ct, "reset", "-q", "--hard", "HEAD~1");
+        await repo.GitAsync(Ct, "reflog", "expire", "--expire=now", "--all");
+        await repo.GitAsync(Ct, "gc", "-q", "--prune=now");
+
+        var response = await api.ClientFor("bob", "firm-a", Role.ADVISOR).GetAsync("/api/coverage/files?path=src/Lab/Small.cs", Ct);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>(Json, Ct);
+        Assert.Equal("source_unavailable", problem.GetProperty("type").GetString());
+        Assert.Equal(missing, problem.GetProperty("commit").GetString());
+        Assert.Contains(missing[..12], problem.GetProperty("detail").GetString());
+        Assert.DoesNotContain(repo.Root, await response.Content.ReadAsStringAsync(Ct));
+    }
+
+    [Fact]
     public async Task History_is_newest_first()
     {
         var repo = await RepoAsync();

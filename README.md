@@ -449,6 +449,9 @@ The e2e job needs **no model and no secret**, so it also runs for pull requests 
 `ollama` service with a deterministic Ollama-compatible stub (`compose/ollama-stub`): hash-based embeddings and a
 scripted, streamed chat answer. Forced retrieval still calls `search_documents` over MCP, so tool calls, SSE, sources,
 tenancy, failover and admin jobs are exercised for real. Try it locally: `make ci-e2e` (indexing takes about 15 s with the stub).
+Locally it runs as its own compose project, `maf-lab-e2e`, with its own volumes: it stops the dev stack first (its
+data is kept, the ports are shared), removes itself when it passes and stays up for inspection when it fails. Run
+`make` afterwards to bring the dev stack back.
 
 ```bash
 gh workflow run evals.yml -f suite=selection   # dispatch evals from the CLI

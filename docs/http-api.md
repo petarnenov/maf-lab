@@ -322,7 +322,7 @@ lifecycle is `submitted → working → verifying → candidate → accepted | d
 | Method | Path | Body | Response |
 |---|---|---|---|
 | GET | `/api/coverage/tree` | — | `{ hasSnapshot, defaultThresholdPct, files: [{ path, pct, threshold, belowThreshold, candidate, run, … }], folders: [{ path, pct, … }] }` (folders line-weighted) |
-| GET | `/api/coverage/files?path=&run=` | — | `{ path, commit, measuredAt, summary, source, lines: [{ line, hits, branchesCovered, branchesTotal, status }], run }`; `run=` shows that run's candidate. `404` for a path no snapshot has |
+| GET | `/api/coverage/files?path=&run=` | — | `{ path, commit, measuredAt, summary, source, lines: [{ line, hits, branchesCovered, branchesTotal, status }], run }`; `run=` shows that run's candidate. `404` for a path no snapshot has; `409 source_unavailable { commit }` when the snapshot's commit is not in the repository (refresh coverage) |
 | GET | `/api/coverage/files/history?path=` | — | `[{ snapshotId, commit, measuredAt, pct, kind }]`, newest first |
 | PUT | `/api/coverage/thresholds?path=` | `{ pct \| null }` | `200` saved; `409 run_required { currentPct, targetPct }` for a raise above coverage; `409 run_active`; `400` out of range. Admin |
 | GET | `/api/coverage/models?path=` | — | `{ models: [{ tag, displayName, inputPerMTok, outputPerMTok, bestFor, isDefault, priceIsEstimate, available, unavailableReason, estimate }], maxAttempts, maxTokens, maxCostUsd }`. Admin |

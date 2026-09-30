@@ -71,7 +71,8 @@ public static class CoverageEndpoints
             var source = await repository.ShowAsync(snapshot.Totals.CommitSha, clean, ct);
             if (source is null)
             {
-                return NotFound();
+                // Measured, but at a commit this repository does not have (e.g. a clone's merge): say so, not 404.
+                return SourceUnavailable(snapshot.Totals.CommitSha);
             }
             await using var context = await db.CreateDbContextAsync(ct);
             var overrides = await OverridesAsync(context, ct);
@@ -327,6 +328,11 @@ public static class CoverageEndpoints
         _ => Results.Problem(type: "not_candidate", title: "Not a candidate",
             detail: "Only a verified run awaiting a decision can be accepted or discarded.", statusCode: StatusCodes.Status409Conflict),
     };
+
+    private static IResult SourceUnavailable(string commit) =>
+        Results.Problem(type: "source_unavailable", title: "Source unavailable",
+            detail: $"This file was measured at commit {commit[..Math.Min(12, commit.Length)]}, which this repository does not have. Refresh coverage to measure it again.",
+            statusCode: StatusCodes.Status409Conflict, extensions: new Dictionary<string, object?> { ["commit"] = commit });
 
     internal static IResult RunActive() =>
         Results.Problem(type: "run_active", title: "A run is active", detail: "This file has a run in progress; wait for it to finish.",

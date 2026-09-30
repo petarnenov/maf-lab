@@ -9,10 +9,14 @@ ROOT          := $(CURDIR)
 COMPOSE_FILE  := $(ROOT)/compose/docker-compose.yml
 # CI_MODE=1 swaps the model backend for a deterministic stub (no downloads, no secrets) — see compose/docker-compose.ci.yml.
 CI_MODE       ?= 0
+# The compose project, and so its volumes: ci-e2e runs as maf-lab-e2e and never touches the dev stack's data. Exported
+# as COMPOSE_PROJECT_NAME too, so the scripts' own `docker compose` calls address the same project.
+COMPOSE_PROJECT ?= maf-lab
+export COMPOSE_PROJECT_NAME := $(COMPOSE_PROJECT)
 ifeq ($(CI_MODE),1)
-COMPOSE       := docker compose -f $(COMPOSE_FILE) -f $(ROOT)/compose/docker-compose.ci.yml
+COMPOSE       := docker compose -p $(COMPOSE_PROJECT) -f $(COMPOSE_FILE) -f $(ROOT)/compose/docker-compose.ci.yml
 else
-COMPOSE       := docker compose -f $(COMPOSE_FILE)
+COMPOSE       := docker compose -p $(COMPOSE_PROJECT) -f $(COMPOSE_FILE)
 endif
 
 # ── configuration (override on the command line or in the environment) ─────────────────────────────────────────────
@@ -170,7 +174,8 @@ ci-e2e: require-docker require-dotnet ## Model-free end-to-end: stack with the O
 	@# Test generation merges into main: it runs on a fresh clone of the committed HEAD, never on this checkout's main.
 	@# The clone's main is this checkout's HEAD: the commit under test, not whatever local main happens to be.
 	rm -rf $(E2E_REPO) && git clone -q $(ROOT) $(E2E_REPO) && git -C $(E2E_REPO) checkout -q -B main $$(git rev-parse HEAD)
-	$(MAKE) up index-if-empty verify eval-a2a testgen-e2e CI_MODE=1 MAF_LAB_REPO=$(E2E_REPO)
+	@# Its own compose project (maf-lab-e2e): the dev stack is stopped, its data kept; a pass removes the e2e stack.
+	@scripts/ci_e2e.sh $(E2E_REPO) WAIT_TIMEOUT=$(WAIT_TIMEOUT)
 
 testgen-e2e: ## Model-free test generation end to end: refresh, run, verify, accept (used by ci-e2e, against its clone)
 	scripts/testgen_e2e.sh $(BASE_URL)

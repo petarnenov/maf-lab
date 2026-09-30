@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useSearchParams } from 'react-router';
+import { ApiError } from '../api/client';
 import type { AdminJob, CoverageFileDetail, CoverageTree as Tree, RunSummary } from '../api/types';
 import { useApi, useAuth } from '../auth/useAuth';
 import page from '../components/Page.module.css';
@@ -69,11 +70,7 @@ export function CoveragePage() {
           <div className={styles.fileSlot}>
             {!selected && <p className={page.muted}>Pick a file to see its lines.</p>}
             {selected && file.isLoading && <p className={page.muted}>Loading the file…</p>}
-            {selected && file.isError && (
-              <p className={page.error} role="alert">
-                Could not load this file.
-              </p>
-            )}
+            {selected && file.isError && <FileError error={file.error} canRefresh={isAdmin} />}
             {selected && file.data && (
               <FileView detail={file.data}>
                 {file.data.run?.state === 'candidate' && (
@@ -90,6 +87,26 @@ export function CoveragePage() {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Why a file cannot be shown. A 409 is a measurement at a commit this repository does not have (source_unavailable):
+ * the server's message says which, and a refresh at main heals it. Anything else stays generic.
+ */
+function FileError({ error, canRefresh }: { error: Error; canRefresh: boolean }) {
+  if (error instanceof ApiError && error.status === 409) {
+    return (
+      <div role="alert">
+        <p className={page.error}>{error.message}</p>
+        {canRefresh && <RefreshControl />}
+      </div>
+    );
+  }
+  return (
+    <p className={page.error} role="alert">
+      Could not load this file.
+    </p>
   );
 }
 
