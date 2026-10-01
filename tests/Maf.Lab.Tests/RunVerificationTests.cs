@@ -271,6 +271,8 @@ public sealed class RunVerificationTests
                 // The un-skipped proof ran once, then the real verification.
         Assert.Equal(2, h.Runner.Requests.Count);
         Assert.DoesNotContain("Skip = ", h.Runner.Requests.First().Diff);
+        // The proof needs only the related tests, with the run's file as the target; verification runs everything.
+        Assert.Equal([(TestScope.Related, Target), (TestScope.All, Target)], h.Runner.Requests.Select(r => (r.Tests, r.TargetFile)));
     }
 
     [Fact]

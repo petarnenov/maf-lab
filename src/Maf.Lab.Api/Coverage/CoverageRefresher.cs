@@ -44,7 +44,7 @@ public sealed class CoverageRefresher(
             RunnerResult result;
             try
             {
-                result = await runner.RunAsync(new RunnerRequest(commit, toolchain), ct);
+                result = await runner.RunAsync(new RunnerRequest(commit, toolchain, Tests: TestScope.All), ct);
             }
             catch (RunnerUnavailableException ex)
             {
