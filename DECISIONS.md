@@ -2337,3 +2337,28 @@ said which account the conversation was about.
   - 429/529 retried with backoff on the shared client, 401/422 failed fast: unchanged (`JevRetryHandler`).
   - Tested on labelled en/bg/bg-latn inputs: yes, both suites above.
 - **Requests spent on this calibration:** 898 Jev requests (2 × 410 guardrail, 2 × 39 answer check).
+
+## 64. Model-written tests held to the lint bar (hold-generated-tests-to-the-lint-bar, 2026-10-01)
+
+- **Why.** The coverage runner built a candidate without CI's lint, so a run could be verified green and break
+  `make lint` on `main` (CA2022 in `2b038ba`, fixed by hand in `dd50450`). No package or model moved.
+- **Only a diff's own files, only when there is a diff.** The runner checks the files a request's diff adds or
+  changes; the agent's baseline and the coverage refresh carry no diff and are measured as before, so a warning that
+  reached `main` some other way never stops a refresh, and never fails an agent for a file it may not edit.
+- **dotnet: the build's warnings are read, not promoted.** `dotnet test` prints each warning once
+  (`path(line,col): warning CODE: …`); a warning in one of the diff's files fails the build. Not `-warnaserror`: that
+  fails on a warning anywhere in the build graph and stops before the tests run, so an attempt would learn nothing
+  else. The error pattern now also takes mixed-case analyzer ids (`xUnit1031`).
+- **vitest: ESLint and Prettier over the diff's web files, with the repository's configs.** ESLint errors fail,
+  ESLint warnings do not (CI's `eslint .` has no `--max-warnings`). For a file Prettier would change, the runner
+  formats the workspace copy and reports the first line that differs and how Prettier writes it, because the agent
+  cannot run Prettier. Both tools come from the image's existing `/opt/web/node_modules`. If either cannot run, the
+  build fails: a check that did not happen does not pass.
+- **A lint failure keeps the measurement.** The build is `failed` (so the attempt is not clean and a candidate is not
+  verified), but test counts, failures and coverage stay, so the next attempt's feedback carries all of them.
+- **Recognisable diagnostics.** `LintDiagnostics` (in `Maf.Lab.TestGen`) writes and recognises them. The agent adds
+  "these fail the build here, as they fail CI" to its feedback and to `run_tests`; its rules spell out the warning
+  rule and the Prettier settings. The api names a lint-only failure ("the tests do not pass lint"), and judges a
+  suspected bug's proof run (the candidate with one test un-skipped, never merged) by its tests, not by lint.
+- **Not covered: the web type check.** Vitest does not type-check, so a test with a type error still passes the runner
+  and fails `make build-web` (`tsc -b`). Follow-up.
