@@ -45,7 +45,7 @@ public class ChatApiTests
 
         var finished = events[^1].Data;
         Assert.StartsWith("c_", finished.GetProperty("threadId").GetString());
-        Assert.StartsWith("t_", finished.GetProperty("result").GetProperty("turnId").GetString());
+        Assert.StartsWith("r_", finished.GetProperty("runId").GetString());
         Assert.Equal("success", finished.GetProperty("outcome").GetProperty("type").GetString());
     }
 

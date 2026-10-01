@@ -12,6 +12,7 @@ import {
   run,
   streamResponse,
 } from '../test/render';
+import { agentFetch } from '../test/agentFetch';
 import { ChatPage } from './ChatPage';
 
 const detail: ConversationDetail = {
@@ -94,7 +95,7 @@ describe('ChatPage with history', () => {
         });
       return jsonResponse({}, 404);
     });
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('fetch', agentFetch(fetchMock));
 
     renderChat('/chat/conv-7');
     const turns = await screen.findAllByTestId('assistant-turn');
@@ -146,7 +147,7 @@ describe('ChatPage with history', () => {
       if (url === '/api/conversations/conv-7') return jsonResponse(detail);
       return jsonResponse({}, 404);
     });
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('fetch', agentFetch(fetchMock));
 
     renderChat('/chat/conv-7');
     expect(await screen.findAllByTestId('assistant-turn')).toHaveLength(2);
@@ -185,10 +186,12 @@ describe('ChatPage with history', () => {
   it('shows "Conversation not found" for an unknown or deleted id', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string) =>
-        url.startsWith('/api/conversations?')
-          ? jsonResponse(page())
-          : jsonResponse({ error: 'not_found' }, 404),
+      agentFetch(
+        vi.fn(async (url: string) =>
+          url.startsWith('/api/conversations?')
+            ? jsonResponse(page())
+            : jsonResponse({ error: 'not_found' }, 404),
+        ),
       ),
     );
     renderChat('/chat/gone');
@@ -209,7 +212,7 @@ describe('ChatPage with history', () => {
         return streamResponse([run.delta('Hello.'), run.done('conv-new', 't1')]);
       return jsonResponse({}, 404);
     });
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('fetch', agentFetch(fetchMock));
 
     renderChat('/chat');
     expect(await screen.findByText('No conversations yet.')).toBeInTheDocument();
@@ -217,21 +220,27 @@ describe('ChatPage with history', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
     await screen.findByText('Hello.');
 
-    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/chat/conv-new'));
+    // The conversation is the thread the client named for the run, which the server keeps (agui-protocol-only).
+    await waitFor(() =>
+      expect(screen.getByTestId('location').textContent).toMatch(/^\/chat\/c_[0-9a-f]{32}$/),
+    );
+    const id = screen.getByTestId('location').textContent!.slice('/chat/'.length);
     expect(await screen.findByRole('button', { name: /^Title conv-new/ })).toBeInTheDocument();
     // Still the live turn: the page did not reload the conversation it already shows.
-    expect(fetchMock.mock.calls.map((c) => c[0])).not.toContain('/api/conversations/conv-new');
+    expect(fetchMock.mock.calls.map((c) => c[0])).not.toContain(`/api/conversations/${id}`);
     expect(screen.getAllByTestId('assistant-turn')).toHaveLength(1);
   });
 
   it('starting a new conversation is not undone by the cached one', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string) => {
-        if (url.startsWith('/api/conversations?')) return jsonResponse(page('conv-7'));
-        if (url === '/api/conversations/conv-7') return jsonResponse(detail);
-        return jsonResponse({}, 404);
-      }),
+      agentFetch(
+        vi.fn(async (url: string) => {
+          if (url.startsWith('/api/conversations?')) return jsonResponse(page('conv-7'));
+          if (url === '/api/conversations/conv-7') return jsonResponse(detail);
+          return jsonResponse({}, 404);
+        }),
+      ),
     );
 
     // Opening the conversation first is what primes the query cache — the cache is the trap.
@@ -252,14 +261,16 @@ describe('ChatPage with history', () => {
   it("switching persona clears the chat and shows only the new user's list", async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string, init?: RequestInit) => {
-        const auth = new Headers(init?.headers).get('Authorization') ?? '';
-        if (url.startsWith('/api/conversations?'))
-          return jsonResponse(auth.includes('FIRM_ADMIN') ? page('alice-1') : page('adam-1'));
-        if (url === '/api/conversations/adam-1')
-          return jsonResponse({ ...detail, conversationId: 'adam-1' });
-        return jsonResponse({}, 404);
-      }),
+      agentFetch(
+        vi.fn(async (url: string, init?: RequestInit) => {
+          const auth = new Headers(init?.headers).get('Authorization') ?? '';
+          if (url.startsWith('/api/conversations?'))
+            return jsonResponse(auth.includes('FIRM_ADMIN') ? page('alice-1') : page('adam-1'));
+          if (url === '/api/conversations/adam-1')
+            return jsonResponse({ ...detail, conversationId: 'adam-1' });
+          return jsonResponse({}, 404);
+        }),
+      ),
     );
     function SwitchPersona() {
       const { setSession } = useAuth();
@@ -294,7 +305,7 @@ describe('ChatPage with history', () => {
         });
       return jsonResponse({}, 404);
     });
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('fetch', agentFetch(fetchMock));
 
     renderChat('/chat/conv-7');
     const monitor = screen.getByRole('region', { name: 'Behind the scenes' });
@@ -322,7 +333,7 @@ describe('ChatPage with history', () => {
         });
       return jsonResponse({}, 404);
     });
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('fetch', agentFetch(fetchMock));
 
     renderChat('/chat/conv-7');
     const monitor = screen.getByRole('region', { name: 'Behind the scenes' });
@@ -334,18 +345,20 @@ describe('ChatPage with history', () => {
   it('a reopened turn shows the reasoning its trace kept, collapsed, and none when the trace expired', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string) => {
-        if (url.startsWith('/api/conversations?')) return jsonResponse(page('conv-7'));
-        if (url === '/api/conversations/conv-7') return jsonResponse(detail);
-        if (url === '/api/turns/t2/trace')
-          return jsonResponse({
-            turnId: 't2',
-            conversationId: 'conv-7',
-            createdAt: '',
-            events: fixtureTrace,
-          });
-        return jsonResponse({}, 404);
-      }),
+      agentFetch(
+        vi.fn(async (url: string) => {
+          if (url.startsWith('/api/conversations?')) return jsonResponse(page('conv-7'));
+          if (url === '/api/conversations/conv-7') return jsonResponse(detail);
+          if (url === '/api/turns/t2/trace')
+            return jsonResponse({
+              turnId: 't2',
+              conversationId: 'conv-7',
+              createdAt: '',
+              events: fixtureTrace,
+            });
+          return jsonResponse({}, 404);
+        }),
+      ),
     );
 
     renderChat('/chat/conv-7');

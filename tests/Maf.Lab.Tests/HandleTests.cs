@@ -63,9 +63,10 @@ public class HandleTests
         // makes it answerable by a replica that did not serve the run.
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
         var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
-        await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing", runId: "r_handle");
+        var lost = await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing", runId: "r_handle");
 
         var elsewhere = api.ClientFor("adam", "firm-a", Role.ADVISOR);
-        Assert.Equal(HttpStatusCode.OK, (await elsewhere.GetAsync("/api/chat/r_handle", Ct)).StatusCode);
+        using var rejoin = await ApiFactory.SendRejoinAsync(elsewhere, ApiFactory.ThreadOf(lost), "r_handle");
+        Assert.Equal(HttpStatusCode.OK, rejoin.StatusCode);
     }
 }

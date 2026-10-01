@@ -18,7 +18,7 @@ public class FeedbackApiTests
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
         var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
         var done = (await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing"))[^1].Data;
-        var (conversationId, turnId) = (done.GetProperty("threadId").GetString()!, done.GetProperty("result").GetProperty("turnId").GetString()!);
+        var (conversationId, turnId) = (done.GetProperty("threadId").GetString()!, done.GetProperty("runId").GetString()!);
 
         var feedback = await adam.PostAsJsonAsync("/api/feedback", new FeedbackRequest(conversationId!, turnId, FeedbackKind.WrongDocument, null), Ct);
         Assert.Equal(HttpStatusCode.Accepted, feedback.StatusCode);
@@ -94,7 +94,7 @@ public class FeedbackApiTests
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
         var done = (await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "hello"))[^1].Data;
-        var request = new FeedbackRequest(done.GetProperty("threadId").GetString()!, done.GetProperty("result").GetProperty("turnId").GetString()!, FeedbackKind.WrongAnswer, null);
+        var request = new FeedbackRequest(done.GetProperty("threadId").GetString()!, done.GetProperty("runId").GetString()!, FeedbackKind.WrongAnswer, null);
 
         var response = await api.ClientFor("bianca", "firm-b", Role.ADVISOR).PostAsJsonAsync("/api/feedback", request, Ct);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
@@ -122,7 +122,7 @@ public class ConfirmationFeedbackTests
         var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
         var done = (await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing"))[^1].Data;
         var conversationId = done.GetProperty("threadId").GetString()!;
-        var turnId = done.GetProperty("result").GetProperty("turnId").GetString()!;
+        var turnId = done.GetProperty("runId").GetString()!;
 
         var response = await adam.PostAsJsonAsync(
             "/api/feedback",

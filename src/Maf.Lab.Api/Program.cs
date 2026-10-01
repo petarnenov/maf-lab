@@ -1,3 +1,4 @@
+using Maf.Lab.Api.Agent.AGUI;
 using Maf.Lab.Api.Code;
 using Maf.Lab.A2A;
 using Maf.Lab.Api.A2A;
@@ -69,12 +70,13 @@ public partial class Program
         builder.Services.Configure<Agent.FeeAdjustmentOptions>(builder.Configuration.GetSection("FeeAdjustments"));
         builder.Services.AddScoped<Agent.FeeAdjustmentFlow>();
         builder.Services.AddScoped<Agent.ConfirmationService>();
-        builder.Services.AddSingleton<Agent.Streaming.RunRegistry>();
         builder.Services.AddSingleton<Agent.Streaming.RunFrameStore>();
-        builder.Services.Configure<Agent.Streaming.RunStopOptions>(builder.Configuration.GetSection("RunStop"));
-        builder.Services.AddHttpClient("run-stop");
-        builder.Services.AddScoped<Agent.Streaming.RunStopper>();
         builder.Services.AddScoped<ChatTurnRunner>();
+        builder.Services.AddScoped<Agent.RunRejoin>();
+        // Every agent reaches a browser through the Agent Framework's own AG-UI server (agui-protocol-only).
+        builder.Services.AddAGUIHosting();
+        builder.Services.AddSingleton<Agent.ChatAgent>();
+        builder.Services.AddSingleton<Coverage.TestGenRunAgent>();
         builder.Services.AddSingleton<DatasetWriter>();
         builder.Services.Configure<AdminJobOptions>(builder.Configuration.GetSection("AdminJobs"));
         builder.Services.AddSingleton<AdminJobRunner>();
@@ -149,12 +151,15 @@ public partial class Program
         app.UseA2ASpecWire();
         app.UseAuthentication();
         app.UseAuthorization();
+        app.UseMiddleware<Agent.AGUI.RunTap>();
         app.MapInstanceHealth();
         if (app.Configuration.GetValue("Auth:EnableDevIssuer", true))
         {
             app.MapDevIssuer();
         }
         app.MapChat();
+        app.MapChatAgent();
+        app.MapTestGenRunAgent();
         app.MapFeedback();
         app.MapAdminIndex();
         app.MapEvalReports();

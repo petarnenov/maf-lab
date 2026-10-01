@@ -15,7 +15,8 @@
     "test": "vitest"
   },
   "dependencies": {
-    "@ag-ui/core": "1.0.0",
+    "@ag-ui/core": "1.0.1",
+    "@copilotkit/react-core": "1.76.0",
     "@opentelemetry/api": "1.9.1",
     "@opentelemetry/exporter-trace-otlp-http": "0.222.0",
     "@opentelemetry/instrumentation": "0.222.0",
@@ -28,7 +29,8 @@
     "react-dom": "19.3.0",
     "react-markdown": "10.1.0",
     "react-router": "8.4.0",
-    "remark-gfm": "4.0.1"
+    "remark-gfm": "4.0.1",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

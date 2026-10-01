@@ -23,43 +23,52 @@ Roles: `FIRM_ADMIN`, `ADVISOR`, `OPS`, `READ_ONLY`. Firms: `firm-a`, `firm-b`, `
 
 ## Chat
 
-A turn is a **run of the agent**, streamed as [AG-UI](https://github.com/ag-ui-protocol/ag-ui) events over SSE.
+A turn is a **run of the chat agent**: an Agent Framework `AIAgent` behind the official AG-UI server
+(`MapAGUIServer`), streamed as [AG-UI](https://github.com/ag-ui-protocol/ag-ui) events over SSE. **Only the
+protocol's own events travel** (agui-protocol-only): no `CUSTOM` event, ever. The browser reaches the agent through
+CopilotKit's runtime at `/copilotkit/` (below); any AG-UI client may call `/api/chat` directly.
 
 | Method | Path | Body | Response |
 |---|---|---|---|
 | POST | `/api/conversations` | — | `201 { conversationId }` |
-| POST | `/api/chat` | `RunAgentInput` | `text/event-stream` of AG-UI events |
-| POST | `/api/chat/{runId}/stop` | — | `202` when this instance was running it, `404` otherwise |
+| POST | `/api/chat` | `RunAgentInput` | `text/event-stream` of AG-UI events; `400` without a message (max 4000 chars) or with a malformed `runId`; `404` for another principal's thread or an unknown parent run; `409` for a `runId` used before |
+| GET | `/api/runs/{runId}/trace?after=` | — | `{ runId, turnId, ended, events: TraceEvent[] }` — the run's trace while it is written, events after `seq` `after`; the run's owner only, otherwise `404` |
 
-`RunAgentInput` carries `threadId` (the conversation), `runId` (this turn), `messages` (the last user message is
-the question) and, when answering something a previous run paused for, `resume`. A run without a `threadId`
-starts a new conversation, whose id arrives on the run's terminal event. A `threadId` issued to another
-principal returns `404`.
+`RunAgentInput` carries `threadId` (the conversation), `runId` (this run — and the id of the turn it records),
+`messages` (the last user message is the question; the rest is ignored, the server keeps the conversation), `state`
+(the account in focus) and, when answering something a previous run paused for, `resume`. A run without a
+`threadId` starts a new conversation; a well-formed `threadId` (`[A-Za-z0-9_-]{1,64}`) that nobody has becomes the
+caller's new conversation, since AG-UI clients name their own threads; one issued to another principal is `404`.
 
 ```jsonc
 {
-  "threadId": "c_8f…",                 // omit to start a new conversation
-  "runId": "r_2b…",
-  "messages": [{ "id": "u_1", "role": "user", "content": "why did run 4417 fail?" }]
+  "threadId": "c_8f…",
+  "runId": "r_2b…",                       // also the turn's id; a new one per run
+  "messages": [{ "id": "u_1", "role": "user", "content": "why did run 4417 fail?" }],
+  "state": { "focus": { "accountId": "A-1043" } }
 }
 ```
 
-SSE frames are `event: <TYPE>\ndata: <json>\n\n`, where `<TYPE>` is the event's own protocol discriminator:
+SSE frames are `data: <json>\n\n`; each event names itself in its `type`:
 
 | event | what it carries |
 |---|---|
 | `RUN_STARTED` | `{ threadId, runId }` — first, exactly once |
-| `TEXT_MESSAGE_START` / `TEXT_MESSAGE_CONTENT` / `TEXT_MESSAGE_END` | the answer, under one `messageId`. A run that produces no answer opens no message |
-| `TOOL_CALL_START` / `TOOL_CALL_ARGS` / `TOOL_CALL_END` / `TOOL_CALL_RESULT` | one tool call, under one `toolCallId`. The start is emitted before the tool runs |
 | `STATE_SNAPSHOT` | the run's shared state `{ snapshot: { focus: { accountId } \| null } }`: right after `RUN_STARTED`, and again after a read moves the focus — see below |
+| `STEP_STARTED` / `STEP_FINISHED` | what the turn is doing: `screening the question`, `tool: <name>`, `checking the answer` — so a client shows progress without the trace |
+| `TEXT_MESSAGE_START` / `TEXT_MESSAGE_CONTENT` / `TEXT_MESSAGE_END` | the answer, under one `messageId`. A run that produces no answer opens no message |
+| `REASONING_*` | what the model thought on its way to the answer |
+| `TOOL_CALL_START` / `TOOL_CALL_ARGS` / `TOOL_CALL_END` / `TOOL_CALL_RESULT` | one tool call, under one `toolCallId`. The start is emitted before the tool runs |
 | `ACTIVITY_SNAPSHOT` | a data card: `{ messageId: "card-<toolCallId>", activityType, content }`, right after the carded call's `TOOL_CALL_RESULT` — see below |
-| `CUSTOM` | this system's own events, by `name` — see below |
-| `RUN_FINISHED` | `{ threadId, runId, outcome, result }` — last. `result.turnId` is the turn, which feedback names |
-| `RUN_ERROR` | `{ message }` — last instead, when the turn failed. Short user-facing text only |
+| `RUN_FINISHED` | `{ threadId, runId, outcome }` — last. The turn the run recorded is `runId` |
+| `RUN_ERROR` | `{ message, code }` — last instead, when the turn failed. Short, generic text only |
 
-**Arguments and results are identifiers and summaries, never free text.** `TOOL_CALL_ARGS.delta` carries the
-argument summary (`runId=4417`), not the query a user typed; `TOOL_CALL_RESULT.content` is structured —
-`{ tool, summary, sourceCount, isError }` — not the documents the tool found. The full result is in the trace.
+**Arguments and results are identifiers and summaries, never free text.** `TOOL_CALL_ARGS.delta` is the
+identifier-only arguments as JSON (`{"runId":"4417"}`), not the query a user typed; `TOOL_CALL_RESULT.content` is
+structured — `{ tool, summary, sourceCount, sources, isError }` — not the documents the tool found. **Sources travel
+here, in the search's own result:** `sources: [{ docId, sectionPath, sourcePath, snippet, kind?, startLine?,
+endLine?, symbol?, language? }]`, the snippet the answer shows and nothing more. No event carries the model update it
+came from (`rawEvent`). The full result is in the trace.
 
 ### The account in focus (shared state)
 
@@ -75,7 +84,8 @@ A conversation has at most one account in focus (add-focus-state):
 ### Data cards
 
 Three read tools' results travel whole, as an AG-UI activity the chat draws as a table (add-activity-cards). Their
-result types have no free-text field (a test enforces it). A failed or guard-withheld result sends no card.
+result types have no free-text field (a test enforces it). A failed or guard-withheld result sends no card. The
+`activityType` is data inside the protocol's own `ACTIVITY_SNAPSHOT`, not an event type of its own.
 
 | `activityType` | tool | `content` |
 |---|---|---|
@@ -85,18 +95,16 @@ result types have no free-text field (a test enforces it). A failed or guard-wit
 
 An unknown `activityType` is ignored. A snapshot for a `messageId` already shown replaces that card.
 
-### The two names this system adds
+### The trace
 
-| custom `name` | value |
-|---|---|
-| `maf-lab/sources` | `{ sources: [{ docId, sectionPath, sourcePath, snippet }] }` — before the run ends |
-| `maf-lab/trace` | one turn-trace event `{ seq, atMs, kind, title, durationMs?, data, truncated }`; see [trace-events.md](trace-events.md) |
-
-A consumer that does not recognise a custom event ignores it and still follows the run.
+A turn's behind-the-scenes trace never travels on the stream. While the run is going, its owner reads it from
+`GET /api/runs/{runId}/trace?after=<seq>`, from any replica (the trace is kept in the shared store for the run's grace
+period); afterwards, from the stored turn (`GET /api/turns/{turnId}/trace`). The monitor polls the first every 500 ms
+while the run is live. See [trace-events.md](trace-events.md).
 
 ### A run that waits for a person
 
-When a turn proposes something that needs approval, the run finishes **paused**:
+When a turn proposes something that needs approval, the run finishes **paused**, on the protocol's own interrupt:
 
 ```jsonc
 {
@@ -123,13 +131,15 @@ Nothing has been changed and no further tool runs in that run. Answering is a **
   "threadId": "c_8f…",
   "runId": "r_3c…",
   "messages": [],
-  "resume": [{ "interruptId": "adj_9b…", "payload": { "approve": true } }]
+  "resume": [{ "interruptId": "adj_9b…", "status": "resolved", "payload": { "approve": true, "idempotencyKey": "adj_9b…:approve" } }]
 }
 ```
 
 That run applies the proposal (or applies nothing, for anything but an approval) and says what happened as its
-answer. An interrupt that was already answered, belongs to someone else, or has expired is refused, and nothing
-happens twice. `metadata.state` is opaque and integrity-protected: hand it back, do not parse it.
+answer; it records no turn. An interrupt that was already answered, belongs to someone else, or has expired is
+refused, and nothing happens twice. A repeat under the same `idempotencyKey` is answered with the first answer; a
+different request under it is refused. `metadata.state` is opaque and integrity-protected: hand it back, do not parse
+it.
 
 ### What a conversation is waiting on
 
@@ -145,11 +155,31 @@ expired is not waiting. A conversation that is not the caller's own is `404`.
 The opaque state is deliberately absent: it never leaves the run that issued it, and an answer names the
 proposal by `adjustmentId` rather than carrying what would execute.
 
-### Stopping
+### Stopping and rejoining
 
-`POST /api/chat/{runId}/stop` ends a run within a second, and no tool executes after it. Abandoning the stream
-does the same thing through the request itself and is what a browser actually does. The registry of running runs
-is per instance, so a stop sent to the replica that is not running the turn answers `404`.
+Both go through the protocol; there is no stop or rejoin endpoint beside it.
+- **Stop:** the client ends the request (`abortRun`). The run's token is the request's own, so the replica serving
+  it stops it within a second, and no tool executes after. Through CopilotKit's runtime, the browser asks the runtime
+  to stop the thread (`stopAgent`), and a client that walks away is stopped the same way.
+- **Rejoin:** a run on the same thread, naming the lost run as `parentRunId`, with no new message. It replays, as the
+  protocol's events, what the lost run had said and done by its last snapshot — the answer, each tool call and how it
+  ended — and ends paused on the same question when that run stopped for a person. Another principal's run, and one
+  no longer kept, are `404`. (The official server does not serve the protocol's `connect`.)
+
+### Through CopilotKit's runtime
+
+The web reaches every agent through `copilot-runtime`, CopilotKit's runtime, behind the balancer at `/copilotkit/`.
+It only wires: each agent is an AG-UI `HttpAgent` to the api, made per request with the caller's bearer token, which
+the api checks on every run. It serves exactly:
+
+| Method | Path | Response |
+|---|---|---|
+| GET | `/copilotkit/info` | the runtime's agents: `chat` and `testgen` |
+| POST | `/copilotkit/agent/{chat\|testgen}/run` | the agent's AG-UI run, as above |
+| POST | `/copilotkit/agent/{chat\|testgen}/stop/{threadId}` | stops the thread's run; only for the credentials that ran it, otherwise `404` |
+
+Everything else — the runtime's thread listing, thread messages and events, and `connect` — is `404`: the runtime
+keeps threads in memory with no owner, so serving them would let one firm read another's conversation.
 
 ## Conversation history (owner only)
 
@@ -164,8 +194,8 @@ is per instance, so a stop sent to the replica that is not running the turn answ
 resultSummary?, sourceCount }], sources: [{ docId, sectionPath, sourcePath, snippet }], feedbackKinds: [string],
 traceAvailable, activities: [{ messageId, activityType, content }] }` — `activities` are the turn's data cards, empty
 for turns stored before cards existed. The conversation detail also carries `focus: { accountId } | null`. Turns stored before this change may have empty `sourcePath`/`snippet` and null `callId`/`resultSummary`.
-The default title is the first question (≤ 80 chars, cut at a word boundary with "…"). `POST /api/chat` with a deleted
-conversation id returns `404`.
+The default title is the first question (≤ 80 chars, cut at a word boundary with "…"). A run on a deleted
+conversation's id returns `404`.
 
 ## Turn traces
 
@@ -173,22 +203,15 @@ conversation id returns `404`.
 |---|---|---|
 | GET | `/api/turns/{turnId}/trace` | `{ turnId, conversationId, createdAt, events: TraceEvent[], aguiFrames: RunFrame[] \| null }` — the turn's owner, or a FIRM_ADMIN of the same firm for turns in the review queue; otherwise `404`. Kept for `Tracing:RetentionDays` (7). `aguiFrames` is the run's own events as they crossed the wire, and is `null` for a turn answered before they were kept. |
 
-`RunFrame` = `{ seq, atMs, type, name?, bytes, traceSeq?, payload?, truncated }` — see
-[trace-events.md](trace-events.md).
+`RunFrame` = `{ seq, atMs, type, bytes, payload?, truncated }` — see [trace-events.md](trace-events.md). Turns recorded
+before agui-protocol-only may also carry `name` and `traceSeq` on their custom-event frames.
 
 ## Runs
 
-| Method | Path | Response |
-|---|---|---|
-| GET | `/api/chat/{runId}` | `RunState` — where the run stands, answerable by any replica. The run's own thread decides who may read it; another principal's run, and one whose state is no longer kept, are both `404`. |
-
-`RunState` = `{ runId, conversationId, userId, firmId, answer, toolCalls, outcome, awaitingId, turnId, error,
-startedAt, updatedAt }`; `outcome` is `running`, `answered`, `awaiting_person`, `failed` or `cancelled`. It is a
-snapshot, not a replay — see [shared-state.md](shared-state.md).
-
-A confirmation may carry the caller's own idempotency key:
-`resume: [{ interruptId, payload: { approve, idempotencyKey } }]`. A repeat under that key is answered with the
-first answer; a different request under it is refused.
+A run's snapshot — `RunState` = `{ runId, conversationId, userId, firmId, answer, toolCalls, outcome, awaitingId, turnId,
+error, startedAt, updatedAt }`, `outcome` one of `running`, `answered`, `awaiting_person`, `failed`, `cancelled` — is kept
+in the shared store so a rejoin can be answered by any replica (see Stopping and rejoining). It is a snapshot, not a
+replay, and is no longer served on its own — see [shared-state.md](shared-state.md).
 
 ## Telemetry
 
@@ -364,7 +387,7 @@ lifecycle is `submitted → working → verifying → candidate → accepted | d
 | POST | `/api/coverage/runs` | `{ path, pct, model, budget?, limits? }`; `budget: { maxTokens?, maxCostUsd? }`, a missing or null cap is unlimited; `limits: { maxAttempts?, toolRoundsPerAttempt?, testRunsPerAttempt?, deadlineMinutes?, maxSuspectedBugs? }`, a missing limit takes its default (10, 40, 2, the configured deadline, 3) | `201` run (saves the threshold); `400` a cap that is not positive (field `budget`) or a limit out of bounds (field `limits`); `409 run_active`; `422 model_rejected`; `503 agent_unavailable`, threshold unchanged. Admin |
 | GET | `/api/coverage/runs?path=` | — | `[run]`, newest first. A run carries `reason` (for a completed run, the agent's stop: `target`, `attempts` or `budget`; otherwise why it failed) `budget: { maxTokens, maxCostUsd }` (null is unlimited) and `limits: { maxAttempts, toolRoundsPerAttempt, testRunsPerAttempt, deadlineMinutes, maxSuspectedBugs }` (a null `deadlineMinutes` is the configured deadline) |
 | GET | `/api/coverage/runs/{id}` | — | `{ run, report, issues: [{ testKey, title, number, url }] }`. A verified run's `report.verification` is `{ scope, tests, pct, reusedFrom? }`: the api's own verification run, with `reusedFrom: { jobId, completedAt }` when the coverage runner answered it with the result it had computed for the identical request (the agent's whole-suite confirmation); absent on runs verified before it was recorded |
-| GET | `/api/coverage/runs/{id}/events` | — | `text/event-stream` in AG-UI, the only way the browser follows a run: `RUN_STARTED` (`threadId` `testgen:<id>`), `STATE_SNAPSHOT` with the run summary (incl. `phase`) first and on every change, then every recorded activity entry in order: a phase as `STEP_STARTED`/`STEP_FINISHED`, a tool call as `TOOL_CALL_START`/`ARGS` (`{path}`)/`END`/`RESULT` (`{outcome, summary}`), model text as `TEXT_MESSAGE_*`, reasoning as `REASONING_*`, an attempt's result as `CUSTOM maf-lab/testgen-attempt` (`{attempt, before, after, build, tests, errors, violations, run?, confirmation?}`; `run` is what the attempt's measured run ran and `confirmation` the whole-suite run that confirmed it, each `{scope, files, tests, reason?, reused, pct?}`, both absent on entries recorded before them), the agent's stop as `STEP_FINISHED` then `CUSTOM maf-lab/testgen-stopped` (`{reason, lastAttempt, bestPct, notStarted}`), the agent's takeover after a restart as `STEP_FINISHED` then `CUSTOM maf-lab/testgen-resumed` (`{attempt}`), a capped record as `CUSTOM maf-lab/testgen-activity-dropped`; ends with `RUN_FINISHED` (result: the summary) at `candidate` or a final state, or `RUN_ERROR` (code: the reason) when failed or canceled. A run that has ended replays and closes |
+| POST | `/api/coverage/runs/agent` | `RunAgentInput` on thread `testgen:<id>[:<viewer>]` | `text/event-stream` in AG-UI, the only way the browser follows a run — a run of the test-generation run agent behind the official AG-UI server, protocol events only: `RUN_STARTED`, `STATE_SNAPSHOT` with the run's state first and on every change — the summary (incl. `phase`) plus its record: `attempts` (each `{attempt, before, after, build, tests, errors, violations, run?, confirmation?}`; `run` is what the attempt's measured run ran and `confirmation` the whole-suite run that confirmed it, each `{scope, files, tests, reason?, reused, pct?}`, both absent on entries recorded before them), `stop` (`{reason, lastAttempt, bestPct, notStarted}` once the agent stopped), `resumes` (the attempts it took the run over again at, after a restart) and `dropped` (the oldest activity was cut) — then every recorded activity entry in order: a phase as `STEP_STARTED`/`STEP_FINISHED`, a tool call as `TOOL_CALL_START`/`ARGS` (`{path}`)/`END`/`RESULT` (`{outcome, summary}`), model text as `TEXT_MESSAGE_*`, reasoning as `REASONING_*`; a stop and a takeover close the open step first. Ends with `RUN_FINISHED` at `candidate` or a final state, or `RUN_ERROR` when failed or canceled, its reason in the state before it. A run that has ended replays and closes; a thread that is not a known run's is `404`. Each page following a run may suffix the thread with `:<viewer>`, so several can follow it at once |
 | POST | `/api/coverage/runs/{id}/cancel` | — | `200` run, `409 not_cancellable`. Admin |
 | POST | `/api/coverage/runs/{id}/accept` | — | `200 { run, gitHubProblems }` merged into main; `409 merge_conflict \| main_dirty \| branch_missing \| not_candidate`. Admin |
 | POST | `/api/coverage/runs/{id}/discard` | — | `200 { run, gitHubProblems }`, branch deleted, issues closed. Admin |

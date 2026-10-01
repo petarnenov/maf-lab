@@ -1,15 +1,27 @@
+import type { AbstractAgent } from '@ag-ui/client';
 import { EventType } from '@ag-ui/core';
+import { useCopilotKit, type CopilotKitCoreReact } from '@copilotkit/react-core/v2/context';
 import { useCallback, useSyncExternalStore } from 'react';
-import { authHeaders } from '../api/client';
+import { agentNamed } from '../agents/agents';
 import type { RunSummary } from '../api/types';
-import { useAuth } from '../auth/useAuth';
-import { SseParser } from '../chat/sseParser';
 
-/** The custom events a run's AG-UI stream adds; their names match the server's. */
-export const ATTEMPT_EVENT = 'maf-lab/testgen-attempt';
-export const DROPPED_EVENT = 'maf-lab/testgen-activity-dropped';
-export const STOPPED_EVENT = 'maf-lab/testgen-stopped';
-export const RESUMED_EVENT = 'maf-lab/testgen-resumed';
+/** The test-generation run agent, as CopilotKit's runtime names it. */
+export const TESTGEN_AGENT = 'testgen';
+
+/** This page, as one of possibly many following the same run: each follows it on a thread of its own. */
+const viewer = crypto.randomUUID().replaceAll('-', '').slice(0, 12);
+export const runThread = (runId: string) => `testgen:${runId}:${viewer}`;
+
+/**
+ * A run's shared state (agui-protocol-only): its summary, and its record — every attempt finished so far, the stop,
+ * each takeover after a restart, and whether the oldest activity was dropped.
+ */
+export interface RunState extends RunSummary {
+  attempts?: AttemptResult[];
+  stop?: StopInfo | null;
+  resumes?: number[];
+  dropped?: boolean;
+}
 
 export interface StopInfo {
   reason: string;
@@ -78,9 +90,16 @@ export interface RunStreamState {
   summary: RunSummary | null;
   timeline: TimelineItem[];
   ended: RunEnd | null;
+  /** How much of the run's record the timeline already shows. */
+  shown: { attempts: number; resumes: number; stopped: boolean; dropped: boolean };
 }
 
-export const initialRunStream: RunStreamState = { summary: null, timeline: [], ended: null };
+export const initialRunStream: RunStreamState = {
+  summary: null,
+  timeline: [],
+  ended: null,
+  shown: { attempts: 0, resumes: 0, stopped: false, dropped: false },
+};
 
 type AguiEvent = { type: string } & Record<string, unknown>;
 
@@ -108,8 +127,10 @@ function update(timeline: TimelineItem[], id: string, change: (item: TimelineIte
 export function reduceRunEvent(state: RunStreamState, event: AguiEvent): RunStreamState {
   const { timeline } = state;
   switch (event.type) {
+    // The run's state: the summary replaces what the screen had, and what the record gained since joins the timeline
+    // where it happened — an attempt's result, a takeover, the stop; a dropped record is said first.
     case EventType.STATE_SNAPSHOT:
-      return { ...state, summary: event.snapshot as RunSummary };
+      return recorded({ ...state, summary: event.snapshot as RunSummary }, event.snapshot as RunState);
     case EventType.STEP_STARTED:
       return {
         ...state,
@@ -169,42 +190,52 @@ export function reduceRunEvent(state: RunStreamState, event: AguiEvent): RunStre
           item.kind === 'text' || item.kind === 'reasoning' ? { ...item, done: true } : item,
         ),
       };
-    case EventType.CUSTOM: {
-      if (event.name === ATTEMPT_EVENT) {
-        const value = event.value as AttemptResult;
-        return { ...state, timeline: [...timeline, { kind: 'attempt', id: `attempt-${timeline.length}`, ...value }] };
-      }
-      if (event.name === STOPPED_EVENT) {
-        return { ...state, timeline: [...timeline, { kind: 'stopped', id: 'stopped', ...(event.value as StopInfo) }] };
-      }
-      if (event.name === RESUMED_EVENT) {
-        const attempt = Number((event.value as { attempt?: number } | undefined)?.attempt ?? 0);
-        const text =
-          attempt > 0
-            ? `The agent restarted and resumed the run at attempt ${attempt}.`
-            : 'The agent restarted and resumed the run at the baseline.';
-        return { ...state, timeline: [...timeline, { kind: 'notice', id: `resumed-${timeline.length}`, text }] };
-      }
-      if (event.name === DROPPED_EVENT) {
-        const text = 'The oldest activity of this run was dropped to keep it within its cap.';
-        return { ...state, timeline: [{ kind: 'notice', id: 'dropped', text }, ...timeline] };
-      }
-      return state;
-    }
     case EventType.RUN_FINISHED:
-      return {
-        ...state,
-        summary: (event.result as RunSummary | undefined) ?? state.summary,
-        ended: { outcome: 'finished' },
-      };
+      return { ...state, ended: { outcome: 'finished' } };
+    // Why the run failed is in its state, which said so before the end.
     case EventType.RUN_ERROR:
       return {
         ...state,
-        ended: { outcome: 'error', code: String(event.code ?? 'error'), message: String(event.message ?? '') },
+        ended: {
+          outcome: 'error',
+          code: state.summary?.reason ?? String(event.code ?? 'error'),
+          message: String(event.message ?? ''),
+        },
       };
     default:
       return state;
   }
+}
+
+/**
+ * What the run's record gained since the timeline last showed it, as entries in the order it happened. A state that
+ * does not carry part of the record leaves that part as it was.
+ */
+function recorded(state: RunStreamState, after: RunState): RunStreamState {
+  let { timeline } = state;
+  const shown = { ...state.shown };
+  for (const attempt of (after.attempts ?? []).slice(shown.attempts)) {
+    timeline = [...timeline, { kind: 'attempt', id: `attempt-${timeline.length}`, ...attempt }];
+  }
+  shown.attempts = Math.max(shown.attempts, after.attempts?.length ?? 0);
+  for (const attempt of (after.resumes ?? []).slice(shown.resumes)) {
+    const text =
+      attempt > 0
+        ? `The agent restarted and resumed the run at attempt ${attempt}.`
+        : 'The agent restarted and resumed the run at the baseline.';
+    timeline = [...timeline, { kind: 'notice', id: `resumed-${timeline.length}`, text }];
+  }
+  shown.resumes = Math.max(shown.resumes, after.resumes?.length ?? 0);
+  if (after.stop && !shown.stopped) {
+    timeline = [...timeline, { kind: 'stopped', id: 'stopped', ...after.stop }];
+    shown.stopped = true;
+  }
+  if (after.dropped && !shown.dropped) {
+    const text = 'The oldest activity of this run was dropped to keep it within its cap.';
+    timeline = [{ kind: 'notice', id: 'dropped', text }, ...timeline];
+    shown.dropped = true;
+  }
+  return { ...state, timeline, shown };
 }
 
 /** How long to wait before reading a dropped stream again (it replays from the start). */
@@ -218,64 +249,74 @@ const RETRY_MS = 2000;
 interface SharedStream {
   state: RunStreamState;
   listeners: Set<() => void>;
-  abort: AbortController;
+  stop: () => void;
 }
 
 const streams = new Map<string, SharedStream>();
 
-const streamKey = (runId: string, token: string | null) => `${runId}\u0000${token ?? ''}`;
+const streamKey = (runId: string) => runId;
 
 /** How many run streams are open now; for tests. */
 export const openRunStreams = () => streams.size;
 
-function openStream(runId: string, token: string | null): SharedStream {
-  const shared: SharedStream = { state: initialRunStream, listeners: new Set(), abort: new AbortController() };
+/**
+ * Follows one run through CopilotKit (agui-protocol-only): a run of the test-generation agent on the run's thread,
+ * which replays the run from the start and then follows it live. A stream that drops before the run's end is run again.
+ */
+function openStream(runId: string, copilotkit: CopilotKitCoreReact): SharedStream {
+  let stopped = false;
+  let agent: AbstractAgent | null = null;
+  const shared: SharedStream = {
+    state: initialRunStream,
+    listeners: new Set(),
+    // Nobody follows the run any more: CopilotKit's runtime stops reading it for this page. The run itself goes on.
+    stop: () => {
+      stopped = true;
+      if (agent?.isRunning) copilotkit.stopAgent({ agent });
+    },
+  };
   const set = (next: RunStreamState) => {
     shared.state = next;
     shared.listeners.forEach((listener) => listener());
   };
-  const { signal } = shared.abort;
   void (async () => {
     let ended = false;
-    while (!ended && !signal.aborted) {
-      try {
-        const response = await fetch(`/api/coverage/runs/${encodeURIComponent(runId)}/events`, {
-          headers: { Accept: 'text/event-stream', ...authHeaders(token) },
-          signal,
-        });
-        if (!response.ok || !response.body) return;
-        // The stream replays the run from the start, so what an earlier connection showed is replaced.
+    while (!ended && !stopped) {
+      const base = await agentNamed(copilotkit, TESTGEN_AGENT);
+      if (base) {
+        const following = base.clone();
+        agent = following;
+        following.threadId = runThread(runId);
+        following.setMessages([]);
+        // The run replays from the start, so what an earlier connection showed is replaced.
         let state = initialRunStream;
         set(state);
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        const parser = new SseParser();
-        for (;;) {
-          const { done, value } = await reader.read();
-          const frames = done ? parser.flush() : parser.push(decoder.decode(value, { stream: true }));
-          for (const frame of frames) {
-            if (!frame.data) continue;
-            const event = JSON.parse(frame.data) as AguiEvent;
-            state = reduceRunEvent(state, event);
+        const subscription = following.subscribe({
+          onEvent: ({ event }: { event: { type: string } }) => {
+            state = reduceRunEvent(state, event as AguiEvent);
             if (event.type === EventType.RUN_FINISHED || event.type === EventType.RUN_ERROR) ended = true;
-          }
-          if (frames.length > 0 && !signal.aborted) set(state);
-          if (done) break;
+            if (!stopped) set(state);
+          },
+        });
+        try {
+          await copilotkit.runAgent({ agent: following });
+        } catch {
+          // Stopped by the last subscriber leaving, or the connection dropped: run again below unless told to stop.
+        } finally {
+          subscription.unsubscribe();
         }
-      } catch {
-        // Aborted by the last subscriber leaving, or the connection dropped: read again below unless told to stop.
       }
-      if (!ended && !signal.aborted) await new Promise((resolve) => setTimeout(resolve, RETRY_MS));
+      if (!ended && !stopped) await new Promise((resolve) => setTimeout(resolve, RETRY_MS));
     }
   })();
   return shared;
 }
 
-function subscribe(runId: string, token: string | null, listener: () => void): () => void {
-  const key = streamKey(runId, token);
+function subscribe(runId: string, copilotkit: CopilotKitCoreReact, listener: () => void): () => void {
+  const key = streamKey(runId);
   let shared = streams.get(key);
   if (!shared) {
-    shared = openStream(runId, token);
+    shared = openStream(runId, copilotkit);
     streams.set(key, shared);
   }
   shared.listeners.add(listener);
@@ -284,26 +325,25 @@ function subscribe(runId: string, token: string | null, listener: () => void): (
     mine.listeners.delete(listener);
     if (mine.listeners.size === 0 && streams.get(key) === mine) {
       streams.delete(key);
-      mine.abort.abort();
+      mine.stop();
     }
   };
 }
 
 /**
- * A test-generation run as its AG-UI stream tells it: replayed from the start, then live until the run's terminal
- * event. A stream that drops before then is read again from the start. Null `runId` follows nothing. Every caller for
+ * A test-generation run as its AG-UI agent tells it, through CopilotKit: replayed from the start, then live until the
+ * run's terminal event. A stream that drops before then is read again from the start. Null `runId` follows nothing. Every caller for
  * the same run shares one stream.
  */
 export function useRunStream(runId: string | null): RunStreamState {
-  const { session } = useAuth();
-  const token = session?.token ?? null;
+  const { copilotkit } = useCopilotKit();
   const subscribeTo = useCallback(
-    (listener: () => void) => (runId ? subscribe(runId, token, listener) : () => {}),
-    [runId, token],
+    (listener: () => void) => (runId ? subscribe(runId, copilotkit, listener) : () => {}),
+    [runId, copilotkit],
   );
   const snapshot = useCallback(
-    () => (runId ? (streams.get(streamKey(runId, token))?.state ?? initialRunStream) : initialRunStream),
-    [runId, token],
+    () => (runId ? (streams.get(streamKey(runId))?.state ?? initialRunStream) : initialRunStream),
+    [runId],
   );
   return useSyncExternalStore(subscribeTo, snapshot, snapshot);
 }

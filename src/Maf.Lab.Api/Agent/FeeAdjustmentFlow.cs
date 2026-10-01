@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using AGUI.Abstractions;
 using Maf.Lab.Api.A2A;
 using Maf.Lab.Api.Agent.Tracing;
 using Maf.Lab.Api.Compliance;
@@ -27,7 +26,7 @@ public sealed class FeeAdjustmentOptions
 public abstract record FlowOutcome
 {
     /// <summary>Put it to the person: the run pauses here.</summary>
-    public sealed record AskUser(AGUIInterrupt Interrupt) : FlowOutcome;
+    public sealed record AskUser(PersonQuestion Interrupt) : FlowOutcome;
 
     /// <summary>Nothing will be confirmed; the model is told why and answers in its own words.</summary>
     public sealed record TellModel(string Message) : FlowOutcome;
@@ -167,16 +166,14 @@ public sealed class FeeAdjustmentFlow(
             ["tool"] = JsonSerializer.SerializeToElement(toolName, Json),
         };
 
-        return new FlowOutcome.AskUser(new AGUIInterrupt
-        {
-            Id = captured.Adjustment.AdjustmentId,
-            Message = captured.Question,
-            Reason = "approval_required",
-            ToolCallId = callId,
-            ExpiresAt = captured.ExpiresAt?.ToString("O"),
-            ResponseSchema = captured.AnswerSchema,
-            Metadata = JsonSerializer.SerializeToElement(metadata, Json),
-        });
+        return new FlowOutcome.AskUser(new PersonQuestion(
+            Id: captured.Adjustment.AdjustmentId,
+            Message: captured.Question,
+            Reason: "approval_required",
+            ToolCallId: callId,
+            ExpiresAt: captured.ExpiresAt?.ToString("O"),
+            ResponseSchema: captured.AnswerSchema,
+            Metadata: JsonSerializer.SerializeToElement(metadata, Json)));
     }
 
     /// <summary>A proposal in this conversation whose review stopped to ask something.</summary>

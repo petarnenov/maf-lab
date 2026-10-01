@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { CodeSnippet } from '../api/types';
 import { jsonResponse, renderWithProviders, run, streamResponse } from '../test/render';
+import { agentFetch } from '../test/agentFetch';
 import { ChatPage } from './ChatPage';
 import { codeSnippetsOf, groupByFile } from './codeSnippets';
 import { CodeSnippetsPanel } from './CodeSnippetsPanel';
@@ -69,7 +70,7 @@ describe('CodeSnippetsPanel', () => {
         refineHint: null,
       }),
     );
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('fetch', agentFetch(fetchMock));
 
     renderWithProviders(<Harness question="where is the tenant filter built?" />);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -92,8 +93,10 @@ describe('CodeSnippetsPanel', () => {
   it('says so when nothing matches, and when code search is down', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () =>
-        jsonResponse({ results: [], totalMatches: 0, truncated: false, refineHint: 'Rephrase.' }),
+      agentFetch(
+        vi.fn(async () =>
+          jsonResponse({ results: [], totalMatches: 0, truncated: false, refineHint: 'Rephrase.' }),
+        ),
       ),
     );
     const { unmount } = renderWithProviders(
@@ -104,7 +107,9 @@ describe('CodeSnippetsPanel', () => {
 
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => jsonResponse({ detail: 'Code search is unavailable right now.' }, 503)),
+      agentFetch(
+        vi.fn(async () => jsonResponse({ detail: 'Code search is unavailable right now.' }, 503)),
+      ),
     );
     renderWithProviders(<CodeSnippetsPanel question="anything" active />);
     expect(await screen.findByRole('alert')).toHaveTextContent('Code search is unavailable');
@@ -126,7 +131,7 @@ describe('ChatPage right pane', () => {
       }
       return streamResponse([run.delta('An answer.'), run.done('conv-1', `t-${Math.random()}`)]);
     });
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('fetch', agentFetch(fetchMock));
 
     renderWithProviders(<ChatPage />);
     const tabs = screen.getByRole('tablist', { name: 'Right pane' });
@@ -170,7 +175,7 @@ describe('Code snippets the answer used (add-codebase-domain)', () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({ results: [], totalMatches: 0, truncated: false, refineHint: null }),
     );
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('fetch', agentFetch(fetchMock));
 
     renderWithProviders(
       <CodeSnippetsPanel
@@ -192,8 +197,10 @@ describe('Code snippets the answer used (add-codebase-domain)', () => {
   it('labels fetched code as related, not used by the answer', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () =>
-        jsonResponse({ results: [filter], totalMatches: 1, truncated: false, refineHint: null }),
+      agentFetch(
+        vi.fn(async () =>
+          jsonResponse({ results: [filter], totalMatches: 1, truncated: false, refineHint: null }),
+        ),
       ),
     );
     renderWithProviders(<CodeSnippetsPanel question="where is the tenant filter built?" active />);
@@ -219,7 +226,7 @@ describe('ChatPage with an answer from the codebase', () => {
         run.done('conv-1', 't1'),
       ]);
     });
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('fetch', agentFetch(fetchMock));
 
     renderWithProviders(<ChatPage />);
     await userEvent.type(

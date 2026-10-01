@@ -256,16 +256,20 @@ export const CURRICULUM: CurriculumSection[] = [
       {
         concept: 'AG-UI event stream',
         summary:
-          'POST /api/chat streams standard AG-UI events over SSE — run lifecycle, text, tool calls — plus custom events for sources and the trace. The browser maps them with @ag-ui/core and renders every tool call as a card, not a spinner.',
-        paths: ['src/Maf.Lab.Api/Endpoints/ChatEndpoints.cs', 'web/src/chat/chatEvents.ts'],
+          "The chat agent is an Agent Framework AIAgent behind the official AG-UI server (MapAGUIServer); only the protocol's own events travel — run lifecycle, steps, text, tool calls, state, activities, interrupts — never a custom one. The browser reaches it through CopilotKit and its runtime, and renders every tool call as a card, not a spinner.",
+        paths: [
+          'src/Maf.Lab.Api/Agent/ChatAgent.cs',
+          'src/Maf.Lab.Api/Agent/AGUI/AGUIMappings.cs',
+          'web/src/agents/AgentsProvider.tsx',
+        ],
         spec: 'agui-stream',
         screen: CHAT,
       },
       {
         concept: 'React model: reducer over events',
         summary:
-          'The chat state is a useReducer over the event stream with idempotent steps, so a repeated tool-call start changes nothing. TanStack Query serves request–response screens; the stream has its own SSE reader.',
-        paths: ['web/src/chat/chatReducer.ts', 'web/src/chat/readChatStream.ts'],
+          "The chat state is a useReducer over the protocol's own events, as CopilotKit's agent delivers them, with idempotent steps, so a repeated tool-call start changes nothing. TanStack Query serves request–response screens; the run's trace is read from the trace API while it lasts.",
+        paths: ['web/src/chat/chatReducer.ts', 'web/src/chat/useChatStream.ts'],
         spec: 'chat-stream',
         screen: CHAT,
       },

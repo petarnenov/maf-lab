@@ -1,5 +1,12 @@
+import { EventType, type BaseEvent } from '@ag-ui/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ChatStreamEvent, HistoryTurn } from '../api/types';
+import type {
+  ConfirmationRequiredData,
+  DataCard,
+  FocusAccount,
+  HistoryTurn,
+  SourceRef,
+} from '../api/types';
 import {
   chatReducer,
   hydrateTurn,
@@ -11,14 +18,161 @@ import {
 const send = (state: ChatState = initialChatState) =>
   chatReducer(state, { type: 'send', userTurnId: 'u1', assistantTurnId: 'a1', text: 'How do I?' });
 
-const apply = (state: ChatState, ...events: ChatStreamEvent[]) =>
-  events.reduce((s, event) => chatReducer(s, { type: 'event', event }), state);
+/**
+ * What happened in a run, as these tests say it; each is put to the reducer as the protocol's own events
+ * (agui-protocol-only), which is all it reads.
+ */
+type Happened =
+  | { type: 'text_delta'; data: { text: string } }
+  | { type: 'reasoning_delta'; data: { text: string } }
+  | { type: 'reasoning_end' }
+  | {
+      type: 'tool_call_started';
+      data: { callId: string; toolName: string; argumentSummary: string };
+    }
+  | {
+      type: 'tool_call_finished';
+      data: {
+        callId: string;
+        toolName: string;
+        resultSummary: string;
+        sourceCount: number;
+        isError: boolean;
+      };
+    }
+  | { type: 'sources'; data: { sources: SourceRef[] } }
+  | { type: 'state'; data: { focus: FocusAccount | null } }
+  | { type: 'card'; data: DataCard }
+  | { type: 'confirmation_required'; data: ConfirmationRequiredData }
+  | { type: 'run_started'; data: { conversationId: string } }
+  | { type: 'done'; data: { conversationId: string; turnId: string; error?: string | null } };
+
+function official(happened: Happened): BaseEvent[] {
+  switch (happened.type) {
+    case 'text_delta':
+      return [
+        {
+          type: EventType.TEXT_MESSAGE_CONTENT,
+          messageId: 'm1',
+          delta: happened.data.text,
+        } as BaseEvent,
+      ];
+    case 'reasoning_delta':
+      return [
+        {
+          type: EventType.REASONING_MESSAGE_CONTENT,
+          messageId: 'r1',
+          delta: happened.data.text,
+        } as BaseEvent,
+      ];
+    case 'reasoning_end':
+      return [{ type: EventType.REASONING_END, messageId: 'r1' } as BaseEvent];
+    case 'tool_call_started':
+      return [
+        {
+          type: EventType.TOOL_CALL_START,
+          toolCallId: happened.data.callId,
+          toolCallName: happened.data.toolName,
+        } as BaseEvent,
+        {
+          type: EventType.TOOL_CALL_ARGS,
+          toolCallId: happened.data.callId,
+          delta: happened.data.argumentSummary,
+        } as BaseEvent,
+      ];
+    case 'tool_call_finished':
+      return [
+        {
+          type: EventType.TOOL_CALL_RESULT,
+          toolCallId: happened.data.callId,
+          messageId: happened.data.callId,
+          content: JSON.stringify({
+            tool: happened.data.toolName,
+            summary: happened.data.resultSummary,
+            sourceCount: happened.data.sourceCount,
+            isError: happened.data.isError,
+          }),
+        } as BaseEvent,
+      ];
+    case 'sources':
+      return [
+        {
+          type: EventType.TOOL_CALL_RESULT,
+          toolCallId: 'search',
+          messageId: 'search',
+          content: JSON.stringify({
+            tool: 'search_documents',
+            summary: 'done',
+            sources: happened.data.sources,
+          }),
+        } as BaseEvent,
+      ];
+    case 'state':
+      return [
+        { type: EventType.STATE_SNAPSHOT, snapshot: { focus: happened.data.focus } } as BaseEvent,
+      ];
+    case 'card':
+      return [{ type: EventType.ACTIVITY_SNAPSHOT, ...happened.data } as BaseEvent];
+    case 'confirmation_required':
+      return [
+        {
+          type: EventType.RUN_FINISHED,
+          threadId: 'conv-1',
+          runId: 't1',
+          outcome: {
+            type: 'interrupt',
+            interrupts: [
+              {
+                id: happened.data.adjustmentId,
+                reason: 'approval_required',
+                message: happened.data.question,
+                toolCallId: happened.data.callId,
+                expiresAt: happened.data.expiresAt ?? undefined,
+                metadata: {
+                  adjustment: happened.data.adjustment,
+                  state: happened.data.state,
+                  tool: happened.data.toolName,
+                },
+              },
+            ],
+          },
+        } as BaseEvent,
+      ];
+    case 'run_started':
+      return [
+        {
+          type: EventType.RUN_STARTED,
+          threadId: happened.data.conversationId,
+          runId: 'r1',
+        } as BaseEvent,
+      ];
+    case 'done':
+      return happened.data.error
+        ? [{ type: EventType.RUN_ERROR, message: happened.data.error } as BaseEvent]
+        : [
+            {
+              type: EventType.RUN_STARTED,
+              threadId: happened.data.conversationId,
+              runId: happened.data.turnId,
+            } as BaseEvent,
+            {
+              type: EventType.RUN_FINISHED,
+              threadId: happened.data.conversationId,
+              runId: happened.data.turnId,
+              outcome: { type: 'success' },
+            } as BaseEvent,
+          ];
+  }
+}
+
+const apply = (state: ChatState, ...events: Happened[]) =>
+  events.flatMap(official).reduce((s, event) => chatReducer(s, { type: 'event', event }), state);
 
 const assistant = (state: ChatState) => state.turns.at(-1) as AssistantTurn;
 
 afterEach(() => vi.useRealTimers());
 
-const started: ChatStreamEvent = {
+const started: Happened = {
   type: 'tool_call_started',
   data: {
     callId: 'c1',
@@ -26,7 +180,7 @@ const started: ChatStreamEvent = {
     argumentSummary: 'query="missing fee schedule"',
   },
 };
-const finished: ChatStreamEvent = {
+const finished: Happened = {
   type: 'tool_call_finished',
   data: {
     callId: 'c1',
@@ -36,7 +190,7 @@ const finished: ChatStreamEvent = {
     isError: false,
   },
 };
-const sources: ChatStreamEvent = {
+const sources: Happened = {
   type: 'sources',
   data: {
     sources: [
@@ -49,7 +203,7 @@ const sources: ChatStreamEvent = {
     ],
   },
 };
-const done: ChatStreamEvent = { type: 'done', data: { conversationId: 'conv-1', turnId: 't1' } };
+const done: Happened = { type: 'done', data: { conversationId: 'conv-1', turnId: 't1' } };
 
 describe('chatReducer', () => {
   it('adds a user turn and a streaming assistant turn on send', () => {
@@ -105,7 +259,8 @@ describe('chatReducer', () => {
     const turn = assistant(state);
     expect(turn.sources).toHaveLength(1);
     expect(turn.text).toBe('');
-    expect(turn.toolCalls).toHaveLength(0);
+    // Only the search that carried the sources; the call that started after the end is not there.
+    expect(turn.toolCalls.map((c) => c.callId)).toEqual(['search']);
   });
 
   it('records a finished call even if its start event was missed', () => {
@@ -300,10 +455,7 @@ describe('a write waiting for a person', () => {
       assistantTurnId: 'a1',
       text: 'adjust the fee',
     });
-    state = chatReducer(state, {
-      type: 'event',
-      event: { type: 'confirmation_required', data: confirmation(expiresAt) },
-    });
+    state = apply(state, { type: 'confirmation_required', data: confirmation(expiresAt) });
     return state;
   };
 
@@ -417,7 +569,7 @@ describe('a write waiting for a person', () => {
   });
 
   it('keeps data cards in arrival order and replaces one sent again', () => {
-    const card = (messageId: string, accountId: string): ChatStreamEvent => ({
+    const card = (messageId: string, accountId: string): Happened => ({
       type: 'card',
       data: { messageId, activityType: 'maf-lab/holdings', content: { accountId } },
     });

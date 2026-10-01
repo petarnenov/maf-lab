@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Records runs from the running stack into evals/ui-events.jsonl — the AG-UI frames as they came off the wire,
-# each with the state the browser should reach. The web reducer is tested against these rather than against
+# Records runs from the running stack into evals/ui-events.jsonl — the AG-UI frames as they came off the wire, the
+# way the browser receives them (through CopilotKit's runtime), and the run's trace as the trace API serves it, each
+# with the state the browser should reach. A custom event on the wire fails the capture (agui-protocol-only). The web reducer is tested against these rather than against
 # events a test author imagined, so re-run this whenever what the server emits changes.
 #
 # Usage: scripts/capture_ui_events.sh [base_url]   (default http://localhost:7171; the stack must be up)
@@ -26,43 +27,52 @@ def token(user, firm, role):
     return json.loads(post("/dev/token", {"userId": user, "firmId": firm, "role": role}))["token"]
 
 def run(access, message, thread=None):
-    """One turn, as the browser makes it: the frames in the order they arrived."""
+    """One turn, as the browser makes it: through CopilotKit's runtime, the frames in the order they arrived."""
+    run_id = "r_" + uuid.uuid4().hex[:12]
     body = {
-        "threadId": thread,
-        "runId": "r_" + uuid.uuid4().hex[:12],
+        "threadId": thread or "c_" + uuid.uuid4().hex,
+        "runId": run_id,
         "messages": [{"id": "u_" + uuid.uuid4().hex[:12], "role": "user", "content": message}],
+        "tools": [], "context": [], "state": {}, "forwardedProps": {},
     }
-    request = urllib.request.Request(BASE + "/api/chat", data=json.dumps(body).encode(), method="POST",
-                                     headers={"content-type": "application/json", "authorization": f"Bearer {access}"})
-    frames, name = [], None
+    request = urllib.request.Request(BASE + "/copilotkit/agent/chat/run", data=json.dumps(body).encode(), method="POST",
+                                     headers={"content-type": "application/json", "accept": "text/event-stream",
+                                              "authorization": f"Bearer {access}"})
+    frames = []
     with urllib.request.urlopen(request, timeout=300) as response:
         for raw in response:
             line = raw.decode().rstrip("\n")
-            if line.startswith("event:"):
-                name = line[6:].strip()
-            elif line.startswith("data:") and name:
-                frames.append({"event": name, "data": json.loads(line[5:].strip())})
-    return frames
+            if line.startswith("data:"):
+                data = json.loads(line[5:].strip())
+                frames.append({"event": data["type"], "data": data})
+    custom = [f for f in frames if f["event"] == "CUSTOM"]
+    if custom:
+        raise SystemExit(f"custom events on the wire: {[f['data'].get('name') for f in custom]}")
+    trace = json.loads(urllib.request.urlopen(urllib.request.Request(
+        BASE + f"/api/runs/{run_id}/trace", headers={"authorization": f"Bearer {access}"}), timeout=60).read())["events"]
+    return frames, trace
 
-def expected(frames):
-    """What the browser should end up showing, read off the frames themselves."""
+def expected(frames, trace):
+    """What the browser should end up showing, read off the frames and the trace themselves."""
     answer = "".join(f["data"].get("delta", "") for f in frames if f["event"] == "TEXT_MESSAGE_CONTENT")
     reasoning = "".join(f["data"].get("delta", "") for f in frames if f["event"] == "REASONING_MESSAGE_CONTENT")
     tools = [f["data"].get("toolCallName") for f in frames if f["event"] == "TOOL_CALL_START"]
-    sources, trace, pending = 0, 0, None
+    sources, pending = set(), None
     for frame in frames:
-        if frame["event"] == "CUSTOM":
-            if frame["data"].get("name") == "maf-lab/sources":
-                sources = len((frame["data"].get("value") or {}).get("sources") or [])
-            elif frame["data"].get("name") == "maf-lab/trace":
-                trace += 1
+        if frame["event"] == "TOOL_CALL_RESULT":
+            try:
+                content = json.loads(frame["data"].get("content") or "{}")
+            except ValueError:
+                content = {}
+            for source in (content.get("sources") or []) if isinstance(content, dict) else []:
+                sources.add((source.get("docId"), source.get("sectionPath")))
         if frame["event"] == "RUN_FINISHED":
             interrupts = (frame["data"].get("outcome") or {}).get("interrupts") or []
             if interrupts:
                 pending = {"id": interrupts[0].get("id"), "reason": interrupts[0].get("reason")}
     # Every frame gets a row in the monitor's AG-UI view, and the reasoning its own block in the chat.
-    return {"answer": answer, "reasoning": reasoning, "toolCalls": tools, "sources": sources,
-            "traceSteps": trace, "aguiFrames": len(frames), "pending": pending}
+    return {"answer": answer, "reasoning": reasoning, "toolCalls": tools, "sources": len(sources),
+            "traceSteps": len(trace), "aguiFrames": len(frames), "pending": pending}
 
 adam = token("adam", "firm-a", "ADVISOR")
 rows = []
@@ -76,8 +86,9 @@ for name, what, message in [
     # When the run happened. A recording carries real timestamps — a proposal's expiry, above all — so replaying
     # it a week later would otherwise watch them all go stale. The test sets its clock to this.
     at = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    frames = run(adam, message)
-    rows.append({"id": name, "what": what, "capturedAt": at, "frames": frames, "expect": expected(frames)})
+    frames, trace = run(adam, message)
+    rows.append({"id": name, "what": what, "capturedAt": at, "frames": frames, "trace": trace,
+                 "expect": expected(frames, trace)})
     print(f"{name}: {len(frames)} frames, {len(rows[-1]['expect']['toolCalls'])} tool call(s), "
           f"{rows[-1]['expect']['sources']} source(s), {len(rows[-1]['expect']['reasoning'])} reasoning chars, "
           f"pending={rows[-1]['expect']['pending'] is not None}")

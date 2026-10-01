@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { Route, Routes } from 'react-router';
 import { jsonResponse, renderWithProviders, run, sse, streamResponse } from '../test/render';
+import { agentFetch } from '../test/agentFetch';
 import { ChatPage } from './ChatPage';
 
 const emptyHistory = { conversations: [], nextCursor: null };
@@ -24,13 +25,13 @@ const adjustment = {
 const paused = () =>
   sse(EventType.RUN_FINISHED, {
     threadId: 'conv-1',
-    runId: 'r1',
-    result: { turnId: 't1' },
+    runId: 't1',
     outcome: {
       type: 'interrupt',
       interrupts: [
         {
           id: 'adj_1',
+          reason: 'approval_required',
           message: 'Apply a fee adjustment of -200.00 USD to A-1042 (Ridgeline Family Trust)?',
           toolCallId: 'c1',
           expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
@@ -57,7 +58,7 @@ async function propose(answer: string) {
       ? streamResponse([run.started(), ...run.text('I have put it to you.'), paused()])
       : streamResponse([run.started(), ...run.text(answer), run.done()]);
   });
-  vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('fetch', agentFetch(fetchMock));
 
   renderWithProviders(<ChatPage />);
   await userEvent.type(screen.getByLabelText('Message'), 'credit 200 off A-1042');
@@ -116,12 +117,14 @@ describe('ChatPage reopened with a write waiting', () => {
   const reopen = (body: { pending: unknown }) => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string) => {
-        if (url.endsWith('/pending')) return jsonResponse(body);
-        if (url === '/api/conversations/conv-7') return jsonResponse(detail);
-        if (url.startsWith('/api/conversations')) return jsonResponse(emptyHistory);
-        return jsonResponse({});
-      }),
+      agentFetch(
+        vi.fn(async (url: string) => {
+          if (url.endsWith('/pending')) return jsonResponse(body);
+          if (url === '/api/conversations/conv-7') return jsonResponse(detail);
+          if (url.startsWith('/api/conversations')) return jsonResponse(emptyHistory);
+          return jsonResponse({});
+        }),
+      ),
     );
     renderWithProviders(
       <Routes>
@@ -176,7 +179,11 @@ describe('ChatPage with a write waiting', () => {
 
     expect(await screen.findByText(/Applied\. The fee on A-1042/)).toBeInTheDocument();
     expect(JSON.parse(bodies.at(-1)!).resume).toEqual([
-      { interruptId: 'adj_1', payload: { approve: true, idempotencyKey: 'adj_1:approve' } },
+      {
+        interruptId: 'adj_1',
+        status: 'resolved',
+        payload: { approve: true, idempotencyKey: 'adj_1:approve' },
+      },
     ]);
     expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
   });
@@ -216,11 +223,15 @@ describe('ChatPage with a write waiting', () => {
         return streamResponse([run.started(), ...run.text('I have put it to you.'), paused()]);
       }
       expect(JSON.parse(init!.body as string).resume).toEqual([
-        { interruptId: 'adj_1', payload: { approve: true, idempotencyKey: 'adj_1:approve' } },
+        {
+          interruptId: 'adj_1',
+          status: 'resolved',
+          payload: { approve: true, idempotencyKey: 'adj_1:approve' },
+        },
       ]);
       return resume.response;
     });
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('fetch', agentFetch(fetchMock));
 
     renderWithProviders(<ChatPage />);
     await userEvent.type(screen.getByLabelText('Message'), 'credit 200 off A-1042');
@@ -263,14 +274,14 @@ describe('ChatPage with a write waiting', () => {
 
     expect(await screen.findByText(/Applied\. The fee on A-1042/)).toBeInTheDocument();
 
-    // The answer is a run of its own, and its frames reach the monitor like any other run's.
+    // The answer is a run of its own, and its frames reach the monitor like any other run's — the protocol's own events
+    // only: its trace is read from the trace API, not carried on the stream (agui-protocol-only).
     await userEvent.click(within(monitor).getByRole('tab', { name: 'AG-UI' }));
     const frames = within(
       await within(monitor).findByRole('list', { name: 'AG-UI frames' }),
     ).getAllByRole('listitem');
     expect(frames.map((f) => f.getAttribute('data-type'))).toEqual([
       'RUN_STARTED',
-      'CUSTOM',
       'TOOL_CALL_START',
       'TOOL_CALL_ARGS',
       'TOOL_CALL_END',

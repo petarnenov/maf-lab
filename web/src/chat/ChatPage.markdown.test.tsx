@@ -4,6 +4,7 @@ import { Route, Routes } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import type { ConversationDetail } from '../api/types';
 import { jsonResponse, renderWithProviders, run, streamResponse } from '../test/render';
+import { agentFetch } from '../test/agentFetch';
 import { ChatPage } from './ChatPage';
 
 const answer =
@@ -13,14 +14,16 @@ describe('ChatPage markdown answers', () => {
   it('renders a streamed answer as markdown, with no raw markers left', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string) =>
-        url === '/api/chat'
-          ? streamResponse([
-              run.delta(answer.slice(0, 30)),
-              run.delta(answer.slice(30)),
-              run.done(),
-            ])
-          : jsonResponse({}, 404),
+      agentFetch(
+        vi.fn(async (url: string) =>
+          url === '/api/chat'
+            ? streamResponse([
+                run.delta(answer.slice(0, 30)),
+                run.delta(answer.slice(30)),
+                run.done(),
+              ])
+            : jsonResponse({}, 404),
+        ),
       ),
     );
     renderWithProviders(<ChatPage />);
@@ -59,12 +62,14 @@ describe('ChatPage markdown answers', () => {
     };
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string) => {
-        if (url.startsWith('/api/conversations?'))
-          return jsonResponse({ conversations: [], nextCursor: null });
-        if (url === '/api/conversations/conv-5') return jsonResponse(detail);
-        return jsonResponse({}, 404);
-      }),
+      agentFetch(
+        vi.fn(async (url: string) => {
+          if (url.startsWith('/api/conversations?'))
+            return jsonResponse({ conversations: [], nextCursor: null });
+          if (url === '/api/conversations/conv-5') return jsonResponse(detail);
+          return jsonResponse({}, 404);
+        }),
+      ),
     );
     renderWithProviders(
       <Routes>

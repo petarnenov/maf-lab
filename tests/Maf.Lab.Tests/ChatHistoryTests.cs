@@ -106,7 +106,7 @@ public class ChatHistoryTests
         using var api = new ApiFactory(ApiFactory.ProceduralModel("Assign the schedule and re-run."));
         var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
         var done = (await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing"))[^1].Data;
-        var (conversationId, turnId) = (done.GetProperty("threadId").GetString()!, done.GetProperty("result").GetProperty("turnId").GetString()!);
+        var (conversationId, turnId) = (done.GetProperty("threadId").GetString()!, done.GetProperty("runId").GetString()!);
         await adam.PostAsJsonAsync("/api/feedback", new FeedbackRequest(conversationId, turnId, FeedbackKind.WrongDocument, null), Ct);
 
         var detail = await adam.GetFromJsonAsync<ConversationDetail>($"/api/conversations/{conversationId}", Json, Ct);
@@ -180,7 +180,7 @@ public class ChatHistoryTests
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
         var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
         var done = (await ApiFactory.ChatAsync(adam, "explain breakpoint pricing"))[^1].Data;
-        var (conversationId, turnId) = (done.GetProperty("threadId").GetString()!, done.GetProperty("result").GetProperty("turnId").GetString()!);
+        var (conversationId, turnId) = (done.GetProperty("threadId").GetString()!, done.GetProperty("runId").GetString()!);
         var url = $"/api/conversations/{conversationId}";
 
         Assert.Equal(HttpStatusCode.BadRequest, (await adam.PatchAsJsonAsync(url, new RenameConversationRequest("   "), Ct)).StatusCode);

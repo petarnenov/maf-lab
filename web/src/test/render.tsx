@@ -4,6 +4,7 @@ import { render } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { MemoryRouter } from 'react-router';
 import type { Role } from '../api/types';
+import { AgentsProvider } from '../agents/AgentsProvider';
 import { AuthProvider } from '../auth/AuthProvider';
 import type { Session } from '../auth/session';
 
@@ -25,7 +26,9 @@ export function renderWithProviders(
   return render(
     <QueryClientProvider client={queryClient}>
       <AuthProvider initialSession={session}>
-        <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
+        <AgentsProvider>
+          <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
+        </AgentsProvider>
       </AuthProvider>
     </QueryClientProvider>,
   );
@@ -92,18 +95,19 @@ export const run = {
       content: JSON.stringify({ tool, summary, sourceCount, isError }),
     }),
 
+  /**
+   * The sources of the search just before: the server carries them in that search's result, and the test runtime
+   * (agentFetch) puts them there.
+   */
   sources: (sources: unknown[]) =>
     sse(EventType.CUSTOM, { name: 'maf-lab/sources', value: { sources } }),
 
+  /** A trace event of the run: never on the stream; the test runtime (agentFetch) serves it from the trace API. */
   trace: (event: unknown) => sse(EventType.CUSTOM, { name: 'maf-lab/trace', value: event }),
 
+  /** The run's end. The turn a run records is known by the run's id (agui-protocol-only). */
   done: (threadId = 'conv-1', turnId = 't1') =>
-    sse(EventType.RUN_FINISHED, {
-      threadId,
-      runId: 'r1',
-      outcome: { type: 'success' },
-      result: { turnId },
-    }),
+    sse(EventType.RUN_FINISHED, { threadId, runId: turnId, outcome: { type: 'success' } }),
 
   error: (message: string) => sse(EventType.RUN_ERROR, { message }),
 };

@@ -20,8 +20,12 @@ describe('TurnFeedback', () => {
         'true',
       ),
     );
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    // The app's agents start up beside it; what this button sends is one feedback post.
+    const posts = (fetchMock.mock.calls as unknown as [string, RequestInit][]).filter(
+      ([u]) => !u.startsWith('/copilotkit'),
+    );
+    expect(posts).toHaveLength(1);
+    const [url, init] = posts[0];
     expect(url).toBe('/api/feedback');
     expect(init.method).toBe('POST');
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer token-ADVISOR');

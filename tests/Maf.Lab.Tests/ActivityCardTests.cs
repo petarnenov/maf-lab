@@ -38,13 +38,13 @@ public class ActivityCardTests
     {
         Assert.Equal(
             [(PortfolioTools.AumHistory, "maf-lab/aum-history"), (PortfolioTools.GetPortfolio, "maf-lab/holdings"), (PortfolioTools.ListAccounts, "maf-lab/accounts")],
-            AGUIStream.Cards.OrderBy(c => c.Key, StringComparer.Ordinal).Select(c => (c.Key, c.Value.ActivityType)));
+            Maf.Lab.Api.Agent.DataCards.Tools.OrderBy(c => c.Key, StringComparer.Ordinal).Select(c => (c.Key, c.Value.ActivityType)));
     }
 
     [Fact]
     public void A_carded_result_type_carries_no_free_text()
     {
-        foreach (var (_, (_, type)) in AGUIStream.Cards)
+        foreach (var (_, (_, type)) in Maf.Lab.Api.Agent.DataCards.Tools)
         {
             foreach (var (owner, property) in StringProperties(type))
             {

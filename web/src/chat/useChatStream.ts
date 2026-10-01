@@ -1,20 +1,37 @@
+import type { AbstractAgent } from '@ag-ui/client';
+import type { BaseEvent } from '@ag-ui/core';
+import { useCopilotKit } from '@copilotkit/react-core/v2/context';
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { authHeaders } from '../api/client';
-import type { ConversationDetail, FocusAccount, PendingProposal } from '../api/types';
+import type { ConversationDetail, FocusAccount, PendingProposal, TraceEvent } from '../api/types';
+import { agentNamed } from '../agents/agents';
 import { useAuth } from '../auth/useAuth';
-import { chatReducer, initialChatState } from './chatReducer';
-import { readChatStream } from './readChatStream';
-import { expired, type FailureKind } from './chatReducer';
+import { chatReducer, initialChatState, type ChatAction } from './chatReducer';
+import { expired, faceOf, type FailureKind } from './chatReducer';
 
 let counter = 0;
 const nextId = (prefix: string) =>
   `${prefix}-${Date.now().toString(36)}-${(counter++).toString(36)}`;
 
+/** The chat agent, as CopilotKit's runtime names it (agui-protocol-only). */
+export const CHAT_AGENT = 'chat';
+
+/** How often the monitor reads a live run's trace. */
+const TRACE_POLL_MS = 500;
+
+/** A new conversation's id: AG-UI clients name their own threads, and the server claims it for this user. */
+const newThreadId = () => `c_${crypto.randomUUID().replaceAll('-', '')}`;
+
+/**
+ * The chat, as the user sees it, fed by the chat agent through CopilotKit (agui-protocol-only): every event the run
+ * carries goes to the screen exactly as the protocol defines it, and the run's trace is read from the trace API.
+ */
 export function useChatStream() {
   const { session } = useAuth();
   const token = session?.token ?? null;
+  const { copilotkit } = useCopilotKit();
   const [state, dispatch] = useReducer(chatReducer, initialChatState);
-  const abortRef = useRef<AbortController | null>(null);
+  const agentRef = useRef<AbstractAgent | null>(null);
   const conversationRef = useRef<string | undefined>(undefined);
   const focusRef = useRef<FocusAccount | null>(null);
 
@@ -26,77 +43,104 @@ export function useChatStream() {
     focusRef.current = state.focus;
   }, [state.focus]);
 
-  useEffect(() => () => abortRef.current?.abort(), []);
+  /**
+   * Stops the run in progress, through the protocol's client: CopilotKit asks its runtime to stop the thread, which
+   * ends the run's request to the agent, which cancels the run there.
+   */
+  const stop = useCallback(() => {
+    const agent = agentRef.current;
+    agentRef.current = null;
+    if (agent?.isRunning) copilotkit.stopAgent({ agent });
+  }, [copilotkit]);
+
+  useEffect(() => stop, [stop]);
+
+  /** One run of the chat agent. Resolves with whether the run ended the way the protocol says a run ends. */
+  const run = useCallback(
+    async (
+      assistantTurnId: string,
+      prepare: (agent: AbstractAgent) => void,
+      resume?: { interruptId: string; status: 'resolved'; payload: unknown }[],
+      observe?: (event: BaseEvent) => void,
+    ): Promise<boolean> => {
+      stop();
+      // A run of its own: the run it replaces may still be winding down on the agent it used.
+      const agent: AbstractAgent | undefined = (await agentNamed(copilotkit, CHAT_AGENT))?.clone();
+      if (!agent) {
+        dispatch({
+          type: 'stream_error',
+          message: 'The assistant is unavailable. Try again in a moment.',
+          kind: 'unavailable',
+        });
+        return false;
+      }
+      agentRef.current = agent;
+      const runId = nextId('r');
+      prepare(agent);
+      const trace = liveTrace(runId, assistantTurnId, token, dispatch);
+      let seq = 0;
+      const startedAt = performance.now();
+      let ended = false;
+      let failure: [string, FailureKind] | null = null;
+      const subscription = agent.subscribe({
+        onEvent: ({ event }: { event: BaseEvent }) => {
+          dispatch({ type: 'frame', frame: frameOf(++seq, performance.now() - startedAt, event) });
+          dispatch({ type: 'event', event });
+          observe?.(event);
+          if (event.type === 'RUN_FINISHED' || event.type === 'RUN_ERROR') ended = true;
+        },
+        onRunFailed: ({ error }: { error: Error }) => {
+          failure = failureOf(error);
+        },
+      });
+      try {
+        await copilotkit.runAgent({ agent, runId, ...(resume ? { resume } : {}) });
+      } catch (error) {
+        failure ??= failureOf(error);
+      } finally {
+        subscription.unsubscribe();
+        // The rest of the trace is read once more without holding up the turn.
+        void trace.stop();
+      }
+      if (agentRef.current !== agent) return ended;
+      agentRef.current = null;
+      if (!ended) {
+        const [message, kind] = failure ?? [
+          'The answer stopped part-way. Send it again.',
+          'unavailable',
+        ];
+        dispatch({ type: 'stream_error', message, kind });
+      }
+      return ended;
+    },
+    [copilotkit, token, stop],
+  );
 
   const send = useCallback(
     async (message: string) => {
       const text = message.trim();
       if (!text) return;
-
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
-
-      dispatch({ type: 'send', userTurnId: nextId('u'), assistantTurnId: nextId('a'), text });
-
-      const request = {
-        threadId: conversationRef.current ?? null,
-        runId: nextId('r'),
+      const assistantTurnId = nextId('a');
+      dispatch({ type: 'send', userTurnId: nextId('u'), assistantTurnId, text });
+      const threadId = conversationRef.current ?? newThreadId();
+      conversationRef.current = threadId;
+      await run(assistantTurnId, (agent) => {
+        agent.threadId = threadId;
         // The run's AG-UI state: the account in focus as this screen holds it (add-focus-state).
-        state: { focus: focusRef.current },
-        messages: [{ id: nextId('u'), role: 'user', content: text }],
-      };
-
-      try {
-        const response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'text/event-stream',
-            ...authHeaders(token),
-          },
-          body: JSON.stringify(request),
-          signal: controller.signal,
-        });
-
-        if (!response.ok || !response.body) {
-          const [message, kind] = failure(response.status);
-          dispatch({ type: 'stream_error', message, kind });
-          return;
-        }
-
-        const sawDone = await readChatStream(
-          response.body,
-          (event) => dispatch({ type: 'event', event }),
-          (frame) => dispatch({ type: 'event', event: { type: 'agui_frame', data: frame } }),
-        );
-        if (!sawDone) {
-          dispatch({
-            type: 'stream_error',
-            message: 'The answer stopped part-way. Send it again.',
-            kind: 'unavailable',
-          });
-        }
-      } catch {
-        if (controller.signal.aborted) return;
-        dispatch({
-          type: 'stream_error',
-          message: 'The connection to the assistant was lost. Send it again.',
-          kind: 'unavailable',
-        });
-      }
+        agent.setState({ focus: focusRef.current });
+        agent.addMessage({ id: nextId('u'), role: 'user', content: text });
+      });
     },
-    [token],
+    [run],
   );
 
   const reset = useCallback(() => {
-    abortRef.current?.abort();
+    stop();
     conversationRef.current = undefined;
     focusRef.current = null;
     dispatch({ type: 'reset' });
-  }, []);
+  }, [stop]);
 
-  /** Replaces the chat with a stored conversation; further messages continue it. */
   /**
    * A person's answer to a waiting write: a run that resumes the interrupt. The answer arrives in the
    * conversation like any other, and what became of the proposal is read from what the run said.
@@ -109,73 +153,31 @@ export function useChatStream() {
       // The same answer to the same proposal is the same attempt, however many times the stream drops on the
       // way. The key says so; the server then replays its first answer rather than applying anything twice.
       const idempotencyKey = keyFor(adjustmentId, approve);
-
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
-
       const assistantTurnId = nextId('a');
       // Opens a streaming assistant turn so the monitor panel follows the answer run.
       dispatch({ type: 'start_answer', assistantTurnId });
       dispatch({ type: 'answering', adjustmentId });
 
-      try {
-        const response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'text/event-stream',
-            ...authHeaders(token),
-          },
-          body: JSON.stringify({
-            threadId: conversationId,
-            runId: nextId('r'),
-            messages: [],
-            resume: [{ interruptId: adjustmentId, payload: { approve, idempotencyKey } }],
-          }),
-          signal: controller.signal,
-        });
-
-        if (!response.ok || !response.body) {
-          dispatch({
-            type: 'stream_error',
-            message: 'The assistant could not process the answer.',
-            kind: 'unavailable',
-          });
-          dispatch({ type: 'answered', adjustmentId, outcome: 'gone' });
-          return;
-        }
-
-        // Pipe events through the normal reducer pipeline so the monitor receives live trace events.
-        // Also accumulate text deltas to determine the outcome.
-        let said = '';
-        const sawDone = await readChatStream(
-          response.body,
-          (event) => {
-            dispatch({ type: 'event', event });
-            if (event.type === 'text_delta') said += event.data.text;
-          },
-          (frame) => dispatch({ type: 'event', event: { type: 'agui_frame', data: frame } }),
-        );
-        if (!sawDone) {
-          dispatch({
-            type: 'stream_error',
-            message: 'The answer stopped part-way. Try again.',
-            kind: 'unavailable',
-          });
-        }
-        dispatch({ type: 'answered', adjustmentId, outcome: outcomeOf(said, approve) });
-      } catch {
-        if (controller.signal.aborted) return;
-        dispatch({
-          type: 'stream_error',
-          message: 'The connection was lost. Try again.',
-          kind: 'unavailable',
-        });
-        dispatch({ type: 'answered', adjustmentId, outcome: 'gone' });
-      }
+      let said = '';
+      const ended = await run(
+        assistantTurnId,
+        (agent) => {
+          agent.threadId = conversationId;
+          agent.setMessages([]);
+        },
+        [{ interruptId: adjustmentId, status: 'resolved', payload: { approve, idempotencyKey } }],
+        (event) => {
+          if (event.type === 'TEXT_MESSAGE_CONTENT')
+            said += (event as BaseEvent & { delta: string }).delta;
+        },
+      );
+      dispatch({
+        type: 'answered',
+        adjustmentId,
+        outcome: ended ? outcomeOf(said, approve) : 'gone',
+      });
     },
-    [token],
+    [run],
   );
 
   /** A person opening or closing a turn's reasoning; from then on the block is theirs, not the answer's. */
@@ -183,17 +185,20 @@ export function useChatStream() {
     dispatch({ type: 'toggle_reasoning', turnId, open });
   }, []);
 
-  const hydrate = useCallback((detail: ConversationDetail) => {
-    abortRef.current?.abort();
-    conversationRef.current = detail.conversationId;
-    focusRef.current = detail.focus ?? null;
-    dispatch({
-      type: 'hydrate',
-      conversationId: detail.conversationId,
-      turns: detail.turns,
-      focus: detail.focus ?? null,
-    });
-  }, []);
+  const hydrate = useCallback(
+    (detail: ConversationDetail) => {
+      stop();
+      conversationRef.current = detail.conversationId;
+      focusRef.current = detail.focus ?? null;
+      dispatch({
+        type: 'hydrate',
+        conversationId: detail.conversationId,
+        turns: detail.turns,
+        focus: detail.focus ?? null,
+      });
+    },
+    [stop],
+  );
 
   /** Chooses the account in focus, or clears it; it goes with the next message and starts nothing itself. */
   const setFocus = useCallback((focus: FocusAccount | null) => {
@@ -248,12 +253,74 @@ function outcomeOf(said: string, approve: boolean): 'applied' | 'declined' | 'go
   return approve ? 'applied' : 'declined';
 }
 
+/** What to say about a run that failed before it reached its agent, by the status the client carried. */
+export function failureOf(error: unknown): [string, FailureKind] {
+  return faceOf(statusOf(error));
+}
+
+/** The HTTP status a failed run reports, however the client carried it. */
+function statusOf(error: unknown): number | undefined {
+  if (error && typeof error === 'object') {
+    const e = error as { status?: unknown; statusCode?: unknown; message?: unknown };
+    if (typeof e.status === 'number') return e.status;
+    if (typeof e.statusCode === 'number') return e.statusCode;
+    const match = typeof e.message === 'string' ? /\b(4\d\d|5\d\d)\b/.exec(e.message) : null;
+    if (match) return Number(match[1]);
+  }
+  return undefined;
+}
+
+/** One event of a run as the monitor's event log shows it: what crossed the wire, in order, with its size. */
+function frameOf(seq: number, atMs: number, event: BaseEvent) {
+  const payload = JSON.parse(JSON.stringify(event)) as Record<string, unknown>;
+  return {
+    seq,
+    atMs: Math.round(atMs),
+    type: event.type,
+    bytes: JSON.stringify(event).length,
+    payload,
+  };
+}
+
 /**
- * What to say, and which of the three faces to say it with. A refusal says only that it was refused: why is
- * the server's business and telling a caller would be telling them about someone else's data.
+ * Follows a run's trace while it runs: the trace API, polled, from wherever the run is (agui-protocol-only — the
+ * trace no longer travels on the run's stream). Stopping reads once more, so the end of the trace is not lost.
  */
-function failure(status: number): [string, FailureKind] {
-  if (status === 401) return ['Not signed in — pick a dev persona.', 'refused'];
-  if (status === 403 || status === 404) return ['That conversation is not available.', 'refused'];
-  return ['The assistant is unavailable. Try again in a moment.', 'unavailable'];
+function liveTrace(
+  runId: string,
+  turnKey: string,
+  token: string | null,
+  dispatch: (action: ChatAction) => void,
+) {
+  let after = 0;
+  let stopped = false;
+  let reading: Promise<void> = Promise.resolve();
+  const readOnce = async () => {
+    try {
+      const response = await fetch(`/api/runs/${encodeURIComponent(runId)}/trace?after=${after}`, {
+        headers: authHeaders(token),
+      });
+      if (!response.ok) return;
+      const body = (await response.json()) as { events: TraceEvent[] };
+      const fresh = body.events.filter((e) => e.seq > after);
+      if (fresh.length > 0) {
+        after = fresh[fresh.length - 1].seq;
+        dispatch({ type: 'live_trace', turnKey, events: fresh });
+      }
+    } catch {
+      // The monitor is a view; a missed read is caught up by the next one.
+    }
+  };
+  // One read at a time, so each picks up where the last one stopped.
+  const read = () => (reading = reading.then(readOnce));
+  const timer = setInterval(() => {
+    if (!stopped) void read();
+  }, TRACE_POLL_MS);
+  return {
+    stop: () => {
+      stopped = true;
+      clearInterval(timer);
+      return read();
+    },
+  };
 }

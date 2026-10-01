@@ -28,10 +28,15 @@ production system.
   corpus, persisted vocabulary). No external service.
 - Frontend: React (latest), TypeScript, Vite, React Router, TanStack Query
   (React Query), Vitest + Testing Library. No UI framework required; plain
-  CSS modules are fine.
+  CSS modules are fine. Agents are reached only through CopilotKit
+  (`@copilotkit/react-core`, headless) and its runtime, on the AG-UI
+  protocol's own events (agui-protocol-only).
+- Agents to browser: every agent is an Agent Framework `AIAgent` behind the
+  Agent Framework's AG-UI server (`MapAGUIServer`); only official AG-UI
+  events, built only by the official libraries — never a custom event.
 - Containers: Docker Compose — lb (nginx, the one entry point on 7171),
   api (as the host user), api-data-init, mcp-retrieval, mcp-portfolio,
-  mcp-code, compliance, test-agent, coverage-runner, web, qdrant,
+  mcp-code, compliance, test-agent, coverage-runner, web, copilot-runtime, qdrant,
   ollama, ollama-init, redis, otel-collector, prometheus, jaeger, and
   the dev-only inspectors a2a-inspector, mcp-inspector and redis-insight
   (profile `inspectors`, off in CI). One command (`make`) brings
@@ -52,6 +57,7 @@ maf-lab/
   .github/                    GitHub Actions workflows (ci, evals) and the Copilot instructions
   .vscode/                    Compound api + web debugging, and tasks for compose up, index and eval
   compose/                    docker-compose.yml, the nginx load balancer, the Ollama stub for CI, OpenTelemetry config, seed data
+  copilot-runtime/            CopilotKit's runtime (Node), wiring only: the web reaches the api's AG-UI agents through it; the AG-UI conformance check
   data/                       Sample corpus: docs/, procedures/, code/ per tenant + shared
   data-portfolio/             Portfolio domain corpus, same tenant layout, indexed into its own collection
   docs/                       HTTP API, trace events, telemetry and shared-state references; rules; screenshots; docs-sync.toml
@@ -60,7 +66,7 @@ maf-lab/
   scripts/                    The multi-line logic behind make targets (bash, and Python for docs and corpus stats)
   src/                        .NET projects, one per service or shared library
     Maf.Lab.A2A/              A2A code both agents share: partner identity, the signed card, the 1.0 wire format, the request handler
-    Maf.Lab.Api/              ASP.NET Core host: the agent, chat endpoints (AG-UI over SSE), history, feedback, admin, A2A
+    Maf.Lab.Api/              ASP.NET Core host: the agents behind the Agent Framework's AG-UI server (MapAGUIServer), history, feedback, admin, A2A
     Maf.Lab.CodeSearch/       MCP server over the repository itself: search_codebase, ask_codebase (own collection)
     Maf.Lab.ComplianceAgent/  The compliance reviewer: a second agent, an A2A server under /compliance
     Maf.Lab.CoverageRunner/   The coverage runner: builds and tests a commit plus a diff with coverage, with no secrets and no egress

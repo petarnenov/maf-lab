@@ -92,8 +92,10 @@ public class RunProtocolTests
     }
 
     [Fact]
-    public async Task A_run_can_be_stopped_and_nothing_runs_after()
+    public async Task A_run_stopped_by_its_client_ends_and_nothing_runs_after()
     {
+        // A stop is the client walking away from the request (agui-protocol-only): there is no stop endpoint, and the run's
+        // token is the request's own, so the replica serving the request is always the one that stops.
         var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var tools = new FakeToolSource
@@ -106,88 +108,42 @@ public class RunProtocolTests
         };
         using var api = new ApiFactory(ApiFactory.ProceduralModel(), tools);
         var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        using var stop = new CancellationTokenSource();
 
-        var run = ApiFactory.ChatAsync(client, "what is the procedure when a fee schedule is missing", runId: "r_stop");
+        var run = ApiFactory.ChatAsync(client, "what is the procedure when a fee schedule is missing", runId: "r_stop", cancel: stop.Token);
         await reached.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
-
-        var stop = await client.PostAsync("/api/chat/r_stop/stop", null, Ct);
-        Assert.Equal(HttpStatusCode.Accepted, stop.StatusCode);
-
+        await stop.CancelAsync();
         release.TrySetResult();
-        var events = await run.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run.WaitAsync(TimeSpan.FromSeconds(10), Ct));
 
-        // The turn stopped where it was: one tool had begun, nothing was invoked after the stop, and the run
-        // says it was cancelled rather than that it succeeded.
+        // The turn stopped where it was: one tool had begun, nothing was invoked after the stop, and the run is kept as
+        // cancelled rather than answered.
+        await WaitUntil(async () => (await api.Runs.GetAsync("r_stop", Ct))?.Outcome == Maf.Lab.Domain.SharedState.RunOutcomes.Cancelled);
         Assert.Equal(["search_documents"], tools.Invocations);
-        var outcome = events[^1].Data.GetProperty("outcome").GetProperty("type").GetString();
-        Assert.Equal("cancelled", outcome);
     }
 
     [Fact]
-    public void Walking_away_from_the_stream_stops_the_run()
+    public async Task A_run_id_used_before_starts_no_run()
     {
-        // A run's token hangs off the request's own. When the client goes, the run goes with it — which is why
-        // abandoning the stream needs no stop request. The in-memory test host does not abort a request the way
-        // a real socket does, so the end-to-end version of this is a live check.
-        var registry = new Maf.Lab.Api.Agent.Streaming.RunRegistry();
-        using var request = new CancellationTokenSource();
-        using var registration = registry.Start("r_abandoned", request.Token);
+        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var thread = ApiFactory.ThreadOf(await ApiFactory.ChatAsync(client, "hello", runId: "r_once"));
 
-        Assert.False(registration.Token.IsCancellationRequested);
-        Assert.True(registry.IsRunning("r_abandoned"));
-
-        request.Cancel();
-
-        Assert.True(registration.Token.IsCancellationRequested);
-    }
-
-    [Fact]
-    public async Task A_stop_that_lands_on_the_wrong_replica_finds_the_run_anyway()
-    {
-        // The balancer sends a stop round-robin, so with two replicas it lands on the other one every time.
-        // The replica that was asked resolves its own service and asks the rest.
-        var here = new Maf.Lab.Api.Agent.Streaming.RunRegistry();
-        var asked = new List<string>();
-        var stopper = new Maf.Lab.Api.Agent.Streaming.RunStopper(
-            here,
-            new StubResolver(new Dictionary<string, string[]> { ["api"] = ["10.0.0.5", "10.0.0.6"] }),
-            new StubHttpClientFactory(address => { asked.Add(address); return address == "10.0.0.6"; }),
-            Microsoft.Extensions.Options.Options.Create(new Maf.Lab.Api.Agent.Streaming.RunStopOptions()),
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<Maf.Lab.Api.Agent.Streaming.RunStopper>.Instance);
-
-        Assert.True(await stopper.StopAsync("r_elsewhere", "token", localOnly: false, Ct));
-        Assert.Equal(["10.0.0.5", "10.0.0.6"], asked);
-    }
-
-    [Fact]
-    public async Task A_stop_asked_to_stay_local_does_not_ask_anyone_else()
-    {
-        var asked = new List<string>();
-        var stopper = new Maf.Lab.Api.Agent.Streaming.RunStopper(
-            new Maf.Lab.Api.Agent.Streaming.RunRegistry(),
-            new StubResolver(new Dictionary<string, string[]> { ["api"] = ["10.0.0.5"] }),
-            new StubHttpClientFactory(address => { asked.Add(address); return true; }),
-            Microsoft.Extensions.Options.Options.Create(new Maf.Lab.Api.Agent.Streaming.RunStopOptions()),
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<Maf.Lab.Api.Agent.Streaming.RunStopper>.Instance);
-
-        Assert.False(await stopper.StopAsync("r_elsewhere", "token", localOnly: true, Ct));
-        Assert.Empty(asked);
-    }
-
-    [Fact]
-    public void A_finished_run_is_no_longer_stoppable()
-    {
-        var registry = new Maf.Lab.Api.Agent.Streaming.RunRegistry();
-        using (registry.Start("r_done", CancellationToken.None))
+        // The run id names the turn it recorded: a second run under it is refused before it starts.
+        var response = await client.PostAsJsonAsync("/api/chat", new
         {
-            Assert.True(registry.Stop("r_done"));
-        }
+            threadId = thread,
+            runId = "r_once",
+            messages = new[] { new { id = "u2", role = "user", content = "hello again" } },
+        }, Ct);
 
-        Assert.False(registry.Stop("r_done"));
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        await using var db = ChatApiTests.Db(api);
+        Assert.Equal(1, await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(db.Turns, Ct));
     }
 
     [Fact]
-    public async Task Stopping_a_run_this_instance_is_not_running_says_so()
+    public async Task There_is_no_stop_endpoint_beside_the_protocol()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
         var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
@@ -195,6 +151,16 @@ public class RunProtocolTests
         var response = await client.PostAsync("/api/chat/r_nothing/stop", null, Ct);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    private static async Task WaitUntil(Func<Task<bool>> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!await condition())
+        {
+            Assert.True(DateTime.UtcNow < deadline, "the condition was not met in time");
+            await Task.Delay(20, Ct);
+        }
     }
 
     [Fact]
@@ -210,17 +176,5 @@ public class RunProtocolTests
         }, Ct);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    }
-}
-
-/// <summary>A sibling that either has the run or does not.</summary>
-internal sealed class StubHttpClientFactory(Func<string, bool> owns) : IHttpClientFactory
-{
-    public HttpClient CreateClient(string name) => new(new Handler(owns));
-
-    private sealed class Handler(Func<string, bool> owns) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(owns(request.RequestUri!.Host) ? HttpStatusCode.Accepted : HttpStatusCode.NotFound));
     }
 }

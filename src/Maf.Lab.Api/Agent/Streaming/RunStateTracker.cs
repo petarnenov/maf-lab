@@ -1,5 +1,4 @@
 using System.Text.Json;
-using AGUI.Abstractions;
 using Maf.Lab.Domain.SharedState;
 using Maf.Lab.Domain.Tenancy;
 
@@ -12,11 +11,12 @@ namespace Maf.Lab.Api.Agent.Streaming;
 /// It is a snapshot and not a recording: the answer so far, the tool calls and how each ended, whether the run is
 /// waiting for a person, and how it finished. Frame-by-frame replay is a different thing and is not this.
 ///
-/// Written from the one loop every event of a run passes through, so there is a single writer per run and no
+/// Fed what the official server wrote, by the one reader of a run's events (AGUI.RunTap), so there is a single writer per run and no
 /// contention. Text arrives in many small pieces, so a save is made when something happens that a person would
 /// notice, and at most every <see cref="QuietMs"/> while only text is arriving.
 /// </summary>
-public sealed class RunStateTracker(IRunStateStore store, Principal principal, string conversationId, string runId, TimeProvider time)
+/// <param name="turnId">The turn the run records; null for a run that records none.</param>
+public sealed class RunStateTracker(IRunStateStore store, Principal principal, string conversationId, string runId, string? turnId, TimeProvider time)
 {
     /// <summary>How often a run that is only producing text writes its snapshot.</summary>
     public const int QuietMs = 500;
@@ -28,47 +28,70 @@ public sealed class RunStateTracker(IRunStateStore store, Principal principal, s
     private long _lastSaveMs;
     private string _outcome = RunOutcomes.Running;
     private string? _awaitingId;
-    private string? _turnId;
+    private readonly string? _turnId = turnId;
     private string? _error;
 
-    /// <summary>Reads one event of the run. Returns true when the snapshot is worth writing now.</summary>
-    public bool Observe(BaseEvent e)
+    /// <summary>Reads one event of the run, as written. Returns true when the snapshot is worth writing now.</summary>
+    public bool Observe(JsonElement e)
     {
-        switch (e)
+        switch (Str(e, "type"))
         {
-            case TextMessageContentEvent text:
-                _answer.Append(text.Delta);
+            case "TEXT_MESSAGE_CONTENT":
+                _answer.Append(Str(e, "delta"));
                 return Quiet();
 
-            case ToolCallStartEvent start:
-                Put(start.ToolCallId, c => c with { ToolName = start.ToolCallName });
+            case "TOOL_CALL_START":
+                var name = Str(e, "toolCallName") ?? "";
+                Put(Str(e, "toolCallId"), c => c with { ToolName = name });
                 return true;
 
-            case ToolCallArgsEvent args:
-                Put(args.ToolCallId, c => c with { ArgumentSummary = args.Delta ?? "" });
+            case "TOOL_CALL_ARGS":
+                // The arguments travel as identifier-only JSON; the snapshot keeps them as the audit writes them.
+                var summary = ArgumentSummary.FromJson(Str(e, "delta"));
+                Put(Str(e, "toolCallId"), c => c with { ArgumentSummary = summary });
                 return true;
 
-            case ToolCallResultEvent result:
-                Put(result.ToolCallId, c => c with
+            case "TOOL_CALL_RESULT":
+                var content = Str(e, "content") ?? "";
+                Put(Str(e, "toolCallId"), c => c with
                 {
-                    ResultSummary = Summary(result),
+                    ResultSummary = Field(content, "summary") ?? content,
                     Finished = true,
-                    IsError = IsError(result),
+                    IsError = Field(content, "isError") == "true",
                 });
                 return true;
 
-            case RunErrorEvent error:
+            case "RUN_ERROR":
                 _outcome = RunOutcomes.Failed;
                 // The same short, user-facing text the client was given; never anything internal.
-                _error = error.Message;
+                _error = Str(e, "message");
                 return true;
 
-            case RunFinishedEvent finished:
-                Finish(finished);
+            case "RUN_FINISHED":
+                if (e.TryGetProperty("outcome", out var outcome) && Str(outcome, "type") == "interrupt")
+                {
+                    _outcome = RunOutcomes.AwaitingPerson;
+                    _awaitingId = outcome.TryGetProperty("interrupts", out var interrupts) && interrupts.GetArrayLength() > 0
+                        ? Str(interrupts[0], "id")
+                        : null;
+                }
+                else
+                {
+                    _outcome = RunOutcomes.Answered;
+                }
                 return true;
 
             default:
                 return false;
+        }
+    }
+
+    /// <summary>The run was stopped before it ended: the caller asked, or walked away.</summary>
+    public void Cancelled()
+    {
+        if (_outcome == RunOutcomes.Running)
+        {
+            _outcome = RunOutcomes.Cancelled;
         }
     }
 
@@ -91,30 +114,12 @@ public sealed class RunStateTracker(IRunStateStore store, Principal principal, s
         return now - _lastSaveMs >= QuietMs;
     }
 
-    private void Finish(RunFinishedEvent finished)
+    private void Put(string? callId, Func<RunToolCall, RunToolCall> update)
     {
-        var outcome = finished.Outcome as object;
-        _outcome = outcome switch
+        if (callId is null)
         {
-            RunFinishedCancelledOutcome => RunOutcomes.Cancelled,
-            RunFinishedInterruptOutcome interrupt => Awaiting(interrupt),
-            _ => RunOutcomes.Answered,
-        };
-        if (finished.Result is JsonElement { ValueKind: JsonValueKind.Object } result
-            && result.TryGetProperty("turnId", out var turn))
-        {
-            _turnId = turn.GetString();
+            return;
         }
-    }
-
-    private string Awaiting(RunFinishedInterruptOutcome interrupt)
-    {
-        _awaitingId = interrupt.Interrupts?.FirstOrDefault()?.Id;
-        return RunOutcomes.AwaitingPerson;
-    }
-
-    private void Put(string callId, Func<RunToolCall, RunToolCall> update)
-    {
         if (!_toolCalls.TryGetValue(callId, out var call))
         {
             call = new RunToolCall(callId, "", "", null, false, false);
@@ -123,19 +128,8 @@ public sealed class RunStateTracker(IRunStateStore store, Principal principal, s
         _toolCalls[callId] = update(call);
     }
 
-    /// <summary>
-    /// The structured summary the client was given. By the time a run's events reach here they have been through
-    /// redaction, so this is identifiers and counts and never a document's text.
-    /// </summary>
-    private static string Summary(ToolCallResultEvent result)
-    {
-        var content = Text(result);
-        return Field(content, "summary") ?? content;
-    }
-
-    private static bool IsError(ToolCallResultEvent result) => Field(Text(result), "isError") == "true";
-
-    private static string Text(ToolCallResultEvent result) => result.Content.ToString() ?? "";
+    private static string? Str(JsonElement e, string name) =>
+        e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
     private static string? Field(string content, string name)
     {

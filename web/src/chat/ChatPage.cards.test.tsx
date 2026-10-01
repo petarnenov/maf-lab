@@ -1,11 +1,12 @@
 import { EventType } from '@ag-ui/core';
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import type { ConversationDetail, TraceEvent } from '../api/types';
 import { fixtureTrace } from '../monitor/fixtures';
 import { jsonResponse, renderWithProviders, run, sse, streamResponse } from '../test/render';
+import { agentFetch } from '../test/agentFetch';
 import { ChatPage } from './ChatPage';
 
 const content = {
@@ -69,7 +70,11 @@ describe('ChatPage data cards', () => {
     );
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string) => (url === '/api/chat' ? stream.response : jsonResponse({}, 404))),
+      agentFetch(
+        vi.fn(async (url: string) =>
+          url === '/api/chat' ? stream.response : jsonResponse({}, 404),
+        ),
+      ),
     );
     renderWithProviders(<ChatPage />);
 
@@ -108,12 +113,14 @@ describe('ChatPage data cards', () => {
     };
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string) => {
-        if (url.startsWith('/api/conversations?'))
-          return jsonResponse({ conversations: [], nextCursor: null });
-        if (url === '/api/conversations/conv-9') return jsonResponse(detail);
-        return jsonResponse({}, 404);
-      }),
+      agentFetch(
+        vi.fn(async (url: string) => {
+          if (url.startsWith('/api/conversations?'))
+            return jsonResponse({ conversations: [], nextCursor: null });
+          if (url === '/api/conversations/conv-9') return jsonResponse(detail);
+          return jsonResponse({}, 404);
+        }),
+      ),
     );
     renderWithProviders(
       <Routes>
@@ -128,7 +135,7 @@ describe('ChatPage data cards', () => {
 
   it('hides the card when time travel goes back before it, and shows it again at its step', async () => {
     const cardEvent: TraceEvent = {
-      seq: fixtureTrace.length,
+      seq: fixtureTrace.length + 1,
       atMs: 5000,
       kind: 'card',
       title: 'Data card maf-lab/holdings',
@@ -138,15 +145,17 @@ describe('ChatPage data cards', () => {
     const trace = [...fixtureTrace, cardEvent];
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string) =>
-        url === '/api/chat'
-          ? streamResponse([
-              ...trace.map((e) => run.trace(e)),
-              card,
-              run.delta('Done.'),
-              run.done(),
-            ])
-          : jsonResponse({}, 404),
+      agentFetch(
+        vi.fn(async (url: string) =>
+          url === '/api/chat'
+            ? streamResponse([
+                ...trace.map((e) => run.trace(e)),
+                card,
+                run.delta('Done.'),
+                run.done(),
+              ])
+            : jsonResponse({}, 404),
+        ),
       ),
     );
     renderWithProviders(<ChatPage />);
@@ -155,6 +164,12 @@ describe('ChatPage data cards', () => {
     const turn = await screen.findByTestId('assistant-turn');
     await within(turn).findByText('Done.');
     expect(within(turn).getByTestId('data-card')).toBeInTheDocument();
+    // The trace arrives from the trace API (agui-protocol-only); time travel moves through it once it is there.
+    await waitFor(() =>
+      expect(screen.getByTestId('tt-step')).toHaveTextContent(
+        `step ${trace.length} / ${trace.length}`,
+      ),
+    );
 
     screen.getByRole('region', { name: 'Behind the scenes' }).focus();
     await userEvent.keyboard('{Home}');

@@ -329,7 +329,7 @@ public class TurnTraceTests
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
         var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
         var done = (await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing"))[^1].Data;
-        var turnId = done.GetProperty("result").GetProperty("turnId").GetString()!;
+        var turnId = done.GetProperty("runId").GetString()!;
         var url = $"/api/turns/{turnId}/trace";
 
         var own = await adam.GetFromJsonAsync<TurnTraceDocument>(url, Json, Ct);
@@ -352,7 +352,7 @@ public class TurnTraceTests
         using var api = new ApiFactory(ApiFactory.ProceduralModel("ANSWER-MARKER-777."));
         var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
         var turnId = (await ApiFactory.ChatAsync(adam, "how do I fix ZEBRA-TRACE-42?"))[^1]
-            .Data.GetProperty("result").GetProperty("turnId").GetString()!;
+            .Data.GetProperty("runId").GetString()!;
 
         await using (var ctx = ChatApiTests.Db(api))
         {

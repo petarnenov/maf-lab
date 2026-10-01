@@ -68,6 +68,7 @@ public static class SharedState
 
         builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(options));
         builder.Services.AddSingleton<IRunStateStore, Stores.RedisRunStateStore>();
+        builder.Services.AddSingleton<IRunTraceStore, Stores.RedisRunTraceStore>();
         builder.Services.AddSingleton<IIdempotencyStore, Stores.RedisIdempotencyStore>();
         return builder;
     }

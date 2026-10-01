@@ -377,8 +377,13 @@ public sealed class TestGenRunsApiTests
         {
             var timeout = CancellationTokenSource.CreateLinkedTokenSource(Ct);
             timeout.CancelAfter(TimeSpan.FromSeconds(seconds));
-            var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Get, $"/api/coverage/runs/{runId}/events"),
-                HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+            // A run is followed as an AG-UI agent on the run's own thread (agui-protocol-only).
+            var request = new HttpRequestMessage(HttpMethod.Post, "/api/coverage/runs/agent")
+            {
+                Content = JsonContent.Create(new { threadId = $"testgen:{runId}", runId, messages = Array.Empty<object>() }),
+            };
+            request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("text/event-stream"));
+            var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
             return new RunStream(response, new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token)), timeout);
         }
 
@@ -394,7 +399,9 @@ public sealed class TestGenRunsApiTests
                 }
                 else if (line.StartsWith("data: ", StringComparison.Ordinal))
                 {
-                    return (name!, JsonDocument.Parse(line["data: ".Length..]).RootElement.Clone());
+                    var data = JsonDocument.Parse(line["data: ".Length..]).RootElement.Clone();
+                    // An AG-UI event names itself in its payload.
+                    return (name ?? data.GetProperty("type").GetString()!, data);
                 }
             }
             return null;
@@ -449,7 +456,9 @@ public sealed class TestGenRunsApiTests
         var result = events.Single(e => e.Name == "TOOL_CALL_RESULT" && e.Data.GetProperty("toolCallId").GetString() == callId);
         Assert.Contains("\"outcome\":\"ok\"", result.Data.GetProperty("content").GetString());
         Assert.Contains(events, e => e.Name == "TEXT_MESSAGE_CONTENT" && e.Data.GetProperty("delta").GetString() == "Done.");
-        Assert.Contains(events, e => e.Name == "CUSTOM" && e.Data.GetProperty("name").GetString() == RunActivityProjection.AttemptEvent);
+        // An attempt's result is part of the run's state, never a custom event.
+        Assert.Contains(events, e => e.Name == "STATE_SNAPSHOT" && e.Data.GetProperty("snapshot").GetProperty("attempts").GetArrayLength() > 0);
+        Assert.DoesNotContain(events, e => e.Name == "CUSTOM");
         Assert.Equal("RUN_FINISHED", events[^1].Name);
         Assert.Single(events, e => e.Name is "RUN_FINISHED" or "RUN_ERROR");
         // Every replica tells the run the same way, from what the database holds.
@@ -475,7 +484,8 @@ public sealed class TestGenRunsApiTests
         Assert.Equal(["RUN_STARTED", "STATE_SNAPSHOT"], sofar.Take(2).Select(e => e.Name));
         Assert.Equal(2, sofar[1].Data.GetProperty("snapshot").GetProperty("attempt").GetInt32());
         // Attempt 1, whole, came before attempt 2 began.
-        Assert.Contains(sofar, e => e.Name == "CUSTOM" && e.Data.GetProperty("value").GetProperty("attempt").GetInt32() == 1);
+        Assert.Contains(sofar, e => e.Name == "STATE_SNAPSHOT"
+            && e.Data.GetProperty("snapshot").GetProperty("attempts").EnumerateArray().Any(a => a.GetProperty("attempt").GetInt32() == 1));
         Assert.Contains(live, e => e.Name == "STEP_STARTED" && e.Data.GetProperty("stepName").GetString() == "attempt 2: building");
         Assert.Contains(live, e => e.Name == "STATE_SNAPSHOT");
         Assert.Contains(live[^1].Name, new[] { "RUN_FINISHED", "RUN_ERROR" });
@@ -494,8 +504,11 @@ public sealed class TestGenRunsApiTests
 
         Assert.Equal((TestGenRunState.Failed, "deadline"), (run.State, run.Reason));
         await using var stream = await RunStream.OpenAsync(s.Admin, started.Id);
-        var last = (await stream.ReadAsync())[^1];
-        Assert.Equal(("RUN_ERROR", "deadline"), (last.Name, last.Data.GetProperty("code").GetString()));
+        var events = await stream.ReadAsync();
+        // The run ends in the protocol's error; why is in its state, which says so before the end (agui-protocol-only).
+        Assert.Equal("RUN_ERROR", events[^1].Name);
+        var state = events.Last(e => e.Name == "STATE_SNAPSHOT").Data.GetProperty("snapshot");
+        Assert.Equal((TestGenRunState.Failed, "deadline"), (state.GetProperty("state").GetString(), state.GetProperty("reason").GetString()));
     }
 
     [Fact]
