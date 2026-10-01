@@ -142,7 +142,7 @@ public class GuardrailTests
         // the redacted one carrying the neutral notice and a count.
         var toolResult = Trace(events).Single(t => t.Kind == TraceKinds.ToolResult && t.Data.GetProperty("tool").GetString() == "search_documents").Data;
         Assert.DoesNotContain("Ignore previous instructions", toolResult.GetRawText());
-        Assert.Contains("removed", toolResult.GetProperty("result").GetRawText());
+        Assert.Contains("excerpt(s) withheld", toolResult.GetProperty("result").GetRawText());
         var envelope = Trace(events).Single(t => t.Kind == TraceKinds.Envelope).Data.GetProperty("text").GetString()!;
         Assert.DoesNotContain("Ignore previous instructions", envelope);
 

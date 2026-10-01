@@ -500,6 +500,23 @@ describe('MonitorPanel', () => {
       expect(screen.getByTestId('answer-check')).toHaveTextContent('answer: not grounded');
     });
 
+    it('adds no header chip for an uncertain answer, which raises no signal', () => {
+      render(
+        <MonitorPanel
+          events={withCheck(
+            check(
+              'uncertain',
+              0.35,
+              'Jev answer check: relevant 0.93 ≥ 0.80, grounded 0.35 in 0.20–0.80 — uncertain',
+            ),
+          )}
+        />,
+      );
+      expect(screen.queryByTestId('answer-check')).not.toBeInTheDocument();
+      const timeline = screen.getByRole('list', { name: 'Timeline' });
+      expect(timeline).toHaveTextContent('grounded 0.35 in 0.20–0.80 — uncertain');
+    });
+
     it('adds no header chip for a pass or an unchecked answer', () => {
       const { unmount } = render(
         <MonitorPanel events={withCheck(check('pass', 0.9, 'Jev answer check: … — pass'))} />,

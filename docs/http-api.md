@@ -246,7 +246,11 @@ reasons, choices, timeline, confidence, inDomain, points, meanProbabilities, lat
 answered on the firm's turns. `JevStatsReport` = `{ window, from, to, bucketMinutes, overview, intent, guardrail,
 relevance, routing, domains?, answerCheck? }` — every Jev call site on the firm's chat turns, with `intent` equal to
 the intent-stats report for the same window. Calls on the A2A path have no turn trace and are not counted. The
-shapes are in `Maf.Lab.Domain/Intent` and `Maf.Lab.Domain/Jev`.
+shapes are in `Maf.Lab.Domain/Intent` and `Maf.Lab.Domain/Jev`. `answerCheck` = `{ answers, checked, pass,
+notRelevant, notGrounded, unchecked, unavailable, relevantFloor, groundedFloor, latency, uncertain? }`: `checked` counts
+every verdict but `unchecked`, the two "not" counts are taken against the floor recorded with each check, and
+`uncertain` — optional, so an older client still reads the response — counts the checked answers in the review band,
+which raise no review signal. An answer left unchecked because its sources were over the cap sent no request.
 
 ## Code (any authenticated role)
 
@@ -257,7 +261,10 @@ shapes are in `Maf.Lab.Domain/Intent` and `Maf.Lab.Domain/Jev`.
 The Code snippets tab: `search_codebase` on the codebase MCP server, called with the caller's own bearer token, so the
 server derives the principal itself. `maxResults` defaults to 8 and is clamped to 1–10.
 `CodeSearchResult` = `{ results: [{ path, startLine?, endLine?, symbol?, section, kind, language, score, snippet }],
-totalMatches, truncated, refineHint? }` — snippets only, never a synthesized answer.
+totalMatches, truncated, refineHint? }` — snippets only, never a synthesized answer. A chunk longer than
+`CodeSearch:SnippetMaxChars` (1200) comes back as the window of whole lines around the lines that match the query's
+terms, with `…` where lines were cut, and `startLine`/`endLine` are the window's; a query with no matching line gets the
+chunk's first lines.
 
 ## Topology (any authenticated role)
 

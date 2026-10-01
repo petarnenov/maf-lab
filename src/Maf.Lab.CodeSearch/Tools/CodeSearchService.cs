@@ -5,6 +5,7 @@ using Maf.Lab.Domain.Retrieval;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Retrieval.Models;
 using Maf.Lab.Retrieval.Search;
+using Maf.Lab.Retrieval.Sparse;
 using Maf.Lab.Retrieval.Store;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
@@ -48,7 +49,7 @@ public sealed class CodeSearchService(
             ? "Nothing in the indexed codebase matches. Rephrase with the words the code or its docs would use, name a type or " +
               "method, or drop the kind/pathPrefix filter."
             : truncated ? "More matches exist; narrow the query, or filter by kind or pathPrefix." : null;
-        return new CodeSearchResult(top.Select(c => ToSnippet(c)).ToList(), ranked.Count, truncated, hint);
+        return new CodeSearchResult(top.Select(c => ToSnippet(c, query)).ToList(), ranked.Count, truncated, hint);
     }
 
     public async Task<CodebaseAnswer> AskAsync(Principal principal, string question, string? pathPrefix, CancellationToken ct)
@@ -117,25 +118,101 @@ public sealed class CodeSearchService(
         return string.IsNullOrEmpty(p) ? null : p;
     }
 
-    internal CodeSnippet ToSnippet(ScoredChunk c) => new(
-        c.Chunk.SourcePath,
-        c.Chunk.StartLine,
-        c.Chunk.EndLine,
-        c.Chunk.Symbol,
-        c.Chunk.SectionPath,
-        c.Chunk.SourceType == SourceType.Docs ? CodeKinds.Docs : CodeKinds.Code,
-        LanguageOf(c.Chunk.SourcePath),
-        Math.Round(c.Score, 4),
-        Snippet(c.Chunk.Text, _options.SnippetMaxChars));
+    /// <summary>
+    /// A chunk as the tool returns it: its place, and the window of its text around the lines that match
+    /// <paramref name="query"/>, with the window's own line range (fit-answer-checks-to-code-questions, D8).
+    /// </summary>
+    internal CodeSnippet ToSnippet(ScoredChunk c, string query)
+    {
+        var window = Window(c.Chunk.Text, c.Chunk.StartLine, c.Chunk.EndLine, query, _options.SnippetMaxChars);
+        return new CodeSnippet(
+            c.Chunk.SourcePath,
+            window.StartLine,
+            window.EndLine,
+            c.Chunk.Symbol,
+            c.Chunk.SectionPath,
+            c.Chunk.SourceType == SourceType.Docs ? CodeKinds.Docs : CodeKinds.Code,
+            LanguageOf(c.Chunk.SourcePath),
+            Math.Round(c.Score, 4),
+            window.Text);
+    }
 
-    internal static string Snippet(string text, int maxChars)
+    /// <summary>The text a snippet returns and the lines it spans: every line range a snippet carries is one its text holds.</summary>
+    internal readonly record struct SnippetWindow(string Text, int? StartLine, int? EndLine);
+
+    /// <summary>
+    /// The whole lines of a chunk the model gets. A chunk within <paramref name="maxChars"/> is returned as it is. A longer
+    /// one is cut to the run of whole lines, at most <paramref name="maxChars"/> long, holding the most lines that contain
+    /// one of the query's terms — split by <see cref="Bm25Tokenizer.TokenizeCode"/>, the index's own identifier-aware
+    /// tokenizer — the earliest such run on a tie, widened upwards when it reaches the chunk's end with room to spare. A
+    /// query none of whose terms is in the chunk (a Bulgarian phrase matched only by the dense branch) keeps the chunk's
+    /// first lines, as before. <c>…</c> marks lines cut above or below; the line range is the window's.
+    /// </summary>
+    internal static SnippetWindow Window(string text, int? startLine, int? endLine, string query, int maxChars)
     {
         if (text.Length <= maxChars)
         {
-            return text;
+            return new SnippetWindow(text, startLine, endLine);
         }
-        var cut = text.LastIndexOf('\n', maxChars);
-        return text[..(cut > maxChars / 2 ? cut : maxChars)] + "\n…";
+        var lines = text.Split('\n');
+        var terms = Bm25Tokenizer.TokenizeCode(query ?? "").ToHashSet(StringComparer.Ordinal);
+        var marked = lines.Select(l => terms.Count > 0 && Bm25Tokenizer.TokenizeCode(l).Any(terms.Contains)).ToArray();
+        // The width of lines [i, j): their characters and the newlines between them.
+        var sums = new int[lines.Length + 1];
+        for (var k = 0; k < lines.Length; k++)
+        {
+            sums[k + 1] = sums[k] + lines[k].Length;
+        }
+        int Width(int i, int j) => j <= i ? 0 : sums[j] - sums[i] + (j - i - 1);
+        int Extend(int i)
+        {
+            var j = i + 1;
+            while (j < lines.Length && Width(i, j + 1) <= maxChars)
+            {
+                j++;
+            }
+            return j;
+        }
+
+        int from = 0, to;
+        if (!marked.Any(m => m))
+        {
+            to = Extend(0);
+        }
+        else
+        {
+            // Any best window can start on a matching line without losing one, so only those starts are tried.
+            var best = -1;
+            to = 1;
+            for (var i = 0; i < lines.Length; i++)
+            {
+                if (!marked[i])
+                {
+                    continue;
+                }
+                var j = Extend(i);
+                var hits = marked.Skip(i).Take(j - i).Count(m => m);
+                if (hits > best)
+                {
+                    (best, from, to) = (hits, i, j);
+                }
+            }
+            while (from > 0 && to == lines.Length && Width(from - 1, to) <= maxChars)
+            {
+                from--;
+            }
+        }
+
+        var body = string.Join('\n', lines[from..to]);
+        if (body.Length > maxChars)
+        {
+            // One line longer than the whole limit: its head, still that one line.
+            body = body[..maxChars];
+        }
+        var windowText = (from > 0 ? "…\n" : "") + body + (to < lines.Length ? "\n…" : "");
+        return startLine is { } first
+            ? new SnippetWindow(windowText, first + from, first + to - 1)
+            : new SnippetWindow(windowText, startLine, endLine);
     }
 
     internal static string LanguageOf(string path) => Path.GetExtension(path).ToLowerInvariant() switch

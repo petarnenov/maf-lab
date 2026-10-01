@@ -127,7 +127,9 @@ public static class JevStatistics
         answers.Count(a => a.JevUnavailable),
         answers.Select(a => a.RelevantFloor).FirstOrDefault(f => f is not null),
         answers.Select(a => a.GroundedFloor).FirstOrDefault(f => f is not null),
-        Latency(durations, AnswerBudgetMs));
+        Latency(durations, AnswerBudgetMs),
+        // In the review band: checked, no signal (fit-answer-checks-to-code-questions).
+        answers.Count(a => a.Verdict == "uncertain"));
 
     private static DomainStats Domains(List<DomainFact> domains) => new(
         domains.Count,

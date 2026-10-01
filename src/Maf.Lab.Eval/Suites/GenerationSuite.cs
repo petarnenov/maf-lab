@@ -1,5 +1,7 @@
+using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Jev;
 using Maf.Lab.Domain.Evals;
+using Maf.Lab.Domain.Feedback;
 using Maf.Lab.Eval.Datasets;
 using Maf.Lab.Eval.Hosting;
 
@@ -12,11 +14,14 @@ namespace Maf.Lab.Eval.Suites;
 /// </summary>
 public sealed class GenerationSuite(EvalAgentHost host, RubricJudge judge)
 {
+    /// <summary>The rubric passes a case at this score, for faithfulness and relevance alike.</summary>
+    public const double RubricPass = 0.75;
+
     public async Task<IReadOnlyList<EvalVariantResult>> RunAsync(SuiteContext ctx, CancellationToken ct)
     {
         var cases = ctx.Take(DatasetLoader.Generation(ctx.DatasetRoot)).ToList();
         double faithfulness = 0, relevance = 0, sourceRecall = 0;
-        int jevChecked = 0, groundedAgree = 0, relevantAgree = 0;
+        var judged = new List<(TurnResult Turn, JudgeScore Score)>();
         var failures = new List<EvalCaseFailure>();
         foreach (var (c, i) in cases.Select((c, i) => (c, i)))
         {
@@ -31,21 +36,15 @@ public sealed class GenerationSuite(EvalAgentHost host, RubricJudge judge)
             {
                 score = new JudgeScore(0, 0, $"judge failed: {ex.GetType().Name}");
             }
+            judged.Add((turn, score));
+            // A codebase source's DocId is its path, so repository paths are expected sources like document ids.
             var docs = turn.Sources.Select(s => s.DocId).ToHashSet();
             var caseSourceRecall = c.ExpectedDocIds.Count == 0 ? 1 : (double)c.ExpectedDocIds.Count(docs.Contains) / c.ExpectedDocIds.Count;
-            var check = turn.AnswerCheck;
-            if (check is { Checked: true })
-            {
-                // The rubric passes a case at 0.75; Jev at its configured floors. Agreement is both passing or both not.
-                jevChecked++;
-                groundedAgree += (check.Grounded >= check.GroundedFloor) == (score.Faithfulness >= 0.75) ? 1 : 0;
-                relevantAgree += (check.Relevant >= check.RelevantFloor) == (score.Relevance >= 0.75) ? 1 : 0;
-            }
-            var jev = Describe(check);
+            var jev = Describe(turn.AnswerCheck);
             faithfulness += score.Faithfulness;
             relevance += score.Relevance;
             sourceRecall += caseSourceRecall;
-            if (score.Faithfulness < 0.75 || score.Relevance < 0.75 || caseSourceRecall < 1)
+            if (score.Faithfulness < RubricPass || score.Relevance < RubricPass || caseSourceRecall < 1)
             {
                 failures.Add(new EvalCaseFailure(c.Id, $"faithfulness={score.Faithfulness:0.##} relevance={score.Relevance:0.##} sourceRecall={caseSourceRecall:0.##} {jev}: {score.Reason}"));
             }
@@ -57,15 +56,40 @@ public sealed class GenerationSuite(EvalAgentHost host, RubricJudge judge)
             ["faithfulness"] = faithfulness / n,
             ["relevance"] = relevance / n,
             ["sourceRecall"] = sourceRecall / n,
-            ["jevChecked"] = (double)jevChecked / n,
         };
-        // Over the checked cases only, and absent when none was: a zero would read as total disagreement.
-        if (jevChecked > 0)
+        foreach (var (key, value) in JevMetrics(judged, cases.Count))
         {
-            metrics["jevGroundedAgreement"] = (double)groundedAgree / jevChecked;
-            metrics["jevRelevantAgreement"] = (double)relevantAgree / jevChecked;
+            metrics[key] = value;
         }
         return [SuiteContext.Variant("agent", metrics, ctx.ThresholdsFor("generation"), cases.Count, failures)];
+    }
+
+    /// <summary>
+    /// Jev's answer check beside the rubric: the share of cases checked, the share of checked cases found uncertain, and —
+    /// over the checked cases only, absent when none was, since a zero would read as total disagreement — how often each
+    /// Jev question agrees with the rubric. Jev agrees with a rubric pass when it raised no signal for that question
+    /// (<c>pass</c> or <c>uncertain</c>): the band is not a flag.
+    /// </summary>
+    public static Dictionary<string, double> JevMetrics(IReadOnlyList<(TurnResult Turn, JudgeScore Score)> cases, int total)
+    {
+        var n = Math.Max(1, total);
+        var checkedCases = cases.Where(c => c.Turn.AnswerCheck is { Checked: true }).ToList();
+        var metrics = new Dictionary<string, double> { ["jevChecked"] = (double)checkedCases.Count / n };
+        if (checkedCases.Count == 0)
+        {
+            return metrics;
+        }
+        int groundedAgree = 0, relevantAgree = 0;
+        foreach (var (turn, score) in checkedCases)
+        {
+            var signals = turn.AnswerCheck!.Signals.ToHashSet();
+            groundedAgree += !signals.Contains(TurnSignal.AnswerNotGrounded) == (score.Faithfulness >= RubricPass) ? 1 : 0;
+            relevantAgree += !signals.Contains(TurnSignal.AnswerNotRelevant) == (score.Relevance >= RubricPass) ? 1 : 0;
+        }
+        metrics["jevUncertain"] = (double)checkedCases.Count(c => c.Turn.AnswerCheck!.Verdict == AnswerVerdict.Uncertain) / checkedCases.Count;
+        metrics["jevGroundedAgreement"] = (double)groundedAgree / checkedCases.Count;
+        metrics["jevRelevantAgreement"] = (double)relevantAgree / checkedCases.Count;
+        return metrics;
     }
 
     /// <summary>"jev=pass(r=0.93 g=0.88)", or "jev=unchecked(timed out after 3s)", or "jev=none" for a turn with no check.</summary>

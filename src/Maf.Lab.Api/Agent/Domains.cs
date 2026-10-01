@@ -27,4 +27,12 @@ public static class Domains
 
     /// <summary>True for a documentation search of any domain: its result carries snippets and sources.</summary>
     public static bool IsSearch(string tool) => SearchTool.Values.Contains(tool);
+
+    /// <summary>
+    /// The domain a tool belongs to when no tool set is at hand (a stored envelope): each domain's search, then the read
+    /// tools the router knows, and billing — where every tool was before domains existed — for the rest.
+    /// </summary>
+    public static string OfTool(string tool) =>
+        SearchTool.FirstOrDefault(kv => kv.Value == tool).Key
+        ?? (Jev.DataToolRouter.ToolDomain.TryGetValue(tool, out var domain) ? domain : Billing);
 }

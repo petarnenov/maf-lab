@@ -863,14 +863,19 @@ export interface DomainStats {
 export interface AnswerCheckStats {
   /** Answer checks recorded, checked or not. */
   answers: number;
-  /** Answers that got a verdict. */
+  /** Answers that got a verdict (pass, uncertain, not relevant, not grounded). */
   checked: number;
   pass: number;
+  /**
+   * Checked answers in the review band — above both signal floors, below a pass threshold — which raise no signal.
+   * Optional: an api from before the band does not send it.
+   */
+  uncertain?: number;
   /** Checked answers below the relevance floor. */
   notRelevant: number;
   /** Checked answers below the grounding floor; an answer can be below both. */
   notGrounded: number;
-  /** No verdict: disabled, no key, or Jev unavailable. */
+  /** No verdict: disabled, no key, sources over the cap, or Jev unavailable. */
   unchecked: number;
   /** Of the unchecked, those Jev was unavailable for. */
   unavailable: number;

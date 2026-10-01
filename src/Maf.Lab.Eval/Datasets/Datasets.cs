@@ -36,7 +36,27 @@ public sealed record IntentCase(string Id, string Question, bool Forces, string 
 /// <param name="Side">"prompt" (a user's or partner's message), "tool" (a tool-result item) or "agent" (another agent's words).</param>
 /// <param name="Malicious">Whether the text tries to instruct or steer the assistant; the guard should flag exactly these.</param>
 /// <param name="Split">"design" when the case informed the guard's questions and thresholds, "holdout" when it did not.</param>
-public sealed record GuardrailCase(string Id, string Side, string Text, bool Malicious, string Category, string Language, string Split);
+/// <param name="Tool">
+/// For a tool-side case, the tool whose result item the text is: it is screened as that tool's item — a
+/// <c>search_codebase</c> case with the codebase battery and its record-only questions. Null: a result of no search.
+/// </param>
+public sealed record GuardrailCase(string Id, string Side, string Text, bool Malicious, string Category, string Language, string Split,
+    string? Tool = null);
+
+/// <summary>One thing the model read, as an answer-check case replays it: a search item as the tool returned it, or a whole result.</summary>
+/// <param name="Tool">The tool that returned it.</param>
+/// <param name="Item">A search result item (<c>path</c>/<c>startLine</c>/<c>endLine</c>/<c>symbol</c>/<c>snippet</c>, or <c>docId</c>/<c>sectionPath</c>/<c>snippet</c>).</param>
+/// <param name="Text">A whole result, as the model got it; used when <paramref name="Item"/> is null.</param>
+public sealed record AnswerCheckSource(string Tool, JsonElement? Item, string? Text);
+
+/// <summary>
+/// A labelled answer for Jev's answer check alone (fit-answer-checks-to-code-questions): what was asked, answered and
+/// read, and what a reviewer found — whether a claim is unsupported, whether it is off the question.
+/// </summary>
+/// <param name="PreviousSources">What the model read for <paramref name="PreviousQuestion"/>, replayed as that turn's data envelopes.</param>
+/// <param name="Domain">billing, portfolio or codebase.</param>
+public sealed record AnswerCheckCase(string Id, string Question, string PreviousQuestion, string Answer, IReadOnlyList<AnswerCheckSource> Sources,
+    IReadOnlyList<AnswerCheckSource> PreviousSources, bool Unsupported, bool OffTopic, string Domain, string Language, string Split, string? Source);
 
 public sealed record InjectionCase(string Id, string Question, IReadOnlyList<string> ForbiddenStrings, IReadOnlyList<string> ForbiddenTenantIds, string FirmId, string? Source);
 
@@ -45,7 +65,7 @@ public static class DatasetLoader
 {
     public static readonly string[] Files =
         ["selection.jsonl", "retrieval.jsonl", "generation.jsonl", "injection.jsonl", "confirmation.jsonl", "intent.jsonl", "guardrail.jsonl",
-            "domain.jsonl", "presentation.jsonl"];
+            "domain.jsonl", "presentation.jsonl", "answer-check.jsonl"];
     public static readonly string[] Tools =
         ["search_documents", "get_billing_run_status", "search_billing_runs", Maf.Lab.Domain.Billing.FeeAdjustmentTool.Name,
             Maf.Lab.Domain.Portfolio.PortfolioTools.Search, Maf.Lab.Domain.Portfolio.PortfolioTools.GetPortfolio,
@@ -175,8 +195,77 @@ public static class DatasetLoader
         {
             throw new InvalidDataException($"{where}: unknown side, language or split.");
         }
-        return new GuardrailCase(Str(e, "id", where), side, Str(e, "text", where), m.GetBoolean(), Str(e, "category", where), language, split);
+        var tool = Opt(e, "tool");
+        if (tool is not null && (side != "tool" || !Tools.Contains(tool)))
+        {
+            throw new InvalidDataException($"{where}: 'tool' must name a known tool, on a tool-side case.");
+        }
+        return new GuardrailCase(Str(e, "id", where), side, Str(e, "text", where), m.GetBoolean(), Str(e, "category", where), language, split, tool);
     });
+
+    public static readonly string[] AnswerCheckDomains = ["billing", "portfolio", "codebase"];
+
+    /// <summary>
+    /// Labelled answers for the answer check alone. Every field is required — an unlabelled row would quietly count as a
+    /// supported, on-topic answer — and each source must name a known tool and carry a search item or a whole text.
+    /// </summary>
+    public static IReadOnlyList<AnswerCheckCase> AnswerCheck(string root) => Load(root, "answer-check.jsonl", (e, where) =>
+    {
+        foreach (var flag in new[] { "unsupported", "offTopic" })
+        {
+            if (!e.TryGetProperty(flag, out var f) || f.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            {
+                throw new InvalidDataException($"{where}: '{flag}' must be true or false.");
+            }
+        }
+        if (!e.TryGetProperty("previousQuestion", out var pq) || pq.ValueKind != JsonValueKind.String)
+        {
+            throw new InvalidDataException($"{where}: 'previousQuestion' must be a string (empty on a first question).");
+        }
+        var domain = Str(e, "domain", where);
+        var language = Str(e, "language", where);
+        var split = Str(e, "split", where);
+        if (!AnswerCheckDomains.Contains(domain) || !IntentLanguages.Contains(language) || split is not ("design" or "holdout"))
+        {
+            throw new InvalidDataException($"{where}: unknown domain, language or split.");
+        }
+        return new AnswerCheckCase(Str(e, "id", where), Str(e, "question", where), pq.GetString()!, Str(e, "answer", where),
+            Sources(e, "sources", where), Sources(e, "previousSources", where), e.GetProperty("unsupported").GetBoolean(),
+            e.GetProperty("offTopic").GetBoolean(), domain, language, split, Opt(e, "source"));
+    });
+
+    private static IReadOnlyList<AnswerCheckSource> Sources(JsonElement e, string name, string where)
+    {
+        if (!e.TryGetProperty(name, out var v) || v.ValueKind != JsonValueKind.Array)
+        {
+            throw new InvalidDataException($"{where}: '{name}' must be an array.");
+        }
+        return [.. v.EnumerateArray().Select(s =>
+        {
+            if (s.ValueKind != JsonValueKind.Object)
+            {
+                throw new InvalidDataException($"{where}: every entry of '{name}' must be an object.");
+            }
+            var tool = Str(s, "tool", where);
+            if (!Tools.Contains(tool))
+            {
+                throw new InvalidDataException($"{where}: unknown tool '{tool}' in '{name}'.");
+            }
+            var item = s.TryGetProperty("item", out var i) && i.ValueKind == JsonValueKind.Object ? i.Clone() : (JsonElement?)null;
+            var text = Opt(s, "text");
+            if (item is null == string.IsNullOrWhiteSpace(text))
+            {
+                throw new InvalidDataException($"{where}: an entry of '{name}' carries either an 'item' or a 'text'.");
+            }
+            // A withheld item is its stub: no text, by design (injection-defense).
+            if (item is { } it && !(it.TryGetProperty("withheld", out var w) && w.ValueKind == JsonValueKind.True)
+                && (!it.TryGetProperty("snippet", out var sn) || sn.ValueKind != JsonValueKind.String))
+            {
+                throw new InvalidDataException($"{where}: a search item in '{name}' must carry its 'snippet'.");
+            }
+            return new AnswerCheckSource(tool, item, text);
+        })];
+    }
 
     public static IReadOnlyList<InjectionCase> Injection(string root) => Load(root, "injection.jsonl", (e, where) =>
         new InjectionCase(Str(e, "id", where), Str(e, "question", where), Strings(e, "forbiddenStrings", where),

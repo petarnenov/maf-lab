@@ -107,11 +107,15 @@ public sealed record DomainStats(int Judged, int Billing, int Portfolio, int Bot
 /// how many were left unchecked (of which Jev was unavailable for how many), and the check's latency.
 /// </summary>
 /// <param name="Answers">Answer checks recorded in the window, checked or not.</param>
-/// <param name="Checked">Answers that got a verdict (pass, not relevant, not grounded).</param>
+/// <param name="Checked">Answers that got a verdict (pass, uncertain, not relevant, not grounded).</param>
 /// <param name="NotRelevant">Checked answers below the relevance floor.</param>
 /// <param name="NotGrounded">Checked answers below the grounding floor; an answer can be below both.</param>
-/// <param name="Unchecked">Answers with no verdict: disabled, no key, or Jev unavailable.</param>
+/// <param name="Unchecked">Answers with no verdict: disabled, no key, sources over the cap, or Jev unavailable.</param>
 /// <param name="Unavailable">Of the unchecked, those whose request timed out, was rejected or failed.</param>
+/// <param name="Uncertain">
+/// Checked answers in the review band — above both signal floors, below a pass threshold — which raise no signal
+/// (fit-answer-checks-to-code-questions). Optional, so an older client still reads the response.
+/// </param>
 public sealed record AnswerCheckStats(
     int Answers,
     int Checked,
@@ -122,7 +126,8 @@ public sealed record AnswerCheckStats(
     int Unavailable,
     double? RelevantFloor,
     double? GroundedFloor,
-    IntentLatency Latency);
+    IntentLatency Latency,
+    int? Uncertain = null);
 
 /// <param name="Tool">The read tool a data turn was routed to.</param>
 public sealed record RoutingToolCount(string Tool, int Count);

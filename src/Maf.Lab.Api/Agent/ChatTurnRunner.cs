@@ -691,7 +691,7 @@ public sealed partial class ChatTurnRunner(
             state.ToolCalls.Add(new ToolCallRecord(name, args, "error", 0, [], [], callId, "failed"));
             state.Summaries[callId] = Result(name, "failed", 0, isError: true);
             const string unavailable = "The tool is temporarily unavailable.";
-            state.Read.Add($"{name}: {unavailable}");
+            state.Read.Add(Jev.ReadItem.Whole(name, unavailable, domain));
             return ToolDataEnvelope.Wrap(name, unavailable);
         }
 
@@ -713,7 +713,7 @@ public sealed partial class ChatTurnRunner(
         if (screened is not null)
         {
             guardrail.Trace(state.Trace, Guardrail.CheckToolResult, name, callId, screened.Decision, screened.Threshold, screened.Items,
-                screened.Withheld, null, screened.Requests, screened.ElapsedMs);
+                screened.Withheld, null, screened.Requests, screened.ElapsedMs, screened.Context, screened.RecordOnly);
             (payload, structured) = (screened.Payload, screened.Structured);
         }
         var (summary, sources) = screened is { WholeWithheld: true }
@@ -764,33 +764,13 @@ public sealed partial class ChatTurnRunner(
         });
         state.ToolCalls.Add(new ToolCallRecord(name, args, outcome, sources.Count, sources.Select(s => s.DocId).Distinct().ToList(), [], callId, summary));
         state.Summaries[callId] = Result(name, summary, sources.Count, isError);
-        Read(state, name, payload, structured, isError);
+        state.Read.AddRange(Jev.ReadItem.FromResult(name, domain, payload, structured, isError));
         var envelope = ToolDataEnvelope.Wrap(name, payload);
         state.Trace.Add(TraceKinds.Envelope, $"Data envelope handed to the model ({envelope.Length} chars)", new JsonObject
         {
             ["callId"] = callId, ["tool"] = name, ["text"] = envelope,
         });
         return envelope;
-    }
-
-    /// <summary>
-    /// What the model was handed, as the answer check reads it: a documentation search's excerpts one by one, any other
-    /// result whole, prefixed with its tool. Called after the guard, so a withheld item is never among them.
-    /// </summary>
-    private static void Read(TurnState state, string tool, string payload, JsonElement? structured, bool isError)
-    {
-        // An empty search is read whole: its hint is what the model was told.
-        if (!isError && Domains.IsSearch(tool) && structured is { } s && s.TryGetProperty("results", out var results)
-            && results.ValueKind == JsonValueKind.Array && results.GetArrayLength() > 0)
-        {
-            foreach (var r in results.EnumerateArray())
-            {
-                var item = SourceRef.FromSearchItem(r);
-                state.Read.Add(item.Kind == SourceRef.CodeKind ? $"{item.SectionPath}: {item.Snippet}" : $"{item.DocId} › {item.SectionPath}: {item.Snippet}");
-            }
-            return;
-        }
-        state.Read.Add($"{tool}: {payload}");
     }
 
     /// <summary>
@@ -951,7 +931,7 @@ public sealed partial class ChatTurnRunner(
         }
 
         var told = ((FlowOutcome.TellModel)outcome).Message;
-        state.Read.Add($"{name}: {told}");
+        state.Read.Add(Jev.ReadItem.Whole(name, told, state.Tools?.DomainOf(name) ?? Domains.Billing));
         var envelope = ToolDataEnvelope.Wrap(name, told);
         state.Trace.Add(TraceKinds.Envelope, $"Data envelope handed to the model ({envelope.Length} chars)", new JsonObject
         {
@@ -972,6 +952,11 @@ public sealed partial class ChatTurnRunner(
             case var search when Domains.IsSearch(search) && s.TryGetProperty("results", out var results):
                 foreach (var r in results.EnumerateArray())
                 {
+                    // A withheld item's stub is not a source: the answer did not read it (fit-answer-checks-to-code-questions).
+                    if (r.ValueKind == JsonValueKind.Object && r.TryGetProperty("withheld", out var w) && w.ValueKind == JsonValueKind.True)
+                    {
+                        continue;
+                    }
                     // Documentation and codebase results alike (add-codebase-domain): a code snippet keeps its place.
                     sources.Add(SourceRef.FromSearchItem(r));
                 }
@@ -1046,11 +1031,11 @@ public sealed partial class ChatTurnRunner(
     }
 
     /// <summary>
-    /// What the model was handed in the previous turn: the text of its data envelopes, from that turn's stored trace. An
-    /// envelope holds what the content guard let through, so a withheld item is not here either. Empty on a first turn,
+    /// What the model was handed in the previous turn: its data envelopes, from that turn's stored trace. An envelope
+    /// holds what the content guard let through, so a withheld item's text is not here either. Empty on a first turn,
     /// and when the trace is gone (retention) or unreadable — the check then judges against this turn's sources alone.
     /// </summary>
-    private async Task<IReadOnlyList<string>> PreviousReadAsync(string? turnId, CancellationToken ct)
+    private async Task<IReadOnlyList<Jev.ReadItem>> PreviousReadAsync(string? turnId, CancellationToken ct)
     {
         if (turnId is null)
         {
@@ -1058,16 +1043,21 @@ public sealed partial class ChatTurnRunner(
         }
         await using var ctx = await db.CreateDbContextAsync(ct);
         var row = await ctx.TurnTraces.Where(t => t.TurnId == turnId).Select(t => t.Json).FirstOrDefaultAsync(ct);
-        if (row is null)
-        {
-            return [];
-        }
+        return row is null ? [] : PreviousRead(row);
+    }
+
+    /// <summary>
+    /// A stored trace's data envelopes as the answer check reads them: one item per envelope, keyed by its text, with
+    /// its domain from <c>tool="…"</c> and — for a codebase search — the paths it carried (fit-answer-checks-to-code-questions).
+    /// </summary>
+    internal static IReadOnlyList<Jev.ReadItem> PreviousRead(string traceJson)
+    {
         try
         {
-            return JsonSerializer.Deserialize<List<TraceEvent>>(row, TurnTrace.Json)?
+            return JsonSerializer.Deserialize<List<TraceEvent>>(traceJson, TurnTrace.Json)?
                 .Where(e => e.Kind == TraceKinds.Envelope && e.Data.ValueKind == JsonValueKind.Object
                     && e.Data.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String)
-                .Select(e => e.Data.GetProperty("text").GetString()!)
+                .Select(e => Jev.ReadItem.FromEnvelope(e.Data.GetProperty("text").GetString()!))
                 .ToList() ?? [];
         }
         catch (JsonException)
@@ -1261,8 +1251,11 @@ public sealed partial class ChatTurnRunner(
         public List<ToolCallRecord> ToolCalls { get; } = [];
         public List<SourceRef> Sources { get; } = [];
 
-        /// <summary>The data the model was handed this turn, after the guard — what the answer check calls its sources.</summary>
-        public List<string> Read { get; } = [];
+        /// <summary>
+        /// The data the model was handed this turn, after the guard — what the answer check calls its sources: a search's
+        /// items one by one (a withheld one as its place, marked withheld), any other result whole, the fixed texts as sent.
+        /// </summary>
+        public List<Jev.ReadItem> Read { get; } = [];
         public bool Searched { get; set; }
 
         /// <summary>Inline citation markers taken out of the model's answer (strip-citation-markers).</summary>

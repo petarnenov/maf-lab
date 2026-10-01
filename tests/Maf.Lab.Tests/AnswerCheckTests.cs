@@ -64,12 +64,16 @@ public class AnswerCheckTests
         Assert.True(at < kinds.IndexOf(TraceKinds.Signals));
         var check = trace[at];
         Assert.NotNull(check.DurationMs);
-        Assert.StartsWith("Jev answer check: relevant 0.95 ≥ 0.50, grounded 0.95 ≥ 0.50 — pass", check.Title);
+        Assert.StartsWith("Jev answer check: relevant 0.95 ≥ 0.80, grounded 0.95 ≥ 0.50 — pass", check.Title);
         Assert.Equal("pass", check.Data.GetProperty("verdict").GetString());
         Assert.Equal(0.95, check.Data.GetProperty("relevant").GetDouble());
         Assert.Equal(0.95, check.Data.GetProperty("grounded").GetDouble());
-        Assert.Equal(0.5, check.Data.GetProperty("relevantFloor").GetDouble());
-        Assert.Equal(0.5, check.Data.GetProperty("groundedFloor").GetDouble());
+        Assert.Equal(0.2, check.Data.GetProperty("relevantFloor").GetDouble());
+        Assert.Equal(0.3, check.Data.GetProperty("groundedFloor").GetDouble());
+        Assert.Equal(0.8, check.Data.GetProperty("relevantPassAt").GetDouble());
+        Assert.Equal(0.5, check.Data.GetProperty("groundedPassAt").GetDouble());
+        Assert.Equal("billing", check.Data.GetProperty("context").GetString());
+        Assert.Equal(0, check.Data.GetProperty("duplicates").GetInt32());
         Assert.Equal("jev-1.13.0", check.Data.GetProperty("model").GetString());
         Assert.Equal(1, check.Data.GetProperty("requests").GetInt32());
         Assert.Equal(sources.Count, check.Data.GetProperty("sources").GetInt32());
@@ -144,7 +148,7 @@ public class AnswerCheckTests
         Assert.Equal(Marker, ApiFactory.AnswerOf(events));
         var check = Trace(events).Single(t => t.Kind == TraceKinds.AnswerCheck);
         Assert.Equal("not_grounded", check.Data.GetProperty("verdict").GetString());
-        Assert.EndsWith("grounded 0.12 < 0.50 — not grounded", check.Title);
+        Assert.EndsWith("grounded 0.12 < 0.30 — not grounded", check.Title);
         Assert.Contains(TurnSignal.AnswerNotGrounded, Signals(events));
         Assert.DoesNotContain(TurnSignal.AnswerNotRelevant, Signals(events));
 
@@ -153,7 +157,7 @@ public class AnswerCheckTests
     }
 
     [Fact]
-    public async Task An_answer_beside_the_question_is_flagged_and_the_floors_are_configuration()
+    public async Task An_answer_beside_the_question_is_flagged_and_the_old_floor_name_still_binds()
     {
         var jev = new FakeJev { AnswerCheck = (id, _, _) => id == JevAnswerCheck.RelevantId ? 0.55 : 0.95 };
         using var api = new ApiFactory(ApiFactory.ProceduralModel(Marker), jev: jev)
@@ -269,23 +273,15 @@ public class AnswerCheckTests
     }
 
     [Fact]
-    public void Sources_are_capped_in_order()
-    {
-        var sent = JevAnswerCheck.Cap(["abcd", "efgh", "ijkl"], 6);
-        Assert.Equal(["abcd", "ef"], sent);
-        Assert.Empty(JevAnswerCheck.Cap(["abcd"], 0));
-    }
-
-    [Fact]
     public async Task Both_floors_missed_names_grounding_and_fires_both_signals()
     {
-        var jev = new FakeJev { AnswerCheck = (id, _, _) => id == JevAnswerCheck.GroundedId ? 0.1 : 0.2 };
+        var jev = new FakeJev { AnswerCheck = (id, _, _) => id == JevAnswerCheck.GroundedId ? 0.1 : 0.1 };
         using var api = new ApiFactory(ApiFactory.ProceduralModel(Marker), jev: jev);
 
         var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), Procedural);
 
         var check = Trace(events).Single(t => t.Kind == TraceKinds.AnswerCheck);
-        Assert.Equal("Jev answer check: relevant 0.20 < 0.50, grounded 0.10 < 0.50 — not grounded", check.Title);
+        Assert.Equal("Jev answer check: relevant 0.10 < 0.20, grounded 0.10 < 0.30 — not grounded", check.Title);
         Assert.Contains(TurnSignal.AnswerNotGrounded, Signals(events));
         Assert.Contains(TurnSignal.AnswerNotRelevant, Signals(events));
     }

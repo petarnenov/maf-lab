@@ -469,8 +469,9 @@ function DomainsSection({ d, period }: { d: DomainStats | null; period: string }
 }
 
 /**
- * Jev's check of the final answer: how many answers got a verdict, the share below each floor, how many were left
- * unchecked, and the check's latency. The check flags a turn for review; it never blocks the answer.
+ * Jev's check of the final answer: how many answers got a verdict, the share below each floor, how many fell in the
+ * review band (uncertain, no signal), how many were left unchecked, and the check's latency. The check flags a turn for
+ * review; it never blocks the answer.
  */
 function AnswerCheckSection({ a, period }: { a: AnswerCheckStats | null; period: string }) {
   if (!a || a.answers === 0) {
@@ -498,10 +499,17 @@ function AnswerCheckSection({ a, period }: { a: AnswerCheckStats | null; period:
           value={percent(a.notGrounded, a.checked)}
           note={`${a.notGrounded} below floor ${a.groundedFloor ?? '–'}`}
         />
+        {a.uncertain !== undefined && (
+          <Kpi
+            label="Uncertain"
+            value={percent(a.uncertain, a.checked)}
+            note={`${a.uncertain} in the review band · no signal`}
+          />
+        )}
         <Kpi
           label="Unchecked"
           value={String(a.unchecked)}
-          note={`${a.unavailable} Jev unavailable · the rest off or no key`}
+          note={`${a.unavailable} Jev unavailable · the rest off, no key or over the cap`}
         />
       </div>
       <div className={styles.grid2}>

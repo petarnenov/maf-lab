@@ -181,7 +181,7 @@ make help                  # every target
 | `make testgen-e2e` | Model-free test generation end to end: refresh, run, verify, accept (used by ci-e2e, against its clone) |
 | `make coverage` | Refresh the coverage snapshot at main (both toolchains, through the running stack) |
 | `make verify` | Verify the running stack through the load balancer (35 checks) |
-| `make eval` | Run evals (SUITE=all\|selection\|retrieval\|generation\|injection\|confirmation\|intent\|domain\|presentation) against the stack's MCP servers |
+| `make eval` | Run evals (SUITE=all\|selection\|retrieval\|generation\|injection\|confirmation\|intent\|domain\|presentation\|guardrail\|answer-check) against the stack's MCP servers |
 | `make ask` | Ask one question through the agent and print its trace (Q="…" FIRM=firm-a), e.g. a cross-domain one |
 | `make screenshots` | Re-take the README screenshots from the running stack into docs/screenshots (SHOTS=chat,topology for a subset) |
 | `make eval-accept` | Run the evals and accept their metrics as the new baseline (commit the result) |
@@ -193,6 +193,7 @@ make help                  # every target
 | `make eval-intent` | Eval: intent classifier alone — would each question force search_documents? (needs JEV_MAF_LAB) |
 | `make eval-guardrail` | Eval: content guard alone — are malicious prompts/tool results flagged and benign ones not? (needs JEV_MAF_LAB) |
 | `make eval-presentation` | Eval: do portfolio answers build on their data cards instead of restating them? |
+| `make eval-answer-check` | Eval: Jev's answer check alone — are labelled unsupported answers flagged and supported ones not? (needs JEV_MAF_LAB) |
 | `make eval-a2a` | Conformance: an outside client drives the agents through evals/a2a-conformance.jsonl |
 | `make dev` | Run mcp/api/web locally without Docker (infra stays in compose); Ctrl-C stops |
 | `make doctor` | Check prerequisites (Docker, .NET SDK, Node/npm, make, OLLAMA_API_KEY, JEV_MAF_LAB, MAF_LAB_REPO, GITHUB_ISSUES_TOKEN) |
@@ -498,7 +499,7 @@ archiving a change asks for a read-only pass over these documents against the ch
 
 ```bash
 make eval                     # all suites against the running stack's MCP
-make eval-selection           # or eval-retrieval / -generation / -injection / -confirmation / -intent / -guardrail / -presentation / -a2a
+make eval-selection           # or eval-retrieval / -generation / -injection / -confirmation / -intent / -guardrail / -answer-check / -presentation / -a2a
 dotnet run --project src/Maf.Lab.Eval -- --suite retrieval --rerank   # extra flags: use the CLI directly
 dotnet run --project src/Maf.Lab.Eval -- --import-feedback --suite retrieval
 ```
@@ -511,6 +512,8 @@ Evals run **on demand**, not on every commit. They are **required** before mergi
 - the **tool set** (adding/removing a tool) → `selection`, `injection`
 - the **chunking or retrieval configuration** (chunkers, `Indexing:*`, `Retrieval:*`, BM25) → `retrieval`, `generation`
 - **query normalisation** (`Retrieval:NormalizeQueryLanguage`, `Retrieval:CorpusLanguage`, the translation model) → `retrieval`
+- a **Jev screening or check** (the guard's batteries or `Guard:*`, the answer check's questions or `Jev:AnswerCheck:*`) →
+  `guardrail`, `answer-check`; both call Jev alone, with no chat model and no tool
 
 ### Not getting worse
 
