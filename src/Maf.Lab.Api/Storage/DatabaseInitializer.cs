@@ -129,6 +129,17 @@ public static partial class DatabaseInitializer
             SET "Attempt" = (SELECT MAX(a."Attempt") FROM "TestGenRunActivity" a WHERE a."RunId" = "TestGenRuns"."Id")
             WHERE "Attempt" < (SELECT MAX(a."Attempt") FROM "TestGenRunActivity" a WHERE a."RunId" = "TestGenRuns"."Id")
             """, ct);
+        // A run stored before its end was recorded (show-test-run-duration): its first update in a state that is not
+        // running, else its last change. Running runs have no end; a row that has one is left alone.
+        await db.Database.ExecuteSqlRawAsync("""
+            UPDATE "TestGenRuns"
+            SET "FinishedAt" = COALESCE(
+                (SELECT MIN(e."At") FROM "TestGenRunEvents" e
+                 WHERE e."RunId" = "TestGenRuns"."Id"
+                   AND json_extract(e."Json", '$.state') NOT IN ('submitted', 'working', 'verifying')),
+                "UpdatedAt")
+            WHERE "FinishedAt" IS NULL AND "State" NOT IN ('submitted', 'working', 'verifying')
+            """, ct);
     }
 
     internal static IEnumerable<string> Statements(string script) =>

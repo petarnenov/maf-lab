@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { jsonResponse, makeSession, renderWithProviders } from '../test/render';
 import { TestAgentSection } from './TestAgentSection';
@@ -62,6 +62,36 @@ describe('TestAgentSection', () => {
       'href',
       '/coverage?file=src%2FMaf.Lab.Api%2FCoverage%2FCoverageTree.cs',
     );
+  });
+
+  it('shows how long each recent run took, counting on while one is running', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse(reachableAgent)),
+      );
+      renderWithProviders(<TestAgentSection />, admin);
+
+      const table = await screen.findByTestId('test-agent-runs');
+      expect(
+        within(table)
+          .getAllByRole('columnheader')
+          .map((h) => h.textContent),
+      ).toEqual(['File', 'State', 'Attempt', 'Coverage', 'Reason', 'Model', 'Duration', 'When']);
+      const cells = () => screen.getAllByTestId('test-agent-run-duration');
+      expect(cells()[0]).toHaveTextContent(/^42s so far$/);
+      expect(cells()[1]).toHaveTextContent(/^3m 05s$/);
+      expect(cells()[2]).toHaveTextContent(/^—$/);
+
+      await act(async () => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(cells()[0]).toHaveTextContent(/^43s so far$/);
+      expect(cells()[1]).toHaveTextContent(/^3m 05s$/);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('says an unreachable agent is unreachable, and still shows its defaults and runs', async () => {

@@ -268,6 +268,19 @@ public sealed class TestGenRunsApiTests
         Assert.Contains(events, e => e.Run.State == TestGenRunState.Working);
         Assert.Contains(events, e => e.Run.State == TestGenRunState.Verifying);
         Assert.Equal(TestGenRunState.Candidate, events[^1].Run.State);
+
+        // The work ended when the run became a candidate; a later decision does not move it (show-test-run-duration).
+        var finished = await FinishedAtAsync(s, started.Id);
+        Assert.NotNull(finished);
+        Assert.True(finished >= run.CreatedAt);
+        await s.Get<TestGenRuns>().FinishAsync(started.Id, TestGenRunState.Discarded, null, Ct);
+        Assert.Equal(finished, await FinishedAtAsync(s, started.Id));
+    }
+
+    private static async Task<DateTime?> FinishedAtAsync(Stack s, string runId)
+    {
+        await using var db = await s.Get<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(Ct);
+        return (await db.TestGenRuns.AsNoTracking().SingleAsync(r => r.Id == runId, Ct)).FinishedAt;
     }
 
     [Fact]

@@ -579,6 +579,11 @@ export interface TestAgentRun {
   targetPct: number;
   model: string;
   updatedAt: string;
+  startedAt: string;
+  /** When the run's work ended (candidate or a final state); null while it runs, or when not known. */
+  finishedAt: string | null;
+  /** Work time in ms: start to end, or start to the api's answer while running; null when not known. */
+  durationMs: number | null;
 }
 
 /** The test-generation agent as the agents page shows it. See docs/http-api.md. */

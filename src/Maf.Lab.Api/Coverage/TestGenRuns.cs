@@ -255,9 +255,22 @@ public sealed class TestGenRuns(
             return run;
         }
         run.UpdatedAt = time.GetUtcNow().UtcDateTime;
+        StampFinish(run, run.UpdatedAt);
         await db.SaveChangesAsync(ct);
         await AppendEventAsync(run, ct);
         return run;
+    }
+
+    /// <summary>
+    /// Records when the run's work ended, the first time it is in a state that is not running. Called after every state
+    /// move, so a later move (accepting or discarding a candidate) finds it set and leaves it.
+    /// </summary>
+    internal static void StampFinish(TestGenRunRow run, DateTime now)
+    {
+        if (run.FinishedAt is null && !TestGenRunState.Running.Contains(run.State))
+        {
+            run.FinishedAt = now;
+        }
     }
 
     /// <summary>Cancels an active run whose task is still with the agent.</summary>
@@ -303,6 +316,7 @@ public sealed class TestGenRuns(
         run.Reason = reason;
         run.UpdatedAt = time.GetUtcNow().UtcDateTime;
         also?.Invoke(run);
+        StampFinish(run, run.UpdatedAt);
         if (TestGenRunState.Final.Contains(state))
         {
             run.Follower = null;

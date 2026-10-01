@@ -11,6 +11,16 @@ export function duration(minutes: number): string {
   return [h > 0 ? `${h} h` : '', m > 0 || h === 0 ? `${m} min` : ''].filter(Boolean).join(' ');
 }
 
+/** A run's duration in milliseconds, compact: "42s", "3m 05s", "1h 02m"; "—" when there is none. */
+export function elapsed(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms)) return '—';
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  const two = (n: number) => String(n).padStart(2, '0');
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${two(seconds % 60)}s`;
+  return `${Math.floor(seconds / 3600)}h ${two(Math.floor(seconds / 60) % 60)}m`;
+}
+
 export const shortSha = (sha: string) => sha.slice(0, 7);
 
 /**

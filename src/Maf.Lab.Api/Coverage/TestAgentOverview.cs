@@ -13,9 +13,12 @@ public sealed record TestAgentModel(string Tag, string DisplayName);
 /// <summary>Runs by what an operator asks about them: in flight, waiting for a person, merged, failed, or ended otherwise.</summary>
 public sealed record TestAgentRunCounts(int Running, int Candidates, int Accepted, int Failed, int Other, int Total);
 
-/// <summary>One run as the agents page lists it: no report, no diff, no activity text.</summary>
+/// <summary>
+/// One run as the agents page lists it: no report, no diff, no activity text. <see cref="DurationMs"/> is the run's work
+/// time: start to <see cref="FinishedAt"/> once its work ended, start to now while it is running, null when unknown.
+/// </summary>
 public sealed record TestAgentRun(string Id, string Path, string State, string? Reason, int Attempt, int MaxAttempts, double? LastPct,
-    int TargetPct, string Model, DateTimeOffset UpdatedAt);
+    int TargetPct, string Model, DateTimeOffset UpdatedAt, DateTimeOffset StartedAt, DateTimeOffset? FinishedAt, long? DurationMs);
 
 /// <summary>Everything the agents page shows about the test-generation agent, in one answer.</summary>
 public sealed record TestAgentOverviewDto(TestAgentStatusDto Status, TestAgentCardDto? Card, TestAgentConnection? Connection,
@@ -26,7 +29,6 @@ public static class TestAgentOverview
 {
     public const int RecentRuns = 10;
 
-    private static readonly HashSet<string> Running = [TestGenRunState.Submitted, TestGenRunState.Working, TestGenRunState.Verifying];
     private static readonly HashSet<string> Failed = [TestGenRunState.Failed, TestGenRunState.VerificationFailed];
 
     /// <summary>
@@ -34,7 +36,7 @@ public static class TestAgentOverview
     /// defaults are the ones a start request gets, computed by the same helpers the run picker reads.
     /// </summary>
     public static async Task<TestAgentOverviewDto> BuildAsync(TestAgentProbe probe, TestAgentOptions options, MafDbContext context,
-        CancellationToken ct)
+        TimeProvider time, CancellationToken ct)
     {
         var check = probe.CheckAsync(ct);
 
@@ -42,21 +44,22 @@ public static class TestAgentOverview
             .GroupBy(r => r.State)
             .Select(g => new { State = g.Key, Count = g.Count() })
             .ToListAsync(ct);
+        var running = TestGenRunState.Running;
         int Count(Func<string, bool> matches) => byState.Where(s => matches(s.State)).Sum(s => s.Count);
         var counts = new TestAgentRunCounts(
-            Count(Running.Contains),
+            Count(running.Contains),
             Count(s => s == TestGenRunState.Candidate),
             Count(s => s == TestGenRunState.Accepted),
             Count(Failed.Contains),
-            Count(s => !Running.Contains(s) && !Failed.Contains(s) && s is not (TestGenRunState.Candidate or TestGenRunState.Accepted)),
+            Count(s => !running.Contains(s) && !Failed.Contains(s) && s is not (TestGenRunState.Candidate or TestGenRunState.Accepted)),
             byState.Sum(s => s.Count));
 
+        var now = time.GetUtcNow();
         var recent = (await context.TestGenRuns.AsNoTracking()
                 .OrderByDescending(r => r.UpdatedAt)
                 .Take(RecentRuns)
                 .ToListAsync(ct))
-            .Select(r => new TestAgentRun(r.Id, r.Path, r.State, r.Reason, r.Attempt, r.MaxAttempts, r.LastPct, r.TargetPct, r.Model,
-                new DateTimeOffset(DateTime.SpecifyKind(r.UpdatedAt, DateTimeKind.Utc))))
+            .Select(r => Recent(r, now))
             .ToList();
 
         var model = options.Models.FirstOrDefault(m => m.Default) ?? options.Models.FirstOrDefault();
@@ -75,5 +78,18 @@ public static class TestAgentOverview
             new RunBudget(null, null),
             counts,
             recent);
+    }
+
+    /// <summary>A stored time is UTC without a kind; it leaves the api as an instant.</summary>
+    private static DateTimeOffset Utc(DateTime at) => new(DateTime.SpecifyKind(at, DateTimeKind.Utc));
+
+    internal static TestAgentRun Recent(TestGenRunRow r, DateTimeOffset now)
+    {
+        var started = Utc(r.CreatedAt);
+        DateTimeOffset? finished = r.FinishedAt is { } end ? Utc(end) : null;
+        var until = finished ?? (TestGenRunState.Running.Contains(r.State) ? now : null);
+        long? duration = until is { } u ? Math.Max(0, (long)(u - started).TotalMilliseconds) : null;
+        return new TestAgentRun(r.Id, r.Path, r.State, r.Reason, r.Attempt, r.MaxAttempts, r.LastPct, r.TargetPct, r.Model,
+            Utc(r.UpdatedAt), started, finished, duration);
     }
 }

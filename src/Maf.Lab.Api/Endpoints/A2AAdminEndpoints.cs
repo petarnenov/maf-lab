@@ -91,10 +91,10 @@ public static class A2AAdminEndpoints
         // briefly), how the api reaches it, what a run gets by default, and its runs. Read-only; the browser never reaches
         // the agent. Runs describe the repository, not a firm, so there is nothing to scope and no parameter to take.
         api.MapGet("/test-agent", async (Coverage.TestAgentProbe probe, Microsoft.Extensions.Options.IOptions<Coverage.TestAgentOptions> options,
-            IDbContextFactory<MafDbContext> db, CancellationToken ct) =>
+            IDbContextFactory<MafDbContext> db, TimeProvider time, CancellationToken ct) =>
         {
             await using var context = await db.CreateDbContextAsync(ct);
-            return Results.Ok(await Coverage.TestAgentOverview.BuildAsync(probe, options.Value, context, ct));
+            return Results.Ok(await Coverage.TestAgentOverview.BuildAsync(probe, options.Value, context, time, ct));
         });
 
         // The firm whose data is being worked on may stop the work. It ends the way a partner's cancel ends,
