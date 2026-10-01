@@ -2508,3 +2508,42 @@ said which account the conversation was about.
   run would make stale.
 - **Not checked, still by review.** Ports, replica counts, tolerances, defaults quoted in prose, and whether a feature
   has a section remain prose; the archive guidance's read-only review is still the safeguard.
+
+## 70. The api runs as the host user (run-the-api-as-the-host-user, 2026-10-01)
+
+- **Why.** On Linux the api ran as root and wrote into the bind-mounted repository (test-agent branches, merges into
+  `main`), `data/` and `evals/`. It left root-owned `.git/objects/<xx>` directories, refs, reflogs and merged test
+  files, and the developer's own `git commit` failed whenever an object hash fell into a root-owned prefix. Docker
+  Desktop maps bind mounts to the host user, so macOS never showed it. No package, image of an existing service, route,
+  target, project or model moved; one image is added for the new service (`alpine:3.22`, already pinned by the CI
+  overlay).
+- **Declared, not inferred.** `api` runs as `${MAF_LAB_UID:-1000}:${MAF_LAB_GID:-1000}`; the Makefile exports both
+  from `id -u`/`id -g` (`?=`, overridable), next to `MAF_LAB_REPO`. Rejected: chowning after each git write (git writes
+  objects, packs, reflogs, `ORIG_HEAD`, the index and work-tree files across several commands — one miss stays root's);
+  an entrypoint that `stat`s the repository and drops privileges (logic in the image, a `stat` Docker Desktop may
+  answer differently, still starts as root); a fixed service uid (its files would be that uid's instead).
+- **`HOME=/tmp`.** A uid with no passwd entry (CI's 1001) gets `HOME=/`; uid 1000 happens to be `ubuntu` in the noble
+  image. `/tmp` is writable for both and is where `RepoWriter` already makes its worktrees. ASP.NET's data-protection
+  keys were container-local before and still are. The image's system-wide `safe.directory '*'` stays, so git never
+  refuses a repository for its owner. Verified with the api image as uid 1000 and as passwd-less uid 1001: worktree
+  add, commit, `branch -f` (no identity variables), merge in the checkout, merge in a `/tmp` worktree plus
+  `update-ref`, `branch -D` — every resulting path owned by the running uid.
+- **`api-data-init`.** A one-shot `alpine:3.22` service, root, `chown -R` of the `api-data` volume to that user; `api`
+  waits for it to complete. It fixes both a fresh volume (Docker creates the mount point as root) and volumes from
+  before. `wait_healthy.sh` already accepts one-shot services that exit 0.
+- **Leftovers are repaired by `make up`, found on the host.** `scripts/repair_ownership.sh` runs `find -xdev -user 0`
+  on the host over the checkout and `MAF_LAB_REPO` (pruning `node_modules`; a directory inside another is scanned once)
+  and, only on a hit, `chown -h UID:GID` exactly those paths in a throwaway root `alpine:3.22` container (no network),
+  repeating up to three passes for root-only directories. Skipped when the target uid is 0. Automatic rather than a
+  documented one-liner because the first test-generation run after the upgrade would otherwise fail on the root-owned
+  `refs/heads/test-agent/`, and the only fix without `sudo` is a root container — which `make` already has. On the
+  host, not in the init container: the host's `find` is true on every platform and instant (~10 ms here), so on Docker
+  Desktop it finds nothing and starts nothing, where an in-container scan would read file-sharing ownership and walk
+  the tree over the slow mount.
+- **Out of scope.** `test-agent` (repository `:ro`, own volume), `mcp-retrieval` and the other root services write only
+  their named volumes; `coverage-runner` is already uid 10001 with the repository `:ro`.
+- **Rootless Docker / `userns-remap`.** Container uid N maps to a sub-uid there, so a non-root api could not write the
+  user's files; container root already is the host user. Use `make MAF_LAB_UID=0 MAF_LAB_GID=0`. Not auto-detected:
+  it would cost a `docker info` on every make invocation.
+- **Not verified here.** A Mac (Docker Desktop's file sharing should grant 501:20 access as before) and the GitHub
+  runner (uid 1001; its checkout and the e2e clone are the runner's, and the passwd-less git path is verified).
