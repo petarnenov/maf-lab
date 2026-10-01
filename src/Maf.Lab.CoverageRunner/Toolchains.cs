@@ -4,9 +4,12 @@ using Maf.Lab.TestGen;
 
 namespace Maf.Lab.CoverageRunner;
 
-/// <summary>What a toolchain run found, before the target file is looked at.</summary>
+/// <summary>
+/// What a toolchain run found, before the target file is looked at. <see cref="Warnings"/>: the build warnings it
+/// printed, in the diagnostics' form, which the lint bar holds a diff's files to (<see cref="LintBar"/>).
+/// </summary>
 public sealed record ToolchainOutcome(string Build, IReadOnlyList<string> Diagnostics, TestCounts Tests,
-    IReadOnlyList<TestFailure> Failures, string? CoberturaPath, bool TimedOut);
+    IReadOnlyList<TestFailure> Failures, string? CoberturaPath, bool TimedOut, IReadOnlyList<string>? Warnings = null);
 
 /// <summary>Builds and runs one toolchain's unit tests with coverage in a prepared workspace.</summary>
 public interface IToolchainRunner
@@ -39,6 +42,7 @@ public sealed partial class DotnetToolchain(RunnerOptions options) : IToolchainR
     {
         var text = outcome.Output.Replace(workspace.TrimEnd('/') + "/", "", StringComparison.Ordinal);
         var diagnostics = CompilerError().Matches(text).Select(m => ProjectSuffix().Replace(m.Value.Trim(), "")).Distinct().Take(50).ToList();
+        var warnings = CompilerWarning().Matches(text).Select(m => ProjectSuffix().Replace(m.Value.Trim(), "")).Distinct().ToList();
         var buildFailed = diagnostics.Count > 0 || text.Contains("Build failed", StringComparison.Ordinal);
 
         var failures = new List<TestFailure>();
@@ -63,7 +67,7 @@ public sealed partial class DotnetToolchain(RunnerOptions options) : IToolchainR
         }
         var tests = new TestCounts(Last(text, "succeeded"), failed, Last(text, "skipped"));
         return new ToolchainOutcome(buildFailed ? BuildOutcome.Failed : BuildOutcome.Ok, diagnostics, tests,
-            failures.Take(50).ToList(), buildFailed ? null : report, outcome.TimedOut);
+            failures.Take(50).ToList(), buildFailed ? null : report, outcome.TimedOut, warnings);
     }
 
     private static int Last(string text, string name) =>
@@ -71,8 +75,12 @@ public sealed partial class DotnetToolchain(RunnerOptions options) : IToolchainR
 
     private static Regex Summary(string name) => new($@"^\s*{name}:\s*(\d+)\s*$", RegexOptions.Multiline);
 
-    [GeneratedRegex(@"^[^\n]*: error [A-Z]+\d+: [^\n]*", RegexOptions.Multiline)]
+    // Analyzer ids are not all upper case (xUnit1031), so neither pattern insists on it.
+    [GeneratedRegex(@"^[^\n]*: error [A-Za-z]+\d+: [^\n]*", RegexOptions.Multiline)]
     private static partial Regex CompilerError();
+
+    [GeneratedRegex(@"^[^\n]*: warning [A-Za-z]+\d+: [^\n]*", RegexOptions.Multiline)]
+    private static partial Regex CompilerWarning();
 
     [GeneratedRegex(@"\s*\[[^\]]*\.csproj\]$")]
     private static partial Regex ProjectSuffix();

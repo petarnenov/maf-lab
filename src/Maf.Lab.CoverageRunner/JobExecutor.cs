@@ -50,6 +50,12 @@ public sealed class JobExecutor(IOptions<RunnerOptions> options, IEnumerable<ITo
 
             var toolchain = toolchains.Single(t => t.Toolchain == request.Toolchain);
             var outcome = await toolchain.RunAsync(workspace, output, opts.TimeLimit, ct);
+            // A diff's files are held to CI's lint bar; a run without a diff (baseline, refresh) is measured as it is.
+            if (!outcome.TimedOut && request.Diff is { Length: > 0 } changes)
+            {
+                outcome = await LintBar.HoldAsync(request.Toolchain, changes, workspace, output, outcome,
+                    opts.TimeLimit - clock.Elapsed, ct);
+            }
             if (outcome.TimedOut)
             {
                 return RunnerResult.Failed(RunnerStatus.TimedOut, clock.ElapsedMilliseconds);

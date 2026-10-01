@@ -28,6 +28,8 @@ internal sealed class FakeToolchain : IToolchainRunner
     public ConcurrentQueue<string[]> SeenTestFiles { get; } = new();
     public TaskCompletionSource? Gate { get; set; }
     public bool Overrun { get; set; }
+    /// <summary>The build warnings it reports, as a real build prints them.</summary>
+    public IReadOnlyList<string>? Warnings { get; set; }
 
     public async Task<ToolchainOutcome> RunAsync(string workspace, string outputDir, TimeSpan timeLimit, CancellationToken ct)
     {
@@ -47,14 +49,14 @@ internal sealed class FakeToolchain : IToolchainRunner
         var report = Path.Combine(outputDir, "dotnet.cobertura.xml");
         await File.WriteAllTextAsync(report,
             FakeCoverageRunner.Report(workspace, ("src/Lab/Calc.cs", Math.Min(4, tests.Length), 4)), ct);
-        return new ToolchainOutcome(BuildOutcome.Ok, [], new TestCounts(tests.Length, 0, 0), [], report, false);
+        return new ToolchainOutcome(BuildOutcome.Ok, [], new TestCounts(tests.Length, 0, 0), [], report, false, Warnings);
     }
 }
 
 /// <summary>The coverage runner as its callers meet it (coverage-runner).</summary>
 // Heavy (git, several hosts): run one after another rather than beside the timing-sensitive tests.
 [Collection("TestGeneration")]
-public sealed class CoverageRunnerTests
+public sealed partial class CoverageRunnerTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
