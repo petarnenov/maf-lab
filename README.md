@@ -321,6 +321,12 @@ discard it. A suspected bug whose test still fails when un-skipped becomes a Git
 follows a run live, and `/admin/a2a` shows the agent and its runs. `make testgen-e2e` drives the whole path without a
 model; `make ci-e2e` includes it.
 
+The api writes to the repository (those branches and merges), `data/` and `evals/` as the user who ran `make`
+(`MAF_LAB_UID`/`MAF_LAB_GID`, from `id -u`/`id -g`), so on Linux everything it leaves there is yours; a one-shot
+`api-data-init` hands its data volume to that user first. Earlier versions ran it as root: `make up` finds paths owned
+by root in the checkout and gives exactly those back to you. On rootless Docker or `userns-remap`, run
+`make MAF_LAB_UID=0 MAF_LAB_GID=0`.
+
 ## The first thing it can change
 
 Everything else the assistant does can be undone by closing the tab. `propose_fee_adjustment` is the exception —

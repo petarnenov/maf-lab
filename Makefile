@@ -40,6 +40,11 @@ export CHAT_MODEL OLLAMA_MODELS_DIR
 # The repository, mounted into the api (read-write), the test agent and the coverage runner (read-only) at this same path.
 MAF_LAB_REPO  ?= $(ROOT)
 export MAF_LAB_REPO
+# The user the api runs as, so what it writes there (branches, merges, evals/, data/) is yours, not root's. Docker
+# Desktop maps bind mounts to you anyway; on rootless Docker or userns-remap set both to 0 (DECISIONS.md §70).
+MAF_LAB_UID   ?= $(shell id -u)
+MAF_LAB_GID   ?= $(shell id -g)
+export MAF_LAB_UID MAF_LAB_GID
 # The throwaway repository ci-e2e mounts instead, because its test-generation run merges into main.
 E2E_REPO      ?= $(ROOT)/.cache/e2e-repo
 # OLLAMA_API_KEY, JEV_MAF_LAB and GITHUB_ISSUES_TOKEN are only ever read from the environment (never written to a
@@ -87,6 +92,8 @@ help: ## List the targets
 up: require-docker ## Build and start the stack (replicas via API_REPLICAS/MCP_REPLICAS/PORTFOLIO_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy
 	@if [ "$(CI_MODE)" != "1" ] && [ -z "$$OLLAMA_API_KEY" ]; then echo "⚠ OLLAMA_API_KEY is not set: the stack starts, but chat (Ollama Cloud) will fail. Run 'make setup'."; fi
 	@if [ "$(CI_MODE)" != "1" ] && [ -z "$$JEV_MAF_LAB" ]; then echo "⚠ JEV_MAF_LAB is not set: the stack starts, but no turn is classified (nothing forced to search)."; fi
+	@# Earlier versions ran the api as root; give back to you whatever it left owned by root in the checkout.
+	@scripts/repair_ownership.sh "$(ROOT)" "$(MAF_LAB_REPO)"
 	@# compose itself waits for the balancer's dependencies to be healthy; if that fails, show which service and why.
 	$(COMPOSE) up -d --build --remove-orphans --scale api=$(API_REPLICAS) --scale mcp-retrieval=$(MCP_REPLICAS) \
 	  --scale mcp-portfolio=$(PORTFOLIO_REPLICAS) --scale compliance=$(COMPLIANCE_REPLICAS) \
