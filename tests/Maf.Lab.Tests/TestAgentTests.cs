@@ -666,6 +666,45 @@ public sealed class TestAgentTests
         Assert.Contains("Lines still uncovered: 8-10", model.Prompts.ElementAt(1));
         var phases = TestAgentFactory.Activity(task).Where(e => e is { Type: ActivityType.Phase, Attempt: 2 }).Select(e => e.Phase);
         Assert.Equal([AttemptPhase.Generating, AttemptPhase.Building, AttemptPhase.Testing, AttemptPhase.Measuring], phases);
+
+        // Each attempt says what it ran; the second also the whole-suite run that confirmed it, whose counts it shows.
+        var focused = new AttemptRun(TestScope.Related, 1, 10);
+        var results = TestAgentFactory.Activity(task).Where(e => e.Type == ActivityType.Attempt).Select(e => e.Result!).ToList();
+        Assert.Equal([(focused, null), (focused, new AttemptRun(TestScope.All, 0, 10, Pct: 88))],
+            results.Select(r => (r.Run, r.Confirmation)));
+        Assert.Equal([(focused, null), (focused, new AttemptRun(TestScope.All, 0, 10, Pct: 88))],
+            report.Attempts.Select(a => (a.Run, a.Confirmation)));
+    }
+
+    [Fact]
+    public async Task An_attempt_the_runner_ran_on_the_whole_suite_says_why_and_whether_it_was_reused()
+    {
+        var repo = await RepoAsync();
+        var model = new AttemptModel(Writes);
+        var reused = new RunnerReuse("job_earlier", DateTimeOffset.UtcNow);
+        var runner = new FakeCoverageRunner
+        {
+            Answer = r => r.Diff is null ? WholeBaseline()
+                : Whole(90) with { Selection = TestSelection.FellBack("no test uses the target or a changed test file"), ReusedFrom = reused },
+        };
+        await using var agent = new TestAgentFactory(repo, model, runner);
+
+        var task = await TestAgentFactory.RpcAsync(await agent.ClientAsync(), "message/send",
+            TestAgentFactory.Send(TestAgentFactory.Request(await repo.HeadAsync(Ct))), Ct);
+
+        // Not focused, so nothing to confirm: the run it got is the whole suite already.
+        var result = TestAgentFactory.Activity(task).Single(e => e.Type == ActivityType.Attempt).Result!;
+        Assert.Equal(new AttemptRun(TestScope.All, 0, 10, "no test uses the target or a changed test file", Reused: true), result.Run);
+        Assert.Null(result.Confirmation);
+        Assert.Equal(2, runner.Requests.Count);
+    }
+
+    [Fact]
+    public void An_attempt_that_asked_for_the_whole_suite_itself_says_why_and_one_that_never_ran_says_nothing()
+    {
+        Assert.Equal(new AttemptRun(TestScope.All, 0, 10, TestGenerationHandler.NoBaselineLines),
+            TestGenerationHandler.Ran(Whole(50), TestScope.All));
+        Assert.Null(TestGenerationHandler.Ran(RunnerResult.Failed(RunnerStatus.TimedOut, 1), TestScope.Related));
     }
 
     [Fact]

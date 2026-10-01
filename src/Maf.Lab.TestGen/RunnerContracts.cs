@@ -4,10 +4,14 @@ namespace Maf.Lab.TestGen;
 /// A request to the coverage runner: build and test one toolchain at one commit, optionally with a diff applied,
 /// optionally reporting one file. <see cref="Tests"/> chooses the tests: <see cref="TestScope.All"/> (the default) or
 /// <see cref="TestScope.Related"/>, which needs the target file. The runner answers with a job; the caller polls it
-/// until it is done.
+/// until it is done. An identical request may be answered with a complete result the runner computed earlier
+/// (<see cref="RunnerResult.ReusedFrom"/>); <see cref="Fresh"/> asks for a run of its own.
 /// </summary>
 public sealed record RunnerRequest(string Commit, string Toolchain, string? Diff = null, string? TargetFile = null,
-    string? Tests = null);
+    string? Tests = null, bool Fresh = false);
+
+/// <summary>A result the runner did not compute for this request: the job that did, and when it completed.</summary>
+public sealed record RunnerReuse(string JobId, DateTimeOffset CompletedAt);
 
 /// <summary>Which tests a runner job runs.</summary>
 public static class TestScope
@@ -61,13 +65,20 @@ public sealed record RunnerResult(
     IReadOnlyList<int[]> Uncovered,
     long DurationMs,
     TestSelection? Selection = null,
-    LineHits? TargetLines = null)
+    LineHits? TargetLines = null,
+    RunnerReuse? ReusedFrom = null)
 {
     public bool Measured => Status == RunnerStatus.Ok && Build == BuildOutcome.Ok;
     public bool Green => Measured && Tests.Failed == 0;
 
     /// <summary>Only some of the tests ran: the target's coverage is what they covered.</summary>
     public bool Focused => Selection?.Scope == TestScope.Related;
+
+    /// <summary>
+    /// Complete enough to answer an identical request with: the run got as far as measuring (or failing the build) and
+    /// no test failed. A timeout, a runner error or a failing test, which may be flaky, is always run again.
+    /// </summary>
+    public bool Reusable => Status == RunnerStatus.Ok && Tests.Failed == 0;
 
     public static RunnerResult Failed(string status, long durationMs, IReadOnlyList<string>? diagnostics = null) =>
         new(status, BuildOutcome.Skipped, diagnostics ?? [], new TestCounts(0, 0, 0), [], null, null, null, [], durationMs);

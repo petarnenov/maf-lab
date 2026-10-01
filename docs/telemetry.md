@@ -21,11 +21,14 @@ do, so neither needs a collector.
 | agent run spans (`invoke_agent`, `gen_ai.agent.*`) | `Microsoft.Agents.AI` (`OpenTelemetryAgent`) |
 | incoming requests, outgoing HTTP, EF Core | the standard OpenTelemetry instrumentation |
 | `tool.call`, `mcp.tool`, `retrieval.embed`, `retrieval.sparse_encode`, `retrieval.query`, `retrieval.rerank` | this system, because no library writes them |
-| `maf.turns`, `maf.turn.duration`, `maf.tool.calls`, `maf.retrieval.stage.duration` | this system's own `Meter` |
+| `maf.turns`, `maf.turn.duration`, `maf.tool.calls`, `maf.retrieval.stage.duration`, `maf.runner.reuse` | this system's own `Meter` |
 
 `maf.turns` is tagged `outcome` = `started`, `answered`, `failed` or `awaiting_person` — a turn that stopped for
 an advisor's approval is not a failure. `maf.tool.calls` is tagged `tool.name` and `outcome`, and is counted where
-the audit row is written so the two can never disagree.
+the audit row is written so the two can never disagree. `maf.runner.reuse` counts the coverage runner's requests by
+what result reuse did with them, tagged `outcome` (`hit`: answered with a kept result, `joined`: waited for an
+identical job in flight, `miss`: ran and may be kept, `fresh`: asked for its own run, `off`: not eligible), `toolchain`
+and `scope`. It never carries the commit, the diff or a path, and neither does the runner's log line for it.
 
 ## No content, anywhere
 

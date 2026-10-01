@@ -125,9 +125,31 @@ public static class ToolOutcome
 /// <summary>A tool call as the activity shows it: the tool, the path it concerned, and a summary — never file text.</summary>
 public sealed record ToolActivity(string Name, string? Path, string Outcome, string Summary);
 
-/// <summary>An attempt's result as the activity shows it.</summary>
+/// <summary>
+/// What one runner job of an attempt ran: the scope it used, how many related test files (at most
+/// <see cref="TestSelection.MaxFiles"/>), how many tests, why it ran the whole suite when related tests were asked for,
+/// and whether the runner answered with a result it had computed earlier. <see cref="Pct"/> is the coverage that run
+/// measured (set on a confirmation).
+/// </summary>
+public sealed record AttemptRun(string Scope, int Files, int Tests, string? Reason = null, bool Reused = false, double? Pct = null)
+{
+    /// <summary>The run as the attempt saw it; <paramref name="reason"/> stands in when the runner gave none.</summary>
+    public static AttemptRun Of(RunnerResult result, string? reason = null, bool withPct = false)
+    {
+        var selection = result.Selection ?? TestSelection.Whole;
+        return new AttemptRun(selection.Scope, selection.Scope == TestScope.Related ? selection.TestFiles.Count : 0,
+            result.Tests.Passed + result.Tests.Failed + result.Tests.Skipped, selection.Reason ?? reason, result.ReusedFrom is not null,
+            withPct ? result.TargetPct : null);
+    }
+}
+
+/// <summary>
+/// An attempt's result as the activity shows it. <see cref="Run"/> is what its measured run ran; <see cref="Confirmation"/>
+/// the whole-suite run that confirmed it, whose numbers are then the attempt's. Both are absent on entries recorded
+/// before they existed.
+/// </summary>
 public sealed record AttemptActivity(double? Before, double? After, string Build, TestCounts Tests, IReadOnlyList<string> Errors,
-    int Violations);
+    int Violations, AttemptRun? Run = null, AttemptRun? Confirmation = null);
 
 /// <summary>
 /// Why the agent's work on a task is over: the last entry of a completed task. <see cref="NotStarted"/> names the
@@ -179,7 +201,9 @@ public sealed record AttemptLog(
     IReadOnlyList<string> TestsAdded,
     IReadOnlyList<string> Errors,
     IReadOnlyList<string> GuardrailViolations,
-    IReadOnlyList<int[]> Uncovered);
+    IReadOnlyList<int[]> Uncovered,
+    AttemptRun? Run = null,
+    AttemptRun? Confirmation = null);
 
 /// <summary>
 /// A test that shows the production code does not do what it is meant to. The test keeps its assertion and is
@@ -208,7 +232,15 @@ public sealed record TestGenReport(
     IReadOnlyList<AttemptLog> Attempts,
     TestGenUsage Usage,
     string Diff,
-    IReadOnlyList<SuspectedBug>? SuspectedBugs = null);
+    IReadOnlyList<SuspectedBug>? SuspectedBugs = null,
+    VerificationRun? Verification = null);
+
+/// <summary>
+/// How the api's verification run was obtained (set by the api, never by the agent): its scope, its counts and coverage,
+/// and, when the runner answered with a result it had already computed for the identical request (the agent's
+/// whole-suite confirmation), which job computed it.
+/// </summary>
+public sealed record VerificationRun(string Scope, TestCounts Tests, double? Pct, RunnerReuse? ReusedFrom = null);
 
 /// <summary>Why a task failed, as the status message's code: short, stable, and free of detail.</summary>
 public static class TestGenFailure

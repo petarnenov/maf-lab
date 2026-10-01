@@ -506,17 +506,23 @@ public sealed class TestGenerationHandler(
 
                 await ProgressAsync(updater, reporter, request, n, AttemptPhase.Building, current, usage, ct);
                 RunnerResult result;
+                // What the attempt's own run ran, and the whole-suite run that confirmed it (when one did): the card
+                // says both, since the counts it shows are the confirmation's.
+                AttemptRun? ran;
+                AttemptRun? confirmation = null;
                 try
                 {
                     result = FocusedCoverage.Apply(
                         await runner.RunAsync(new RunnerRequest(request.Commit, request.Toolchain, diff, request.TargetFile, tools.Scope), ct),
                         tools.BaselineLines);
+                    ran = Ran(result, tools.Scope);
                     // The run would end here on the related tests alone: the whole suite decides, so a test this attempt
                     // breaks elsewhere is fed back now rather than found by verification, and the coverage is measured.
                     if (result.Focused && result.Green && violations.Count == 0 && diff.Length > 0 && result.TargetPct >= request.TargetLinePct)
                     {
                         await ProgressAsync(updater, reporter, request, n, AttemptPhase.Testing, current, usage, ct);
                         result = await runner.RunAsync(new RunnerRequest(request.Commit, request.Toolchain, diff, request.TargetFile, TestScope.All), ct);
+                        confirmation = Ran(result, TestScope.All, withPct: true);
                         attemptSpan?.SetTag("testgen.confirmed", true);
                     }
                 }
@@ -540,10 +546,10 @@ public sealed class TestGenerationHandler(
                 }
                 var log = new AttemptLog(n, before, result.TargetPct, result.Build, result.Tests, TestsIn(diff),
                     [.. errors, .. result.Diagnostics.Take(10), .. result.Failures.Take(10).Select(f => $"{f.Name}: {f.Message}")],
-                    violations.Select(v => v.ToString()).ToList(), result.Uncovered);
+                    violations.Select(v => v.ToString()).ToList(), result.Uncovered, ran, confirmation);
                 attempts.Add(log);
                 await reporter.AttemptAsync(
-                    new AttemptActivity(log.Before, log.After, log.Build, log.Tests, log.Errors, log.GuardrailViolations.Count), ct);
+                    new AttemptActivity(log.Before, log.After, log.Build, log.Tests, log.Errors, log.GuardrailViolations.Count, ran, confirmation), ct);
                 await ProgressAsync(updater, reporter, request, n, AttemptPhase.Measuring, current, usage, ct);
 
                 // Only a clean attempt — it builds, every test passes, no rule is broken — can be the result.
@@ -585,6 +591,17 @@ public sealed class TestGenerationHandler(
     }
 
     private sealed record Best(double? Pct, string Diff, IReadOnlyList<SuspectedBug> Bugs);
+
+    /// <summary>Why an attempt asked for the whole suite itself: it has no baseline lines to merge a focused run with.</summary>
+    public const string NoBaselineLines = "the run has no baseline lines (resumed from an older checkpoint)";
+
+    /// <summary>
+    /// What a runner job of an attempt ran, or null when it never got as far as running tests (a rejected diff, a
+    /// timeout, a runner error): then the attempt's errors say what happened instead.
+    /// </summary>
+    internal static AttemptRun? Ran(RunnerResult result, string asked, bool withPct = false) =>
+        result.Status != RunnerStatus.Ok ? null
+            : AttemptRun.Of(result, asked == TestScope.All && result.Selection?.Scope != TestScope.Related && !withPct ? NoBaselineLines : null, withPct);
 
     /// <summary>
     /// provider → usage counting → round nudge → the tool loop. The counter sits on the provider so every call the loop

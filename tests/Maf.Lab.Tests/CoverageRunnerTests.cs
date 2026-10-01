@@ -35,6 +35,12 @@ internal sealed class FakeToolchain : IToolchainRunner
     /// <summary>A related run reports no test at all, as a filter that matched nothing would.</summary>
     public bool RelatedRunsNothing { get; set; }
 
+    /// <summary>How many of the first runs overrun the time limit; later runs do not.</summary>
+    public int OverrunFirst { get; set; }
+
+    /// <summary>How many of its tests fail.</summary>
+    public int FailingTests { get; set; }
+
     public async Task<ToolchainOutcome> RunAsync(string workspace, string outputDir, TestPlan plan, TimeSpan timeLimit, CancellationToken ct)
     {
         var tests = Directory.Exists(Path.Combine(workspace, "tests"))
@@ -43,6 +49,7 @@ internal sealed class FakeToolchain : IToolchainRunner
             : [];
         SeenTestFiles.Enqueue(tests);
         Plans.Enqueue(plan);
+        var index = Plans.Count - 1;
         if (plan.Related && RelatedRunsNothing)
         {
             return new ToolchainOutcome(BuildOutcome.Ok, [], new TestCounts(0, 0, 0), [], null, false);
@@ -51,14 +58,15 @@ internal sealed class FakeToolchain : IToolchainRunner
         {
             await gate.Task.WaitAsync(ct);
         }
-        if (Overrun)
+        if (Overrun || index < OverrunFirst)
         {
             return new ToolchainOutcome(BuildOutcome.Ok, [], new TestCounts(0, 0, 0), [], null, TimedOut: true);
         }
         var report = Path.Combine(outputDir, "dotnet.cobertura.xml");
         await File.WriteAllTextAsync(report,
             FakeCoverageRunner.Report(workspace, ("src/Lab/Calc.cs", Math.Min(4, tests.Length), 4)), ct);
-        return new ToolchainOutcome(BuildOutcome.Ok, [], new TestCounts(tests.Length, 0, 0), [], report, false, Warnings: Warnings);
+        var failures = Enumerable.Range(1, FailingTests).Select(i => new TestFailure($"Lab.Tests.Flaky.Fails{i}", "Assert.True() Failure")).ToList();
+        return new ToolchainOutcome(BuildOutcome.Ok, [], new TestCounts(tests.Length, FailingTests, 0), failures, report, false, Warnings: Warnings);
     }
 }
 
@@ -70,7 +78,8 @@ public sealed partial class CoverageRunnerTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    private sealed class Runner(TempGitRepo repo, FakeToolchain toolchain) : IAsyncDisposable
+    private sealed class Runner(TempGitRepo repo, FakeToolchain toolchain, TimeProvider? clock = null,
+        IReadOnlyDictionary<string, string?>? settings = null) : IAsyncDisposable
     {
         private WebApplication? _app;
 
@@ -88,6 +97,14 @@ public sealed partial class CoverageRunnerTests
                         ["Runner:MaxConcurrent"] = "1",
                         ["Runner:DotnetTestProject"] = "tests/Lab.Tests",
                     });
+                    if (settings is not null)
+                    {
+                        builder.Configuration.AddInMemoryCollection(settings);
+                    }
+                    if (clock is not null)
+                    {
+                        builder.Services.AddSingleton(clock);
+                    }
                     builder.Logging.ClearProviders();
                     builder.Services.AddSingleton<IToolchainRunner>(toolchain);
                 });
@@ -246,7 +263,8 @@ public sealed partial class CoverageRunnerTests
         {
             await Task.Delay(10, Ct);
         }
-        var second = await (await client.PostAsJsonAsync("/runs", new RunnerRequest(commit, "dotnet"), Json, Ct)).Content.ReadFromJsonAsync<RunnerJob>(Json, Ct);
+        // A different request: an identical one would wait for the first instead of queueing (reuse).
+        var second = await (await client.PostAsJsonAsync("/runs", new RunnerRequest(commit, "dotnet", AddTest("Second")), Json, Ct)).Content.ReadFromJsonAsync<RunnerJob>(Json, Ct);
         var firstNow = await client.GetFromJsonAsync<RunnerJob>($"/runs/{first!.Id}", Json, Ct);
         toolchain.Gate.SetResult();
 

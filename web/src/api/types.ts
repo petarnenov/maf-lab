@@ -1149,6 +1149,19 @@ export interface TestGenReport {
   usage: { inputTokens: number; outputTokens: number; estimatedCostUsd: number };
   diff: string;
   suspectedBugs?: SuspectedBug[] | null;
+  /** How the api's verification run was obtained; absent on runs verified before it was recorded. */
+  verification?: VerificationRun | null;
+}
+
+/**
+ * The api's verification run: its scope, counts and coverage, and, when the runner answered with the result it had
+ * computed for the agent's whole-suite confirmation of the same diff, which job computed it.
+ */
+export interface VerificationRun {
+  scope: string;
+  tests: { passed: number; failed: number; skipped: number };
+  pct: number | null;
+  reusedFrom?: { jobId: string; completedAt: string } | null;
 }
 
 export interface RunIssue {

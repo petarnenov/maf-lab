@@ -8,6 +8,7 @@ import { CoveragePage } from './CoveragePage';
 import { detail } from './CoveragePage.test';
 import {
   ATTEMPT_EVENT,
+  attemptScope,
   initialRunStream,
   reduceRunEvent,
   RESUMED_EVENT,
@@ -201,6 +202,47 @@ describe('Run activity', () => {
     expect(within(dialog).getByLabelText('Run')).toHaveTextContent('71.4% of 85%');
   });
 
+  it('says what each attempt ran: related tests, then the whole suite that confirmed it, or why the whole suite ran', async () => {
+    const done = run({ state: 'candidate', attempt: 2, active: false, lastPct: 86.3 });
+    const attempt = (n: number, extra: Record<string, unknown>) =>
+      sse(EventType.CUSTOM, {
+        name: ATTEMPT_EVENT,
+        value: { attempt: n, before: 41, after: 86.3, build: 'ok', tests: { passed: 1219, failed: 0, skipped: 0 }, errors: [], violations: 0, ...extra },
+      });
+    stubApi(done, () =>
+      streamResponse([
+        started,
+        state(done),
+        attempt(1, { run: { scope: 'all', files: 0, tests: 1219, reason: 'no test uses the target or a changed test file' } }),
+        attempt(2, {
+          run: { scope: 'related', files: 3, tests: 58 },
+          confirmation: { scope: 'all', files: 0, tests: 1219, pct: 86.3 },
+        }),
+        sse(EventType.RUN_FINISHED, { threadId: 'testgen:r_1', runId: 'r_1', result: done }),
+      ]),
+    );
+    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
+
+    const dialog = await openActivity();
+
+    const timeline = within(dialog).getByRole('list', { name: 'Run activity' });
+    expect(await within(timeline).findByText(/related: 3 files, 58 tests → whole suite: 1,219 tests \(confirmation\)/)).toBeInTheDocument();
+    expect(timeline).toHaveTextContent('Attempt 1: 41.0% → 86.3% · build ok · 1219 passed, 0 failed · whole suite: no test uses the target or a changed test file');
+  });
+
+  it('shows an attempt recorded before attempts said what they ran as it always did', async () => {
+    const failed = run({ state: 'failed', reason: 'runner_unavailable', active: false });
+    stubApi(failed, () => streamResponse([started, state(failed), ...attemptOne, sse(EventType.RUN_ERROR, { code: 'runner_unavailable', message: '' })]));
+    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
+
+    const dialog = await openActivity();
+
+    const row = (await within(dialog).findByText('Attempt 1')).closest('li')!;
+    expect(row).toHaveTextContent('3 passed, 1 failed');
+    expect(row).not.toHaveTextContent('related');
+    expect(row).not.toHaveTextContent('whole suite');
+  });
+
   it('shows a finished run whole, and why it failed', async () => {
     const failed = run({ state: 'failed', reason: 'runner_unavailable', active: false });
     stubApi(failed, () =>
@@ -380,5 +422,29 @@ describe('Run activity', () => {
 
     const save = await screen.findByRole('button', { name: 'Save' });
     expect(save.parentElement).toContainElement(screen.getByRole('button', { name: 'Activity' }));
+  });
+});
+
+describe('attempt scope', () => {
+  it('names a related run, its confirmation and what was reused', () => {
+    expect(attemptScope({ run: { scope: 'related', files: 1, tests: 1 } })).toBe('related: 1 file, 1 test');
+    expect(
+      attemptScope({
+        run: { scope: 'related', files: 3, tests: 58, reused: true },
+        confirmation: { scope: 'all', files: 0, tests: 1219, reused: true },
+      }),
+    ).toBe('related: 3 files, 58 tests (reused) → whole suite: 1,219 tests (confirmation, reused)');
+  });
+
+  it('names a whole-suite run by its reason, or by its tests when it has none', () => {
+    expect(attemptScope({ run: { scope: 'all', files: 0, tests: 7, reason: 'the diff changes the test project' } })).toBe(
+      'whole suite: the diff changes the test project',
+    );
+    expect(attemptScope({ run: { scope: 'all', files: 0, tests: 7, reason: null } })).toBe('whole suite: 7 tests');
+  });
+
+  it('says nothing for an entry that does not say what it ran', () => {
+    expect(attemptScope({})).toBeNull();
+    expect(attemptScope({ run: null, confirmation: null })).toBeNull();
   });
 });

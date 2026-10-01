@@ -21,6 +21,7 @@ public sealed partial class RunVerifier(
     CoverageIngestor ingestor,
     GitHubIssues github,
     TimeProvider time,
+    IOptions<CoverageRunnerOptions> runnerOptions,
     ILogger<RunVerifier> logger) : IRunVerifier
 {
     public const string NotReproduced = "suspected bug not reproduced";
@@ -87,8 +88,10 @@ public sealed partial class RunVerifier(
         }
 
         // The run itself, measured by the api, not reported by the agent, on the whole suite: a test the diff breaks
-        // anywhere, or one that fails only beside the others, fails it here.
-        var measured = await runner.RunAsync(new RunnerRequest(run.CommitSha, run.Toolchain, report.Diff, run.Path, TestScope.All), ct);
+        // anywhere, or one that fails only beside the others, fails it here. The runner may answer with the result it
+        // computed for the agent's confirmation of this same diff: still the runner's own measurement, never the agent's.
+        var measured = await runner.RunAsync(new RunnerRequest(run.CommitSha, run.Toolchain, report.Diff, run.Path, TestScope.All,
+            Fresh: !runnerOptions.Value.ReuseForVerification), ct);
         if (!measured.Measured)
         {
             await FailAsync(runId, measured.Status != RunnerStatus.Ok ? $"the runner reported {measured.Status}"
@@ -127,9 +130,15 @@ public sealed partial class RunVerifier(
         {
             r.Branch = branch;
             r.LastPct = measured.TargetPct;
-            r.ReportJson = JsonSerializer.Serialize(report with { Diff = finalDiff, Final = measured.TargetPct }, TestGenKinds.Json);
+            r.ReportJson = JsonSerializer.Serialize(report with
+            {
+                Diff = finalDiff,
+                Final = measured.TargetPct,
+                Verification = new VerificationRun(measured.Selection?.Scope ?? TestScope.All, measured.Tests, measured.TargetPct, measured.ReusedFrom),
+            }, TestGenKinds.Json);
         });
-        logger.LogInformation("run {RunId} verified: {Pct}% on {Branch}, {Bugs} suspected bug(s)", runId, measured.TargetPct, branch, bugs.Count);
+        logger.LogInformation("run {RunId} verified: {Pct}% on {Branch}, {Bugs} suspected bug(s), reused={Reused} runner job {JobId}",
+            runId, measured.TargetPct, branch, bugs.Count, measured.ReusedFrom is not null, measured.ReusedFrom?.JobId);
     }
 
     /// <summary>
