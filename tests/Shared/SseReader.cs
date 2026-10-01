@@ -19,7 +19,11 @@ public static class SseReader
             {
                 if (data.Count > 0)
                 {
-                    var ev = new SseEvent(name ?? "message", JsonDocument.Parse(string.Join("\n", data)).RootElement.Clone());
+                    var payload = JsonDocument.Parse(string.Join("\n", data)).RootElement.Clone();
+                    // An AG-UI event names itself in its payload; the official server leaves the frame's own name out.
+                    var named = name ?? (payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("type", out var type)
+                        && type.ValueKind == JsonValueKind.String ? type.GetString() : null);
+                    var ev = new SseEvent(named ?? "message", payload);
                     events.Add(ev);
                     onEvent?.Invoke(ev);
                 }

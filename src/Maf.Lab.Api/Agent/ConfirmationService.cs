@@ -1,11 +1,10 @@
 using System.Text.Json;
 using System.Threading.Channels;
-using AGUI.Abstractions;
-using Maf.Lab.Api.Agent.Streaming;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.Domain.Billing;
 using Maf.Lab.Domain.Tenancy;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
 
 namespace Maf.Lab.Api.Agent;
 
@@ -116,21 +115,16 @@ public sealed class ConfirmationService(
     }
 
     /// <summary>
-    /// A person's answer arriving as a run that resumes the interrupt the previous run stopped for. The run
-    /// reports what happened and ends; underneath, nothing about applying an adjustment has changed.
+    /// A person's answer arriving as a run that resumes the interrupt the previous run stopped for. The run reports what
+    /// happened, as the assistant's words, and ends; underneath, nothing about applying an adjustment has changed.
     /// </summary>
     public async Task ResumeAsync(
-        Principal principal, string bearerToken, string conversationId, string runId, AGUIResume resume,
-        ChannelWriter<BaseEvent> events, CancellationToken ct)
+        Principal principal, string bearerToken, string conversationId, PersonAnswer answer,
+        ChannelWriter<ChatResponseUpdate> output, CancellationToken ct)
     {
-        var idempotencyKey = IdempotencyKeyOf(resume);
-        await events.WriteAsync(new RunStartedEvent { ThreadId = conversationId, RunId = runId }, ct);
+        var outcome = await AnswerAsync(principal, bearerToken, conversationId, answer.QuestionId, Approved(answer.Payload),
+            IdempotencyKeyOf(answer.Payload), ct);
 
-        var approve = Approved(resume);
-        var outcome = await AnswerAsync(principal, bearerToken, conversationId, resume.InterruptId ?? "", approve,
-            idempotencyKey, ct);
-
-        var messageId = $"m_{Guid.NewGuid():N}";
         var text = outcome switch
         {
             ConfirmationOutcome.Applied applied => applied.Result.Message,
@@ -138,43 +132,24 @@ public sealed class ConfirmationService(
             ConfirmationOutcome.NotFound => "That proposal is no longer waiting for an answer.",
             _ => ((ConfirmationOutcome.Failed)outcome).Message,
         };
-
-        await events.WriteAsync(new TextMessageStartEvent { MessageId = messageId, Role = AGUIRoles.Assistant }, ct);
-        await events.WriteAsync(new TextMessageContentEvent { MessageId = messageId, Delta = text }, ct);
-        await events.WriteAsync(new TextMessageEndEvent { MessageId = messageId }, ct);
-        await events.WriteAsync(new RunFinishedEvent
-        {
-            ThreadId = conversationId,
-            RunId = runId,
-            Outcome = new RunFinishedSuccessOutcome(),
-        }, ct);
+        await output.WriteAsync(new ChatResponseUpdate(ChatRole.Assistant, text) { MessageId = $"m_{Guid.NewGuid():N}" }, ct);
     }
 
     /// <summary>
     /// The caller's own idempotency key, when it sent one. It is the client's way of saying "this is the same
     /// attempt", which is what makes sending an interrupted call again safe.
     /// </summary>
-    private static string? IdempotencyKeyOf(AGUIResume resume) =>
-        resume.Payload is JsonElement { ValueKind: JsonValueKind.Object } payload
-        && payload.TryGetProperty("idempotencyKey", out var key) && key.ValueKind == JsonValueKind.String
+    private static string? IdempotencyKeyOf(JsonElement? payload) =>
+        payload is { ValueKind: JsonValueKind.Object } p
+        && p.TryGetProperty("idempotencyKey", out var key) && key.ValueKind == JsonValueKind.String
             ? key.GetString()
             : null;
 
     /// <summary>An answer is an approval only when it says so. Anything else leaves the fee where it is.</summary>
-    private static bool Approved(AGUIResume resume)
-    {
-        if (resume.Payload is not { } payload)
-        {
-            return false;
-        }
-        if (payload.ValueKind == JsonValueKind.True)
-        {
-            return true;
-        }
-        return payload.ValueKind == JsonValueKind.Object
-            && payload.TryGetProperty("approve", out var approve)
-            && approve.ValueKind == JsonValueKind.True;
-    }
+    private static bool Approved(JsonElement? payload) =>
+        payload is { } p
+        && (p.ValueKind == JsonValueKind.True
+            || p.ValueKind == JsonValueKind.Object && p.TryGetProperty("approve", out var approve) && approve.ValueKind == JsonValueKind.True);
 
     private async Task ResolveAsync(string id, string status, CancellationToken ct)
     {

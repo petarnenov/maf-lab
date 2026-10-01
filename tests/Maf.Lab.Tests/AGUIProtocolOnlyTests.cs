@@ -17,6 +17,10 @@ public sealed class AGUIProtocolOnlyTests
     private static readonly Regex AGUINamespace = new(@"\bAGUI\.(Abstractions|Server)\b", RegexOptions.Compiled);
     private static readonly Regex EventConstruction = new(@"\bnew\s+[A-Z]\w*Event\b", RegexOptions.Compiled);
     private static readonly Regex OwnSse = new(@"text/event-stream|ServerSentEvents|SseItem<|SseFormatter", RegexOptions.Compiled);
+    private static readonly Regex WritesSse = new(@"text/event-stream|TypedResults\.ServerSentEvents|SseItem<|SseFormatter", RegexOptions.Compiled);
+
+    /// <summary>The one file that may read the event stream the official server wrote — to keep its frames, never to write.</summary>
+    private const string TapFile = AGUIDirectory + "RunTap.cs";
 
     [Fact]
     public void No_custom_event_anywhere() =>
@@ -35,8 +39,13 @@ public sealed class AGUIProtocolOnlyTests
 
     [Fact]
     public void No_event_stream_of_our_own() =>
-        AssertNone(Sources().Where(f => f.Path.StartsWith("src/Maf.Lab.Api/", StringComparison.Ordinal) && OwnSse.IsMatch(f.Text)),
+        AssertNone(Sources().Where(f => f.Path.StartsWith("src/Maf.Lab.Api/", StringComparison.Ordinal) && f.Path != TapFile
+                && OwnSse.IsMatch(f.Text)),
             "writes its own event stream");
+
+    [Fact]
+    public void The_tap_only_reads_what_the_official_server_wrote() =>
+        AssertNone(Sources().Where(f => f.Path == TapFile && WritesSse.IsMatch(f.Text)), "writes an event stream");
 
     private static IEnumerable<(string Path, string Text)> Sources()
     {

@@ -58,6 +58,8 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
     public Action<IServiceCollection>? ConfigureTestServices { get; set; }
     /// <summary>The shared stores this host runs against, so a test can read what a run left in them.</summary>
     public FakeRunStateStore Runs { get; } = new();
+    /// <summary>The live trace of each run, as the monitor reads it while the run is going (agui-protocol-only).</summary>
+    public FakeRunTraceStore RunTraces { get; } = new();
     public FakeIdempotencyStore Idempotency { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -93,6 +95,7 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
             // about Redis. The store's own behaviour is proved against a real Redis in the integration tests.
             s.RemoveAll<Maf.Lab.Domain.SharedState.IRunStateStore>();
             s.AddSingleton<Maf.Lab.Domain.SharedState.IRunStateStore>(Runs);
+            s.AddSingleton<Maf.Lab.Domain.SharedState.IRunTraceStore>(RunTraces);
             s.RemoveAll<Maf.Lab.Domain.SharedState.IIdempotencyStore>();
             s.AddSingleton<Maf.Lab.Domain.SharedState.IIdempotencyStore>(Idempotency);
             ConfigureTestServices?.Invoke(s);
@@ -110,8 +113,11 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
     /// <summary>Runs a turn the way a client does: a run of the agent on a thread, carrying the user's message.</summary>
     /// <param name="state">The run's AG-UI state as the client sends it (add-focus-state); omitted when null.</param>
     public static async Task<List<SseEvent>> ChatAsync(HttpClient client, string message, string? conversationId = null,
-        Action<SseEvent>? onEvent = null, string? runId = null, object? state = null)
+        Action<SseEvent>? onEvent = null, string? runId = null, object? state = null, CancellationToken? cancel = null)
     {
+        var ct = cancel is { } stop
+            ? CancellationTokenSource.CreateLinkedTokenSource(stop, TestContext.Current.CancellationToken).Token
+            : TestContext.Current.CancellationToken;
         var input = new Dictionary<string, object?>
         {
             ["threadId"] = conversationId,
@@ -123,10 +129,36 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
             input["state"] = state;
         }
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/chat") { Content = JsonContent.Create(input) };
-        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
         Assert.Equal("text/event-stream", response.Content.Headers.ContentType?.MediaType);
-        return await SseReader.ReadAllAsync(await response.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken), onEvent, TestContext.Current.CancellationToken);
+        return await SseReader.ReadAllAsync(await response.Content.ReadAsStreamAsync(ct), onEvent, ct);
+    }
+
+    /// <summary>
+    /// Comes back to a run the client lost (agui-protocol-only): a run on the same thread that names the lost run as its
+    /// parent and says nothing new. The response is returned unread, so a test can see a refusal.
+    /// </summary>
+    public static Task<HttpResponseMessage> SendRejoinAsync(HttpClient client, string? conversationId, string lostRunId)
+    {
+        var input = new
+        {
+            threadId = conversationId,
+            runId = $"r_{Guid.NewGuid():N}",
+            parentRunId = lostRunId,
+            messages = Array.Empty<object>(),
+        };
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/chat") { Content = JsonContent.Create(input) };
+        return client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>The events of a rejoin, which must be accepted.</summary>
+    public static async Task<List<SseEvent>> RejoinAsync(HttpClient client, string conversationId, string lostRunId)
+    {
+        using var response = await SendRejoinAsync(client, conversationId, lostRunId);
+        response.EnsureSuccessStatusCode();
+        return await SseReader.ReadAllAsync(await response.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken), null,
+            TestContext.Current.CancellationToken);
     }
 
     /// <summary>Answers something a previous run stopped for.</summary>
@@ -154,16 +186,46 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
     public static string ThreadOf(IEnumerable<SseEvent> events) =>
         events.Last(e => e.Name is "RUN_FINISHED" or "RUN_STARTED").Data.GetProperty("threadId").GetString()!;
 
-    /// <summary>The trace events of a run, which travel as a custom event.</summary>
-    public static IEnumerable<System.Text.Json.JsonElement> TracesOf(IEnumerable<SseEvent> events) =>
-        events.Where(e => e.Name == "CUSTOM" && e.Data.GetProperty("name").GetString() == "maf-lab/trace")
-              .Select(e => e.Data.GetProperty("value"));
+    /// <summary>
+    /// The trace events of a run, as the monitor reads them while it runs (agui-protocol-only): from the live trace store,
+    /// by the run's id. They never travel on the stream.
+    /// </summary>
+    public static IEnumerable<System.Text.Json.JsonElement> TracesOf(IEnumerable<SseEvent> events)
+    {
+        var runId = events.First(e => e.Name == "RUN_STARTED").Data.GetProperty("runId").GetString()!;
+        if (!FakeRunTraceStore.All.TryGetValue(runId, out var trace))
+        {
+            return [];
+        }
+        lock (trace)
+        {
+            return [.. trace.Select(t => System.Text.Json.JsonSerializer.SerializeToElement(t, Maf.Lab.Api.Agent.Tracing.TurnTrace.Json))];
+        }
+    }
 
-    /// <summary>The sources a run reported, if it reported any.</summary>
-    public static System.Text.Json.JsonElement? SourcesOf(IEnumerable<SseEvent> events) =>
-        events.Where(e => e.Name == "CUSTOM" && e.Data.GetProperty("name").GetString() == "maf-lab/sources")
-              .Select(e => (System.Text.Json.JsonElement?)e.Data.GetProperty("value").GetProperty("sources"))
-              .LastOrDefault();
+    /// <summary>The sources a run reported, if it reported any: those its searches' tool results carry, deduplicated.</summary>
+    public static System.Text.Json.JsonElement? SourcesOf(IEnumerable<SseEvent> events)
+    {
+        var sources = new System.Text.Json.Nodes.JsonArray();
+        var seen = new HashSet<(string?, string?)>();
+        foreach (var result in events.Where(e => e.Name == "TOOL_CALL_RESULT"))
+        {
+            using var content = System.Text.Json.JsonDocument.Parse(result.Data.GetProperty("content").GetString()!);
+            if (!content.RootElement.TryGetProperty("sources", out var found))
+            {
+                continue;
+            }
+            foreach (var source in found.EnumerateArray())
+            {
+                var key = (source.GetProperty("docId").GetString(), source.GetProperty("sectionPath").GetString());
+                if (seen.Add(key))
+                {
+                    sources.Add(System.Text.Json.Nodes.JsonNode.Parse(source.GetRawText()));
+                }
+            }
+        }
+        return sources.Count == 0 ? null : System.Text.Json.JsonSerializer.SerializeToElement(sources);
+    }
 
     /// <summary>The interrupt a run paused on, if it paused.</summary>
     public static System.Text.Json.JsonElement? InterruptOf(IEnumerable<SseEvent> events)

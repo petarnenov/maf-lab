@@ -28,6 +28,41 @@ public sealed class FakeRunStateStore : IRunStateStore
     public void Forget(string runId) => _runs.TryRemove(runId, out _);
 }
 
+public sealed class FakeRunTraceStore : IRunTraceStore
+{
+    /// <summary>Every run's trace, across every store in the process: run ids are unique, so a test can find its own.</summary>
+    public static readonly ConcurrentDictionary<string, List<Maf.Lab.Domain.Tracing.TraceEvent>> All = new(StringComparer.Ordinal);
+
+    private readonly ConcurrentDictionary<string, List<Maf.Lab.Domain.Tracing.TraceEvent>> _runs = new(StringComparer.Ordinal);
+
+    public Task AppendAsync(string runId, Maf.Lab.Domain.Tracing.TraceEvent traceEvent, CancellationToken ct)
+    {
+        var all = All.GetOrAdd(runId, _ => []);
+        lock (all)
+        {
+            all.Add(traceEvent);
+        }
+        var events = _runs.GetOrAdd(runId, _ => []);
+        lock (events)
+        {
+            events.Add(traceEvent);
+        }
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<Maf.Lab.Domain.Tracing.TraceEvent>> ReadAsync(string runId, int afterSeq, CancellationToken ct)
+    {
+        if (!_runs.TryGetValue(runId, out var events))
+        {
+            return Task.FromResult<IReadOnlyList<Maf.Lab.Domain.Tracing.TraceEvent>>([]);
+        }
+        lock (events)
+        {
+            return Task.FromResult<IReadOnlyList<Maf.Lab.Domain.Tracing.TraceEvent>>([.. events.Where(e => e.Seq > afterSeq)]);
+        }
+    }
+}
+
 public sealed class FakeIdempotencyStore(TimeProvider? time = null) : IIdempotencyStore
 {
     private readonly ConcurrentDictionary<string, IdempotentAnswer> _answers = new(StringComparer.Ordinal);
@@ -63,6 +98,8 @@ public static class SharedStoreTestHost
         {
             services.RemoveAll<IRunStateStore>();
             services.AddSingleton<IRunStateStore>(new FakeRunStateStore());
+            services.RemoveAll<IRunTraceStore>();
+            services.AddSingleton<IRunTraceStore>(new FakeRunTraceStore());
             services.RemoveAll<IIdempotencyStore>();
             services.AddSingleton<IIdempotencyStore>(new FakeIdempotencyStore());
         });

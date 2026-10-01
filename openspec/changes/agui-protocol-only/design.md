@@ -70,7 +70,17 @@ CopilotKit 1.76.0 runs on `@ag-ui/client`/`@ag-ui/core` 1.0.1 and has a headless
   plain text but is an unsupported combination, and the spike did not test interrupts on it.
 - `copilot-runtime` (D12) adds `@copilotkit/runtime` 1.76.0 and `@ag-ui/client` 1.0.1 on Node 24, at exact versions.
 
-### D2. The chat agent is a `DelegatingAIAgent` around the MAF chat agent
+### D2. The chat agent is an `AIAgent` in front of the turn
+*As built:* `ChatAgent : AIAgent` reads the run off the request (`TurnContents.Request`) and runs one of:
+- a turn of `ChatTurnRunner`;
+- an answer to a question (`ConfirmationService.ResumeAsync`);
+- a rejoin (`RunRejoin`).
+
+Each writes `ChatResponseUpdate`s to a channel the agent yields from. `ChatTurnRunner` keeps the turn's logic and builds
+the MAF `ChatClientAgent` per turn (tools, history and focus are per turn), but it no longer touches the protocol: it
+writes the model's updates, redacted, plus `TurnContents`. The turn id is the run id. A failed turn is kept, then the
+agent throws, and the server ends the run with its own short `RUN_ERROR`. A mapped `RunErrorEvent` would be followed by
+a `RUN_FINISHED`, so it is not used. The original plan follows.
 - `ChatAgent : DelegatingAIAgent` wraps the existing `ChatClientAgent` (same model, same tools). Its
   `RunStreamingAsync` does what `RunAsync` of the runner did before the model call:
   - principal from `IPrincipalAccessor` (the request's), thread ownership, prompt screen;
@@ -85,9 +95,10 @@ CopilotKit 1.76.0 runs on `@ag-ui/client`/`@ag-ui/core` 1.0.1 and has a headless
   for the right reason. The trace begins before the model is called, and the flow can block. A delegating agent is not
   a hook. It is the agent, so it can run before, around and after the model, and still leave every byte on the wire to
   the adapter.
-- Thread: `RunAgentInput.threadId` is the conversation id. A missing one creates a conversation for the principal, and
-  another principal's thread is a 404 before the agent runs. This is a filter on the mapped endpoint, so tenancy stays
-  out of the agent's parameters.
+- Thread: `RunAgentInput.threadId` is the conversation id. A missing one creates a conversation for the principal, an
+  unknown well-formed one is claimed for the principal (protocol clients name their own threads), and another
+  principal's thread is a 404 before the agent runs. `ChatRunFilter`, an endpoint filter on the mapped endpoint, does
+  this and the message and run-id checks, so tenancy stays out of the agent's parameters.
 
 ### D3. What travels where (all through the adapter)
 
@@ -150,9 +161,11 @@ CopilotKit 1.76.0 runs on `@ag-ui/client`/`@ag-ui/core` 1.0.1 and has a headless
 
 ### D7. Frames
 - The frame recorder taps the adapter's output, not our channel (which no longer exists).
-- It tees the response body on agent routes and decodes it with `System.Net.ServerSentEvents.SseParser` (the
-  platform's decoder) into `AGUI.Abstractions` types. It reads and never writes. It lives in
-  `Agent/AGUI/RunFrameTap.cs`, the one file the arch test lets read the event stream.
+- `RunTap` (middleware, `Agent/AGUI/RunTap.cs`) tees the response body on `/api/chat` and decodes it with
+  `System.Net.ServerSentEvents.SseParser`, the platform's decoder.
+  - It feeds the raw JSON of each event to `RunFrameRecorder` (frames) and `RunStateTracker` (the rejoin snapshot).
+  - It reads and never writes, and it is the one file the arch test lets read the event stream.
+  - The official server leaves the SSE `event:` field empty, so an event's type is read from its payload.
 - `name` and `traceSeq` leave the frame.
 
 ### D8. Web: CopilotKit headless, through the runtime

@@ -16,14 +16,14 @@
 
 - [x] 2.0 Add `Agent/AGUI/AGUIHosting.cs` (D11): null-omitting resolver, interrupt content types, `rawEvent` modifier, and the `RequireAuthorization` mapping helper. Verify: a test per item (no `null` optional fields on `RUN_STARTED`, a generic interrupt serializes, no `rawEvent` on the wire, 401 without a token)
 
-- [ ] 2.1 Port the `ChatTurnRunner` tests to drive the agent through an in-memory `MapAGUIServer` host (stream assertions on protocol events). Verify: they compile and fail only for the missing agent
-- [ ] 2.2 Create `ChatAgent : DelegatingAIAgent` with the pre-model steps (principal, thread ownership filter, prompt screen, Jev routing, domain loading, refusal and out-of-scope replies without a model call, routed tool call). Verify: the ported tests for refusal, out-of-scope, routing and forced search pass
-- [ ] 2.3 Move tool middleware (audit, tool-result guard, confirmation capture, card queue, focus change, unknown tool) to function-invocation middleware on the inner agent. Verify: the ported guard, audit and unknown-tool tests pass
-- [ ] 2.4 Write `AGUIMappings` (D3): search result with sources, three cards as `ACTIVITY_SNAPSHOT`, confirmation interrupt, focus state, steps, default identifier-only args and summary results. Verify: the card ordering, interrupt, focus and redaction tests pass, and a test asserts no args or result carries query, reason or document text
-- [ ] 2.5 Run the answer check and persistence after the stream. Verify: the answer-check and history tests pass, and a reopened conversation shows the same turns and cards
-- [ ] 2.6 Map `/api/chat` with `MapAGUIServer`. Delete `ChatTurnRunner`, `AGUIStream`'s event factories, `POST /api/chat/{runId}/stop` and `GET /api/chat/{runId}`. Implement rejoin per D4. Verify: the stop, rejoin, ownership and "run begins and ends once" tests pass, and the arch test no longer lists chat files
-- [ ] 2.7 Add `GET /api/runs/{runId}/trace?after=` (D6), with the access rules of the turn trace. Verify: tests for owner, other user (404), resume run, and incremental `after`
-- [ ] 2.8 Re-home the frame recorder on the adapter output (D7) and drop `name` and `traceSeq`. Verify: the frame tests (every event recorded, cap, no payload in logs) pass
+- [x] 2.1 Port the `ChatTurnRunner` tests to drive the agent through an in-memory `MapAGUIServer` host (stream assertions on protocol events). Verify: they compile and fail only for the missing agent
+- [x] 2.2 Create `ChatAgent : DelegatingAIAgent` with the pre-model steps (principal, thread ownership filter, prompt screen, Jev routing, domain loading, refusal and out-of-scope replies without a model call, routed tool call). Verify: the ported tests for refusal, out-of-scope, routing and forced search pass
+- [x] 2.3 Move tool middleware (audit, tool-result guard, confirmation capture, card queue, focus change, unknown tool) to function-invocation middleware on the inner agent. Verify: the ported guard, audit and unknown-tool tests pass
+- [x] 2.4 Write `AGUIMappings` (D3): search result with sources, three cards as `ACTIVITY_SNAPSHOT`, confirmation interrupt, focus state, steps, default identifier-only args and summary results. Verify: the card ordering, interrupt, focus and redaction tests pass, and a test asserts no args or result carries query, reason or document text
+- [x] 2.5 Run the answer check and persistence after the stream. Verify: the answer-check and history tests pass, and a reopened conversation shows the same turns and cards
+- [x] 2.6 Map `/api/chat` with `MapAGUIServer` (`ChatTurnRunner` stays as the turn's logic behind `ChatAgent`, no longer writing events). Delete `AGUIStream`'s chat event factories, `POST /api/chat/{runId}/stop` and `GET /api/chat/{runId}`. Implement rejoin per D4. Verify: the stop, rejoin, ownership and "run begins and ends once" tests pass, and the arch test no longer lists chat files
+- [x] 2.7 Add `GET /api/runs/{runId}/trace?after=` (D6), with the access rules of the turn trace. Verify: tests for owner, other user (404), resume run, and incremental `after`
+- [x] 2.8 Re-home the frame recorder on the adapter output (D7) and drop `name` and `traceSeq`. Verify: the frame tests (every event recorded, cap, no payload in logs) pass
 - [ ] 2.9 Move `Maf.Lab.Eval/Hosting/EvalAgentHost.cs` to the new agent. Verify: `make eval SUITE=selection` and the guard, answer-check and confirmation suites match the accepted baseline
 
 ## 3. Test-generation run as an agent

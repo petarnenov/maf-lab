@@ -75,6 +75,34 @@ NOT announce its sources in any other event.
 
 ## MODIFIED Requirements
 
+### Requirement: A run is addressed by its thread and its run id
+A request to run the agent SHALL carry a thread, a run and the messages of the turn, and MAY carry answers to
+interrupts and client state. The thread SHALL be the caller's conversation: a thread belonging to another principal SHALL
+be reported as not found, a request without one SHALL start a new thread whose identifier the caller learns from the run,
+and a well-formed thread identifier nobody has SHALL start a new thread under that identifier for the caller, since a
+protocol client names its own threads. The run identifier SHALL also identify the turn the run records, so a client
+knows its turn without being told. Every event of a run SHALL name the run and the thread it belongs to.
+
+#### Scenario: A new thread
+- **WHEN** a run is requested without a thread
+- **THEN** a thread is created for the caller and its identifier is carried on the run's events
+
+#### Scenario: A thread nobody has
+- **WHEN** a run names a well-formed thread identifier that no conversation has
+- **THEN** a conversation with that identifier is created for the caller and the run proceeds on it
+
+#### Scenario: Another principal's thread
+- **WHEN** a run names a thread issued to a different user
+- **THEN** the request is reported as not found and no run starts
+
+#### Scenario: Every event says which run it belongs to
+- **WHEN** a run streams
+- **THEN** each event carries the same run identifier
+
+#### Scenario: The run names its turn
+- **WHEN** a run answers a question
+- **THEN** the turn it records has the run's identifier, and its trace is read under that identifier
+
 ### Requirement: A run can be stopped
 A caller SHALL be able to stop a run it started by abandoning or aborting its stream through the protocol's client. A
 stopped run SHALL end within one second, reporting that it was cancelled rather than that it succeeded, and no tool

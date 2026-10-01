@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json;
 using Maf.Lab.Domain.Billing;
 using Maf.Lab.Domain.SharedState;
@@ -9,30 +8,33 @@ using Microsoft.Extensions.AI;
 
 namespace Maf.Lab.Tests;
 
-/// <summary>Closing the tab is not losing the turn: a run can be rejoined, from whichever replica answers.</summary>
+/// <summary>
+/// Closing the tab is not losing the turn: a run can be rejoined, from whichever replica answers, through the protocol
+/// itself (agui-protocol-only) — a run on the same thread naming the lost one as its parent.
+/// </summary>
 public class RunStateTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     [Fact]
     public async Task A_finished_run_says_what_it_said_and_which_tools_it_called()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel("Assign the schedule and re-run."));
         var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var lost = await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing", runId: "r_rejoin");
 
-        await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing", runId: "r_rejoin");
+        var events = await ApiFactory.RejoinAsync(adam, ApiFactory.ThreadOf(lost), "r_rejoin");
 
-        var state = await adam.GetFromJsonAsync<RunState>("/api/chat/r_rejoin", Json, Ct);
-        Assert.Equal(RunOutcomes.Answered, state!.Outcome);
-        Assert.Contains("Assign the schedule", state.Answer);
-        var call = Assert.Single(state.ToolCalls);
-        Assert.Equal("search_documents", call.ToolName);
-        Assert.True(call.Finished);
-        Assert.False(call.IsError);
+        Assert.Contains("Assign the schedule", ApiFactory.AnswerOf(events));
+        var start = Assert.Single(events, e => e.Name == "TOOL_CALL_START");
+        Assert.Equal("search_documents", start.Data.GetProperty("toolCallName").GetString());
+        var result = Assert.Single(events, e => e.Name == "TOOL_CALL_RESULT").Data.GetProperty("content").GetString()!;
         // The summary is the one the client was given: identifiers and counts, never a document's text.
-        Assert.DoesNotContain("FS-REQUIRED", call.ResultSummary ?? "");
-        Assert.NotNull(state.TurnId);
+        Assert.DoesNotContain("FS-REQUIRED", result);
+        Assert.Contains("\"isError\":false", result);
+        Assert.Equal("RUN_FINISHED", events[^1].Name);
+        Assert.Equal("success", events[^1].Data.GetProperty("outcome").GetProperty("type").GetString());
+        Assert.Equal("r_rejoin", (await api.Runs.GetAsync("r_rejoin", Ct))!.TurnId);
     }
 
     [Fact]
@@ -51,14 +53,17 @@ public class RunStateTests
             ExtraSettings = new Dictionary<string, string?> { ["Compliance:BaseUrl"] = "" },
         };
         var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
-
-        var events = await ApiFactory.ChatAsync(adam, "adjust the fee on A-1042 down by 200", runId: "r_waiting");
-        var interrupt = ApiFactory.InterruptOf(events);
+        var lost = await ApiFactory.ChatAsync(adam, "adjust the fee on A-1042 down by 200", runId: "r_waiting");
+        var interrupt = ApiFactory.InterruptOf(lost);
         Assert.NotNull(interrupt);
 
-        var state = await adam.GetFromJsonAsync<RunState>("/api/chat/r_waiting", Json, Ct);
-        Assert.Equal(RunOutcomes.AwaitingPerson, state!.Outcome);
-        Assert.Equal(interrupt.Value.GetProperty("id").GetString(), state.AwaitingId);
+        var events = await ApiFactory.RejoinAsync(adam, ApiFactory.ThreadOf(lost), "r_waiting");
+
+        // It ends paused again, on the same question.
+        var again = ApiFactory.InterruptOf(events);
+        Assert.NotNull(again);
+        Assert.Equal(interrupt.Value.GetProperty("id").GetString(), again.Value.GetProperty("id").GetString());
+        Assert.Equal(interrupt.Value.GetProperty("message").GetString(), again.Value.GetProperty("message").GetString());
     }
 
     [Fact]
@@ -66,33 +71,42 @@ public class RunStateTests
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
         var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
-        await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing", runId: "r_mine");
+        var thread = ApiFactory.ThreadOf(await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing", runId: "r_mine"));
 
-        // Another user of the same firm, and another firm entirely.
-        Assert.Equal(HttpStatusCode.NotFound,
-            (await api.ClientFor("rita", "firm-a", Role.ADVISOR).GetAsync("/api/chat/r_mine", Ct)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound,
-            (await api.ClientFor("bob", "firm-b", Role.FIRM_ADMIN).GetAsync("/api/chat/r_mine", Ct)).StatusCode);
+        // Another user of the same firm, and another firm entirely: the thread is theirs to name, not the run.
+        using (var rita = await ApiFactory.SendRejoinAsync(api.ClientFor("rita", "firm-a", Role.ADVISOR), thread, "r_mine"))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, rita.StatusCode);
+        }
+        using (var bob = await ApiFactory.SendRejoinAsync(api.ClientFor("bob", "firm-b", Role.FIRM_ADMIN), null, "r_mine"))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, bob.StatusCode);
+        }
 
         // And a run whose state is no longer kept is not an empty run; it is not there.
         api.Runs.Forget("r_mine");
-        Assert.Equal(HttpStatusCode.NotFound, (await adam.GetAsync("/api/chat/r_mine", Ct)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await adam.GetAsync("/api/chat/r_never_ran", Ct)).StatusCode);
+        using (var forgotten = await ApiFactory.SendRejoinAsync(adam, thread, "r_mine"))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, forgotten.StatusCode);
+        }
+        using var never = await ApiFactory.SendRejoinAsync(adam, thread, "r_never_ran");
+        Assert.Equal(HttpStatusCode.NotFound, never.StatusCode);
     }
 
     [Fact]
-    public async Task A_run_that_failed_says_so_with_the_words_the_client_was_given()
+    public async Task A_run_that_failed_is_kept_as_failed_with_the_words_the_client_was_given()
     {
         var chat = new ScriptedChatClient((_, _, _) => throw new InvalidOperationException("the model is down"));
         using var api = new ApiFactory(chat);
         var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
 
-        await ApiFactory.ChatAsync(adam, "anything at all", runId: "r_failed");
+        var events = await ApiFactory.ChatAsync(adam, "anything at all", runId: "r_failed");
 
-        var state = await adam.GetFromJsonAsync<RunState>("/api/chat/r_failed", Json, Ct);
+        var state = await api.Runs.GetAsync("r_failed", Ct);
         Assert.Equal(RunOutcomes.Failed, state!.Outcome);
-        Assert.NotNull(state.Error);
         // What the person was told, not what went wrong inside.
+        Assert.Equal(events[^1].Data.GetProperty("message").GetString(), state.Error);
         Assert.DoesNotContain("InvalidOperationException", state.Error);
+        Assert.DoesNotContain("model is down", state.Error);
     }
 }

@@ -113,7 +113,7 @@ public class GuardrailTests
         Assert.DoesNotContain(Trace(blocked), t => t.Data.GetRawText().Contains("<tool_data>"));
 
         // The stored trace is the same: the system prompt is never persisted for a blocked turn.
-        var turnId = blocked[^1].Data.GetProperty("result").GetProperty("turnId").GetString()!;
+        var turnId = blocked[^1].Data.GetProperty("runId").GetString()!;
         var stored = await client.GetFromJsonAsync<TurnTraceDocument>($"/api/turns/{turnId}/trace", Json, Ct);
         Assert.DoesNotContain(stored!.Events, e => e.Kind == TraceKinds.Prompt);
         Assert.DoesNotContain(stored.Events, e => e.Data.GetRawText().Contains("<tool_data>"));
@@ -147,7 +147,7 @@ public class GuardrailTests
         Assert.DoesNotContain("Ignore previous instructions", envelope);
 
         // Not persisted either.
-        var turnId = events[^1].Data.GetProperty("result").GetProperty("turnId").GetString()!;
+        var turnId = events[^1].Data.GetProperty("runId").GetString()!;
         var stored = await client.GetFromJsonAsync<TurnTraceDocument>($"/api/turns/{turnId}/trace", Json, Ct);
         Assert.DoesNotContain(stored!.Events, e => e.Data.GetRawText().Contains("Ignore previous instructions"));
     }

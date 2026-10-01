@@ -1,21 +1,17 @@
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Threading.Channels;
-using AGUI.Abstractions;
-using Maf.Lab.Api.Agent.Streaming;
 using Maf.Lab.Domain.Tracing;
 
 namespace Maf.Lab.Api.Agent.Tracing;
 
 /// <summary>
-/// Collects the ordered trace of one chat turn. Each event is streamed immediately as an SSE "trace" event and kept for
-/// persistence at turn end. Strings longer than <see cref="MaxFieldChars"/> are cut; once the trace would exceed
+/// Collects the ordered trace of one chat turn. Each event is handed at once to <paramref name="live"/> (the monitor's live
+/// view, read from the shared store) and kept for persistence at turn end. Strings longer than <see cref="MaxFieldChars"/> are cut; once the trace would exceed
 /// <see cref="MaxTraceBytes"/>, later events keep kind and timing but lose their data. Both cases set Truncated.
-/// On the wire each one is a custom event: the protocol has no word for a trace, and a client that does not know
-/// about it can ignore it and still follow the run.
+/// It never travels on the run's AG-UI stream (agui-protocol-only).
 /// </summary>
-public sealed class TurnTrace(ChannelWriter<BaseEvent>? events)
+public sealed class TurnTrace(LiveTrace? live)
 {
     public const int MaxFieldChars = 20_000;
     public const int MaxTraceBytes = 1_000_000;
@@ -53,7 +49,7 @@ public sealed class TurnTrace(ChannelWriter<BaseEvent>? events)
             ev = new TraceEvent(_events.Count + 1, _clock.ElapsedMilliseconds, kind, title, durationMs, element, truncated);
             _events.Add(ev);
         }
-        events?.TryWrite(AGUIStream.Trace(ev));
+        live?.Write(ev);
         return ev;
     }
 

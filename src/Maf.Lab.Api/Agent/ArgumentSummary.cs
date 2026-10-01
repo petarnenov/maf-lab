@@ -34,17 +34,20 @@ public static class ArgumentSummary
         }
     }
 
-    public static string From(IDictionary<string, object?>? arguments)
-    {
-        if (arguments is null || arguments.Count == 0)
-        {
-            return "";
-        }
-        return string.Join(" ", arguments
-            .Where(a => !FreeText.Contains(a.Key) && a.Value is not null)
-            .OrderBy(a => a.Key, StringComparer.Ordinal)
-            .Select(a => $"{a.Key}={Format(a.Value)}"));
-    }
+    public static string From(IDictionary<string, object?>? arguments) =>
+        string.Join(" ", Redacted(arguments).Select(a => $"{a.Key}={a.Value}"));
+
+    /// <summary>
+    /// The arguments a client may see (agui-protocol-only): the identifiers, formatted as in <see cref="From"/>, and never
+    /// the free text. A tool call travels with these in place of what the model sent.
+    /// </summary>
+    public static Dictionary<string, object?> Redacted(IDictionary<string, object?>? arguments) =>
+        arguments is null
+            ? []
+            : arguments
+                .Where(a => !FreeText.Contains(a.Key) && a.Value is not null)
+                .OrderBy(a => a.Key, StringComparer.Ordinal)
+                .ToDictionary(a => a.Key, a => (object?)Format(a.Value), StringComparer.Ordinal);
 
     private static string Format(object? value)
     {
