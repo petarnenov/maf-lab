@@ -2615,3 +2615,23 @@ said which account the conversation was about.
   heights. A phone (433 of 667) or a short window (189 of 500) lets it scroll away as before; never pinned in print.
 - **z-index 8:** above in-flow content (tips 1–2, the history row menu 5, sticky table cells auto), below every overlay
   (coverage dialog 10, chat drawer 14/15, history dialog 20). A future overlay must stay at 10 or above.
+
+## 73. A run's cost is the amount its budget counted (show-test-run-cost, 2026-10-01)
+
+- **Why.** The agents page's Recent runs table shows how long each run took but not what it cost. No package or model
+  moved; no route, target or project changed; `recent` items gain fields.
+- **Recorded, not recomputed.** The column shows `TestGenRunRow.CostUsd` as the agent reported it: every model call's
+  tokens (`BudgetedChatClient`) priced with the `ModelPrice` the api sent at start (`AttemptEstimate.Cost`, 4
+  decimals) — the same `RunUsage.CostUsd` the cost cap is compared with, restored across a restart from the
+  checkpoint. Recomputing `Tokens` × the allowlist's current price was rejected: an edited price would move every past
+  run, and a run stopped at its $0.50 cap could read more or less than the cap. Storing a price snapshot on the row
+  was rejected as redundant: the priced amount is already stored.
+- **Estimate flag from today's allowlist.** `costIsEstimate` is `PriceIsEstimate` of the run's model in
+  `TestAgent:Models`, and true when the model is no longer listed. It is not snapshotted: it qualifies where a price
+  came from, which changes only when a list price replaces an estimate. All configured models are estimates today, so
+  every non-zero amount reads `≈`.
+- **No unknown on the server.** `CostUsd` and `Tokens` have been non-null columns since the first run, so every run
+  has a value (0 when no model call was made, or the model is priced at zero). The page reads a missing value as `—`,
+  which is what an api replica from before this change answers during a rolling update.
+- **Money only.** The coverage runner's build and test time is compute, not spend, and is not in it. The Coverage page
+  already showed tokens and cost per run and is unchanged.
