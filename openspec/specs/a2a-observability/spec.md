@@ -82,12 +82,19 @@ A FIRM_ADMIN SHALL be able to see, read-only and through the api alone, an overv
   accepted, failed (failed or verification failed) and ended otherwise (discarded, canceled, no change);
 - the most recent runs, newest change first and at most ten: file, state, attempt and attempt cap, the coverage
   reached and the target, the reason, the model, when it last changed, when it started, when its work ended (none
-  while it is running), and how long it took.
+  while it is running), how long it took, the tokens and the money its model calls used, whether that money is priced
+  at estimated rates, and the budget chosen at start.
 
 How long a run took SHALL be computed by the api, in milliseconds: for a run whose work has ended, from its start to
 the end of its work — so a later decision on a candidate does not lengthen it; for a running run (submitted, working
 or verifying), from its start to the moment the overview is answered; and absent when the end of a stopped run is not
 known.
+
+The money a run used SHALL be the cost the run recorded, in US dollars: the agent's model calls priced at the model's
+rates as they were when the run started — the same amount its cost cap is checked against — and not recomputed from
+the current prices. For a running run it is what was used so far. It SHALL cover the agent's model calls only. A run
+that made no model call, or whose model is priced at zero, SHALL report zero. The cost SHALL be marked as an estimate
+when the run's model is priced at the lab's estimated rates, or when the model is no longer on the allowlist.
 
 The browser SHALL NOT contact the agent: everything comes from the api. Runs describe the repository, not a firm,
 so the overview SHALL NOT be filtered by any parameter, and no tenant parameter SHALL be accepted. Message content
@@ -129,6 +136,21 @@ than ask the agent again.
 #### Scenario: An older run whose end is unknown
 - **WHEN** a stopped run has no recorded end
 - **THEN** it is listed with no end and no duration, and the overview is still returned
+
+#### Scenario: What a run cost
+- **WHEN** an accepted run recorded 2 760 003 tokens costing $0.291 with a cost cap of $0.50, a working run has
+  recorded $0.0421 so far, and a run that failed before any model call recorded nothing
+- **THEN** the first is listed with those tokens, a cost of 0.291 and a budget of $0.50, the second with a cost of
+  0.0421, and the third with a cost of 0
+
+#### Scenario: The price the run counted, not today's
+- **WHEN** a run recorded $0.29 at its model's rates, and the model's price in the allowlist has since changed
+- **THEN** the run is still listed with a cost of 0.29
+
+#### Scenario: An estimated price
+- **WHEN** a run's model is on the allowlist with an estimated price, and another run's model is on it with a list
+  price
+- **THEN** the first run's cost is marked as an estimate and the second's is not
 
 #### Scenario: The secret stays out
 - **WHEN** the overview is returned
