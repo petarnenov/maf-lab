@@ -81,7 +81,13 @@ A FIRM_ADMIN SHALL be able to see, read-only and through the api alone, an overv
 - how many runs there are by group — running (submitted, working or verifying), candidates awaiting a decision,
   accepted, failed (failed or verification failed) and ended otherwise (discarded, canceled, no change);
 - the most recent runs, newest change first and at most ten: file, state, attempt and attempt cap, the coverage
-  reached and the target, the reason, the model and when it last changed.
+  reached and the target, the reason, the model, when it last changed, when it started, when its work ended (none
+  while it is running), and how long it took.
+
+How long a run took SHALL be computed by the api, in milliseconds: for a run whose work has ended, from its start to
+the end of its work — so a later decision on a candidate does not lengthen it; for a running run (submitted, working
+or verifying), from its start to the moment the overview is answered; and absent when the end of a stopped run is not
+known.
 
 The browser SHALL NOT contact the agent: everything comes from the api. Runs describe the repository, not a firm,
 so the overview SHALL NOT be filtered by any parameter, and no tenant parameter SHALL be accepted. Message content
@@ -113,6 +119,16 @@ than ask the agent again.
 - **WHEN** there is one working run, one candidate, two accepted runs and one failed run
 - **THEN** the counts read running 1, candidates 1, accepted 2, failed 1, and the recent runs list them newest change
   first with their file, state, attempt n/N, coverage and reason
+
+#### Scenario: How long a run took
+- **WHEN** a run started at 10:00 reached a candidate at 10:07 and was accepted at 11:30, and another run started
+  two minutes ago is still working
+- **THEN** the first is listed with its start, its end at 10:07 and a duration of 7 minutes, and the second with no
+  end and a duration of about two minutes
+
+#### Scenario: An older run whose end is unknown
+- **WHEN** a stopped run has no recorded end
+- **THEN** it is listed with no end and no duration, and the overview is still returned
 
 #### Scenario: The secret stays out
 - **WHEN** the overview is returned
