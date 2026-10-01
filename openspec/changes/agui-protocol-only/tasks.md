@@ -28,8 +28,8 @@
 
 ## 3. Test-generation run as an agent
 
-- [ ] 3.1 Create `TestGenRunAgent` (D5) yielding content from `RunActivityStore`: steps, tool calls, text, reasoning and state with summary, `attempts`, `stop`, `resumes` and `dropped`. Map it at `/api/coverage/runs/agent`. Verify: the scenarios of the modified "Progress to the browser over SSE" pass, including the late subscriber, restart, budget stop and a replay of a pre-scope run
-- [ ] 3.2 Delete the `/api/coverage/runs/{id}/events` endpoint and `RunActivityProjection`'s event constructors. Verify: the arch test is fully green
+- [x] 3.1 Create `TestGenRunAgent` (D5) yielding content from `RunActivityStore`: steps, tool calls, text, reasoning and state with summary, `attempts`, `stop`, `resumes` and `dropped`. Map it at `/api/coverage/runs/agent`. Verify: the scenarios of the modified "Progress to the browser over SSE" pass, including the late subscriber, restart, budget stop and a replay of a pre-scope run
+- [x] 3.2 Delete the `/api/coverage/runs/{id}/events` endpoint and `RunActivityProjection`'s event constructors. Verify: the arch test is fully green
 
 ## 4. Web on CopilotKit
 

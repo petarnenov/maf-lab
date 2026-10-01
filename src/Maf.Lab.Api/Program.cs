@@ -76,6 +76,7 @@ public partial class Program
         // Every agent reaches a browser through the Agent Framework's own AG-UI server (agui-protocol-only).
         builder.Services.AddAGUIHosting();
         builder.Services.AddSingleton<Agent.ChatAgent>();
+        builder.Services.AddSingleton<Coverage.TestGenRunAgent>();
         builder.Services.AddSingleton<DatasetWriter>();
         builder.Services.Configure<AdminJobOptions>(builder.Configuration.GetSection("AdminJobs"));
         builder.Services.AddSingleton<AdminJobRunner>();
@@ -158,6 +159,7 @@ public partial class Program
         }
         app.MapChat();
         app.MapChatAgent();
+        app.MapTestGenRunAgent();
         app.MapFeedback();
         app.MapAdminIndex();
         app.MapEvalReports();

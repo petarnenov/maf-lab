@@ -1,241 +1,211 @@
 using System.Text.Json;
-using AGUI.Abstractions;
-using Maf.Lab.Api.Agent.Streaming;
+using System.Text.Json.Nodes;
+using Maf.Lab.Api.Agent.AGUI;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.TestGen;
+using Microsoft.Extensions.AI;
 
 namespace Maf.Lab.Api.Coverage;
 
 /// <summary>
-/// A test-generation run as the browser sees it: AG-UI and nothing else (add-run-activity-view). The run's summary is
-/// the protocol's state, each phase a step, each tool call the protocol's tool events, the model's text and reasoning
-/// its messages, and an attempt's result a custom event. Built only from what the database holds, so every replica
-/// tells the same run the same way. One projection per stream: it remembers what it has already said.
+/// A test-generation run as the browser sees it, in Agent Framework content that the official AG-UI server maps to the
+/// protocol's own events (agui-protocol-only): each phase a step, each tool call a call and its result, the model's text
+/// and reasoning its messages, and everything else — the summary, each attempt's result, the stop, a takeover after a
+/// restart, a dropped record — the run's shared state. Built only from what the database holds, so every replica tells the
+/// same run the same way. One projection per stream: it remembers what it has already said.
 /// </summary>
 public sealed class RunActivityProjection(string runId)
 {
-    public const string AttemptEvent = "maf-lab/testgen-attempt";
-    public const string DroppedEvent = "maf-lab/testgen-activity-dropped";
-    public const string StoppedEvent = "maf-lab/testgen-stopped";
-    public const string ResumedEvent = "maf-lab/testgen-resumed";
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private readonly Dictionary<long, int> _sent = [];
-    private string? _summary;
+    private readonly List<JsonNode> _attempts = [];
+    private readonly List<int> _resumes = [];
+    private JsonNode? _stop;
+    private bool _dropped;
+    private RunSummary? _summary;
+    private string? _state;
     private string? _step;
     private (long Seq, string Type)? _open;
-    private bool _droppedSaid;
 
     public string ThreadId => $"testgen:{runId}";
 
     /// <summary>The highest entry sequence this stream has shown: what changed since is what comes next.</summary>
     public long Cursor { get; private set; }
 
-    public BaseEvent Started() => new RunStartedEvent { ThreadId = ThreadId, RunId = runId };
-
-    /// <summary>The run's summary as state, when it changed since the last one sent.</summary>
-    public IEnumerable<BaseEvent> Summary(RunSummary summary)
+    /// <summary>The run's state, when the summary changed since the last one sent.</summary>
+    public IEnumerable<ChatResponseUpdate> Summary(RunSummary summary)
     {
-        var json = JsonSerializer.Serialize(summary, AGUIStream.Json);
-        if (json == _summary)
-        {
-            yield break;
-        }
-        _summary = json;
-        yield return new StateSnapshotEvent { Snapshot = JsonSerializer.Deserialize<JsonElement>(json) };
+        _summary = summary;
+        return State();
     }
 
-    /// <summary>The events for entries new or grown since the cursor, in the agent's order.</summary>
-    public IEnumerable<BaseEvent> Entries(IReadOnlyList<TestGenRunActivityRow> rows, bool dropped)
+    /// <summary>What the entries new or grown since the cursor say, in the agent's order.</summary>
+    public IEnumerable<ChatResponseUpdate> Entries(IReadOnlyList<TestGenRunActivityRow> rows, bool dropped)
     {
-        if (dropped && !_droppedSaid)
+        if (dropped && !_dropped)
         {
-            _droppedSaid = true;
-            yield return new CustomEvent
+            _dropped = true;
+            foreach (var c in State())
             {
-                Name = DroppedEvent,
-                Value = JsonSerializer.SerializeToElement(new { reason = "The oldest activity of this run was dropped to keep it within its cap." }, AGUIStream.Json),
-            };
+                yield return c;
+            }
         }
         foreach (var row in rows.OrderBy(r => r.Seq))
         {
             Cursor = Math.Max(Cursor, row.LastSeq);
             if (row.Type is ActivityType.Text or ActivityType.Reasoning)
             {
-                foreach (var e in Message(row))
+                if (Message(row) is { } message)
                 {
-                    yield return e;
+                    yield return message;
                 }
                 continue;
             }
-            foreach (var e in CloseMessage())
-            {
-                yield return e;
-            }
+            _open = null;
             switch (row.Type)
             {
                 case ActivityType.Phase:
                     if (_step is { } previous)
                     {
-                        yield return new StepFinishedEvent { StepName = previous };
+                        yield return Update(TurnContents.StepFinished(previous));
                     }
                     _step = row.Attempt == 0 ? $"baseline: {row.Phase}" : $"attempt {row.Attempt}: {row.Phase}";
-                    yield return new StepStartedEvent { StepName = _step };
+                    yield return Update(TurnContents.StepStarted(_step));
                     break;
                 case ActivityType.Tool when Data<ToolActivity>(row) is { } tool:
                     var callId = $"tool-{row.Seq}";
-                    yield return new ToolCallStartEvent { ToolCallId = callId, ToolCallName = tool.Name };
-                    yield return new ToolCallArgsEvent
-                    {
-                        ToolCallId = callId,
-                        Delta = JsonSerializer.Serialize(new { path = tool.Path }, AGUIStream.Json),
-                    };
-                    yield return new ToolCallEndEvent { ToolCallId = callId };
-                    yield return new ToolCallResultEvent
-                    {
-                        MessageId = $"tool-result-{row.Seq}",
-                        ToolCallId = callId,
-                        Role = AGUIRoles.Tool,
-                        Content = JsonSerializer.Serialize(new { outcome = tool.Outcome, summary = tool.Summary }, AGUIStream.Json),
-                    };
+                    yield return Update(new FunctionCallContent(callId, tool.Name, new Dictionary<string, object?> { ["path"] = tool.Path }));
+                    yield return Update(new FunctionResultContent(callId,
+                        JsonSerializer.Serialize(new { outcome = tool.Outcome, summary = tool.Summary }, Json)));
                     break;
                 case ActivityType.Attempt when Data<AttemptActivity>(row) is { } result:
-                    yield return new CustomEvent
+                    _attempts.Add(AttemptValue(row.Attempt, result));
+                    foreach (var c in State())
                     {
-                        Name = AttemptEvent,
-                        Value = AttemptValue(row.Attempt, result),
-                    };
+                        yield return c;
+                    }
                     break;
                 case ActivityType.Resumed:
                     // The agent restarted: the step it was in is over, and the attempt it resumes at starts again.
-                    if (_step is { } interrupted)
+                    if (CloseStep() is { } interrupted)
                     {
-                        _step = null;
-                        yield return new StepFinishedEvent { StepName = interrupted };
+                        yield return interrupted;
                     }
-                    yield return new CustomEvent
+                    _resumes.Add(row.Attempt);
+                    foreach (var c in State())
                     {
-                        Name = ResumedEvent,
-                        Value = JsonSerializer.SerializeToElement(new { attempt = row.Attempt }, AGUIStream.Json),
-                    };
+                        yield return c;
+                    }
                     break;
                 case ActivityType.Stopped when Data<StoppedActivity>(row) is { } stop:
                     // The agent is done: its last step is over, and the timeline closes on why.
-                    if (_step is { } open)
+                    if (CloseStep() is { } open)
                     {
-                        _step = null;
-                        yield return new StepFinishedEvent { StepName = open };
+                        yield return open;
                     }
-                    yield return new CustomEvent
+                    _stop = JsonSerializer.SerializeToNode(new
                     {
-                        Name = StoppedEvent,
-                        Value = JsonSerializer.SerializeToElement(new
-                        {
-                            reason = stop.Reason,
-                            lastAttempt = stop.LastAttempt,
-                            bestPct = stop.BestPct,
-                            notStarted = stop.NotStarted,
-                        }, AGUIStream.Json),
-                    };
+                        reason = stop.Reason,
+                        lastAttempt = stop.LastAttempt,
+                        bestPct = stop.BestPct,
+                        notStarted = stop.NotStarted,
+                    }, Json);
+                    foreach (var c in State())
+                    {
+                        yield return c;
+                    }
                     break;
             }
         }
     }
 
-    /// <summary>The one terminal event, after closing whatever is open.</summary>
-    public IEnumerable<BaseEvent> Ended(RunSummary summary)
+    /// <summary>The run's work is over: its last step closes. How it ended is in its state.</summary>
+    public IEnumerable<ChatResponseUpdate> Ended()
     {
-        foreach (var e in CloseMessage())
+        if (CloseStep() is { } step)
         {
-            yield return e;
+            yield return step;
         }
-        if (_step is { } step)
-        {
-            _step = null;
-            yield return new StepFinishedEvent { StepName = step };
-        }
-        if (summary.State is TestGenRunState.Failed or TestGenRunState.Canceled)
-        {
-            var code = summary.Reason ?? summary.State;
-            yield return new RunErrorEvent { Message = $"The run {summary.State} ({code}).", Code = code };
-            yield break;
-        }
-        yield return new RunFinishedEvent
-        {
-            ThreadId = ThreadId,
-            RunId = runId,
-            Outcome = new RunFinishedSuccessOutcome(),
-            Result = JsonSerializer.SerializeToElement(summary, AGUIStream.Json),
-        };
     }
 
     /// <summary>Whether the agent's work on a run in this state is over, so the stream ends.</summary>
     public static bool IsOver(string state) => state == TestGenRunState.Candidate || TestGenRunState.Final.Contains(state);
 
-    private IEnumerable<BaseEvent> Message(TestGenRunActivityRow row)
+    /// <summary>Whether a run that ended this way ended in error: then the run ends in the protocol's error.</summary>
+    public static bool Failed(string state) => state is TestGenRunState.Failed or TestGenRunState.Canceled;
+
+    /// <summary>
+    /// The run's state: its summary, the attempts finished so far, the stop, each takeover and whether the record was cut.
+    /// Sent whole, and only when it changed.
+    /// </summary>
+    private IEnumerable<ChatResponseUpdate> State()
     {
-        var text = row.Text ?? "";
-        var id = MessageId(row.Seq, row.Type);
-        if (_sent.TryGetValue(row.Seq, out var sent))
+        if (_summary is null)
         {
-            // The entry grew: only what is new goes out, and only while its message is still open.
-            if (text.Length > sent && _open?.Seq == row.Seq)
-            {
-                _sent[row.Seq] = text.Length;
-                yield return Content(row.Type, id, text[sent..]);
-            }
             yield break;
         }
-        foreach (var e in CloseMessage())
+        var state = JsonSerializer.SerializeToNode(_summary, Json)!.AsObject();
+        state["attempts"] = new JsonArray([.. _attempts.Select(a => a.DeepClone())]);
+        state["stop"] = _stop?.DeepClone();
+        state["resumes"] = new JsonArray([.. _resumes.Select(r => (JsonNode)JsonValue.Create(r))]);
+        state["dropped"] = _dropped;
+        var json = state.ToJsonString(Json);
+        if (json == _state)
         {
-            yield return e;
+            yield break;
+        }
+        _state = json;
+        yield return Update(TurnContents.State(JsonSerializer.SerializeToElement(state, Json)));
+    }
+
+    private ChatResponseUpdate? CloseStep()
+    {
+        if (_step is not { } step)
+        {
+            return null;
+        }
+        _step = null;
+        return Update(TurnContents.StepFinished(step));
+    }
+
+    /// <summary>
+    /// A text or reasoning entry: all of it the first time, then only what it grew by while its message is still the
+    /// open one. The message is keyed by the entry, so the server opens and closes it around other content.
+    /// </summary>
+    private ChatResponseUpdate? Message(TestGenRunActivityRow row)
+    {
+        var text = row.Text ?? "";
+        if (_sent.TryGetValue(row.Seq, out var sent))
+        {
+            if (text.Length <= sent || _open?.Seq != row.Seq)
+            {
+                return null;
+            }
+            _sent[row.Seq] = text.Length;
+            return Content(row, text[sent..]);
         }
         _open = (row.Seq, row.Type);
         _sent[row.Seq] = text.Length;
-        if (row.Type == ActivityType.Reasoning)
-        {
-            yield return new ReasoningStartEvent { MessageId = id };
-            yield return new ReasoningMessageStartEvent { MessageId = id, Role = AGUIRoles.Assistant };
-        }
-        else
-        {
-            yield return new TextMessageStartEvent { MessageId = id, Role = AGUIRoles.Assistant };
-        }
-        if (text.Length > 0)
-        {
-            yield return Content(row.Type, id, text);
-        }
+        return text.Length > 0 ? Content(row, text) : null;
     }
 
-    private IEnumerable<BaseEvent> CloseMessage()
-    {
-        if (_open is not { } open)
+    private static ChatResponseUpdate Content(TestGenRunActivityRow row, string delta) =>
+        new(ChatRole.Assistant, [row.Type == ActivityType.Reasoning ? new TextReasoningContent(delta) : new TextContent(delta)])
         {
-            yield break;
-        }
-        _open = null;
-        var id = MessageId(open.Seq, open.Type);
-        if (open.Type == ActivityType.Reasoning)
-        {
-            yield return new ReasoningMessageEndEvent { MessageId = id };
-            yield return new ReasoningEndEvent { MessageId = id };
-        }
-        else
-        {
-            yield return new TextMessageEndEvent { MessageId = id };
-        }
-    }
+            MessageId = MessageId(row),
+        };
 
-    private static BaseEvent Content(string type, string id, string delta) => type == ActivityType.Reasoning
-        ? new ReasoningMessageContentEvent { MessageId = id, Delta = delta }
-        : new TextMessageContentEvent { MessageId = id, Delta = delta };
+    private static ChatResponseUpdate Update(AIContent content) => new(ChatRole.Assistant, [content]);
 
-    private static string MessageId(long seq, string type) => $"{type}-{seq}";
+    /// <summary>The message an entry's content belongs to.</summary>
+    public static string MessageId(TestGenRunActivityRow row) => $"{row.Type}-{row.Seq}";
 
     /// <summary>
     /// An attempt's result as the browser reads it. What the attempt ran (<c>run</c>) and its whole-suite confirmation
     /// (<c>confirmation</c>) are present only when the entry recorded them, so an entry from before reads as it did.
     /// </summary>
-    internal static JsonElement AttemptValue(int attempt, AttemptActivity result)
+    internal static JsonNode AttemptValue(int attempt, AttemptActivity result)
     {
         var value = JsonSerializer.SerializeToNode(new
         {
@@ -246,7 +216,7 @@ public sealed class RunActivityProjection(string runId)
             tests = result.Tests,
             errors = result.Errors,
             violations = result.Violations,
-        }, AGUIStream.Json)!.AsObject();
+        }, Json)!.AsObject();
         if (result.Run is { } run)
         {
             value["run"] = JsonSerializer.SerializeToNode(run, TestGenKinds.Json);
@@ -255,7 +225,7 @@ public sealed class RunActivityProjection(string runId)
         {
             value["confirmation"] = JsonSerializer.SerializeToNode(confirmation, TestGenKinds.Json);
         }
-        return JsonSerializer.SerializeToElement(value, AGUIStream.Json);
+        return value;
     }
 
     private static T? Data<T>(TestGenRunActivityRow row) where T : class =>

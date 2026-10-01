@@ -1,10 +1,12 @@
 using System.Text.Json;
 using AGUI.Abstractions;
-using Maf.Lab.Api.Agent.Streaming;
+using AGUI.Server;
+using Maf.Lab.Api.Agent.AGUI;
 using Maf.Lab.Api.Coverage;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.TestGen;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
 
 namespace Maf.Lab.Tests;
 
@@ -126,18 +128,41 @@ public sealed class RunActivityTests : IAsyncLifetime
     private static RunSummary Summary(string state = TestGenRunState.Working, string? phase = null, string? reason = null) =>
         new("r1", "src/Lab/Calc.cs", state, reason, 1, 5, 40, 85, "m", 0, 0, null, DateTime.UnixEpoch, DateTime.UnixEpoch, phase);
 
-    private async Task<List<BaseEvent>> ProjectAsync(RunActivityProjection view, IReadOnlyList<TestGenActivity> entries)
+    private async Task<List<ChatResponseUpdate>> ProjectAsync(RunActivityProjection view, IReadOnlyList<TestGenActivity> entries)
     {
         await new RunActivityStore(_db).AddAsync("r1", entries, Ct);
         return view.Entries(await new RunActivityStore(_db).ChangedSinceAsync("r1", view.Cursor, Ct), dropped: false).ToList();
     }
+
+    /// <summary>
+    /// What the official AG-UI server, with this system's mappings, writes for these updates: the events between the run's
+    /// start and its end, which the server adds itself (agui-protocol-only).
+    /// </summary>
+    private static async Task<List<BaseEvent>> WireAsync(IEnumerable<ChatResponseUpdate> updates)
+    {
+        var context = new RunAgentInput { ThreadId = "testgen:r1", RunId = "r1", Messages = [] }
+            .ToChatRequestContext(new JsonSerializerOptions(JsonSerializerDefaults.Web)
+            {
+                TypeInfoResolver = System.Text.Json.Serialization.Metadata.JsonTypeInfoResolver.Combine(
+                    AGUIJsonUtilities.DefaultTypeInfoResolver, AIJsonUtilities.DefaultOptions.TypeInfoResolver!),
+            }, AGUIMappings.Agents());
+        var events = new List<BaseEvent>();
+        await foreach (var e in updates.ToAsyncEnumerable().AsAGUIEventStreamAsync(context, Ct))
+        {
+            events.Add(e);
+        }
+        Assert.IsType<RunStartedEvent>(events[0]);
+        return events[1..^1];
+    }
+
+    private static JsonElement Snapshot(BaseEvent e) => Assert.IsType<StateSnapshotEvent>(e).Snapshot;
 
     [Fact]
     public async Task A_phase_is_a_step_and_a_new_phase_finishes_the_last()
     {
         var view = new RunActivityProjection("r1");
 
-        var events = await ProjectAsync(view, [Phase(1, AttemptPhase.Generating, 2), Phase(2, AttemptPhase.Building, 2)]);
+        var events = await WireAsync(await ProjectAsync(view, [Phase(1, AttemptPhase.Generating, 2), Phase(2, AttemptPhase.Building, 2)]));
 
         Assert.Collection(events,
             e => Assert.Equal("attempt 2: generating", Assert.IsType<StepStartedEvent>(e).StepName),
@@ -150,22 +175,27 @@ public sealed class RunActivityTests : IAsyncLifetime
     {
         var view = new RunActivityProjection("r1");
 
-        var events = await ProjectAsync(view, [Phase(1, AttemptPhase.Measuring, 0)]);
+        var events = await WireAsync(await ProjectAsync(view, [Phase(1, AttemptPhase.Measuring, 0)]));
 
         Assert.Equal("baseline: measuring", Assert.IsType<StepStartedEvent>(Assert.Single(events)).StepName);
     }
 
     [Fact]
-    public void A_change_of_phase_is_a_new_state_snapshot_and_no_change_is_none()
+    public async Task A_change_of_phase_is_a_new_state_snapshot_and_no_change_is_none()
     {
         var view = new RunActivityProjection("r1");
 
-        var first = Assert.IsType<StateSnapshotEvent>(Assert.Single(view.Summary(Summary(phase: AttemptPhase.Generating))));
+        var first = view.Summary(Summary(phase: AttemptPhase.Generating)).ToList();
         Assert.Empty(view.Summary(Summary(phase: AttemptPhase.Generating)));
-        var next = Assert.IsType<StateSnapshotEvent>(Assert.Single(view.Summary(Summary(phase: AttemptPhase.Building))));
+        var next = view.Summary(Summary(phase: AttemptPhase.Building)).ToList();
+        var events = await WireAsync([.. first, .. next]);
 
-        Assert.Equal("generating", first.Snapshot.GetProperty("phase").GetString());
-        Assert.Equal("building", next.Snapshot.GetProperty("phase").GetString());
+        Assert.Equal(2, events.Count);
+        Assert.Equal("generating", Snapshot(events[0]).GetProperty("phase").GetString());
+        Assert.Equal("building", Snapshot(events[1]).GetProperty("phase").GetString());
+        // The state carries the run's summary and its record, and nothing else.
+        Assert.Equal(0, Snapshot(events[1]).GetProperty("attempts").GetArrayLength());
+        Assert.False(Snapshot(events[1]).GetProperty("dropped").GetBoolean());
     }
 
     [Fact]
@@ -173,7 +203,7 @@ public sealed class RunActivityTests : IAsyncLifetime
     {
         var view = new RunActivityProjection("r1");
 
-        var events = await ProjectAsync(view, [Tool(1, "run_tests", null, ToolOutcome.Ok, "build ok, 12 passed, 1 failed, 72.1%")]);
+        var events = await WireAsync(await ProjectAsync(view, [Tool(1, "run_tests", null, ToolOutcome.Ok, "build ok, 12 passed, 1 failed, 72.1%")]));
 
         var start = Assert.IsType<ToolCallStartEvent>(events[0]);
         Assert.Equal("run_tests", start.ToolCallName);
@@ -194,12 +224,13 @@ public sealed class RunActivityTests : IAsyncLifetime
 
         var first = await ProjectAsync(view, [Text(1, "Looking ")]);
         var more = await ProjectAsync(view, [Text(2, "at it.", continues: 1), Tool(3, "read_file", "src/Lab/Calc.cs", ToolOutcome.Ok, "6 lines")]);
+        var events = await WireAsync([.. first, .. more]);
 
-        Assert.IsType<TextMessageStartEvent>(first[0]);
-        Assert.Equal("Looking ", Assert.IsType<TextMessageContentEvent>(first[1]).Delta);
-        Assert.Equal("at it.", Assert.IsType<TextMessageContentEvent>(more[0]).Delta);
-        Assert.IsType<TextMessageEndEvent>(more[1]);
-        Assert.IsType<ToolCallStartEvent>(more[2]);
+        var open = Assert.IsType<TextMessageStartEvent>(events[0]);
+        Assert.Equal("Looking ", Assert.IsType<TextMessageContentEvent>(events[1]).Delta);
+        Assert.Equal("at it.", Assert.IsType<TextMessageContentEvent>(events[2]).Delta);
+        Assert.Equal(open.MessageId, Assert.IsType<TextMessageEndEvent>(events[3]).MessageId);
+        Assert.IsType<ToolCallStartEvent>(events[4]);
     }
 
     [Fact]
@@ -207,72 +238,66 @@ public sealed class RunActivityTests : IAsyncLifetime
     {
         var view = new RunActivityProjection("r1");
 
-        var events = (await ProjectAsync(view, [Text(1, "Which lines?", type: ActivityType.Reasoning)]))
-            .Concat(view.Ended(Summary(TestGenRunState.Candidate))).ToList();
+        var events = await WireAsync([.. await ProjectAsync(view, [Text(1, "Which lines?", type: ActivityType.Reasoning)]), .. view.Ended()]);
 
-        Assert.Collection(events.Take(5),
-            e => Assert.IsType<ReasoningStartEvent>(e),
-            e => Assert.IsType<ReasoningMessageStartEvent>(e),
-            e => Assert.Equal("Which lines?", Assert.IsType<ReasoningMessageContentEvent>(e).Delta),
-            e => Assert.IsType<ReasoningMessageEndEvent>(e),
-            e => Assert.IsType<ReasoningEndEvent>(e));
+        Assert.Contains(events, e => e is ReasoningStartEvent);
+        Assert.Equal("Which lines?", Assert.IsType<ReasoningMessageContentEvent>(events.Single(e => e is ReasoningMessageContentEvent)).Delta);
+        Assert.Contains(events, e => e is ReasoningEndEvent);
+        Assert.DoesNotContain(events, e => e is TextMessageStartEvent);
     }
 
     [Fact]
-    public async Task The_stop_finishes_the_open_step_and_says_why_before_the_run_ends()
+    public async Task The_stop_finishes_the_open_step_and_is_said_in_the_state()
     {
         var view = new RunActivityProjection("r1");
         var stopped = Entry(3, ActivityType.Stopped, attempt: 2) with { Stop = new StoppedActivity(StopReason.Budget, 2, 0, NotStarted: 3) };
 
-        var events = (await ProjectAsync(view, [Phase(1, AttemptPhase.Building, 2), Phase(2, AttemptPhase.Measuring, 2), stopped]))
-            .Concat(view.Summary(Summary(TestGenRunState.CompletedNoChange, reason: StopReason.Budget)))
-            .Concat(view.Ended(Summary(TestGenRunState.CompletedNoChange, reason: StopReason.Budget)))
-            .ToList();
+        var updates = view.Summary(Summary()).ToList();
+        updates.AddRange(await ProjectAsync(view, [Phase(1, AttemptPhase.Building, 2), Phase(2, AttemptPhase.Measuring, 2), stopped]));
+        updates.AddRange(view.Summary(Summary(TestGenRunState.CompletedNoChange, reason: StopReason.Budget)));
+        updates.AddRange(view.Ended());
+        var events = await WireAsync(updates);
 
-        Assert.Equal("attempt 2: measuring", Assert.IsType<StepFinishedEvent>(events[3]).StepName);
-        var stop = Assert.IsType<CustomEvent>(events[4]);
-        Assert.Equal(RunActivityProjection.StoppedEvent, stop.Name);
-        var value = (JsonElement)stop.Value!;
-        Assert.Equal(("budget", 2, 3), (value.GetProperty("reason").GetString(), value.GetProperty("lastAttempt").GetInt32(),
-            value.GetProperty("notStarted").GetInt32()));
-        Assert.Equal("budget", Assert.IsType<StateSnapshotEvent>(events[5]).Snapshot.GetProperty("reason").GetString());
+        Assert.Equal("attempt 2: measuring", Assert.IsType<StepFinishedEvent>(events[4]).StepName);
+        var stop = Snapshot(events[5]).GetProperty("stop");
+        Assert.Equal(("budget", 2, 3), (stop.GetProperty("reason").GetString(), stop.GetProperty("lastAttempt").GetInt32(),
+            stop.GetProperty("notStarted").GetInt32()));
+        Assert.Equal("budget", Snapshot(events[6]).GetProperty("reason").GetString());
         // The step was closed by the stop, so the run ends at once and nothing follows it.
-        Assert.IsType<RunFinishedEvent>(events[6]);
         Assert.Equal(7, events.Count);
+        Assert.DoesNotContain(events, e => e is CustomEvent);
     }
 
     [Fact]
-    public async Task A_resume_closes_the_interrupted_step_and_says_where_it_resumes()
+    public async Task A_resume_closes_the_interrupted_step_and_is_said_in_the_state()
     {
         var view = new RunActivityProjection("r1");
 
-        var events = await ProjectAsync(view,
-            [Phase(1, AttemptPhase.Generating, 2), Entry(2, ActivityType.Resumed, 2), Phase(3, AttemptPhase.Generating, 2)]);
+        var updates = view.Summary(Summary()).ToList();
+        updates.AddRange(await ProjectAsync(view,
+            [Phase(1, AttemptPhase.Generating, 2), Entry(2, ActivityType.Resumed, 2), Phase(3, AttemptPhase.Generating, 2)]));
+        var events = await WireAsync(updates);
 
         Assert.Collection(events,
+            e => Assert.IsType<StateSnapshotEvent>(e),
             e => Assert.Equal("attempt 2: generating", Assert.IsType<StepStartedEvent>(e).StepName),
             e => Assert.Equal("attempt 2: generating", Assert.IsType<StepFinishedEvent>(e).StepName),
-            e =>
-            {
-                var resumed = Assert.IsType<CustomEvent>(e);
-                Assert.Equal(RunActivityProjection.ResumedEvent, resumed.Name);
-                Assert.Equal(2, ((JsonElement)resumed.Value!).GetProperty("attempt").GetInt32());
-            },
+            e => Assert.Equal([2], Snapshot(e).GetProperty("resumes").EnumerateArray().Select(a => a.GetInt32())),
             // The resume closed the step, so the next phase starts one without finishing another.
             e => Assert.Equal("attempt 2: generating", Assert.IsType<StepStartedEvent>(e).StepName));
     }
 
     [Fact]
-    public async Task An_attempts_result_is_a_custom_event()
+    public async Task An_attempts_result_is_part_of_the_state()
     {
         var view = new RunActivityProjection("r1");
 
-        var events = await ProjectAsync(view,
-            [Entry(1, ActivityType.Attempt, 2) with { Result = new AttemptActivity(69.2, 72.1, "ok", new TestCounts(12, 1, 0), [], 0) }]);
+        var updates = view.Summary(Summary()).ToList();
+        updates.AddRange(await ProjectAsync(view,
+            [Entry(1, ActivityType.Attempt, 2) with { Result = new AttemptActivity(69.2, 72.1, "ok", new TestCounts(12, 1, 0), [], 0) }]));
+        var events = await WireAsync(updates);
 
-        var custom = Assert.IsType<CustomEvent>(Assert.Single(events));
-        Assert.Equal(RunActivityProjection.AttemptEvent, custom.Name);
-        var value = JsonSerializer.SerializeToElement(custom.Value, AGUIStream.Json);
+        var value = Assert.Single(Snapshot(events[^1]).GetProperty("attempts").EnumerateArray());
         Assert.Equal((2, 72.1), (value.GetProperty("attempt").GetInt32(), value.GetProperty("after").GetDouble()));
         // An entry recorded without its scope reads as it always did.
         Assert.False(value.TryGetProperty("run", out _));
@@ -280,15 +305,16 @@ public sealed class RunActivityTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task An_attempts_event_carries_what_it_ran_and_its_confirmation()
+    public async Task An_attempt_in_the_state_carries_what_it_ran_and_its_confirmation()
     {
         var view = new RunActivityProjection("r1");
         var result = new AttemptActivity(41, 86.3, "ok", new TestCounts(1219, 0, 0), [], 0,
             new AttemptRun(TestScope.Related, 3, 58), new AttemptRun(TestScope.All, 0, 1219, Reused: true, Pct: 86.3));
 
-        var events = await ProjectAsync(view, [Entry(1, ActivityType.Attempt, 2) with { Result = result }]);
+        var updates = view.Summary(Summary()).ToList();
+        updates.AddRange(await ProjectAsync(view, [Entry(1, ActivityType.Attempt, 2) with { Result = result }]));
+        var value = Snapshot((await WireAsync(updates))[^1]).GetProperty("attempts")[0];
 
-        var value = JsonSerializer.SerializeToElement(Assert.IsType<CustomEvent>(Assert.Single(events)).Value, AGUIStream.Json);
         var run = value.GetProperty("run");
         Assert.Equal((TestScope.Related, 3, 58), (run.GetProperty("scope").GetString(), run.GetProperty("files").GetInt32(), run.GetProperty("tests").GetInt32()));
         Assert.False(run.TryGetProperty("reason", out _));
@@ -298,16 +324,12 @@ public sealed class RunActivityTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(TestGenRunState.Failed, "runner_unavailable")]
-    [InlineData(TestGenRunState.Canceled, null)]
-    public void A_failed_or_canceled_run_ends_in_error_with_its_reason(string state, string? reason)
-    {
-        var view = new RunActivityProjection("r1");
-
-        var error = Assert.IsType<RunErrorEvent>(view.Ended(Summary(state, reason: reason)).Last());
-
-        Assert.Equal(reason ?? state, error.Code);
-    }
+    [InlineData(TestGenRunState.Failed, true)]
+    [InlineData(TestGenRunState.Canceled, true)]
+    [InlineData(TestGenRunState.Candidate, false)]
+    [InlineData(TestGenRunState.CompletedNoChange, false)]
+    public void Only_a_failed_or_canceled_run_ends_in_error(string state, bool error) =>
+        Assert.Equal(error, RunActivityProjection.Failed(state));
 
     [Theory]
     [InlineData(TestGenFailure.Interrupted, "interrupted")]
@@ -315,15 +337,4 @@ public sealed class RunActivityTests : IAsyncLifetime
     [InlineData("something the agent said", "agent_failed")]
     public void A_failed_tasks_text_becomes_the_runs_reason(string text, string reason) =>
         Assert.Equal(reason, Maf.Lab.Api.Coverage.TestGenRuns.Code(text));
-
-    [Fact]
-    public void A_candidate_ends_finished_with_its_summary()
-    {
-        var view = new RunActivityProjection("r1");
-
-        var finished = Assert.IsType<RunFinishedEvent>(view.Ended(Summary(TestGenRunState.Candidate)).Last());
-
-        Assert.Equal(("testgen:r1", "r1"), (finished.ThreadId, finished.RunId));
-        Assert.Equal("candidate", JsonSerializer.SerializeToElement(finished.Result, AGUIStream.Json).GetProperty("state").GetString());
-    }
 }

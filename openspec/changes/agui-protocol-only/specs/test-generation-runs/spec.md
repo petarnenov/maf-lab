@@ -29,9 +29,9 @@ The browser SHALL show a takeover in the run's timeline as a notice that the age
 attempt, and the stop as the timeline's closing entry.
 
 After the backlog, the stream SHALL carry live events as they are recorded, and a state change on every change of the
-summary. It SHALL end with exactly one terminal event when the agent's work on the run is over: `RUN_FINISHED` with the
-summary as its result when the run is a candidate or ended any other way than failed or canceled, and `RUN_ERROR`
-with the reason as its code when it failed or was canceled. Nothing SHALL follow the terminal event. For a run that
+summary. It SHALL end with exactly one terminal event when the agent's work on the run is over, after a state that says
+how it ended: `RUN_FINISHED` when the run is a candidate or ended any other way than failed or canceled, and `RUN_ERROR`
+when it failed or was canceled. The reason SHALL be read from the state, whose summary carries it. Nothing SHALL follow the terminal event. For a run that
 has already ended, the stream SHALL replay the run and end at once. No event SHALL be `CUSTOM`. The browser SHALL
 never talk to the agent.
 
@@ -71,7 +71,8 @@ never talk to the agent.
 
 #### Scenario: A failed run ends in error
 - **WHEN** a run ends `failed` with reason `runner_unavailable`
-- **THEN** the stream's last event is `RUN_ERROR` with code `runner_unavailable`, and nothing follows it
+- **THEN** the stream's last event is `RUN_ERROR`, the state before it carries state `failed` and reason
+  `runner_unavailable`, and nothing follows it
 
 #### Scenario: Replaying a finished run
 - **WHEN** a user opens a run that ended `candidate` an hour ago
