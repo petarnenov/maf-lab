@@ -377,7 +377,9 @@ lifecycle is `submitted → working → verifying → candidate → accepted | d
 
 The assistant is also an [A2A 1.0](https://a2a-protocol.org) agent. A partner is a **system**, not a person: its
 token's audience is the A2A endpoint, it carries no user identity, and what it may see comes from the server's
-`A2A:Partners` registration — never from the request.
+`A2A:Partners` registration — never from the request. To try it by hand, the A2A Inspector runs with the stack on
+http://localhost:7172; the MCP endpoints can be tried the same way in the MCP Inspector on http://localhost:7173 (see
+README, "Inspecting A2A, MCP and Redis").
 
 | Method | Path | Auth | Response |
 |---|---|---|---|

@@ -127,6 +127,9 @@ finally:
         if health == "healthy":
             break
         time.sleep(2)
+    # A restarted replica may come back on a new address; the balancer resolves upstreams only when it reloads (see
+    # nginx.conf), so reload it as `make up` does, or later checks would see one replica.
+    subprocess.run(f"{COMPOSE} exec -T lb nginx -c /etc/nginx/lb/nginx.conf -s reload", shell=True, capture_output=True)
 
 # 4.4 admin jobs across replicas ------------------------------------------------------------------------
 alice = token("alice", "firm-a", "FIRM_ADMIN")

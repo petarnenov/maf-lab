@@ -11,7 +11,7 @@ NPM="${NPM:-npm}"
 export Models__OllamaEndpoint="${Models__OllamaEndpoint:-http://localhost:11435}"
 
 docker compose -f "$FILE" up -d qdrant ollama ollama-init
-docker compose -f "$FILE" stop lb api mcp-retrieval mcp-portfolio mcp-code web >/dev/null 2>&1 || true
+docker compose -f "$FILE" stop a2a-inspector mcp-inspector lb api mcp-retrieval mcp-portfolio mcp-code web >/dev/null 2>&1 || true
 
 pids=()
 kill_tree() { # dotnet run and npm start child processes: stop the whole tree

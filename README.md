@@ -404,6 +404,29 @@ Click an earlier answer to reopen its stored trace (kept 7 days). Reviewers can 
 event format is in [`docs/trace-events.md`](docs/trace-events.md). Retrieval internals come from the MCP server in the
 tool result `_meta`, which the model never sees.
 
+## Inspecting A2A, MCP and Redis
+
+`make` also starts three inspectors, linked from the top of the web UI after "Curriculum". They run only on this
+machine (published on `127.0.0.1`), and not at all in CI (`CI_MODE=1`).
+
+Each opens ready to use — nothing to type:
+
+| Inspector | URL | What is already there |
+|---|---|---|
+| [A2A Inspector](https://github.com/a2aproject/a2a-inspector) | http://localhost:7172 | the assistant's card URL and a fresh partner token (`acme-portal`); press **Connect**. Change the URL to `http://localhost:7171/compliance/.well-known/agent-card.json` and the token switches to one for the compliance agent |
+| [MCP Inspector](https://github.com/modelcontextprotocol/inspector) | http://localhost:7173 | "maf-lab billing", "maf-lab portfolio" and "maf-lab code", each with a dev token for `adam` (ADVISOR, firm-a, set by `LAB_USER_ID`/`LAB_FIRM_ID`/`LAB_ROLE`); switch one on |
+| [Redis Insight](https://redis.io/insight/) | http://localhost:7174 | the `maf-lab` database |
+
+The tokens are minted from the dev credentials in `compose/docker-compose.yml` — the A2A page asks for a new one each
+time it opens (`/lab/token`), the MCP catalog is rewritten with a new one every hour — and are never stored outside the
+containers. By hand: `POST /dev/token` for MCP, `POST /a2a/token` or `/compliance/a2a/token` for A2A; a token for one
+A2A audience is refused by the other.
+
+The A2A and MCP inspectors share the balancer's network, so `localhost:7171` means the lab inside them too — which is
+why the URL a card advertises works as is, on macOS and Linux alike. Redis Insight has no login and can change or
+delete keys: it is a window onto dev state, not a tool for anything you want to keep. The MCP Inspector keeps the
+servers you add only until its container restarts.
+
 ## Local development (without the balancer)
 
 `make dev` bypasses the balancer: web on :5174 (Vite proxies `/api` and `/dev` to :5080), api on :5080, MCP servers on :5090 (billing), :5091 (portfolio) and :5092 (codebase),

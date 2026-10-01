@@ -25,7 +25,7 @@ relevance (mcp-retrieval) — needs `JEV_MAF_LAB` in the environment,
 sent only as the bearer header; never put it in a prompt, state, trace or log.
 Embeddings: local Ollama, one multilingual model (`embeddinggemma`, vector `dense_v3`). Changing it = new profile + `make rebuild-index FORCE=1`.
 
-Entry point: everything runs behind the nginx load balancer on http://localhost:7171 (api, mcp-retrieval, mcp-portfolio and compliance x2; mcp-code x1).
+Entry point: everything runs behind the nginx load balancer on http://localhost:7171 (api, mcp-retrieval, mcp-portfolio and compliance x2; mcp-code x1). Inspectors (dev only, loopback): A2A http://localhost:7172, MCP http://localhost:7173, Redis Insight http://localhost:7174.
 
 Commands (see `make help`):
 - `make` — start everything on http://localhost:7171 (build, wait healthy, index if empty)

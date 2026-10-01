@@ -36,6 +36,12 @@
   background: var(--surface-2);
 }
 
+.external {
+  margin-left: 4px;
+  color: var(--muted);
+  font-size: 0.8em;
+}
+
 .active {
   background: var(--surface-2);
   font-weight: 600;

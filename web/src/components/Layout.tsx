@@ -17,6 +17,17 @@ const LINKS = [
   { to: '/curriculum', label: 'Curriculum' },
 ];
 
+// Developer tools that run beside the lab (compose profile `inspectors`), on the same host as this page.
+const INSPECTORS = [
+  { port: 7172, label: 'A2A Inspector' },
+  { port: 7173, label: 'MCP Inspector' },
+  { port: 7174, label: 'Redis Insight' },
+];
+
+function inspectorUrl(port: number): string {
+  return `${window.location.protocol}//${window.location.hostname}:${port}`;
+}
+
 export function Layout() {
   return (
     <div className={styles.shell}>
@@ -33,6 +44,21 @@ export function Layout() {
             >
               {link.label}
             </NavLink>
+          ))}
+          {INSPECTORS.map((tool) => (
+            <a
+              key={tool.port}
+              href={inspectorUrl(tool.port)}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`${tool.label} (opens in a new tab)`}
+              className={styles.link}
+            >
+              {tool.label}
+              <span className={styles.external} aria-hidden="true">
+                ↗
+              </span>
+            </a>
           ))}
         </nav>
         <DevTokenPicker />

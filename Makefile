@@ -17,6 +17,9 @@ ifeq ($(CI_MODE),1)
 COMPOSE       := docker compose -p $(COMPOSE_PROJECT) -f $(COMPOSE_FILE) -f $(ROOT)/compose/docker-compose.ci.yml
 else
 COMPOSE       := docker compose -p $(COMPOSE_PROJECT) -f $(COMPOSE_FILE)
+# The A2A, MCP and Redis inspectors run with the dev stack, never in CI. Exported, so the scripts' own compose calls
+# address the same set of services.
+export COMPOSE_PROFILES := inspectors
 endif
 
 # ── configuration (override on the command line or in the environment) ─────────────────────────────────────────────
@@ -114,6 +117,7 @@ clean: require-docker ## Remove the stack WITH volumes (index, conversations) an
 banner:
 	@echo ""
 	@echo "  maf-lab is up →  $(BASE_URL)   (make help · make verify · make logs · make down)"
+	@if [ "$(CI_MODE)" != "1" ]; then echo "  inspectors    →  A2A http://localhost:7172 · MCP http://localhost:7173 · Redis http://localhost:7174"; fi
 	@echo ""
 
 # ── data ─────────────────────────────────────────────────────────────────────────────────────────────────────────

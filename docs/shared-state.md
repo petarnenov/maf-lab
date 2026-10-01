@@ -28,6 +28,9 @@ started anyway would answer some requests correctly and lose others, which is wo
 While running, `/health` returns 503 for as long as the store cannot be reached, so the balancer routes around the
 replica; it serves again when the store answers, without a restart.
 
+To look at what is in the store — keys, their TTLs, the JSON in them, live commands — open Redis Insight on
+http://localhost:7174, which `make` starts already connected to it.
+
 ## Configuration
 
 | Setting | Meaning | Default |
