@@ -17,5 +17,5 @@
 - [x] 2.2 Makefile: `up`'s `##` description names `PORTFOLIO_REPLICAS`
 - [x] 2.3 `openspec/project.md`: container list includes `test-agent` and `coverage-runner`
 - [x] 2.4 `.github/copilot-instructions.md`: all ten eval suites; a single-test example that matches a real test name
-- [x] 2.5 Run `make docs` (never edit inside a `generated:` block by hand), then `make docs-check`
+- [x] 2.5 Run `make docs` (never edit by hand inside a `generated:` block), then `make docs-check`
 - [x] 2.6 Every relative link and every path README.md names exists; `openspec validate --specs --strict` passes

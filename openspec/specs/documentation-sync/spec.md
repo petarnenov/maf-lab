@@ -44,6 +44,9 @@ reason, when any of the following holds:
 - a project under `src/` or `tools/`, or a top-level directory tracked by git, has no description;
 - a document names a chat, embedding or Jev model version that differs from the value the code configures;
 - a relative link or image in a checked document points to a file that does not exist;
+- a page the web app registers is not named in `README.md` as its path in code format (`` `/path` ``), where a page is
+  a route with its own screen — redirects and the catch-all are not pages, and a route's optional or parameter
+  segments are not part of the name it must have;
 - an active change's proposal has no `Documentation impact` section.
 The checked documents SHALL be `README.md`, `CLAUDE.md`, `docs/**/*.md`, `openspec/project.md` and
 `.github/copilot-instructions.md`. `DECISIONS.md`, eval reports, prompts and archived changes are history, and SHALL
@@ -80,6 +83,15 @@ NOT be checked for model names or routes. It SHALL exit zero when none holds.
 #### Scenario: Unknown make target
 - **WHEN** a checked document tells the reader to run `make <x>` and the Makefile has no target `x`
 - **THEN** `make docs-check` fails and names the file, line and target
+
+#### Scenario: A page README does not name
+- **WHEN** the web app registers a page at `coverage` and README.md has no `` `/coverage` ``
+- **THEN** `make docs-check` fails, naming the web app's route file and line and the path `/coverage`
+
+#### Scenario: Redirects and parameters are not pages
+- **WHEN** the web app registers `chat/:conversationId?`, a route whose element is a redirect, and a catch-all `*`,
+  and README.md names `` `/chat` `` only
+- **THEN** `make docs-check` does not fail on any of them
 
 ### Requirement: Exemptions are explicit
 A route that is deliberately left out of `docs/http-api.md` SHALL be listed in a checked-in exemption list together with
