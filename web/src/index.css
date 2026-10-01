@@ -52,6 +52,11 @@
   box-sizing: border-box;
 }
 
+/* Anchor jumps and scrollIntoView stop below the pinned header (useStickyHeader sets the offset; 0px when unpinned). */
+html {
+  scroll-padding-top: var(--app-header-offset, 0px);
+}
+
 body {
   margin: 0;
   background: var(--bg);

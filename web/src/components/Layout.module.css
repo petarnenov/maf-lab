@@ -14,6 +14,23 @@
   background: var(--surface);
 }
 
+/*
+ * Pinned at the top while the page scrolls, when it takes at most a third of the window (useStickyHeader decides and
+ * sets data-sticky). z-index 8: above in-flow content (coverage tips 1, intent tips 2, history row menu 5, sticky table
+ * cells auto) and below every overlay (coverage dialog 10, chat drawer 14/15, history dialog 20).
+ */
+.header[data-sticky='true'] {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+}
+
+@media print {
+  .header[data-sticky='true'] {
+    position: static;
+  }
+}
+
 .brand {
   font-weight: 700;
   letter-spacing: 0.02em;
