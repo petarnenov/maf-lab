@@ -168,10 +168,11 @@ result picks a branch, not a new design.
 
 ### D9. Guards that keep it this way
 - **.NET arch test** (xUnit, reflection plus a source scan of `src/`):
-  - no reference to `AGUI.Abstractions.CustomEvent`;
-  - no `new …Event` of a `BaseEvent` subtype outside `Agent/AGUI/AGUIMappings.cs`;
-  - no `text/event-stream` content type and no `TypedResults.ServerSentEvents` outside the adapter;
-  - every endpoint returning AG-UI is mapped by `MapAGUIServer`.
+  - no reference to `CustomEvent`;
+  - the `AGUI.Abstractions`/`AGUI.Server` namespaces only under `src/Maf.Lab.Api/Agent/AGUI/`, the agents' wiring to
+    the official server (this also catches target-typed `new()` events, which a construction scan cannot see);
+  - within it, `new …Event` only in `AGUIMappings.cs`;
+  - no `text/event-stream`, `ServerSentEvents` or `SseItem` in the api, so every AG-UI endpoint is `MapAGUIServer`'s.
 - **Web ESLint** `no-restricted-syntax` and `no-restricted-imports`:
   - `EventType.CUSTOM`;
   - importing `@ag-ui/core` event classes for construction outside tests;
