@@ -2600,3 +2600,18 @@ said which account the conversation was about.
   restart.
 - **Numbering.** Written as §71 because another in-flight change takes §70; if that one does not land first, this
   section may be renumbered.
+
+## 72. The header stays in view, sized by measurement (keep-the-header-in-view, 2026-10-01)
+
+- **Why.** The header (navigation, persona, theme) scrolled away; on long screens the user had to scroll back up to
+  switch screens. No package or model moved; no route, target or project changed.
+- **Sticky, not fixed**, so `main` needs no padding equal to a height nobody knows; the unpinned header is the same
+  element with one property changed.
+- **Measured, not assumed.** The header wraps (56 px at 2560, 189 at 1440, 281 at 800, 433 at 375), so no CSS-only
+  value fits. `useStickyHeader` measures it (ResizeObserver plus window `resize`) and publishes one root variable,
+  `--app-header-offset`: the height when pinned, `0px` otherwise. `html { scroll-padding-top }` reads it for every
+  anchor jump and window `scrollIntoView`; the chat screen subtracts it instead of its old `100vh - 120px` guess.
+- **Pinned only up to a third of the window's height.** A width breakpoint is a proxy; the hook already has both
+  heights. A phone (433 of 667) or a short window (189 of 500) lets it scroll away as before; never pinned in print.
+- **z-index 8:** above in-flow content (tips 1–2, the history row menu 5, sticky table cells auto), below every overlay
+  (coverage dialog 10, chat drawer 14/15, history dialog 20). A future overlay must stay at 10 or above.
