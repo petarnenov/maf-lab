@@ -1,7 +1,9 @@
+import { useRef } from 'react';
 import { NavLink, Outlet } from 'react-router';
 import { DevTokenPicker } from './DevTokenPicker';
 import { ThemeButton } from '../theme/ThemeButton';
 import styles from './Layout.module.css';
+import { useStickyHeader } from './useStickyHeader';
 
 const LINKS = [
   { to: '/chat', label: 'Chat' },
@@ -29,9 +31,12 @@ function inspectorUrl(port: number): string {
 }
 
 export function Layout() {
+  const headerRef = useRef<HTMLElement>(null);
+  const sticky = useStickyHeader(headerRef);
+
   return (
     <div className={styles.shell}>
-      <header className={styles.header}>
+      <header ref={headerRef} className={styles.header} data-sticky={sticky}>
         <span className={styles.brand}>maf-lab</span>
         <nav className={styles.nav} aria-label="Main">
           {LINKS.map((link) => (

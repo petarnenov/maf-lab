@@ -3,7 +3,8 @@
   display: grid;
   grid-template-columns: 260px minmax(380px, 1fr) minmax(440px, 1.2fr);
   gap: 16px;
-  height: calc(100vh - 120px);
+  /* The window less the pinned header (0px when it scrolls away) and main's 20px top and bottom padding. */
+  height: calc(100vh - var(--app-header-offset, 80px) - 40px);
   max-width: 1800px;
   margin: 0 auto;
 }
@@ -145,7 +146,7 @@
   }
 
   .chatPane {
-    height: calc(100vh - 140px);
+    height: calc(100vh - var(--app-header-offset, 100px) - 40px);
   }
 
   .monitorPane {
