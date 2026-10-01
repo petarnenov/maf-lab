@@ -157,7 +157,7 @@ public sealed class TestAgentTools(Workspace workspace, TestGenRequest request, 
 
     public static TestRun Summary(RunnerResult r) => new(r.Status, r.Build, r.Diagnostics.Take(30).ToList(), r.Tests,
         r.Failures.Take(20).ToList(), r.TargetPct, r.Uncovered,
-        r.Status == RunnerStatus.DiffRejected ? "Your changes could not be applied to the commit." : null);
+        r.Status == RunnerStatus.DiffRejected ? "Your changes could not be applied to the commit." : Instructions.LintNote(r));
 
     private string Rel(string full) => Path.GetRelativePath(workspace.Root, full).Replace('\\', '/');
 

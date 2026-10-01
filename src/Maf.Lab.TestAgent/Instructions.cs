@@ -32,6 +32,11 @@ public static class Instructions
           change the code and do not bend the assertion. Keep the test, skip it with the reason
           "suspected-bug: <short title>" ([Fact(Skip = "suspected-bug: <title>")] in C#; in TypeScript it.skip(...) with
           the comment // suspected-bug: <title> on the line before), and call report_suspected_bug, within the run's limit stated below.
+        - Your files are held to the lint CI applies, and a finding fails the build. For dotnet, every compiler or
+          analyzer warning in a file you write is an error (CI builds with -warnaserror): for example CA2022, so use
+          stream.ReadExactly(...) rather than ignoring what stream.Read(...) returns. For vitest, a file you write must
+          have no ESLint error (no unused variables or imports, no `any`) and must be formatted as Prettier formats it
+          here: single quotes, semicolons, 2-space indent, trailing commas wherever allowed, lines up to 100 characters.
         - Read before you write: the target file, its callers, and the existing tests nearby, and follow their style.
         - Use run_tests to check your work; finish when the tests build, pass, and cover what you can.
         """;
@@ -81,6 +86,10 @@ public static class Instructions
             {
                 sb.AppendLine($"  {d}");
             }
+            if (LintNote(result) is { } note)
+            {
+                sb.AppendLine($"- {note}");
+            }
         }
         foreach (var f in result.Failures.Take(10))
         {
@@ -96,4 +105,11 @@ public static class Instructions
         }
         return sb.ToString().TrimEnd();
     }
+
+    public const string LintFailsTheBuild =
+        "Warnings, ESLint errors and Prettier differences in your files fail the build here, as they fail CI: fix each one listed.";
+
+    /// <summary>Said when a run's diagnostics include lint findings, which a model may otherwise take for advice.</summary>
+    public static string? LintNote(RunnerResult result) =>
+        result.Build == BuildOutcome.Failed && result.Diagnostics.Any(LintDiagnostics.Is) ? LintFailsTheBuild : null;
 }

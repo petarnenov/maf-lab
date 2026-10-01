@@ -258,6 +258,35 @@ public sealed class TestAgentTests
     }
 
     [Fact]
+    public async Task A_warning_in_an_attempt_fails_it_and_is_fed_to_the_next()
+    {
+        const string ca2022 = "tests/Lab.Tests/CalcTests.cs(9,9): warning CA2022: Avoid inexact read with 'System.IO.Stream.Read(byte[], int, int)'";
+        var repo = await RepoAsync();
+        var model = new AttemptModel(Writes);
+        var attempt = 0;
+        var runner = new FakeCoverageRunner
+        {
+            // Attempt 1 reaches the target but warns, as the runner reports a diff's warnings: a failed build.
+            Answer = r => r.Diff is null
+                ? FakeCoverageRunner.Result("<coverage/>", targetPct: 40)
+                : Interlocked.Increment(ref attempt) == 1
+                    ? FakeCoverageRunner.Result("<coverage/>", targetPct: 90, build: BuildOutcome.Failed) with { Diagnostics = [ca2022] }
+                    : FakeCoverageRunner.Result("<coverage/>", targetPct: 90),
+        };
+        await using var agent = new TestAgentFactory(repo, model, runner);
+
+        var task = await TestAgentFactory.RpcAsync(await agent.ClientAsync(), "message/send",
+            TestAgentFactory.Send(TestAgentFactory.Request(await repo.HeadAsync(Ct))), Ct);
+
+        var report = TestAgentFactory.Report(task);
+        // A test that warns is never the result, whatever it covers.
+        Assert.Equal([BuildOutcome.Failed, BuildOutcome.Ok], report.Attempts.Select(a => a.Build));
+        Assert.Equal(StopReason.Target, report.StopReason);
+        Assert.Contains(ca2022, model.Prompts.ElementAt(1));
+        Assert.Contains(Instructions.LintFailsTheBuild, model.Prompts.ElementAt(1));
+    }
+
+    [Fact]
     public async Task Without_caps_it_never_stops_for_the_budget()
     {
         var repo = await RepoAsync();

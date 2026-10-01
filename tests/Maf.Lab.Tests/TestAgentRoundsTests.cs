@@ -79,6 +79,36 @@ public sealed class TestAgentRoundsTests
     }
 
     [Fact]
+    public void The_rules_state_the_lint_bar()
+    {
+        Assert.Contains("analyzer warning in a file you write is an error", Instructions.System);
+        Assert.Contains("-warnaserror", Instructions.System);
+        Assert.Contains("ESLint", Instructions.System);
+        Assert.Contains("single quotes, semicolons, 2-space indent, trailing commas", Instructions.System);
+        Assert.Contains("lines up to 100 characters", Instructions.System);
+    }
+
+    private const string Ca2022 = "tests/Lab.Tests/CalcTests.cs(9,9): warning CA2022: Avoid inexact read with 'System.IO.Stream.Read(byte[], int, int)'";
+
+    [Fact]
+    public void A_warning_is_fed_back_as_failing_the_build()
+    {
+        var result = FakeCoverageRunner.Result("<coverage/>", targetPct: 60, build: BuildOutcome.Failed) with { Diagnostics = [Ca2022] };
+
+        var feedback = Instructions.Feedback(result, []);
+
+        Assert.Contains("The build failed:", feedback);
+        Assert.Contains(Ca2022, feedback);
+        Assert.Contains(Instructions.LintFailsTheBuild, feedback);
+        Assert.Equal(Instructions.LintFailsTheBuild, TestAgentTools.Summary(result).Note);
+
+        // A compile error is not a lint finding, and says nothing about CI.
+        var compile = result with { Diagnostics = ["tests/Lab.Tests/CalcTests.cs(4,51): error CS1002: ; expected"] };
+        Assert.DoesNotContain(Instructions.LintFailsTheBuild, Instructions.Feedback(compile, []));
+        Assert.Null(TestAgentTools.Summary(compile).Note);
+    }
+
+    [Fact]
     public async Task The_model_is_nudged_once_when_three_rounds_remain()
     {
         var inner = new Recorder();
