@@ -33,7 +33,8 @@ public static class Instructions
           "suspected-bug: <short title>" ([Fact(Skip = "suspected-bug: <title>")] in C#; in TypeScript it.skip(...) with
           the comment // suspected-bug: <title> on the line before), and call report_suspected_bug, within the run's limit stated below.
         - Read before you write: the target file, its callers, and the existing tests nearby, and follow their style.
-        - Use run_tests to check your work; finish when the tests build, pass, and cover what you can.
+        - Use run_tests to check your work; finish when the tests build, pass, and cover what you can. It runs the test
+          files you changed and the tests that use the target; the whole suite runs once the target is reached.
         """;
 
     public static string Attempt(TestGenRequest request, int attempt, double? currentPct, string? feedback)

@@ -119,6 +119,68 @@ public sealed class TestAgentRecoveryTests
         Assert.Null(await second.Checkpoints.GetAsync(taskId, Ct));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_resumed_run_runs_related_tests_only_when_it_kept_the_baseline_lines(bool kept)
+    {
+        var repo = await RepoAsync();
+        var runner = new FakeCoverageRunner
+        {
+            Answer = r => r.Diff is null
+                ? FakeCoverageRunner.Result("<coverage/>", targetPct: 40) with
+                {
+                    Uncovered = [[3, 5]],
+                    Selection = TestSelection.Whole,
+                    TargetLines = new LineHits([1, 2], [3, 4, 5]),
+                }
+                : FakeCoverageRunner.Result("<coverage/>", targetPct: 60) with
+                {
+                    Uncovered = [[5, 5]],
+                    Selection = new TestSelection(r.Tests ?? TestScope.All, []),
+                    TargetLines = new LineHits([3, 4], [1, 2, 5]),
+                },
+        };
+        var secondStarted = new TaskCompletionSource();
+        var before = new AttemptModel(n => Writes("tests/Lab.Tests/FirstTests.cs", n) with
+        {
+            Before = async ct =>
+            {
+                if (n == 2)
+                {
+                    secondStarted.TrySetResult();
+                    await Task.Delay(Timeout.Infinite, ct);
+                }
+            },
+        });
+        var first = new TestAgentFactory(repo, before, runner);
+        var sending = TestAgentFactory.RpcAsync(await first.ClientAsync(), "message/send",
+            TestAgentFactory.Send(TestAgentFactory.Request(await repo.HeadAsync(Ct), attempts: 2, maxCost: null, maxTokens: null)), Ct);
+        await secondStarted.Task.WaitAsync(TimeSpan.FromSeconds(30), Ct);
+        var taskId = first.Tasks.Seen.Single();
+        await first.DisposeAsync();
+        await sending.ContinueWith(_ => { }, Ct);
+        var saved = (await first.Checkpoints.GetAsync(taskId, Ct))!;
+        Assert.Equal([1, 2], saved.Run!.BaselineLines!.Covered);
+        if (!kept)
+        {
+            // As a checkpoint written before the baseline's lines were kept.
+            await first.Checkpoints.SaveAsync(taskId, saved with { Run = saved.Run with { BaselineLines = null } }, Ct);
+        }
+
+        await using var second = new TestAgentFactory(repo, new AttemptModel(n => Writes("tests/Lab.Tests/SecondTests.cs", n)), runner,
+            tasks: first.Tasks, checkpoints: first.Checkpoints);
+        await second.ClientAsync();
+        var ended = await EndedAsync(second.Tasks, taskId);
+
+        Assert.Equal(TaskState.Completed, ended.Status!.State);
+        // Attempt 1 before the restart ran the related tests; attempt 2 after it does so only with the lines kept.
+        var attempts = runner.Requests.Where(r => r.Diff is not null).Select(r => r.Tests).ToList();
+        Assert.Equal([TestScope.Related, kept ? TestScope.Related : TestScope.All], attempts);
+        // Merged with the baseline (lines 1–4 of 5), or measured as it is.
+        Assert.Equal(kept ? 80.0 : 60.0, TestAgentFactory.Report(Json(ended)).Attempts[^1].After);
+    }
+
     [Fact]
     public async Task A_task_with_nothing_to_resume_from_ends_interrupted()
     {

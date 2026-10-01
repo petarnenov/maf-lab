@@ -26,16 +26,25 @@ internal sealed class FakeToolchain : IToolchainRunner
 {
     public string Toolchain => "dotnet";
     public ConcurrentQueue<string[]> SeenTestFiles { get; } = new();
+    public ConcurrentQueue<TestPlan> Plans { get; } = new();
     public TaskCompletionSource? Gate { get; set; }
     public bool Overrun { get; set; }
 
-    public async Task<ToolchainOutcome> RunAsync(string workspace, string outputDir, TimeSpan timeLimit, CancellationToken ct)
+    /// <summary>A related run reports no test at all, as a filter that matched nothing would.</summary>
+    public bool RelatedRunsNothing { get; set; }
+
+    public async Task<ToolchainOutcome> RunAsync(string workspace, string outputDir, TestPlan plan, TimeSpan timeLimit, CancellationToken ct)
     {
         var tests = Directory.Exists(Path.Combine(workspace, "tests"))
             ? Directory.GetFiles(Path.Combine(workspace, "tests"), "*.cs", SearchOption.AllDirectories)
                 .Select(f => Path.GetRelativePath(workspace, f)).Order().ToArray()
             : [];
         SeenTestFiles.Enqueue(tests);
+        Plans.Enqueue(plan);
+        if (plan.Related && RelatedRunsNothing)
+        {
+            return new ToolchainOutcome(BuildOutcome.Ok, [], new TestCounts(0, 0, 0), [], null, false);
+        }
         if (Gate is { } gate)
         {
             await gate.Task.WaitAsync(ct);
@@ -75,6 +84,7 @@ public sealed class CoverageRunnerTests
                         ["Runner:RepoRoot"] = repo.Root,
                         ["Runner:WorkRoot"] = Directory.CreateTempSubdirectory("maf-runner-").FullName,
                         ["Runner:MaxConcurrent"] = "1",
+                        ["Runner:DotnetTestProject"] = "tests/Lab.Tests",
                     });
                     builder.Logging.ClearProviders();
                     builder.Services.AddSingleton<IToolchainRunner>(toolchain);
@@ -363,5 +373,204 @@ public sealed class CoverageRunnerTests
         Assert.Equal(["web/src/b.test.ts: Transform failed: Unexpected token"], outcome.Diagnostics);
         Assert.Equal(new TestCounts(1, 1, 1), outcome.Tests);
         Assert.Equal(("format pads", "AssertionError: expected '1' to be '01'"), (outcome.Failures[0].Name, outcome.Failures[0].Message));
+        Assert.Equal(["web/src/a.test.ts", "web/src/b.test.ts"], outcome.TestFiles);
+    }
+
+    // ── related tests (focus-test-runs-on-the-target) ───────────────────────────────────────────────────────────────
+
+    /// <summary>A target that declares a type, a test file that uses it, and one that only mentions its name.</summary>
+    private static Task<TempGitRepo> TypedRepoAsync() => TempGitRepo.CreateAsync(new Dictionary<string, string>
+    {
+        ["src/Lab/Calc.cs"] = "namespace Lab;\npublic class Calc\n{\n}\n",
+        ["tests/Lab.Tests/UsesCalc.cs"] = "namespace Lab.Tests;\npublic class UsesCalc { private readonly Lab.Calc _c = new(); }\npublic class Box<T> { Calc? _c; }\n",
+        ["tests/Lab.Tests/Unrelated.cs"] = "namespace Lab.Tests;\n// Calc, in a comment\npublic class Unrelated { private const string Name = \"Calc\"; }\n",
+        ["tests/Lab.Tests/Fixture.cs"] = "namespace Lab.Tests;\npublic class Fixture { }\n",
+        ["tests/Lab.Tests/UsesFixture.cs"] = "namespace Lab.Tests;\npublic class UsesFixture { private readonly Fixture _f = new(); }\n",
+        ["tests/Lab.Tests/Lab.Tests.csproj"] = "<Project />\n",
+    }, Ct);
+
+    private static string NewFile(string path, string content) => $$"""
+        diff --git a/{{path}} b/{{path}}
+        new file mode 100644
+        --- /dev/null
+        +++ b/{{path}}
+        @@ -0,0 +1 @@
+        +{{content}}
+
+        """;
+
+    private static string AddCalcTests() =>
+        NewFile("tests/Lab.Tests/CalcTests.cs", "namespace Lab.Tests { public class CalcTests { public class Nested { } } }");
+
+    [Fact]
+    public async Task Related_tests_are_the_changed_files_and_the_users_of_the_target()
+    {
+        var repo = await TypedRepoAsync();
+        var toolchain = new FakeToolchain();
+        await using var runner = new Runner(repo, toolchain);
+
+        var result = await runner.RunAsync(new RunnerRequest(await repo.HeadAsync(Ct), "dotnet", AddCalcTests(), "src/Lab/Calc.cs", TestScope.Related));
+
+        var plan = toolchain.Plans.Single();
+        Assert.True(plan.Related);
+        Assert.Equal(["Lab.Tests.Box`1", "Lab.Tests.CalcTests", "Lab.Tests.CalcTests+Nested", "Lab.Tests.UsesCalc"], plan.Filters);
+        Assert.Equal((TestScope.Related, null), (result.Selection!.Scope, result.Selection.Reason));
+        Assert.Equal(["tests/Lab.Tests/CalcTests.cs", "tests/Lab.Tests/UsesCalc.cs"], result.Selection.TestFiles);
+        // The fake credits one line per test file it finds (all four lines here); the line hits come with the result.
+        Assert.Equal([1, 2, 3, 4], result.TargetLines!.Covered);
+        Assert.Empty(result.TargetLines.Uncovered);
+    }
+
+    [Fact]
+    public async Task The_users_of_a_changed_helper_run_too()
+    {
+        var repo = await TypedRepoAsync();
+        var toolchain = new FakeToolchain();
+        await using var runner = new Runner(repo, toolchain);
+        const string helper = """
+            diff --git a/tests/Lab.Tests/Fixture.cs b/tests/Lab.Tests/Fixture.cs
+            --- a/tests/Lab.Tests/Fixture.cs
+            +++ b/tests/Lab.Tests/Fixture.cs
+            @@ -1,2 +1,2 @@
+             namespace Lab.Tests;
+            -public class Fixture { }
+            +public class Fixture { public int Seed => 1; }
+
+            """;
+
+        await runner.RunAsync(new RunnerRequest(await repo.HeadAsync(Ct), "dotnet", helper, "src/Lab/Calc.cs", TestScope.Related));
+
+        Assert.Equal(["Lab.Tests.Box`1", "Lab.Tests.Fixture", "Lab.Tests.UsesCalc", "Lab.Tests.UsesFixture"], toolchain.Plans.Single().Filters);
+    }
+
+    [Fact]
+    public async Task A_change_the_rule_cannot_follow_runs_the_whole_suite_and_says_why()
+    {
+        var repo = await TypedRepoAsync();
+        var toolchain = new FakeToolchain();
+        await using var runner = new Runner(repo, toolchain);
+        const string project = """
+            diff --git a/tests/Lab.Tests/Lab.Tests.csproj b/tests/Lab.Tests/Lab.Tests.csproj
+            --- a/tests/Lab.Tests/Lab.Tests.csproj
+            +++ b/tests/Lab.Tests/Lab.Tests.csproj
+            @@ -1 +1 @@
+            -<Project />
+            +<Project Sdk="x" />
+
+            """;
+
+        var result = await runner.RunAsync(new RunnerRequest(await repo.HeadAsync(Ct), "dotnet", project, "src/Lab/Calc.cs", TestScope.Related));
+
+        Assert.False(toolchain.Plans.Single().Related);
+        Assert.Equal(TestScope.All, result.Selection!.Scope);
+        Assert.Contains("tests/Lab.Tests/Lab.Tests.csproj", result.Selection.Reason);
+    }
+
+    [Fact]
+    public async Task Nothing_selected_runs_the_whole_suite()
+    {
+        var repo = await RepoAsync();
+        var toolchain = new FakeToolchain();
+        await using var runner = new Runner(repo, toolchain);
+
+        var result = await runner.RunAsync(new RunnerRequest(await repo.HeadAsync(Ct), "dotnet", null, "src/Lab/Calc.cs", TestScope.Related));
+
+        Assert.False(toolchain.Plans.Single().Related);
+        Assert.Equal((TestScope.All, RelatedTests.NothingSelected), (result.Selection!.Scope, result.Selection.Reason));
+        Assert.Empty(result.Selection.TestFiles);
+    }
+
+    [Fact]
+    public async Task Related_tests_that_hold_no_test_are_followed_by_the_whole_suite()
+    {
+        var repo = await TypedRepoAsync();
+        var toolchain = new FakeToolchain { RelatedRunsNothing = true };
+        await using var runner = new Runner(repo, toolchain);
+
+        var result = await runner.RunAsync(new RunnerRequest(await repo.HeadAsync(Ct), "dotnet", AddCalcTests(), "src/Lab/Calc.cs", TestScope.Related));
+
+        Assert.Equal([true, false], toolchain.Plans.Select(p => p.Related));
+        Assert.Equal((TestScope.All, RelatedTests.NothingSelected), (result.Selection!.Scope, result.Selection.Reason));
+        Assert.True(result.Green);
+        Assert.True(result.Tests.Passed > 0);
+    }
+
+    [Fact]
+    public async Task Without_a_scope_the_whole_suite_runs()
+    {
+        var repo = await TypedRepoAsync();
+        var toolchain = new FakeToolchain();
+        await using var runner = new Runner(repo, toolchain);
+
+        var result = await runner.RunAsync(new RunnerRequest(await repo.HeadAsync(Ct), "dotnet", AddCalcTests(), "src/Lab/Calc.cs"));
+
+        Assert.Same(TestPlan.Whole, toolchain.Plans.Single());
+        Assert.Equal((TestScope.All, null), (result.Selection!.Scope, result.Selection.Reason));
+    }
+
+    [Theory]
+    [InlineData("some", "src/Lab/Calc.cs")]
+    [InlineData(TestScope.Related, null)]
+    public async Task A_malformed_scope_is_refused(string tests, string? target)
+    {
+        var repo = await RepoAsync();
+        var toolchain = new FakeToolchain();
+        await using var runner = new Runner(repo, toolchain);
+
+        var response = await (await runner.ClientAsync()).PostAsJsonAsync("/runs",
+            new RunnerRequest(await repo.HeadAsync(Ct), "dotnet", null, target, tests), Json, Ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Empty(toolchain.Plans);
+    }
+
+    [Fact]
+    public void Dotnet_arguments_filter_by_class_only_for_related_tests()
+    {
+        var options = new RunnerOptions();
+        var related = new TestPlan(new TestSelection(TestScope.Related, ["tests/Maf.Lab.Tests/A.cs"]), ["Maf.Lab.Tests.A", "Maf.Lab.Tests.A+B"]);
+
+        var whole = DotnetToolchain.Arguments(options, "/out/r.xml", TestPlan.Whole);
+        var focused = DotnetToolchain.Arguments(options, "/out/r.xml", related);
+
+        Assert.DoesNotContain("--filter-class", whole);
+        Assert.Equal([.. whole, "--filter-class", "Maf.Lab.Tests.A", "--filter-class", "Maf.Lab.Tests.A+B"], focused);
+        Assert.Equal(["test", "--project", "tests/Maf.Lab.Tests", "--", "--coverage"], whole.Take(5));
+    }
+
+    [Fact]
+    public void Vitest_arguments_ask_for_related_tests_by_file()
+    {
+        var related = new TestPlan(new TestSelection(TestScope.Related, []), ["src/a.ts", "src/a.test.ts"]);
+
+        var whole = VitestToolchain.Arguments("/out", "/out/v.json", TestPlan.Whole);
+        var focused = VitestToolchain.Arguments("/out", "/out/v.json", related);
+
+        Assert.Equal("run", whole[0]);
+        Assert.Equal(["related", "--run", "--passWithNoTests", "src/a.ts", "src/a.test.ts", "--coverage"], focused.Take(6));
+        Assert.Equal(whole.Skip(1), focused.Skip(5));
+    }
+
+    [Fact]
+    public async Task Vitest_related_files_are_the_target_and_the_changed_files_under_web()
+    {
+        var repo = await TempGitRepo.CreateAsync(new Dictionary<string, string>
+        {
+            ["web/src/a.ts"] = "export const a = 1;\n",
+            ["web/src/a.test.ts"] = "\n",
+            ["web/src/test/render.tsx"] = "\n",
+        }, Ct);
+        var workspace = repo.Root;
+        const string setup = "web/src/test/setup.ts";
+
+        var plan = RelatedTests.Vitest(workspace, "web/src/a.ts", ["web/src/a.test.ts", "web/src/test/render.tsx", "web/src/gone.test.ts"], setup);
+        var setupChanged = RelatedTests.Vitest(workspace, "web/src/a.ts", [setup], setup);
+        var outside = RelatedTests.Vitest(workspace, "web/src/a.ts", ["web/package.json"], setup);
+
+        Assert.True(plan.Related);
+        Assert.Equal(["src/a.ts", "src/a.test.ts", "src/test/render.tsx"], plan.Filters);
+        Assert.Contains(setup, setupChanged.Selection.Reason);
+        Assert.Contains("web/package.json", outside.Selection.Reason);
+        Assert.False(setupChanged.Related || outside.Related);
     }
 }

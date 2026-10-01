@@ -244,6 +244,8 @@ public sealed class CoverageApiTests
         var main = await repo.HeadAsync(Ct, "main");
         Assert.All(runner.Requests, r => Assert.Equal(main, r.Commit));
         Assert.Equal([Toolchains.Dotnet, Toolchains.Vitest], runner.Requests.Select(r => r.Toolchain));
+        // A refresh measures every file: the whole suite of each toolchain.
+        Assert.All(runner.Requests, r => Assert.Equal(TestScope.All, r.Tests));
         var tree = await admin.GetFromJsonAsync<CoverageTreeDto>("/api/coverage/tree", Json, Ct);
         Assert.Equal(["src/Lab/Small.cs", "web/src/App.tsx"], tree!.Files.Select(f => f.Path));
     }

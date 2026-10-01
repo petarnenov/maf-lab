@@ -49,7 +49,19 @@ public sealed class JobExecutor(IOptions<RunnerOptions> options, IEnumerable<ITo
             }
 
             var toolchain = toolchains.Single(t => t.Toolchain == request.Toolchain);
-            var outcome = await toolchain.RunAsync(workspace, output, opts.TimeLimit, ct);
+            var plan = request.Tests == TestScope.Related && request.TargetFile is { } focus
+                ? RelatedTests.Plan(request.Toolchain, workspace, opts, focus, DiffPaths.Of(request.Diff ?? ""))
+                : TestPlan.Whole;
+            var outcome = await toolchain.RunAsync(workspace, output, plan, opts.TimeLimit, ct);
+            if (plan.Related && outcome.RanNoTest)
+            {
+                // The related tests turned out to hold no test: the whole suite, in what is left of the time limit.
+                plan = TestPlan.FellBack(RelatedTests.NothingSelected);
+                var left = opts.TimeLimit - clock.Elapsed;
+                outcome = left > TimeSpan.Zero
+                    ? await toolchain.RunAsync(workspace, output, plan, left, ct)
+                    : outcome with { TimedOut = true };
+            }
             if (outcome.TimedOut)
             {
                 return RunnerResult.Failed(RunnerStatus.TimedOut, clock.ElapsedMilliseconds);
@@ -58,6 +70,7 @@ public sealed class JobExecutor(IOptions<RunnerOptions> options, IEnumerable<ITo
             string? xml = null;
             double? pct = null;
             IReadOnlyList<int[]> uncovered = [];
+            LineHits? lines = null;
             if (outcome.CoberturaPath is { } report)
             {
                 xml = await File.ReadAllTextAsync(report, ct);
@@ -65,15 +78,19 @@ public sealed class JobExecutor(IOptions<RunnerOptions> options, IEnumerable<ITo
                 {
                     var files = (await Git.CheckedAsync(workspace, ["ls-files", "-z"], ct)).Text
                         .Split('\0', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal);
-                    (pct, uncovered) = TargetCoverage.Of(report, workspace, files, target);
+                    (pct, uncovered, lines) = TargetCoverage.Of(report, workspace, files, target);
                     // Measured, and not in the report at all: not one of its lines ran.
                     pct ??= 0;
                 }
             }
-            logger.LogInformation("runner job {Toolchain} build={Build} passed={Passed} failed={Failed} ms={Ms}",
-                request.Toolchain, outcome.Build, outcome.Tests.Passed, outcome.Tests.Failed, clock.ElapsedMilliseconds);
+            var selection = plan.Related && outcome.TestFiles is { Count: > 0 } ran
+                ? plan.Selection with { TestFiles = ran.Take(TestSelection.MaxFiles).ToList() }
+                : plan.Selection;
+            logger.LogInformation("runner job {Toolchain} scope={Scope} files={Files} build={Build} passed={Passed} failed={Failed} ms={Ms}",
+                request.Toolchain, selection.Scope, selection.TestFiles.Count, outcome.Build, outcome.Tests.Passed, outcome.Tests.Failed,
+                clock.ElapsedMilliseconds);
             return new RunnerResult(RunnerStatus.Ok, outcome.Build, outcome.Diagnostics, outcome.Tests, outcome.Failures, xml,
-                workspace, pct, uncovered, clock.ElapsedMilliseconds);
+                workspace, pct, uncovered, clock.ElapsedMilliseconds, selection, lines);
         }
         finally
         {

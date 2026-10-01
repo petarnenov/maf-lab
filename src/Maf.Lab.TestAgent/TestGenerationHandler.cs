@@ -4,6 +4,7 @@ using System.Text.Json;
 using A2A;
 using Maf.Lab.Retrieval.Models;
 using Maf.Lab.TestGen;
+using Maf.Lab.TestGen.Coverage;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
@@ -372,13 +373,14 @@ public sealed class TestGenerationHandler(
             int first;
             if (from is null)
             {
-                // Where the file starts: the baseline every attempt is compared with. It takes a whole build, so it is
-                // reported as it starts rather than leaving the run silent until the first attempt.
+                // Where the file starts: the baseline every attempt is compared with. It runs the whole suite, so the
+                // coverage other tests give the target is known, and attempts can run only the related tests. It takes
+                // a whole build, so it is reported as it starts rather than leaving the run silent until the first attempt.
                 await ProgressAsync(updater, reporter, request, 0, AttemptPhase.Measuring, null, usage, ct);
                 RunnerResult baseline;
                 try
                 {
-                    baseline = await runner.RunAsync(new RunnerRequest(request.Commit, request.Toolchain, null, request.TargetFile), ct);
+                    baseline = await runner.RunAsync(new RunnerRequest(request.Commit, request.Toolchain, null, request.TargetFile, TestScope.All), ct);
                 }
                 catch (RunnerUnavailableException)
                 {
@@ -386,6 +388,7 @@ public sealed class TestGenerationHandler(
                     return;
                 }
                 attempts = [];
+                tools.BaselineLines = baseline.Measured ? baseline.TargetLines : null;
                 baselinePct = baseline.TargetPct;
                 best = new Best(baseline.TargetPct, "", []);
                 current = baseline.TargetPct;
@@ -398,6 +401,7 @@ public sealed class TestGenerationHandler(
             {
                 usage.Restore(from.Usage);
                 tools.Restore(from.Bugs);
+                tools.BaselineLines = from.BaselineLines;
                 attempts = [.. from.Attempts];
                 baselinePct = from.BaselinePct;
                 best = new Best(from.BestPct, from.BestDiff, from.BestBugs);
@@ -415,7 +419,8 @@ public sealed class TestGenerationHandler(
             Task CheckpointAsync(int next) => SaveCheckpointAsync(taskId, checkpoint with
             {
                 Run = new RunCheckpoint(next, baselinePct, current, feedback, [.. attempts], best.Pct, best.Diff, [.. best.Bugs],
-                    [.. tools.SuspectedBugs], previousDiff, largestInput, largestOutput, usage.Snapshot(), reporter.Seq),
+                    [.. tools.SuspectedBugs], previousDiff, largestInput, largestOutput, usage.Snapshot(), reporter.Seq,
+                    tools.BaselineLines),
             });
             if (from is null)
             {
@@ -503,7 +508,17 @@ public sealed class TestGenerationHandler(
                 RunnerResult result;
                 try
                 {
-                    result = await runner.RunAsync(new RunnerRequest(request.Commit, request.Toolchain, diff, request.TargetFile), ct);
+                    result = FocusedCoverage.Apply(
+                        await runner.RunAsync(new RunnerRequest(request.Commit, request.Toolchain, diff, request.TargetFile, tools.Scope), ct),
+                        tools.BaselineLines);
+                    // The run would end here on the related tests alone: the whole suite decides, so a test this attempt
+                    // breaks elsewhere is fed back now rather than found by verification, and the coverage is measured.
+                    if (result.Focused && result.Green && violations.Count == 0 && diff.Length > 0 && result.TargetPct >= request.TargetLinePct)
+                    {
+                        await ProgressAsync(updater, reporter, request, n, AttemptPhase.Testing, current, usage, ct);
+                        result = await runner.RunAsync(new RunnerRequest(request.Commit, request.Toolchain, diff, request.TargetFile, TestScope.All), ct);
+                        attemptSpan?.SetTag("testgen.confirmed", true);
+                    }
                 }
                 catch (RunnerUnavailableException)
                 {

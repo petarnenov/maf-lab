@@ -583,4 +583,121 @@ public sealed class TestAgentTests
         Assert.Equal([true, false], answers.Select(a => a.Recorded));
         Assert.Contains("at most 1 suspected bug;", answers[1].Note);
     }
+
+    // ── focused runs (focus-test-runs-on-the-target) ────────────────────────────────────────────────────────────────
+
+    private static readonly int[] TenLines = [.. Enumerable.Range(1, 10)];
+
+    /// <summary>The whole suite at the baseline: lines 1–4 of 10 covered (by tests the run never touches).</summary>
+    private static RunnerResult WholeBaseline() =>
+        FakeCoverageRunner.Result("<coverage/>", targetPct: 40) with
+        {
+            Uncovered = [[5, 10]],
+            Selection = TestSelection.Whole,
+            TargetLines = new LineHits([1, 2, 3, 4], [5, 6, 7, 8, 9, 10]),
+        };
+
+    /// <summary>A related run that covered only <paramref name="covered"/> itself.</summary>
+    private static RunnerResult Related(params int[] covered) =>
+        FakeCoverageRunner.Result("<coverage/>", targetPct: covered.Length * 10) with
+        {
+            Uncovered = [],
+            Selection = new TestSelection(TestScope.Related, ["tests/Lab.Tests/CalcTests.cs"]),
+            TargetLines = new LineHits(covered, [.. TenLines.Except(covered)]),
+        };
+
+    private static RunnerResult Whole(double pct, int failed = 0) =>
+        FakeCoverageRunner.Result("<coverage/>", failed: failed, targetPct: pct) with { Uncovered = [[10, 10]], Selection = TestSelection.Whole };
+
+    [Fact]
+    public async Task Attempts_run_the_related_tests_and_the_whole_suite_confirms_the_target()
+    {
+        var repo = await RepoAsync();
+        var model = new AttemptModel(Writes);
+        var related = 0;
+        var runner = new FakeCoverageRunner
+        {
+            Answer = r => r.Diff is null ? WholeBaseline()
+                : r.Tests == TestScope.Related ? (Interlocked.Increment(ref related) == 1 ? Related(5, 6, 7) : Related(5, 6, 7, 8, 9))
+                : Whole(88),
+        };
+        await using var agent = new TestAgentFactory(repo, model, runner);
+
+        var task = await TestAgentFactory.RpcAsync(await agent.ClientAsync(), "message/send",
+            TestAgentFactory.Send(TestAgentFactory.Request(await repo.HeadAsync(Ct))), Ct);
+
+        // The baseline and the run that ends the loop run everything; the attempts run the related tests.
+        Assert.Equal([(false, TestScope.All), (true, TestScope.Related), (true, TestScope.Related), (true, TestScope.All)],
+            runner.Requests.Select(r => (r.Diff is not null, r.Tests)));
+        var report = TestAgentFactory.Report(task);
+        Assert.Equal(StopReason.Target, report.StopReason);
+        // Attempt 1: its own 5–7 plus the baseline's 1–4. Attempt 2: 90% merged, then 88% measured on the whole suite.
+        Assert.Equal([(40.0, 70.0), (70.0, 88.0)], report.Attempts.Select(a => (a.Before!.Value, a.After!.Value)));
+        Assert.Equal((40.0, 88.0), (report.Baseline, report.Final));
+        Assert.Contains("Lines still uncovered: 8-10", model.Prompts.ElementAt(1));
+        var phases = TestAgentFactory.Activity(task).Where(e => e is { Type: ActivityType.Phase, Attempt: 2 }).Select(e => e.Phase);
+        Assert.Equal([AttemptPhase.Generating, AttemptPhase.Building, AttemptPhase.Testing, AttemptPhase.Measuring], phases);
+    }
+
+    [Fact]
+    public async Task A_test_the_whole_suite_finds_failing_keeps_the_loop_going()
+    {
+        var repo = await RepoAsync();
+        var model = new AttemptModel(Writes);
+        var whole = 0;
+        var runner = new FakeCoverageRunner
+        {
+            Answer = r => r.Diff is null ? WholeBaseline()
+                : r.Tests == TestScope.Related ? Related(5, 6, 7, 8, 9)
+                : Interlocked.Increment(ref whole) == 1 ? Whole(90, failed: 1) : Whole(90),
+        };
+        await using var agent = new TestAgentFactory(repo, model, runner);
+
+        var task = await TestAgentFactory.RpcAsync(await agent.ClientAsync(), "message/send",
+            TestAgentFactory.Send(TestAgentFactory.Request(await repo.HeadAsync(Ct))), Ct);
+
+        var report = TestAgentFactory.Report(task);
+        Assert.Equal((StopReason.Target, 2), (report.StopReason, report.Attempts.Count));
+        Assert.Equal(1, report.Attempts[0].Tests.Failed);
+        // The failure another test showed on the whole suite is what the next attempt is told.
+        Assert.Contains("Failing test T.Fails", model.Prompts.ElementAt(1));
+    }
+
+    [Fact]
+    public async Task Run_tests_runs_the_related_tests_and_says_so()
+    {
+        var repo = await RepoAsync();
+        var runner = new FakeCoverageRunner { Answer = _ => Related(5, 6) };
+        var (tools, workspace) = await ToolsAsync(repo, runner);
+        await using var _ = workspace;
+        tools.BaselineLines = WholeBaseline().TargetLines;
+        tools.BeginAttempt();
+
+        var run = await tools.RunTests(Ct);
+
+        Assert.Equal(TestScope.Related, Assert.Single(runner.Requests).Tests);
+        Assert.Equal((TestScope.Related, 60.0), (run.Scope, run.TargetPct!.Value));
+        Assert.Equal(["tests/Lab.Tests/CalcTests.cs"], run.TestFiles);
+        Assert.Equal([[7, 10]], run.Uncovered);
+        Assert.Equal(60, tools.ReadCoverage("src/Lab/Calc.cs").Pct);
+        var summary = ToolSummaries.Of("run_tests", [], run, ToolOutcome.Ok, null).Summary;
+        Assert.StartsWith("related tests (1 files): build ok, 10 passed, 0 failed, 60.0%", summary);
+    }
+
+    [Fact]
+    public async Task Without_baseline_lines_run_tests_runs_the_whole_suite()
+    {
+        var repo = await RepoAsync();
+        var runner = new FakeCoverageRunner { Answer = _ => Whole(55) with { Selection = TestSelection.FellBack("no test uses the target") } };
+        var (tools, workspace) = await ToolsAsync(repo, runner);
+        await using var _ = workspace;
+        tools.BeginAttempt();
+
+        var run = await tools.RunTests(Ct);
+
+        Assert.Equal(TestScope.All, Assert.Single(runner.Requests).Tests);
+        Assert.Equal((TestScope.All, 55.0), (run.Scope, run.TargetPct!.Value));
+        Assert.Equal("The whole suite ran: no test uses the target.", run.Note);
+        Assert.StartsWith("whole suite: ", ToolSummaries.Of("run_tests", [], run, ToolOutcome.Ok, null).Summary);
+    }
 }
