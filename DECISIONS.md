@@ -2488,3 +2488,23 @@ said which account the conversation was about.
   the pinned sources, a long-lived dev token, a catalog in the repo (an expiring credential in git).
 - **Profile `inspectors`.** The Makefile exports `COMPOSE_PROFILES=inspectors` unless `CI_MODE=1`, so CI and
   `ci-e2e` never build or pull them. The web UI links to them after "Curriculum", on the page's own host.
+
+## 69. README follows the code, and docs-check knows the pages (sync-readme-with-the-code, 2026-10-01)
+
+- **Why.** A claim-by-claim audit of README.md against the code found nine mismatches `make docs-check` could not see:
+  published ports (the inspectors), the eval tolerance (per metric since "Judge each metric against its own noise",
+  README still said per suite, 0.03), a historical recall figure read as current, `/coverage`, `test-agent` and
+  `coverage-runner` missing from the screens, the diagram and the replica sentence, coverage and test generation with
+  no section, `ci-e2e`'s test generation, one docs-sync exception kind, and `make up`'s `PORTFOLIO_REPLICAS`. No package
+  or model moved; no application behaviour changed.
+- **Docs follow code.** Every finding was fixed in the document; none showed code deviating from a spec.
+- **One class is mechanical, so it is checked.** New `pages` rule: every `<Route path="…">` in `web/src/App.tsx` whose
+  element is not `Navigate` (and not `*`; `:param` segments dropped) must appear in README.md as `` `/path` ``.
+  A regular expression, not a TypeScript parser: the check stays standard-library Python, and a route in another style
+  is a missed check, never a false alarm. Any code-formatted mention counts, so the rule does not pin one sentence's
+  wording. No exemption table until a page needs one.
+- **History stays history.** The 0.21 → 0.68 Bulgarian recall figure is kept as the measurement that justified query
+  translation; README points at `evals/baseline.json` for today's figures instead of copying numbers the next accepted
+  run would make stale.
+- **Not checked, still by review.** Ports, replica counts, tolerances, defaults quoted in prose, and whether a feature
+  has a section remain prose; the archive guidance's read-only review is still the safeguard.
