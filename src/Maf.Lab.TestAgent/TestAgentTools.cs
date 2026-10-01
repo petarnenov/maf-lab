@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text;
 using Maf.Lab.TestGen;
+using Maf.Lab.TestGen.Coverage;
 using Microsoft.Extensions.AI;
 
 namespace Maf.Lab.TestAgent;
@@ -11,7 +12,8 @@ public sealed record DirectoryEntry(string Path, string Kind);
 public sealed record Listing(IReadOnlyList<DirectoryEntry> Entries, bool Truncated);
 public sealed record Written(string Path, bool Created, int Bytes);
 public sealed record TestRun(string Status, string Build, IReadOnlyList<string> Diagnostics, TestCounts Tests,
-    IReadOnlyList<TestFailure> Failures, double? TargetPct, IReadOnlyList<int[]> Uncovered, string? Note);
+    IReadOnlyList<TestFailure> Failures, double? TargetPct, IReadOnlyList<int[]> Uncovered, string? Note, string Scope,
+    IReadOnlyList<string> TestFiles);
 public sealed record Coverage(string Path, double? Pct, IReadOnlyList<int[]> Uncovered);
 public sealed record BugRecorded(bool Recorded, int Count, string? Note, int Limit);
 
@@ -25,12 +27,22 @@ public sealed class TestAgentTools(Workspace workspace, TestGenRequest request, 
     public const int MaxReadLines = 2_000;
     public const int MaxEntries = 500;
     public const int MaxWriteBytes = 200_000;
+    public const int MaxTestFilesShown = 20;
 
     private readonly List<SuspectedBug> _bugs = [];
     private RunnerResult? _last;
     private int _runsThisAttempt;
 
     public IReadOnlyList<SuspectedBug> SuspectedBugs => _bugs;
+
+    /// <summary>
+    /// The target's lines at the baseline. With them, a test run asks for the related tests only and its coverage is
+    /// combined with these; without them (a checkpoint from before they were kept), it runs the whole suite.
+    /// </summary>
+    public LineHits? BaselineLines { get; set; }
+
+    /// <summary>The scope a test run of this task asks for.</summary>
+    public string Scope => BaselineLines is null ? TestScope.All : TestScope.Related;
 
     public IList<AITool> All() =>
     [
@@ -111,14 +123,16 @@ public sealed class TestAgentTools(Workspace workspace, TestGenRequest request, 
         return new Written(WorkspacePaths.Relative(path), created, bytes);
     }
 
-    [Description("Build and run the tests with your changes and measure the target file's coverage. Only as often per attempt as its instructions say; the attempt is measured again when you finish.")]
+    [Description("Build and run the tests with your changes and measure the target file's coverage: the test files you changed and the tests that use the target, with the coverage the other tests gave it before. Only as often per attempt as its instructions say; the attempt is measured again when you finish.")]
     public async Task<TestRun> RunTests(CancellationToken ct)
     {
         if (++_runsThisAttempt > request.TestRuns)
         {
             throw new PathRefusedException("You have run the tests as often as one attempt allows; finish the attempt to have it measured.");
         }
-        var result = await runner.RunAsync(new RunnerRequest(workspace.Commit, request.Toolchain, await workspace.DiffAsync(ct), request.TargetFile), ct);
+        var result = await runner.RunAsync(
+            new RunnerRequest(workspace.Commit, request.Toolchain, await workspace.DiffAsync(ct), request.TargetFile, Scope), ct);
+        result = FocusedCoverage.Apply(result, BaselineLines);
         _last = result;
         return Summary(result);
     }
@@ -157,7 +171,9 @@ public sealed class TestAgentTools(Workspace workspace, TestGenRequest request, 
 
     public static TestRun Summary(RunnerResult r) => new(r.Status, r.Build, r.Diagnostics.Take(30).ToList(), r.Tests,
         r.Failures.Take(20).ToList(), r.TargetPct, r.Uncovered,
-        r.Status == RunnerStatus.DiffRejected ? "Your changes could not be applied to the commit." : Instructions.LintNote(r));
+        r.Status == RunnerStatus.DiffRejected ? "Your changes could not be applied to the commit."
+        : Instructions.LintNote(r) ?? (r.Selection?.Reason is { } why ? $"The whole suite ran: {why}." : null),
+        r.Selection?.Scope ?? TestScope.All, r.Selection?.TestFiles.Take(MaxTestFilesShown).ToList() ?? []);
 
     private string Rel(string full) => Path.GetRelativePath(workspace.Root, full).Replace('\\', '/');
 
@@ -198,7 +214,8 @@ public static class ToolSummaries
     private static string RunSummary(System.Text.Json.JsonElement r)
     {
         var tests = Prop(r, "tests");
-        var text = $"build {Str(r, "build") ?? "?"}, {(tests is { } t ? Int(t, "passed") : 0)} passed, "
+        var scope = Str(r, "scope") == TestScope.Related ? $"related tests ({Count(r, "testFiles")} files)" : "whole suite";
+        var text = $"{scope}: build {Str(r, "build") ?? "?"}, {(tests is { } t ? Int(t, "passed") : 0)} passed, "
             + $"{(tests is { } f ? Int(f, "failed") : 0)} failed, {Pct(r, "targetPct")}";
         return Str(r, "note") is { Length: > 0 } note ? $"{text} — {note}" : text;
     }

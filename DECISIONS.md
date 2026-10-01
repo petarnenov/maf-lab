@@ -2338,7 +2338,74 @@ said which account the conversation was about.
   - Tested on labelled en/bg/bg-latn inputs: yes, both suites above.
 - **Requests spent on this calibration:** 898 Jev requests (2 × 410 guardrail, 2 × 39 answer check).
 
-## 64. Model-written tests held to the lint bar (hold-generated-tests-to-the-lint-bar, 2026-10-01)
+## 64. Test-agent attempts run the related tests, not the whole suite (focus-test-runs-on-the-target, 2026-10-01)
+
+- **Why.** Every runner job ran the whole unit suite, though the agent works on one file. One run could have up to 35
+  jobs: the baseline, 10 attempts × (2 `run_tests` + 1 measured run), 3 bug proofs and the verification. Measured
+  locally with coverage on and the build excluded:
+
+  | Run | Time |
+  |---|---|
+  | .NET, whole suite (1147 tests) | 317 s |
+  | .NET, `--filter-class` on the 1–3 classes that use a target | 11–37 s |
+  | Vitest, whole suite (599 tests) | 42 s |
+  | `vitest related` on one module | 16–20 s |
+  | Vitest, one test file | 6 s |
+
+  A green whole .NET run prints about 600 characters. The 400 000-character cap was crossed by failure output (§57,
+  commit fbe4e59), and a focused run has less of that too.
+- **The request names a scope; the runner chooses the tests.** `RunnerRequest.Tests` is `all` (the default) or
+  `related`, and `related` needs a target. The runner plans in the job's workspace after the diff applies, because only
+  there do the changed files exist. The result carries `Selection` (the scope, the test files, and the reason for any
+  fallback) and `TargetLines` (the target's covered and uncovered line numbers).
+- **.NET rule.** The seeds are the target and every changed `.cs` file under the unit test project. A test file is
+  selected when it changed, or when one of its identifier tokens (Roslyn syntax, so comments and strings do not count)
+  is a type a seed declares. Every class, record and struct in a selected file is passed as `--filter-class`, named
+  with `+` for nested types and `` `N `` for generics. A helper class that holds no test costs nothing.
+  - Measured on this repository:
+    - `RunVerifier.cs` → 1 file;
+    - `TestGuardrails.cs` → 3 files;
+    - `Toolchains.cs` → 2 files;
+    - `Api/Program.cs` → 12 files (`Program` is a common name);
+    - `CoverageRefresher.cs` → none, so the whole suite runs. It is 97.4% covered, all of it through the api tests over
+      HTTP.
+  - Planning takes 0.4–0.8 s.
+  - File names were rejected as a rule because tests here are named by feature. Per-test coverage would need one run
+    per test, and traits would need annotating more than 100 files.
+- **Vitest rule.** `vitest related --run --passWithNoTests <target> <changed files>`: Vitest's own import graph decides,
+  and a test file passed in counts as related to itself (both verified).
+- **Fallbacks to the whole suite, with the reason.**
+  - A changed path the rule cannot follow: anything other than a `.cs` file in the unit test project, or a path
+    outside `web/src/`, or `Runner:VitestSetupFile` (`web/src/test/setup.ts`, which every test loads and none imports).
+  - No class selected.
+  - A related run that ran no test. MTP exits 8 with `total: 0`, and Vitest writes an empty report. The whole suite then
+    runs in the same job, in what is left of the time limit.
+- **Coverage is merged with the baseline (`FocusedCoverage.Apply`).** The baseline still runs the whole suite, and the
+  agent keeps its `TargetLines` (also in the checkpoint). For a related run:
+  - a line counts as covered when the baseline or this run covered it;
+  - the percentage is taken over the baseline's executable lines, with the dashboard's rounding;
+  - the uncovered ranges are recomputed.
+
+  This holds because production code is fixed for the run, and every changed test file is selected. **Known limit:**
+  an attempt that rewrites or deletes the only existing test of some lines is over-reported until a whole run measures
+  it.
+- **The whole suite confirms the target.** When a related attempt is clean and its merged coverage reaches the target,
+  the same diff is run again with `all`, in the `testing` phase (`AttemptPhase.Testing`, now used). That run's
+  numbers replace the attempt's. A test it breaks elsewhere becomes the next attempt's feedback, instead of a
+  `verification_failed` after the run.
+- **The api.** A suspected bug's proof runs `related`, with the run's file as the target; the bug's test is in a
+  changed file, so it is selected. The verification run and the refresh stay `all`: they are the regression check and
+  the source of the candidate's and the dashboard's numbers.
+- **The model sees what ran.** `run_tests` returns `scope` and `testFiles` (at most 20), and a note when the runner fell
+  back. The activity summary starts with "related tests (N files)" or "whole suite". The system instructions gained
+  one sentence saying so.
+- **A checkpoint from before this change** has no `BaselineLines`, so its attempts keep running the whole suite.
+- **Not changed.** No package or model moved, and no route changed. The runner's request and result only gain optional
+  fields. Each job still builds the whole test project in a fresh clone (about 30 s warm here), so this saves test
+  execution, not the build. `Maf.Lab.TestGen` is not in `coverage.config.xml`'s module list, so its files never
+  appear in a report. That was found while measuring and is left as it is.
+
+## 65. Model-written tests held to the lint bar (hold-generated-tests-to-the-lint-bar, 2026-10-01)
 
 - **Why.** The coverage runner built a candidate without CI's lint, so a run could be verified green and break
   `make lint` on `main` (CA2022 in `2b038ba`, fixed by hand in `dd50450`). No package or model moved.

@@ -5,18 +5,24 @@ using Maf.Lab.TestGen;
 namespace Maf.Lab.CoverageRunner;
 
 /// <summary>
-/// What a toolchain run found, before the target file is looked at. <see cref="Warnings"/>: the build warnings it
+/// What a toolchain run found, before the target file is looked at. <see cref="TestFiles"/> is the test files the
+/// toolchain itself reported running, where it reports them (Vitest). <see cref="Warnings"/>: the build warnings it
 /// printed, in the diagnostics' form, which the lint bar holds a diff's files to (<see cref="LintBar"/>).
 /// </summary>
 public sealed record ToolchainOutcome(string Build, IReadOnlyList<string> Diagnostics, TestCounts Tests,
-    IReadOnlyList<TestFailure> Failures, string? CoberturaPath, bool TimedOut, IReadOnlyList<string>? Warnings = null);
+    IReadOnlyList<TestFailure> Failures, string? CoberturaPath, bool TimedOut, IReadOnlyList<string>? TestFiles = null,
+    IReadOnlyList<string>? Warnings = null)
+{
+    /// <summary>It built and finished, and not one test ran.</summary>
+    public bool RanNoTest => Build == BuildOutcome.Ok && !TimedOut && Tests is { Passed: 0, Failed: 0, Skipped: 0 };
+}
 
-/// <summary>Builds and runs one toolchain's unit tests with coverage in a prepared workspace.</summary>
+/// <summary>Builds and runs one toolchain's unit tests, all or the planned ones, with coverage in a prepared workspace.</summary>
 public interface IToolchainRunner
 {
     string Toolchain { get; }
 
-    Task<ToolchainOutcome> RunAsync(string workspace, string outputDir, TimeSpan timeLimit, CancellationToken ct);
+    Task<ToolchainOutcome> RunAsync(string workspace, string outputDir, TestPlan plan, TimeSpan timeLimit, CancellationToken ct);
 }
 
 /// <summary>
@@ -27,14 +33,26 @@ public sealed partial class DotnetToolchain(RunnerOptions options) : IToolchainR
 {
     public string Toolchain => "dotnet";
 
-    public async Task<ToolchainOutcome> RunAsync(string workspace, string outputDir, TimeSpan timeLimit, CancellationToken ct)
+    public async Task<ToolchainOutcome> RunAsync(string workspace, string outputDir, TestPlan plan, TimeSpan timeLimit, CancellationToken ct)
     {
         var report = Path.Combine(outputDir, "dotnet.cobertura.xml");
-        var outcome = await ChildProcess.RunAsync("dotnet",
-            ["test", "--project", options.DotnetTestProject, "--", "--coverage", "--coverage-output-format", "cobertura",
-             "--coverage-settings", options.DotnetCoverageSettings, "--coverage-output", report],
-            workspace, timeLimit, ct);
+        var outcome = await ChildProcess.RunAsync("dotnet", Arguments(options, report, plan), workspace, timeLimit, ct);
         return Parse(outcome, workspace, File.Exists(report) ? report : null);
+    }
+
+    /// <summary>`dotnet test` over the unit test project, with one <c>--filter-class</c> per planned class.</summary>
+    public static IReadOnlyList<string> Arguments(RunnerOptions options, string report, TestPlan plan)
+    {
+        List<string> args =
+        [
+            "test", "--project", options.DotnetTestProject, "--", "--coverage", "--coverage-output-format", "cobertura",
+            "--coverage-settings", options.DotnetCoverageSettings, "--coverage-output", report,
+        ];
+        foreach (var name in plan.Related ? plan.Filters : [])
+        {
+            args.AddRange(["--filter-class", name]);
+        }
+        return args;
     }
 
     /// <summary>Reads `dotnet test` console output: compiler errors, the summary, and each failed test's message.</summary>
@@ -67,7 +85,7 @@ public sealed partial class DotnetToolchain(RunnerOptions options) : IToolchainR
         }
         var tests = new TestCounts(Last(text, "succeeded"), failed, Last(text, "skipped"));
         return new ToolchainOutcome(buildFailed ? BuildOutcome.Failed : BuildOutcome.Ok, diagnostics, tests,
-            failures.Take(50).ToList(), buildFailed ? null : report, outcome.TimedOut, warnings);
+            failures.Take(50).ToList(), buildFailed ? null : report, outcome.TimedOut, Warnings: warnings);
     }
 
     private static int Last(string text, string name) =>
@@ -94,7 +112,7 @@ public sealed class VitestToolchain(RunnerOptions options) : IToolchainRunner
 {
     public string Toolchain => "vitest";
 
-    public async Task<ToolchainOutcome> RunAsync(string workspace, string outputDir, TimeSpan timeLimit, CancellationToken ct)
+    public async Task<ToolchainOutcome> RunAsync(string workspace, string outputDir, TestPlan plan, TimeSpan timeLimit, CancellationToken ct)
     {
         var web = Path.Combine(workspace, "web");
         var modules = Path.Combine(web, "node_modules");
@@ -103,12 +121,18 @@ public sealed class VitestToolchain(RunnerOptions options) : IToolchainRunner
             Directory.CreateSymbolicLink(modules, prepared);
         }
         var json = Path.Combine(outputDir, "vitest.json");
-        var outcome = await ChildProcess.RunAsync(Path.Combine(modules, ".bin", "vitest"),
-            ["run", "--coverage", "--coverage.reportOnFailure=true", $"--coverage.reportsDirectory={outputDir}", "--reporter=json", $"--outputFile={json}"],
+        var outcome = await ChildProcess.RunAsync(Path.Combine(modules, ".bin", "vitest"), Arguments(outputDir, json, plan),
             web, timeLimit, ct);
         var report = Path.Combine(outputDir, "cobertura-coverage.xml");
         return Parse(outcome, File.Exists(json) ? await File.ReadAllTextAsync(json, ct) : null, workspace, File.Exists(report) ? report : null);
     }
+
+    /// <summary>`vitest run` for the whole suite; `vitest related --run` with the planned files for related tests.</summary>
+    public static IReadOnlyList<string> Arguments(string outputDir, string json, TestPlan plan) =>
+    [
+        .. plan.Related ? ["related", "--run", "--passWithNoTests", .. plan.Filters] : new[] { "run" },
+        "--coverage", "--coverage.reportOnFailure=true", $"--coverage.reportsDirectory={outputDir}", "--reporter=json", $"--outputFile={json}",
+    ];
 
     /// <summary>
     /// Reads Vitest's JSON report. A test file that does not even load (a syntax or type error) is the web's "build
@@ -126,9 +150,11 @@ public sealed class VitestToolchain(RunnerOptions options) : IToolchainRunner
         var root = doc.RootElement;
         var diagnostics = new List<string>();
         var failures = new List<TestFailure>();
+        var files = new List<string>();
         foreach (var file in root.GetProperty("testResults").EnumerateArray())
         {
             var name = Relative(file.GetProperty("name").GetString() ?? "", workspace);
+            files.Add(name);
             var assertions = file.TryGetProperty("assertionResults", out var a) ? a.EnumerateArray().ToList() : [];
             if (file.GetProperty("status").GetString() == "failed" && assertions.Count == 0)
             {
@@ -145,7 +171,7 @@ public sealed class VitestToolchain(RunnerOptions options) : IToolchainRunner
             root.GetProperty("numPendingTests").GetInt32() + (root.TryGetProperty("numTodoTests", out var todo) ? todo.GetInt32() : 0));
         var build = diagnostics.Count > 0 ? BuildOutcome.Failed : BuildOutcome.Ok;
         return new ToolchainOutcome(build, diagnostics.Take(50).ToList(), tests, failures.Take(50).ToList(),
-            build == BuildOutcome.Ok ? report : null, outcome.TimedOut);
+            build == BuildOutcome.Ok ? report : null, outcome.TimedOut, files.Order(StringComparer.Ordinal).ToList());
     }
 
     private static string Relative(string text, string workspace) => text.Replace(workspace.TrimEnd('/') + "/", "", StringComparison.Ordinal);

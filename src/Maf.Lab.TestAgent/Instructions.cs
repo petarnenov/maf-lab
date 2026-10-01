@@ -38,7 +38,8 @@ public static class Instructions
           have no ESLint error (no unused variables or imports, no `any`) and must be formatted as Prettier formats it
           here: single quotes, semicolons, 2-space indent, trailing commas wherever allowed, lines up to 100 characters.
         - Read before you write: the target file, its callers, and the existing tests nearby, and follow their style.
-        - Use run_tests to check your work; finish when the tests build, pass, and cover what you can.
+        - Use run_tests to check your work; finish when the tests build, pass, and cover what you can. It runs the test
+          files you changed and the tests that use the target; the whole suite runs once the target is reached.
         """;
 
     public static string Attempt(TestGenRequest request, int attempt, double? currentPct, string? feedback)

@@ -70,7 +70,8 @@ public sealed partial class RunVerifier(
                 return;
             }
             await copy.WriteAsync(bug.TestFile, unskipped, ct);
-            var proof = await runner.RunAsync(new RunnerRequest(run.CommitSha, run.Toolchain, await copy.DiffAsync(ct)), ct);
+            // Only the related tests: the un-skipped test is in a file the diff changes, so it is among them.
+            var proof = await runner.RunAsync(new RunnerRequest(run.CommitSha, run.Toolchain, await copy.DiffAsync(ct), run.Path, TestScope.Related), ct);
             await copy.WriteAsync(bug.TestFile, content, ct);
             // The proof's copy is never merged: what counts is whether its tests ran, not whether it lints.
             if (!proof.Measured && !LintDiagnostics.OnlyLint(proof))
@@ -85,8 +86,9 @@ public sealed partial class RunVerifier(
             }
         }
 
-        // The run itself, measured by the api, not reported by the agent.
-        var measured = await runner.RunAsync(new RunnerRequest(run.CommitSha, run.Toolchain, report.Diff, run.Path), ct);
+        // The run itself, measured by the api, not reported by the agent, on the whole suite: a test the diff breaks
+        // anywhere, or one that fails only beside the others, fails it here.
+        var measured = await runner.RunAsync(new RunnerRequest(run.CommitSha, run.Toolchain, report.Diff, run.Path, TestScope.All), ct);
         if (!measured.Measured)
         {
             await FailAsync(runId, measured.Status != RunnerStatus.Ok ? $"the runner reported {measured.Status}"

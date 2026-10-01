@@ -13,7 +13,11 @@ namespace Maf.Lab.TestAgent;
 /// </summary>
 public sealed record TaskCheckpoint(TestGenRequest Request, RunCheckpoint? Run = null);
 
-/// <summary>The loop's state after the baseline (<see cref="NextAttempt"/> 1) or after attempt <c>NextAttempt - 1</c>.</summary>
+/// <summary>
+/// The loop's state after the baseline (<see cref="NextAttempt"/> 1) or after attempt <c>NextAttempt - 1</c>.
+/// <see cref="BaselineLines"/> is absent in a checkpoint written before the baseline's lines were kept; such a run
+/// goes on with the whole suite.
+/// </summary>
 public sealed record RunCheckpoint(
     int NextAttempt,
     double? BaselinePct,
@@ -28,7 +32,8 @@ public sealed record RunCheckpoint(
     long LargestInput,
     long LargestOutput,
     TestGenUsage Usage,
-    long LastSeq);
+    long LastSeq,
+    LineHits? BaselineLines = null);
 
 /// <summary>
 /// Checkpoints and leases of the agent's tasks, beside the tasks in the shared store. A lease says a replica is running
