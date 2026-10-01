@@ -161,13 +161,28 @@ services:
       redis:
         condition: service_healthy
 
+  # Hands the api's volume to the user the api runs as: a new volume's mount point is created by root, and volumes from
+  # before the api ran as that user hold root's files.
+  api-data-init:
+    image: alpine:3.22
+    user: "0:0"
+    volumes:
+      - api-data:/app-data
+    command: ["chown", "-R", "${MAF_LAB_UID:-1000}:${MAF_LAB_GID:-1000}", "/app-data"]
+    restart: "no"
+
   api:
     build:
       context: ..
       dockerfile: src/Maf.Lab.Api/Dockerfile
+    # The user who runs make (exported by it): the api writes into the repository (branches, merges), data/ and evals/,
+    # and on Linux whatever it writes there belongs to this user. Root here left root-owned files in the checkout.
+    user: "${MAF_LAB_UID:-1000}:${MAF_LAB_GID:-1000}"
     environment:
       <<: *app-env
       Urls: http://+:8080
+      # Writable by any user; a uid with no passwd entry would otherwise get HOME=/.
+      HOME: /tmp
       # Tool calls go through the balancer too, so they are spread over the mcp-retrieval replicas.
       Agent__McpEndpoint: http://lb/mcp
       # The second domain's server, also through the balancer. The billing server above keeps the domain "billing".
@@ -217,6 +232,8 @@ services:
       - default
       - runner
     depends_on:
+      api-data-init:
+        condition: service_completed_successfully
       mcp-retrieval:
         condition: service_healthy
       mcp-portfolio:
