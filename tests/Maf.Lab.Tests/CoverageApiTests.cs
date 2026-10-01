@@ -3,10 +3,12 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Maf.Lab.Api.Coverage;
 using Maf.Lab.Api.Endpoints;
+using Maf.Lab.Api.Storage;
 using Maf.Lab.Domain.Admin;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.TestGen;
 using Maf.Lab.TestGen.Coverage;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Maf.Lab.Tests;
@@ -41,6 +43,34 @@ public sealed class CoverageApiTests
         var small = tree.Files.Single(f => f.Path == "src/Lab/Small.cs");
         Assert.Equal((100.0, 80, false, false), (small.Pct, small.Threshold, small.ThresholdIsOverride, small.BelowThreshold));
         Assert.True(tree.Files.Single(f => f.Path == "src/Lab/Large.cs").BelowThreshold);
+    }
+
+    [Fact]
+    public async Task Two_candidates_at_once_each_show_their_own_files_coverage()
+    {
+        var repo = await RepoAsync();
+        using var api = CoverageApi.Create(repo);
+        var commit = await repo.HeadAsync(Ct);
+        await CoverageApi.IngestAsync(api, commit, Toolchains.Dotnet, SnapshotKind.Official, null,
+            ("src/Lab/Small.cs", 5, 10), ("src/Lab/Large.cs", 0, 90));
+        // A candidate's measurement covers the whole project, not just the file its run is for.
+        await CoverageApi.IngestAsync(api, commit, Toolchains.Dotnet, SnapshotKind.Candidate, "r_small",
+            ("src/Lab/Small.cs", 9, 10), ("src/Lab/Large.cs", 0, 90));
+        await CoverageApi.IngestAsync(api, commit, Toolchains.Dotnet, SnapshotKind.Candidate, "r_large",
+            ("src/Lab/Small.cs", 5, 10), ("src/Lab/Large.cs", 81, 90));
+        await using (var db = await api.Services.GetRequiredService<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(Ct))
+        {
+            db.TestGenRuns.Add(CoverageStorageTests.Run("r_small", "src/Lab/Small.cs", TestGenRunState.Candidate));
+            db.TestGenRuns.Add(CoverageStorageTests.Run("r_large", "src/Lab/Large.cs", TestGenRunState.Candidate));
+            await db.SaveChangesAsync(Ct);
+        }
+
+        var tree = await api.ClientFor("bob", "firm-a", Role.ADVISOR).GetFromJsonAsync<CoverageTreeDto>("/api/coverage/tree", Json, Ct);
+
+        var small = tree!.Files.Single(f => f.Path == "src/Lab/Small.cs").Candidate!;
+        var large = tree.Files.Single(f => f.Path == "src/Lab/Large.cs").Candidate!;
+        Assert.Equal(("r_small", 90.0), (small.RunId, small.Pct));
+        Assert.Equal(("r_large", 90.0), (large.RunId, large.Pct));
     }
 
     [Fact]

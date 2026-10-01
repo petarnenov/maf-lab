@@ -321,7 +321,10 @@ public static class CoverageEndpoints
                 .DefaultIfEmpty(g.OrderByDescending(r => r.UpdatedAt).First()))
             .Select(RunSummary.Of)
             .ToList();
-        var candidates = await store.CandidatesAsync(runs.Where(r => r.State == TestGenRunState.Candidate).Select(r => r.Id).ToList(), ct);
+        // A candidate's measurement covers the whole project; what the run is judged by is its own file. Each file has at
+        // most one candidate run, so this keeps one candidate per file however many runs are candidates at once.
+        var candidateRuns = runs.Where(r => r.State == TestGenRunState.Candidate).ToDictionary(r => r.Id, r => r.Path);
+        var candidates = await store.CandidateTargetsAsync(candidateRuns, ct);
         return CoverageTree.Build(current, overrides, options.DefaultThresholdPct, candidates, runs);
     }
 

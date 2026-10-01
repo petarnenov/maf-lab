@@ -98,6 +98,32 @@ public sealed class CoverageStore(IDbContextFactory<MafDbContext> dbFactory, Tim
             .ToListAsync(ct);
     }
 
+    /// <summary>
+    /// Each run's candidate totals for its own file only (<paramref name="runPaths"/>: run id → the file it is for). A
+    /// candidate snapshot measures the whole project, so the other files in it are not what the run is judged by.
+    /// </summary>
+    public async Task<IReadOnlyList<FileTotals>> CandidateTargetsAsync(IReadOnlyDictionary<string, string> runPaths, CancellationToken ct)
+    {
+        if (runPaths.Count == 0)
+        {
+            return [];
+        }
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var ids = runPaths.Keys.ToList();
+        var paths = runPaths.Values.Distinct().ToList();
+        var rows = await (
+            from f in db.CoverageFiles
+            join sn in db.CoverageSnapshots on f.SnapshotId equals sn.Id
+            where sn.Kind == SnapshotKind.Candidate && sn.RunId != null && ids.Contains(sn.RunId) && paths.Contains(f.Path)
+            select new { sn.RunId, Totals = new FileTotals(f.Path, sn.Id, sn.CommitSha, sn.CreatedAt, f.LinesTotal, f.LinesCovered, f.BranchesTotal, f.BranchesCovered) })
+            .ToListAsync(ct);
+        // A run re-verified after a restart may hold more than one candidate snapshot: its newest is the one that counts.
+        return rows.Where(r => runPaths[r.RunId!] == r.Totals.Path)
+            .GroupBy(r => r.Totals.Path)
+            .Select(g => g.OrderByDescending(r => r.Totals.MeasuredAt).First().Totals)
+            .ToList();
+    }
+
     /// <summary>The file as of its newest official snapshot, or null when no snapshot has it.</summary>
     public async Task<FileSnapshot?> CurrentAsync(string path, CancellationToken ct)
     {
