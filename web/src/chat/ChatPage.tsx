@@ -31,6 +31,8 @@ import { Markdown } from './Markdown';
 import { ToolCallCard } from './ToolCallCard';
 import { TurnFeedback } from './TurnFeedback';
 import { useChatStream } from './useChatStream';
+import { stepLabel } from './runStep';
+import { Progress } from '../components/Progress';
 
 export const TRACE_EXPIRED = 'Trace expired (kept 7 days).';
 
@@ -583,7 +585,13 @@ function AssistantBubble({
           <Markdown text={text} />
         </div>
       ) : (
-        (turn.status === 'streaming' || rewound) && <div className={styles.thinking}>Thinking…</div>
+        rewound && <div className={styles.thinking}>Thinking…</div>
+      )}
+      {/* The run as it goes, in the page's theme: what its open step says it is doing (progress-feedback). */}
+      {turn.status === 'streaming' && !rewound && (!text || turn.step) && (
+        <div className={styles.thinking} data-testid="run-progress">
+          <Progress label={stepLabel(turn.step)} />
+        </div>
       )}
       {turn.error && (
         <div

@@ -2,6 +2,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { jsonResponse, renderWithProviders, run, streamResponse } from '../test/render';
+import { agentFetch } from '../test/agentFetch';
 import { ChatPage } from './ChatPage';
 
 const emptyHistory = { conversations: [], nextCursor: null };
@@ -9,8 +10,10 @@ const emptyHistory = { conversations: [], nextCursor: null };
 async function ask(chat: () => Response | Promise<Response>) {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (url: string) =>
-      url.startsWith('/api/conversations') ? jsonResponse(emptyHistory) : chat(),
+    agentFetch(
+      vi.fn(async (url: string) =>
+        url.startsWith('/api/conversations') ? jsonResponse(emptyHistory) : chat(),
+      ),
     ),
   );
   renderWithProviders(<ChatPage />);

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CoverageFileDetail, CoverageLine } from '../api/types';
 import { App } from '../App';
 import { jsonResponse, makeSession, renderWithProviders } from '../test/render';
+import { agentFetch } from '../test/agentFetch';
 import { CoveragePage } from './CoveragePage';
 import { sampleTree } from './treeModel.test';
 
@@ -41,11 +42,11 @@ export function stubCoverageApi(routes: Record<string, (method: string) => Respo
   const calls: { url: string; method: string; body?: string }[] = [];
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (url: string, init?: RequestInit) => {
+    agentFetch(vi.fn(async (url: string, init?: RequestInit) => {
       calls.push({ url, method: init?.method ?? 'GET', body: typeof init?.body === 'string' ? init.body : undefined });
       const key = Object.keys(routes).find((k) => url.startsWith(k));
       return key ? routes[key](init?.method ?? 'GET') : jsonResponse({ title: 'Not found' }, 404);
-    }),
+    })),
   );
   return calls;
 }
@@ -150,7 +151,7 @@ describe('CoveragePage', () => {
   });
 
   it('shows a loading state while the tree is on its way', () => {
-    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})));
+    vi.stubGlobal('fetch', agentFetch(vi.fn(() => new Promise<Response>(() => {}))));
 
     renderWithProviders(<CoveragePage />);
 

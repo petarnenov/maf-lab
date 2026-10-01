@@ -4,6 +4,7 @@ import { Route, Routes } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import type { ConversationDetail } from '../api/types';
 import { jsonResponse, renderWithProviders, run, streamResponse } from '../test/render';
+import { agentFetch } from '../test/agentFetch';
 import { ChatPage } from './ChatPage';
 
 /** A stored conversation whose three questions are the history the arrow keys walk. */
@@ -32,7 +33,7 @@ function stubApi() {
     if (url === '/api/chat') return streamResponse([run.delta('Sent.'), run.done('conv-9', 't9')]);
     return jsonResponse({}, 404);
   });
-  vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('fetch', agentFetch(fetchMock));
   return fetchMock;
 }
 

@@ -3,6 +3,7 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { jsonResponse, renderWithProviders, run, sse, streamResponse } from '../test/render';
+import { agentFetch } from '../test/agentFetch';
 import { ChatPage } from './ChatPage';
 
 const state = (accountId: string | null) =>
@@ -38,11 +39,13 @@ function stubRuns(...runs: string[][]) {
   let n = 0;
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (url: string, init?: RequestInit) => {
-      if (url !== '/api/chat') return jsonResponse({}, 404);
-      bodies.push(JSON.parse(init!.body as string));
-      return streamResponse(runs[Math.min(n++, runs.length - 1)]);
-    }),
+    agentFetch(
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url !== '/api/chat') return jsonResponse({}, 404);
+        bodies.push(JSON.parse(init!.body as string));
+        return streamResponse(runs[Math.min(n++, runs.length - 1)]);
+      }),
+    ),
   );
   return bodies;
 }

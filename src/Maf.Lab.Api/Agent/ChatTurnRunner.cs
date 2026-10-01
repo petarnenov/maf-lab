@@ -116,8 +116,15 @@ public sealed partial class ChatTurnRunner(
             state.UserMessage = message;
 
             await state.WriteAsync(TurnContents.StepStarted(Steps.Screening), ct);
-            decision = await intents.ClassifyAsync(message, ct, state.Focus);
-            await state.WriteAsync(TurnContents.StepFinished(Steps.Screening), ct);
+            try
+            {
+                decision = await intents.ClassifyAsync(message, ct, state.Focus);
+            }
+            finally
+            {
+                // A step that starts also finishes, whatever happens in it: the protocol ends no run with one open.
+                await state.WriteAsync(TurnContents.StepFinished(Steps.Screening), CancellationToken.None);
+            }
             // The prompt's screening answered in the same request; a refused prompt forces nothing and runs nothing.
             screen = guardrail.JudgePrompt(decision);
             // Only a conversation's first question: a follow-up ("and June?", "why?") can be about the domain without
@@ -324,10 +331,16 @@ public sealed partial class ChatTurnRunner(
         if (reachedModel && error is null && !state.AwaitingConfirmation && text.Length > 0)
         {
             await state.WriteAsync(TurnContents.StepStarted(Steps.AnswerCheck), ct);
-            check = await answerCheck.CheckAsync(message, text, state.Read, ct, state.PreviousQuestion,
-                await PreviousReadAsync(state.PreviousTurnId, ct));
-            Jev.JevAnswerCheck.Trace(trace, check);
-            await state.WriteAsync(TurnContents.StepFinished(Steps.AnswerCheck), ct);
+            try
+            {
+                check = await answerCheck.CheckAsync(message, text, state.Read, ct, state.PreviousQuestion,
+                    await PreviousReadAsync(state.PreviousTurnId, ct));
+                Jev.JevAnswerCheck.Trace(trace, check);
+            }
+            finally
+            {
+                await state.WriteAsync(TurnContents.StepFinished(Steps.AnswerCheck), CancellationToken.None);
+            }
         }
         // A refused turn ran no tool on purpose: that is the guard's signal, not "how/why answered without a tool".
         var signals = TurnSignals.Compute(screen?.Blocked == true || outOfScope ? Intent.Other : decision.Intent, state.ToolCalls.Count, state.Searched,

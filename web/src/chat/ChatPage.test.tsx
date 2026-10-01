@@ -1,8 +1,10 @@
-import { screen, within } from '@testing-library/react';
+import { EventType } from '@ag-ui/core';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { fixtureTrace } from '../monitor/fixtures';
-import { jsonResponse, renderWithProviders, run, streamResponse } from '../test/render';
+import { jsonResponse, renderWithProviders, run, sse, streamResponse } from '../test/render';
+import { agentFetch } from '../test/agentFetch';
 import { ChatPage } from './ChatPage';
 
 const emptyHistory = { conversations: [], nextCursor: null };
@@ -27,7 +29,7 @@ describe('ChatPage', () => {
             run.done('conv-1', 't1'),
           ]),
     );
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('fetch', agentFetch(fetchMock));
 
     renderWithProviders(<ChatPage />);
     await userEvent.type(screen.getByLabelText('Message'), 'What if a fee schedule is missing?');
@@ -43,9 +45,10 @@ describe('ChatPage', () => {
       string,
       RequestInit,
     ];
-    // A turn is a run of the agent: a thread, a run and the message.
+    // A turn is a run of the chat agent through CopilotKit: a thread the client names, a run, and only the new message
+    // (the server keeps the conversation).
     const body = JSON.parse(init.body as string);
-    expect(body.threadId).toBeNull();
+    expect(body.threadId).toMatch(/^c_[0-9a-f]{32}$/);
     expect(body.runId).toMatch(/^r-/);
     expect(body.messages).toEqual([
       {
@@ -60,22 +63,24 @@ describe('ChatPage', () => {
     const trace = fixtureTrace.slice(0, 3);
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string) => {
-        if (url === '/api/chat') {
-          return streamResponse([
-            ...trace.map((e) => run.trace(e)),
-            run.delta('Answer.'),
-            run.done('conv-1', 't1'),
-          ]);
-        }
-        if (url.startsWith('/api/conversations')) return jsonResponse(emptyHistory);
-        return jsonResponse({
-          turnId: 't1',
-          conversationId: 'conv-1',
-          createdAt: '',
-          events: trace,
-        });
-      }),
+      agentFetch(
+        vi.fn(async (url: string) => {
+          if (url === '/api/chat') {
+            return streamResponse([
+              ...trace.map((e) => run.trace(e)),
+              run.delta('Answer.'),
+              run.done('conv-1', 't1'),
+            ]);
+          }
+          if (url.startsWith('/api/conversations')) return jsonResponse(emptyHistory);
+          return jsonResponse({
+            turnId: 't1',
+            conversationId: 'conv-1',
+            createdAt: '',
+            events: trace,
+          });
+        }),
+      ),
     );
 
     renderWithProviders(<ChatPage />);
@@ -95,22 +100,24 @@ describe('ChatPage', () => {
     const trace = fixtureTrace.slice(0, 3);
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string) => {
-        if (url === '/api/chat') {
-          return streamResponse([
-            ...trace.map((e) => run.trace(e)),
-            run.delta('Answer.'),
-            run.done('conv-1', 't1'),
-          ]);
-        }
-        if (url.startsWith('/api/conversations')) return jsonResponse(emptyHistory);
-        return jsonResponse({
-          turnId: 't1',
-          conversationId: 'conv-1',
-          createdAt: '',
-          events: trace,
-        });
-      }),
+      agentFetch(
+        vi.fn(async (url: string) => {
+          if (url === '/api/chat') {
+            return streamResponse([
+              ...trace.map((e) => run.trace(e)),
+              run.delta('Answer.'),
+              run.done('conv-1', 't1'),
+            ]);
+          }
+          if (url.startsWith('/api/conversations')) return jsonResponse(emptyHistory);
+          return jsonResponse({
+            turnId: 't1',
+            conversationId: 'conv-1',
+            createdAt: '',
+            events: trace,
+          });
+        }),
+      ),
     );
 
     renderWithProviders(<ChatPage />);
@@ -136,22 +143,24 @@ describe('ChatPage', () => {
     const trace = fixtureTrace.slice(0, 3);
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string) => {
-        if (url === '/api/chat') {
-          return streamResponse([
-            ...trace.map((e) => run.trace(e)),
-            run.delta('Answer.'),
-            run.done('conv-1', 't1'),
-          ]);
-        }
-        if (url.startsWith('/api/conversations')) return jsonResponse(emptyHistory);
-        return jsonResponse({
-          turnId: 't1',
-          conversationId: 'conv-1',
-          createdAt: '',
-          events: trace,
-        });
-      }),
+      agentFetch(
+        vi.fn(async (url: string) => {
+          if (url === '/api/chat') {
+            return streamResponse([
+              ...trace.map((e) => run.trace(e)),
+              run.delta('Answer.'),
+              run.done('conv-1', 't1'),
+            ]);
+          }
+          if (url.startsWith('/api/conversations')) return jsonResponse(emptyHistory);
+          return jsonResponse({
+            turnId: 't1',
+            conversationId: 'conv-1',
+            createdAt: '',
+            events: trace,
+          });
+        }),
+      ),
     );
 
     renderWithProviders(<ChatPage />);
@@ -196,7 +205,7 @@ describe('ChatPage', () => {
       }
       return jsonResponse({}, 404);
     });
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('fetch', agentFetch(fetchMock));
 
     renderWithProviders(<ChatPage />);
     for (const q of ['first', 'second']) {
@@ -238,7 +247,7 @@ describe('ChatPage', () => {
       }
       return jsonResponse({}, 404);
     });
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('fetch', agentFetch(fetchMock));
 
     renderWithProviders(<ChatPage />);
     for (const q of ['first', 'second']) {
@@ -293,12 +302,14 @@ describe('ChatPage', () => {
     const stream = controlled();
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string) =>
-        url.startsWith('/api/conversations')
-          ? jsonResponse(emptyHistory)
-          : url.startsWith('/api/turns')
-            ? jsonResponse({ events: [] })
-            : stream.response,
+      agentFetch(
+        vi.fn(async (url: string) =>
+          url.startsWith('/api/conversations')
+            ? jsonResponse(emptyHistory)
+            : url.startsWith('/api/turns')
+              ? jsonResponse({ events: [] })
+              : stream.response,
+        ),
       ),
     );
 
@@ -326,12 +337,14 @@ describe('ChatPage', () => {
     const stream = controlled();
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string) =>
-        url.startsWith('/api/conversations')
-          ? jsonResponse(emptyHistory)
-          : url.startsWith('/api/turns')
-            ? jsonResponse({ events: [] })
-            : stream.response,
+      agentFetch(
+        vi.fn(async (url: string) =>
+          url.startsWith('/api/conversations')
+            ? jsonResponse(emptyHistory)
+            : url.startsWith('/api/turns')
+              ? jsonResponse({ events: [] })
+              : stream.response,
+        ),
       ),
     );
     // Any render that commits the banner, however briefly, is recorded.
@@ -375,12 +388,14 @@ describe('ChatPage', () => {
     const stream = controlled();
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string) =>
-        url.startsWith('/api/conversations')
-          ? jsonResponse(emptyHistory)
-          : url.startsWith('/api/turns')
-            ? jsonResponse({ events: [] })
-            : stream.response,
+      agentFetch(
+        vi.fn(async (url: string) =>
+          url.startsWith('/api/conversations')
+            ? jsonResponse(emptyHistory)
+            : url.startsWith('/api/turns')
+              ? jsonResponse({ events: [] })
+              : stream.response,
+        ),
       ),
     );
 
@@ -407,12 +422,14 @@ describe('ChatPage', () => {
   it('shows no reasoning block for a turn whose model did not reason', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string) =>
-        url.startsWith('/api/conversations')
-          ? jsonResponse(emptyHistory)
-          : url.startsWith('/api/turns')
-            ? jsonResponse({ events: [] })
-            : streamResponse([run.started(), ...run.text('Straight to it.'), run.done()]),
+      agentFetch(
+        vi.fn(async (url: string) =>
+          url.startsWith('/api/conversations')
+            ? jsonResponse(emptyHistory)
+            : url.startsWith('/api/turns')
+              ? jsonResponse({ events: [] })
+              : streamResponse([run.started(), ...run.text('Straight to it.'), run.done()]),
+        ),
       ),
     );
 
@@ -426,6 +443,49 @@ describe('ChatPage', () => {
 });
 
 /** A response whose frames the test pushes one at a time, as the server would. */
+describe('ChatPage progress', () => {
+  it("shows what the run is doing from its steps, in the page's theme, until it ends", async () => {
+    const stream = controlled();
+    vi.stubGlobal(
+      'fetch',
+      agentFetch(
+        vi.fn(async (url: string) =>
+          url.startsWith('/api/conversations')
+            ? jsonResponse(emptyHistory)
+            : url.startsWith('/api/turns')
+              ? jsonResponse({ events: [] })
+              : stream.response,
+        ),
+      ),
+    );
+
+    renderWithProviders(<ChatPage />);
+    await userEvent.type(screen.getByLabelText('Message'), 'What if a fee schedule is missing?');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    stream.push(run.started(), sse(EventType.STEP_STARTED, { stepName: 'tool: search_documents' }));
+    expect(
+      await screen.findByRole('progressbar', { name: 'Calling search_documents…' }),
+    ).toBeInTheDocument();
+
+    stream.push(
+      sse(EventType.STEP_FINISHED, { stepName: 'tool: search_documents' }),
+      ...run.text('Assign it.'),
+    );
+    await screen.findByText('Assign it.');
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+
+    stream.push(sse(EventType.STEP_STARTED, { stepName: 'checking the answer' }));
+    expect(
+      await screen.findByRole('progressbar', { name: 'Checking the answer…' }),
+    ).toBeInTheDocument();
+
+    stream.push(sse(EventType.STEP_FINISHED, { stepName: 'checking the answer' }), run.done());
+    stream.close();
+    await waitFor(() => expect(screen.queryByTestId('run-progress')).not.toBeInTheDocument());
+  });
+});
+
 function controlled() {
   const encoder = new TextEncoder();
   let controller!: ReadableStreamDefaultController<Uint8Array>;

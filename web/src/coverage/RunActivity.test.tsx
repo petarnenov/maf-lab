@@ -6,15 +6,8 @@ import type { RunSummary } from '../api/types';
 import { jsonResponse, makeSession, renderWithProviders, sse, streamResponse } from '../test/render';
 import { CoveragePage } from './CoveragePage';
 import { detail } from './CoveragePage.test';
-import {
-  ATTEMPT_EVENT,
-  attemptScope,
-  initialRunStream,
-  reduceRunEvent,
-  RESUMED_EVENT,
-  STOPPED_EVENT,
-  type RunStreamState,
-} from './runStream';
+import { agentFetch } from '../test/agentFetch';
+import { attemptScope, initialRunStream, reduceRunEvent, type RunStreamState } from './runStream';
 import { sampleTree } from './treeModel.test';
 
 const run = (overrides: Partial<RunSummary> = {}): RunSummary => ({
@@ -39,11 +32,21 @@ const run = (overrides: Partial<RunSummary> = {}): RunSummary => ({
 
 const e = (type: EventType, data: Record<string, unknown> = {}) => ({ type, ...data });
 
+const firstAttempt = {
+  attempt: 1,
+  before: 62,
+  after: 71.4,
+  build: 'ok',
+  tests: { passed: 3, failed: 1, skipped: 0 },
+  errors: ['BetaTests.Zero: expected 0'],
+  violations: 0,
+};
+
 /** A run's activity as the server writes it: one attempt with a phase, a tool call, some text and its result. */
 const attemptOne = [
   sse(EventType.STEP_STARTED, { stepName: 'attempt 1: generating' }),
   sse(EventType.REASONING_START, { messageId: 'reasoning-2' }),
-  sse(EventType.REASONING_MESSAGE_START, { messageId: 'reasoning-2', role: 'assistant' }),
+  sse(EventType.REASONING_MESSAGE_START, { messageId: 'reasoning-2', role: 'reasoning' }),
   sse(EventType.REASONING_MESSAGE_CONTENT, { messageId: 'reasoning-2', delta: 'Which lines are uncovered?' }),
   sse(EventType.REASONING_MESSAGE_END, { messageId: 'reasoning-2' }),
   sse(EventType.REASONING_END, { messageId: 'reasoning-2' }),
@@ -62,18 +65,9 @@ const attemptOne = [
   sse(EventType.TEXT_MESSAGE_END, { messageId: 'text-4' }),
   sse(EventType.STEP_FINISHED, { stepName: 'attempt 1: generating' }),
   sse(EventType.STEP_STARTED, { stepName: 'attempt 1: building' }),
-  sse(EventType.CUSTOM, {
-    name: ATTEMPT_EVENT,
-    value: {
-      attempt: 1,
-      before: 62,
-      after: 71.4,
-      build: 'ok',
-      tests: { passed: 3, failed: 1, skipped: 0 },
-      errors: ['BetaTests.Zero: expected 0'],
-      violations: 0,
-    },
-  }),
+  // An attempt's result is part of the run's state (agui-protocol-only).
+  sse(EventType.STATE_SNAPSHOT, { snapshot: { ...run({ phase: 'building' }), attempts: [firstAttempt] } }),
+  sse(EventType.STEP_FINISHED, { stepName: 'attempt 1: building' }),
 ];
 
 const started = sse(EventType.RUN_STARTED, { threadId: 'testgen:r_1', runId: 'r_1' });
@@ -98,7 +92,7 @@ function stubApi(fileRun: RunSummary | null, events: () => Response) {
   const calls: { url: string; method: string }[] = [];
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (url: string, init?: RequestInit) => {
+    agentFetch(vi.fn(async (url: string, init?: RequestInit) => {
       calls.push({ url, method: init?.method ?? 'GET' });
       if (url.startsWith('/api/coverage/tree')) return jsonResponse(sampleTree);
       if (url.startsWith('/api/coverage/files')) return jsonResponse(detail({ run: fileRun }));
@@ -106,7 +100,7 @@ function stubApi(fileRun: RunSummary | null, events: () => Response) {
       if (url.endsWith('/cancel')) return jsonResponse(run({ state: 'canceled', active: false }));
       if (url.startsWith('/api/coverage/refresh')) return jsonResponse(undefined, 204);
       return jsonResponse({ title: 'Not found' }, 404);
-    }),
+    })),
   );
   return calls;
 }
@@ -162,7 +156,7 @@ describe('run stream reducer (AG-UI)', () => {
     const s = fold([
       e(EventType.STEP_STARTED, { stepName: 'attempt 2: generating' }),
       e(EventType.STEP_FINISHED, { stepName: 'attempt 2: generating' }),
-      e(EventType.CUSTOM, { name: RESUMED_EVENT, value: { attempt: 2 } }),
+      e(EventType.STATE_SNAPSHOT, { snapshot: { ...run({ attempt: 2 }), resumes: [2] } }),
     ]);
     expect(s.timeline.at(-1)).toMatchObject({
       kind: 'notice',
@@ -204,21 +198,28 @@ describe('Run activity', () => {
 
   it('says what each attempt ran: related tests, then the whole suite that confirmed it, or why the whole suite ran', async () => {
     const done = run({ state: 'candidate', attempt: 2, active: false, lastPct: 86.3 });
-    const attempt = (n: number, extra: Record<string, unknown>) =>
-      sse(EventType.CUSTOM, {
-        name: ATTEMPT_EVENT,
-        value: { attempt: n, before: 41, after: 86.3, build: 'ok', tests: { passed: 1219, failed: 0, skipped: 0 }, errors: [], violations: 0, ...extra },
-      });
+    const attempt = (n: number, extra: Record<string, unknown>) => ({
+      attempt: n,
+      before: 41,
+      after: 86.3,
+      build: 'ok',
+      tests: { passed: 1219, failed: 0, skipped: 0 },
+      errors: [],
+      violations: 0,
+      ...extra,
+    });
+    const first = attempt(1, { run: { scope: 'all', files: 0, tests: 1219, reason: 'no test uses the target or a changed test file' } });
+    const second = attempt(2, {
+      run: { scope: 'related', files: 3, tests: 58 },
+      confirmation: { scope: 'all', files: 0, tests: 1219, pct: 86.3 },
+    });
     stubApi(done, () =>
       streamResponse([
         started,
         state(done),
-        attempt(1, { run: { scope: 'all', files: 0, tests: 1219, reason: 'no test uses the target or a changed test file' } }),
-        attempt(2, {
-          run: { scope: 'related', files: 3, tests: 58 },
-          confirmation: { scope: 'all', files: 0, tests: 1219, pct: 86.3 },
-        }),
-        sse(EventType.RUN_FINISHED, { threadId: 'testgen:r_1', runId: 'r_1', result: done }),
+        sse(EventType.STATE_SNAPSHOT, { snapshot: { ...done, attempts: [first] } }),
+        sse(EventType.STATE_SNAPSHOT, { snapshot: { ...done, attempts: [first, second] } }),
+        sse(EventType.RUN_FINISHED, { threadId: 'testgen:r_1', runId: 'r_1', outcome: { type: 'success' } }),
       ]),
     );
     renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
@@ -232,7 +233,9 @@ describe('Run activity', () => {
 
   it('shows an attempt recorded before attempts said what they ran as it always did', async () => {
     const failed = run({ state: 'failed', reason: 'runner_unavailable', active: false });
-    stubApi(failed, () => streamResponse([started, state(failed), ...attemptOne, sse(EventType.RUN_ERROR, { code: 'runner_unavailable', message: '' })]));
+    stubApi(failed, () =>
+      streamResponse([started, state(failed), ...attemptOne, state(failed), sse(EventType.RUN_ERROR, { code: 'runner_unavailable', message: '' })]),
+    );
     renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
 
     const dialog = await openActivity();
@@ -250,6 +253,8 @@ describe('Run activity', () => {
         started,
         state(failed),
         ...attemptOne,
+        // How the run ended is in the state the server sends before the end.
+        state(failed),
         sse(EventType.RUN_ERROR, { code: 'runner_unavailable', message: 'The run failed (runner_unavailable).' }),
       ]),
     );
@@ -278,8 +283,10 @@ describe('Run activity', () => {
         ...attemptOne,
         sse(EventType.STEP_STARTED, { stepName: 'attempt 2: measuring' }),
         sse(EventType.STEP_FINISHED, { stepName: 'attempt 2: measuring' }),
-        sse(EventType.CUSTOM, { name: STOPPED_EVENT, value: { reason: 'budget', lastAttempt: 2, bestPct: 0, notStarted: 3 } }),
-        sse(EventType.RUN_FINISHED, { threadId: 'testgen:r_1', runId: 'r_1', result: done }),
+        sse(EventType.STATE_SNAPSHOT, {
+          snapshot: { ...done, attempts: [firstAttempt], stop: { reason: 'budget', lastAttempt: 2, bestPct: 0, notStarted: 3 } },
+        }),
+        sse(EventType.RUN_FINISHED, { threadId: 'testgen:r_1', runId: 'r_1', outcome: { type: 'success' } }),
       ]),
     );
     renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
@@ -310,7 +317,7 @@ describe('Run activity', () => {
 
   it('says so when a run recorded no activity', async () => {
     const done = run({ state: 'completed_no_change', active: false });
-    stubApi(done, () => streamResponse([started, state(done), sse(EventType.RUN_FINISHED, { threadId: 'testgen:r_1', runId: 'r_1', result: done })]));
+    stubApi(done, () => streamResponse([started, state(done), sse(EventType.RUN_FINISHED, { threadId: 'testgen:r_1', runId: 'r_1', outcome: { type: 'success' } })]));
     renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
 
     const dialog = await openActivity();
@@ -380,12 +387,12 @@ describe('Run activity', () => {
     stubApi(null, streams.open);
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string) => {
+      agentFetch(vi.fn(async (url: string) => {
         if (url.startsWith('/api/coverage/tree')) return jsonResponse(sampleTree);
         if (url.startsWith('/api/coverage/files')) return jsonResponse(detail({ run: fileRun }));
         if (url.endsWith('/events')) return streams.open();
         return jsonResponse(undefined, 204);
-      }),
+      })),
     );
     renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
     const dialog = await openActivity();

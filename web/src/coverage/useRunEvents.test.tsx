@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { RunSummary } from '../api/types';
 import { jsonResponse, makeSession, renderWithProviders, sse, streamResponse } from '../test/render';
+import { agentFetch } from '../test/agentFetch';
 import { CoveragePage } from './CoveragePage';
 import { detail } from './CoveragePage.test';
 import { openRunStreams, useRunStream } from './runStream';
@@ -35,7 +36,7 @@ describe('run events (AG-UI)', () => {
     const calls: string[] = [];
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string) => {
+      agentFetch(vi.fn(async (url: string) => {
         calls.push(url);
         if (url.startsWith('/api/coverage/tree')) return jsonResponse(sampleTree);
         if (url.startsWith('/api/coverage/files')) return jsonResponse(detail({ run: run() }));
@@ -47,7 +48,7 @@ describe('run events (AG-UI)', () => {
             state(run({ state: 'verifying', attempt: 3, lastPct: 86 })),
           ]);
         return jsonResponse({}, 404);
-      }),
+      })),
     );
 
     renderWithProviders(<CoveragePage />, {
@@ -67,13 +68,13 @@ describe('run events (AG-UI)', () => {
     const calls: string[] = [];
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string) => {
+      agentFetch(vi.fn(async (url: string) => {
         calls.push(url);
         if (url.startsWith('/api/coverage/tree')) return jsonResponse(sampleTree);
         if (url.startsWith('/api/coverage/files'))
           return jsonResponse(detail({ run: run({ state: 'candidate', branch: 'test-agent/x' }) }));
         return jsonResponse({}, 404);
-      }),
+      })),
     );
 
     renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs' });
@@ -92,7 +93,7 @@ describe('run events (AG-UI)', () => {
       const opened: string[] = [];
       vi.stubGlobal(
         'fetch',
-        vi.fn(async (url: string, init?: RequestInit) => {
+        agentFetch(vi.fn(async (url: string, init?: RequestInit) => {
           opened.push(url);
           // Held open until the subscribers leave, like a live run.
           const body = new ReadableStream<Uint8Array>({
@@ -102,7 +103,7 @@ describe('run events (AG-UI)', () => {
             },
           });
           return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
-        }),
+        })),
       );
       return opened;
     }

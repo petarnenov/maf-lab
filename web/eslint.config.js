@@ -39,7 +39,8 @@ export default tseslint.config(
           message: 'Agent streams are read by the AG-UI client only.',
         },
         {
-          selector: "CallExpression[callee.name='fetch'] > :first-child[value=/^\\/api\\/(chat|coverage\\/runs\\/agent)/]",
+          selector:
+            "CallExpression[callee.name='fetch'] > :first-child[value=/^\\/api\\/(chat|coverage\\/runs\\/agent)/]",
           message: 'Agents are called through an HttpAgent, not fetch.',
         },
         {
@@ -51,7 +52,9 @@ export default tseslint.config(
       'no-restricted-imports': [
         'error',
         {
-          patterns: [{ regex: 'sseParser$', message: 'Agent streams are read by the AG-UI client only.' }],
+          patterns: [
+            { regex: 'sseParser$', message: 'Agent streams are read by the AG-UI client only.' },
+          ],
         },
       ],
     },

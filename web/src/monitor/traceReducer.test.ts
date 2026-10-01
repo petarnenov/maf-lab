@@ -1,3 +1,4 @@
+import { EventType, type BaseEvent } from '@ag-ui/core';
 import { describe, expect, it } from 'vitest';
 import type { AguiFrame, TraceEvent } from '../api/types';
 import { chatReducer, initialChatState } from '../chat/chatReducer';
@@ -20,6 +21,13 @@ const frame = (seq: number, type = 'TEXT_MESSAGE_CONTENT'): AguiFrame => ({
   bytes: 10 * seq,
 });
 
+const finished = {
+  type: EventType.RUN_FINISHED,
+  threadId: 'c',
+  runId: 't_9',
+  outcome: { type: 'success' },
+} as BaseEvent;
+
 describe('traceReducer', () => {
   it('accumulates live events per turn in seq order and ignores duplicates', () => {
     let state = initialTraceState;
@@ -39,24 +47,21 @@ describe('traceReducer', () => {
     expect(traceReducer(state, { type: 'reset' })).toEqual(initialTraceState);
   });
 
-  it('is fed by chat trace events and re-keyed when done arrives', () => {
+  it("is fed by the run's live trace and re-keyed when the run finishes", () => {
     let state = chatReducer(initialChatState, {
       type: 'send',
       userTurnId: 'u-1',
       assistantTurnId: 'a-1',
       text: 'q',
     });
-    state = chatReducer(state, { type: 'event', event: { type: 'trace', data: ev(2, 'intent') } });
+    // The trace API's answers, as the chat reads them while the run is live (agui-protocol-only).
+    state = chatReducer(state, { type: 'live_trace', turnKey: 'a-1', events: [ev(2, 'intent')] });
     state = chatReducer(state, {
-      type: 'event',
-      event: { type: 'trace', data: ev(1, 'turn.start') },
+      type: 'live_trace',
+      turnKey: 'a-1',
+      events: [ev(1, 'turn.start')],
     });
-    state = chatReducer(state, {
-      type: 'event',
-      event: { type: 'done', data: { conversationId: 'c', turnId: 't_9' } },
-    });
-    // Events after done are not attributed to any turn.
-    state = chatReducer(state, { type: 'event', event: { type: 'trace', data: ev(3) } });
+    state = chatReducer(state, { type: 'event', event: finished });
 
     expect(traceFor(state.traces, 'a-1').map((e) => e.kind)).toEqual(['turn.start', 'intent']);
     expect(traceFor(state.traces, 't_9')).toHaveLength(2);
@@ -85,18 +90,12 @@ describe('traceReducer', () => {
       text: 'q',
     });
     for (const f of [frame(1, 'RUN_STARTED'), frame(2)]) {
-      state = chatReducer(state, { type: 'event', event: { type: 'agui_frame', data: f } });
+      state = chatReducer(state, { type: 'frame', frame: f });
     }
-    // The terminal frame is recorded while the turn still streams; `done` then closes it.
-    state = chatReducer(state, {
-      type: 'event',
-      event: { type: 'agui_frame', data: frame(3, 'RUN_FINISHED') },
-    });
-    state = chatReducer(state, {
-      type: 'event',
-      event: { type: 'done', data: { conversationId: 'c', turnId: 't_9' } },
-    });
-    state = chatReducer(state, { type: 'event', event: { type: 'agui_frame', data: frame(4) } });
+    // The terminal frame is recorded while the turn still streams; the run's end then closes it.
+    state = chatReducer(state, { type: 'frame', frame: frame(3, 'RUN_FINISHED') });
+    state = chatReducer(state, { type: 'event', event: finished });
+    state = chatReducer(state, { type: 'frame', frame: frame(4) });
 
     expect(framesFor(state.traces, 'a-1').map((f) => f.type)).toEqual([
       'RUN_STARTED',

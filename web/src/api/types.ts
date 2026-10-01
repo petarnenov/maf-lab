@@ -29,8 +29,8 @@ export interface Me {
   advisorIds: string[];
 }
 
-// ---- Chat / SSE ----
-// The AG-UI SDK shapes the wire; ChatStreamEvent remains the reducer's internal form.
+// ---- Chat ----
+// The chat reads the protocol's own events (@ag-ui/core) through CopilotKit; these are the screen's shapes.
 
 export interface SourceRef {
   docId: string;
@@ -43,20 +43,6 @@ export interface SourceRef {
   endLine?: number;
   symbol?: string;
   language?: string;
-}
-
-export interface ToolCallStartedData {
-  callId: string;
-  toolName: string;
-  argumentSummary: string;
-}
-
-export interface ToolCallFinishedData {
-  callId: string;
-  toolName: string;
-  resultSummary: string;
-  sourceCount: number;
-  isError: boolean;
 }
 
 /** A fee adjustment waiting for the advisor. `state` is opaque: hand it back, never read it. */
@@ -91,16 +77,10 @@ export interface PendingProposal {
   expiresAt?: string | null;
 }
 
-export interface DoneData {
-  conversationId: string;
-  turnId: string;
-  error?: string | null;
-}
-
 /**
  * One event as it crossed the AG-UI wire, kept so the monitor can show what the rest of the screen drops.
- * `seq` counts frames of the run from 1 and `atMs` is measured from its first frame. A trace frame carries
- * `traceSeq` and no `payload`: the trace event itself is what the monitor's other tabs already render.
+ * `seq` counts frames of the run from 1 and `atMs` is measured from its first frame. A frame of a turn recorded before
+ * agui-protocol-only may be a custom trace frame, carrying `traceSeq` and no `payload`.
  * `unparsed` holds the raw text of a frame whose JSON could not be read.
  */
 export interface AguiFrame {
@@ -133,25 +113,6 @@ export interface DataCard {
   activityType: string;
   content: Record<string, unknown>;
 }
-
-export type ChatStreamEvent =
-  | { type: 'text_delta'; data: { text: string } }
-  | { type: 'tool_call_started'; data: ToolCallStartedData }
-  | { type: 'tool_call_finished'; data: ToolCallFinishedData }
-  | { type: 'sources'; data: { sources: SourceRef[] } }
-  /** The run's shared state (AG-UI `STATE_SNAPSHOT`): the account in focus (add-focus-state). */
-  | { type: 'state'; data: { focus: FocusAccount | null } }
-  /** A data card: an AG-UI activity a carded tool result became (add-activity-cards). */
-  | { type: 'card'; data: DataCard }
-  | { type: 'reasoning_delta'; data: { text: string } }
-  /** The model stopped reasoning. It does not close the block — the answer's first text does. */
-  | { type: 'reasoning_end' }
-  | { type: 'trace'; data: TraceEvent }
-  | { type: 'agui_frame'; data: AguiFrame }
-  | { type: 'confirmation_required'; data: ConfirmationRequiredData }
-  /** The run has begun, in this conversation: the server names it before anything can go wrong. */
-  | { type: 'run_started'; data: { conversationId: string } }
-  | { type: 'done'; data: DoneData };
 
 // ---- Turn trace (behind the scenes). See docs/trace-events.md. ----
 

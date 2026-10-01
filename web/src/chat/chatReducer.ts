@@ -1,11 +1,27 @@
+import {
+  EventType,
+  type ActivitySnapshotEvent,
+  type BaseEvent,
+  type ReasoningMessageContentEvent,
+  type RunErrorEvent,
+  type RunFinishedEvent,
+  type RunStartedEvent,
+  type StateSnapshotEvent,
+  type StepStartedEvent,
+  type TextMessageContentEvent,
+  type ToolCallArgsEvent,
+  type ToolCallResultEvent,
+  type ToolCallStartEvent,
+} from '@ag-ui/core';
 import type {
+  AguiFrame,
   DataCard,
   FocusAccount,
-  ChatStreamEvent,
   FeedbackKind,
   HistoryTurn,
   SourceRef,
   ConfirmationRequiredData,
+  TraceEvent,
 } from '../api/types';
 import { initialTraceState, traceReducer, type TraceState } from '../monitor/traceReducer';
 
@@ -42,7 +58,13 @@ export interface AssistantTurn {
   /** Data cards the turn showed, in arrival order (add-activity-cards). */
   cards?: DataCard[];
   status: 'streaming' | 'done' | 'error';
-  /** Server-issued turn id, known once `done` arrives. Feedback needs it. */
+  /** The run that is this turn, as the run's first event names it (agui-protocol-only). */
+  runId?: string;
+  /** What the run is doing right now, as its latest open step says; gone when the step finishes. */
+  step?: string;
+  /** A run answering a question an earlier turn asked: it records no turn of its own, so it has no turn id. */
+  answer?: boolean;
+  /** The turn this run recorded, known once it finished: its run id. Feedback needs it. */
   turnId?: string;
   error?: string;
   /** Which of the three faces this error wears. */
@@ -90,7 +112,12 @@ export type ConfirmationState =
 
 export type ChatAction =
   | { type: 'send'; userTurnId: string; assistantTurnId: string; text: string }
-  | { type: 'event'; event: ChatStreamEvent }
+  /** One of the run's own events, exactly as the protocol defines it (agui-protocol-only). */
+  | { type: 'event'; event: BaseEvent }
+  /** One event of the run as it crossed the wire, for the monitor's event log. */
+  | { type: 'frame'; frame: AguiFrame }
+  /** The run's trace as written so far, read from the trace API while the run is live. */
+  | { type: 'live_trace'; turnKey: string; events: TraceEvent[] }
   | { type: 'stream_error'; message: string; kind?: FailureKind }
   | { type: 'reset' }
   | { type: 'hydrate'; conversationId: string; turns: HistoryTurn[]; focus?: FocusAccount | null }
@@ -142,16 +169,31 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case 'event':
       return applyEvent(state, action.event);
 
-    case 'stream_error':
-      return updateActiveTurn({ ...state, streaming: false }, (turn) => ({
-        ...turn,
-        status: 'error',
-        error: action.message,
-        errorKind: action.kind ?? 'unexpected',
-        toolCalls: turn.toolCalls.map((c) =>
-          c.status === 'running' ? { ...c, status: 'finished', isError: true } : c,
+    // A frame belongs to the turn whose run wrote it; the terminal frame is recorded before the turn closes.
+    case 'frame': {
+      const active = activeTurn(state);
+      if (!active) return state;
+      return {
+        ...state,
+        traces: traceReducer(state.traces, {
+          type: 'appendFrame',
+          key: active.id,
+          frame: action.frame,
+        }),
+      };
+    }
+
+    case 'live_trace':
+      return {
+        ...state,
+        traces: action.events.reduce(
+          (traces, event) => traceReducer(traces, { type: 'append', key: action.turnKey, event }),
+          state.traces,
         ),
-      }));
+      };
+
+    case 'stream_error':
+      return failed(state, action.message, action.kind ?? 'unexpected');
 
     case 'reset':
       return initialChatState;
@@ -205,6 +247,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
             toolCalls: [],
             sources: [],
             status: 'streaming',
+            answer: true,
           },
         ],
       };
@@ -292,140 +335,285 @@ export function hydrateTurn(turn: HistoryTurn): Turn[] {
   ];
 }
 
-function applyEvent(state: ChatState, event: ChatStreamEvent): ChatState {
+/**
+ * One of the run's events, as the protocol defines it. An event this screen has no use for changes nothing, so any
+ * agent that speaks AG-UI can be followed here (agui-protocol-only).
+ */
+function applyEvent(state: ChatState, event: BaseEvent): ChatState {
   switch (event.type) {
+    // The run has begun, in this conversation: the run names both before anything can go wrong.
+    case EventType.RUN_STARTED: {
+      const started = event as RunStartedEvent;
+      const next = updateActiveTurn(state, (turn) => ({ ...turn, runId: started.runId }));
+      return { ...next, conversationId: started.threadId || state.conversationId };
+    }
+
     // The server's word on the focus replaces whatever the client held, so a refused choice does not stay on screen.
-    case 'state':
-      return { ...state, focus: event.data.focus };
+    case EventType.STATE_SNAPSHOT: {
+      const snapshot = (event as StateSnapshotEvent).snapshot as Record<string, unknown> | null;
+      if (!snapshot || typeof snapshot !== 'object' || !('focus' in snapshot)) return state;
+      return { ...state, focus: (snapshot.focus as FocusAccount | null) ?? null };
+    }
+
+    case EventType.STEP_STARTED:
+      return updateActiveTurn(state, (turn) => ({
+        ...turn,
+        step: (event as StepStartedEvent).stepName,
+      }));
+
+    case EventType.STEP_FINISHED:
+      return updateActiveTurn(state, (turn) => ({ ...turn, step: undefined }));
 
     // The answer's first text is what closes the reasoning block, and stops a clock still running.
-    case 'text_delta':
+    case EventType.TEXT_MESSAGE_CONTENT:
       return updateActiveTurn(state, (turn) => ({
         ...turn,
         ...stopThinking(turn),
-        text: turn.text + event.data.text,
+        text: turn.text + (event as TextMessageContentEvent).delta,
       }));
 
-    case 'reasoning_delta':
+    case EventType.REASONING_MESSAGE_CONTENT:
       return updateActiveTurn(state, (turn) => ({
         ...turn,
-        reasoning: turn.reasoning + event.data.text,
+        reasoning: turn.reasoning + (event as ReasoningMessageContentEvent).delta,
         reasoningSince: turn.reasoningSince ?? Date.now(),
       }));
 
-    case 'reasoning_end':
+    case EventType.REASONING_END:
       return updateActiveTurn(state, (turn) => ({ ...turn, ...stopThinking(turn) }));
 
-    case 'tool_call_started':
+    case EventType.TOOL_CALL_START: {
+      const start = event as ToolCallStartEvent;
       return updateActiveTurn(state, (turn) => {
-        if (turn.toolCalls.some((c) => c.callId === event.data.callId)) return turn;
+        if (turn.toolCalls.some((c) => c.callId === start.toolCallId)) return turn;
         return {
           ...turn,
           toolCalls: [
             ...turn.toolCalls,
             {
-              callId: event.data.callId,
-              toolName: event.data.toolName,
-              argumentSummary: event.data.argumentSummary,
+              callId: start.toolCallId,
+              toolName: start.toolCallName,
+              argumentSummary: '',
               status: 'running',
             },
           ],
         };
       });
+    }
 
-    case 'tool_call_finished':
+    // The arguments as the server lets them travel: identifiers only, shown the way the audit writes them.
+    case EventType.TOOL_CALL_ARGS: {
+      const args = event as ToolCallArgsEvent;
+      return updateActiveTurn(state, (turn) => ({
+        ...turn,
+        toolCalls: turn.toolCalls.map((c) =>
+          c.callId === args.toolCallId
+            ? { ...c, argumentSummary: summarizeArguments(c.argumentSummary, args.delta) }
+            : c,
+        ),
+      }));
+    }
+
+    // A result says how the call went; one this system wrote also says what it found and where.
+    case EventType.TOOL_CALL_RESULT: {
+      const result = event as ToolCallResultEvent;
+      const read = readResult(
+        typeof result.content === 'string' ? result.content : JSON.stringify(result.content),
+      );
       return updateActiveTurn(state, (turn) => {
+        const known = turn.toolCalls.find((c) => c.callId === result.toolCallId);
         const finished: ToolCallView = {
-          callId: event.data.callId,
-          toolName: event.data.toolName,
-          argumentSummary: '',
+          callId: result.toolCallId,
+          toolName: known?.toolName ?? read.tool ?? '',
+          argumentSummary: known?.argumentSummary ?? '',
           status: 'finished',
-          resultSummary: event.data.resultSummary,
-          sourceCount: event.data.sourceCount,
-          isError: event.data.isError,
+          resultSummary: read.summary,
+          sourceCount: read.sourceCount,
+          isError: read.isError,
         };
-        const exists = turn.toolCalls.some((c) => c.callId === event.data.callId);
         return {
           ...turn,
-          toolCalls: exists
-            ? turn.toolCalls.map((c) =>
-                c.callId === event.data.callId
-                  ? { ...finished, argumentSummary: c.argumentSummary }
-                  : c,
-              )
+          toolCalls: known
+            ? turn.toolCalls.map((c) => (c.callId === result.toolCallId ? finished : c))
             : [...turn.toolCalls, finished],
+          sources: mergeSources(turn.sources, read.sources),
         };
       });
-
-    case 'sources':
-      return updateActiveTurn(state, (turn) => ({ ...turn, sources: event.data.sources }));
+    }
 
     // A snapshot for a card already shown replaces it, as the protocol says; a new one joins the end.
-    case 'card':
+    case EventType.ACTIVITY_SNAPSHOT: {
+      const activity = event as ActivitySnapshotEvent;
+      const card: DataCard = {
+        messageId: activity.messageId,
+        activityType: activity.activityType,
+        content: activity.content as Record<string, unknown>,
+      };
       return updateActiveTurn(state, (turn) => {
         const cards = turn.cards ?? [];
         return {
           ...turn,
-          cards: cards.some((c) => c.messageId === event.data.messageId)
-            ? cards.map((c) => (c.messageId === event.data.messageId ? event.data : c))
-            : [...cards, event.data],
+          cards: cards.some((c) => c.messageId === card.messageId)
+            ? cards.map((c) => (c.messageId === card.messageId ? card : c))
+            : [...cards, card],
         };
       });
-
-    // The card that renders this belongs to the next change; the turn keeps it so nothing is lost meanwhile.
-    case 'confirmation_required':
-      return updateActiveTurn(state, (turn) => ({
-        ...turn,
-        confirmation: event.data,
-        confirmationState: expired(event.data) ? 'expired' : 'waiting',
-      }));
-
-    case 'trace': {
-      const active = activeTurn(state);
-      if (!active) return state;
-      return {
-        ...state,
-        traces: traceReducer(state.traces, { type: 'append', key: active.id, event: event.data }),
-      };
     }
 
-    // A frame belongs to the turn whose run wrote it; the terminal frame is recorded before `done` closes the turn.
-    case 'agui_frame': {
-      const active = activeTurn(state);
-      if (!active) return state;
-      return {
-        ...state,
-        traces: traceReducer(state.traces, {
-          type: 'appendFrame',
-          key: active.id,
-          frame: event.data,
-        }),
-      };
+    case EventType.RUN_FINISHED:
+      return finished(state, event as RunFinishedEvent);
+
+    // A run refused or lost on its way to the agent says so with an HTTP status: it gets the face that status deserves,
+    // never the status itself. Any other error is the agent's own short text.
+    case EventType.RUN_ERROR: {
+      const { message, code } = event as RunErrorEvent;
+      const status = /\bHTTP (\d{3})\b/.exec(message);
+      if (status) return failed(state, ...faceOf(Number(status[1])));
+      // The stream ended before the run did: worth sending again.
+      if (code === 'INCOMPLETE_STREAM')
+        return failed(state, 'The answer stopped part-way. Send it again.', 'unavailable');
+      return failed(state, message, 'unexpected');
     }
 
-    case 'run_started':
-      return { ...state, conversationId: event.data.conversationId };
-
-    case 'done': {
-      const active = activeTurn(state);
-      const traces = active
-        ? traceReducer(state.traces, { type: 'attach', key: active.id, turnId: event.data.turnId })
-        : state.traces;
-      const next = updateActiveTurn({ ...state, traces }, (turn) => ({
-        ...turn,
-        turnId: event.data.turnId,
-        status: event.data.error ? 'error' : 'done',
-        error: event.data.error ?? undefined,
-      }));
-      // A run that failed names no conversation; it is still the one on screen. Clearing it would reload the
-      // stored conversation over the live turn and lose the error.
-      return {
-        ...next,
-        streaming: false,
-        conversationId: event.data.conversationId || state.conversationId,
-      };
-    }
+    default:
+      return state;
   }
+}
+
+/** The run ended: paused on a question for a person, or done. A turn that recorded itself is known by its run. */
+function finished(state: ChatState, event: RunFinishedEvent): ChatState {
+  const interrupt = event.outcome?.type === 'interrupt' ? event.outcome.interrupts?.[0] : undefined;
+  const confirmation = interrupt ? confirmationOf(interrupt) : undefined;
+  const active = activeTurn(state);
+  const turnId = active && !active.answer ? event.runId || active.runId : undefined;
+  const traces =
+    active && turnId
+      ? traceReducer(state.traces, { type: 'attach', key: active.id, turnId })
+      : state.traces;
+  const next = updateActiveTurn({ ...state, traces }, (turn) => ({
+    ...turn,
+    ...stopThinking(turn),
+    turnId,
+    step: undefined,
+    status: 'done',
+    ...(confirmation
+      ? {
+          confirmation,
+          confirmationState: expired(confirmation) ? 'expired' : ('waiting' as const),
+        }
+      : {}),
+  }));
+  return { ...next, streaming: false };
+}
+
+/**
+ * What to say about a run that never reached its agent, and which of the three faces to say it with. A refusal says
+ * only that it was refused: why is the server's business, and telling a caller would be telling them about someone
+ * else's data.
+ */
+export function faceOf(status: number | undefined): [string, FailureKind] {
+  if (status === 401) return ['Not signed in — pick a dev persona.', 'refused'];
+  if (status === 403 || status === 404) return ['That conversation is not available.', 'refused'];
+  if (status !== undefined)
+    return ['The assistant is unavailable. Try again in a moment.', 'unavailable'];
+  return ['The connection to the assistant was lost. Send it again.', 'unavailable'];
+}
+
+/** The run ended in error, or never got going: the turn keeps what it had and says so. */
+export function failed(state: ChatState, message: string, kind: FailureKind): ChatState {
+  return updateActiveTurn({ ...state, streaming: false }, (turn) => ({
+    ...turn,
+    ...stopThinking(turn),
+    step: undefined,
+    status: 'error',
+    error: message,
+    errorKind: kind,
+    toolCalls: turn.toolCalls.map((c) =>
+      c.status === 'running' ? { ...c, status: 'finished', isError: true } : c,
+    ),
+  }));
+}
+
+/**
+ * The question a paused run put to a person, as the protocol's interrupt carries it. What it is about travels in the
+ * interrupt's metadata; an interrupt without it is still a question this screen can show and answer.
+ */
+function confirmationOf(interrupt: {
+  id: string;
+  message?: string;
+  toolCallId?: string;
+  expiresAt?: string;
+  metadata?: unknown;
+}): ConfirmationRequiredData {
+  const metadata = (interrupt.metadata ?? {}) as Record<string, unknown>;
+  return {
+    callId: interrupt.toolCallId ?? '',
+    toolName: typeof metadata.tool === 'string' ? metadata.tool : '',
+    adjustmentId: interrupt.id,
+    adjustment: metadata.adjustment as ConfirmationRequiredData['adjustment'],
+    question: interrupt.message ?? '',
+    state: typeof metadata.state === 'string' ? metadata.state : '',
+    expiresAt: interrupt.expiresAt ?? null,
+  };
+}
+
+/** A call's arguments as they arrive (JSON, possibly in pieces), shown as "accountId=A-1043 runId=4417". */
+function summarizeArguments(sofar: string, delta: string): string {
+  const raw = (sofar.startsWith('{') ? sofar : '') + delta;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return Object.entries(parsed as Record<string, unknown>)
+        .filter(([, v]) => v !== null && v !== undefined)
+        .map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`)
+        .join(' ');
+    }
+  } catch {
+    // Still arriving, or not JSON: kept as it came.
+    return raw;
+  }
+  return raw;
+}
+
+interface ReadResult {
+  tool?: string;
+  summary: string;
+  sourceCount?: number;
+  isError: boolean;
+  sources: SourceRef[];
+}
+
+/** A tool result's content: this system's `{ tool, summary, sourceCount, sources, isError }`, or anything else as text. */
+function readResult(content: string): ReadResult {
+  try {
+    const value: unknown = JSON.parse(content);
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const r = value as Record<string, unknown>;
+      return {
+        tool: typeof r.tool === 'string' ? r.tool : undefined,
+        summary: typeof r.summary === 'string' ? r.summary : 'done',
+        sourceCount: typeof r.sourceCount === 'number' ? r.sourceCount : undefined,
+        isError: r.isError === true,
+        sources: Array.isArray(r.sources) ? (r.sources as SourceRef[]) : [],
+      };
+    }
+  } catch {
+    // Not structured: the text is the summary.
+  }
+  return {
+    summary: content.length > 120 ? `${content.slice(0, 120)}…` : content || 'done',
+    isError: false,
+    sources: [],
+  };
+}
+
+/** A turn's sources: each section once, in the order they were found. */
+function mergeSources(sources: SourceRef[], found: SourceRef[]): SourceRef[] {
+  if (found.length === 0) return sources;
+  const key = (s: SourceRef) => `${s.docId}\u0000${s.sectionPath}`;
+  const seen = new Set(sources.map(key));
+  const added = found.filter((s) => !seen.has(key(s)) && !!seen.add(key(s)));
+  return [...sources, ...added];
 }
 
 /** Closes the stretch of reasoning that is running, adding what it took to the turn's total. */
