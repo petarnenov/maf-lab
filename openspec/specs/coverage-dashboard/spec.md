@@ -155,6 +155,11 @@ dialog with:
   and reasoning as collapsible blocks. When the agent has stopped, the timeline SHALL end with a closing entry that
   says why ("Reached the target", "Used all 5 attempts", "Stopped before attempt 3: the budget would be exceeded").
 
+An attempt result SHALL say what the attempt ran when its entry records it. A related run SHALL read as "related:
+3 files, 58 tests". A whole-suite confirmation SHALL follow it as "→ whole suite: 1219 tests (confirmation)". A
+whole-suite run SHALL read as "whole suite", followed by the reason when it ran instead of the related tests. A
+result the runner reused SHALL be marked reused. An attempt recorded without this SHALL read as before.
+
 The modal, like every run status on the screen, SHALL learn about the run only from the run's AG-UI stream. While
 the run is active, the header and the timeline SHALL update live, without a reload, and the header SHALL show that
 the agent is working. The timeline SHALL keep the newest entry in view unless the user has scrolled up, and SHALL
@@ -166,6 +171,18 @@ affect the run.
 #### Scenario: Watching a run
 - **WHEN** an administrator starts a run and opens Activity
 - **THEN** the modal shows attempt 1 generating, then the tool calls and the model's text as they happen, without a reload
+
+#### Scenario: An attempt confirmed on the whole suite
+- **WHEN** attempt 2 ran 58 tests from 3 related files and its whole-suite confirmation ran 1219 tests
+- **THEN** its timeline row reads "related: 3 files, 58 tests → whole suite: 1219 tests (confirmation)"
+
+#### Scenario: An attempt that ran the whole suite instead
+- **WHEN** attempt 1 ran the whole suite because nothing related was selected
+- **THEN** its timeline row reads "whole suite: " followed by that reason
+
+#### Scenario: An attempt recorded before scopes
+- **WHEN** a user opens Activity for a run recorded before attempts carried their scope
+- **THEN** its attempt rows show coverage, build and test counts as before, with no scope
 
 #### Scenario: Scrolled up
 - **WHEN** the user scrolls up in the timeline while new entries arrive

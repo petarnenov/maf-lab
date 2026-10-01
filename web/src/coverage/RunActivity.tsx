@@ -6,7 +6,7 @@ import { describeBudget } from './budget';
 import { instant, pct, reasonLabel, RUN_LABELS, stopSentence, usd } from './format';
 import { LiveMarker } from './LiveMarker';
 import { coverageKeys } from './keys';
-import { useRunStream, type RunEnd, type TimelineItem } from './runStream';
+import { attemptScope, useRunStream, type RunEnd, type TimelineItem } from './runStream';
 import { useRunActivity } from './useRunActivity';
 import styles from './CoveragePage.module.css';
 
@@ -201,13 +201,16 @@ function TimelineRow({ item }: { item: TimelineItem }) {
           </details>
         </li>
       );
-    case 'attempt':
+    case 'attempt': {
+      // What the attempt ran (and the whole-suite run that confirmed it); entries from before say nothing.
+      const scope = attemptScope(item);
       return (
         <li className={styles.timelineAttempt}>
           <strong>Attempt {item.attempt}</strong>: {item.before != null ? pct(item.before) : '—'} →{' '}
           {item.after != null ? pct(item.after) : 'not measured'} · build {item.build} · {item.tests.passed} passed,{' '}
           {item.tests.failed} failed
           {item.violations > 0 && <span className={styles.errorText}> · {item.violations} rule(s) broken</span>}
+          {scope && <span className={styles.muted}> · {scope}</span>}
           {item.errors.length > 0 && (
             <details>
               <summary>{item.errors.length} error(s)</summary>
@@ -222,6 +225,7 @@ function TimelineRow({ item }: { item: TimelineItem }) {
           )}
         </li>
       );
+    }
     case 'notice':
       return <li className={styles.muted}>{item.text}</li>;
     case 'stopped':

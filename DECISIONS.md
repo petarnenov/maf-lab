@@ -2547,3 +2547,56 @@ said which account the conversation was about.
   it would cost a `docker info` on every make invocation.
 - **Not verified here.** A Mac (Docker Desktop's file sharing should grant 501:20 access as before) and the GitHub
   runner (uid 1001; its checkout and the e2e clone are the runner's, and the passwd-less git path is verified).
+
+## 71. The runner reuses an identical complete result, and an attempt says what it ran (reuse-identical-runner-results, 2026-10-01)
+
+- **Why.** The agent's whole-suite confirmation of the attempt that reaches the target (§64), followed seconds to
+  minutes later by the api's verification, sent the runner the same request twice: same commit, diff, target and scope
+  `all`. That is a clone, a build and the whole .NET suite twice (about 75–80 s each), per successful run. The model's
+  last `run_tests` and the attempt's measured run often repeat a related job (16–24 s) the same way. Separately, the
+  attempt card showed the confirmation's counts (e.g. "1219 passed") with no sign that the attempt itself ran 58 tests
+  from 3 files. No package or model moved; no route, target or project changed.
+- **Reuse lives in the runner's queue.** `JobQueue.Submit` is the one place every request passes, so a result can only
+  come from the runner's own run. The api still sends its own verification request, and nothing the agent says is
+  trusted. Skipping verification in the api because the agent "already confirmed" was rejected for exactly that reason.
+- **The key** is the SHA-256 of the full commit id, the toolchain, the diff's SHA-256, the target and the effective
+  scope (no scope reads as `all`, and no diff the same as an empty one). Runner settings, the image and lint configs are
+  fixed for the process, and the store is in memory, so a restart (new image, new settings) empties it. An abbreviated
+  commit id is neither reused nor stored, because git resolves it at checkout. The agent and the api always send full
+  ids.
+- **What is reusable:** status `ok` and no failed test (`RunnerResult.Reusable`). That includes a failed build and a
+  lint-only failure, which are determined by the files. Timeouts, runner errors, checkout or restore failures and
+  rejected diffs are never reused. A result with a failing test is never reused either: that is where a flaky test
+  costs most (an attempt spent "fixing" a test that is not broken, a bug proof wrongly failed). After a failure the
+  agent changes the diff anyway, so an identical request is rare.
+- **Flaky-test trade-off.** Verification used to be a second independent sample of the whole suite. With reuse, a
+  flaky test that passed once in the confirmation is not sampled again before the candidate. Accepted: the
+  confirmation is a runner-computed whole-suite run on exactly that diff and commit, and CI runs the suite again on
+  merge. `CoverageRunner:ReuseForVerification=false` makes the api send `fresh: true` (`RunnerRequest.Fresh`): the
+  runner then neither reuses nor joins anything for it, and its complete result replaces the kept one.
+- **Single-flight.** An identical request while one is queued or running gets its own job id that shows the leader's
+  state and queue position. When the leader finishes reusable, every follower is done with that result. Otherwise the
+  first follower is queued on its own (a new place at the end of the queue) and the rest follow it. A follower is
+  excluded from other jobs' queue positions.
+- **Bounds.** `Runner:ReuseResultsFor` is 15 minutes (zero turns reuse off). That covers the confirmation→verification
+  gap, including up to three related bug proofs before it. `Runner:ReuseMaxResults` is 16, and the oldest is evicted
+  first. The store holds references to the results the job table already keeps for `KeepResultsFor` (1 h), so it adds
+  no copies of the multi-MB Cobertura text.
+- **Visible everywhere.** A reused result carries `reusedFrom: { jobId, completedAt }`, with the original
+  `durationMs`. The runner logs `runner reuse {outcome} toolchain= scope=` and counts `maf.runner.reuse{outcome,
+  toolchain, scope}` (outcomes hit, joined, miss, fresh, off), with no commit, diff or path. The api stores
+  `report.verification = { scope, tests, pct, reusedFrom? }` in the run's report JSON (no schema change), logs
+  `reused=` with the job id, and the candidate panel adds one sentence when verification reused the confirmation.
+- **The attempt says what it ran.** `AttemptRun { scope, files, tests, reason?, reused, pct? }` goes on
+  `AttemptActivity` and `AttemptLog` as `Run` (the measured run) and `Confirmation` (the whole-suite run, when one
+  ran). Both are optional and omitted when null, so stored older rows read unchanged, and the `maf-lab/testgen-attempt`
+  event omits them for such rows. The reason is the runner's fallback reason. When the agent itself asked for the whole
+  suite (a checkpoint without baseline lines), it is the agent's own sentence. A job that never ran tests (timeout,
+  rejected diff) has no `Run`. The card appends, for example, "related: 3 files, 58 tests → whole suite: 1,219 tests
+  (confirmation)" or "whole suite: no test uses the target or a changed test file", with "(reused)" where it applies.
+- **Expected saving.** One whole-suite job (~75–80 s for .NET, ~40 s for Vitest) per run that reaches its target
+  through a focused attempt, and a related job (~16–24 s) whenever the model's last `run_tests` saw the attempt's final
+  diff. Only within the window, and while fewer than 16 newer complete results have been kept, and not across a runner
+  restart.
+- **Numbering.** Written as §71 because another in-flight change takes §70; if that one does not land first, this
+  section may be renumbered.

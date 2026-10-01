@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ApiError } from '../api/client';
-import type { RunDecision, RunDetail, RunSummary } from '../api/types';
+import type { RunDecision, RunDetail, RunSummary, VerificationRun } from '../api/types';
 import { useApi } from '../auth/useAuth';
 import { summarizeDiff } from './diffSummary';
 import { pct } from './format';
@@ -46,6 +46,7 @@ export function CandidatePanel({ run, canDecide }: { run: RunSummary; canDecide:
       <p className={styles.muted}>
         Verified by the lab's own test run. On branch <code>{run.branch}</code>.
       </p>
+      {report?.verification && <p className={styles.muted}>{describeVerification(report.verification)}</p>}
       {detail.isError && (
         <p className={styles.errorText} role="alert">
           Could not load the run's report.
@@ -138,4 +139,13 @@ export function CandidatePanel({ run, canDecide }: { run: RunSummary; canDecide:
 function decisionError(error: unknown): string {
   if (error instanceof ApiError && error.status === 409) return error.message;
   return 'Could not complete that. Nothing was changed.';
+}
+
+/** The verification run in a sentence: what it ran, and whether the runner reused the agent's confirmation for it. */
+function describeVerification(v: VerificationRun): string {
+  const tests = v.tests.passed + v.tests.failed + v.tests.skipped;
+  const ran = `${v.scope === 'related' ? 'Related tests' : 'Whole suite'}: ${tests.toLocaleString()} tests, ${v.tests.passed.toLocaleString()} passed.`;
+  return v.reusedFrom
+    ? `${ran} The runner had already run this exact diff for the agent's confirmation, so verification reused that result.`
+    : ran;
 }

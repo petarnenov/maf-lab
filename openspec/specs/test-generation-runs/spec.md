@@ -102,7 +102,9 @@ SHALL then carry every activity entry recorded so far, in order, as the protocol
 - model text: `TEXT_MESSAGE_START`, a `TEXT_MESSAGE_CONTENT` per chunk, and `TEXT_MESSAGE_END` once the message
   is done;
 - reasoning: the protocol's `REASONING_*` events, in the same shape;
-- an attempt's result: a `CUSTOM` event named `maf-lab/testgen-attempt`;
+- an attempt's result: a `CUSTOM` event named `maf-lab/testgen-attempt`. When the entry records them, the event SHALL
+  carry what the attempt ran (scope, related test files, tests run, fallback reason, reused) and its whole-suite
+  confirmation (tests, coverage, reused). It SHALL omit them for an entry recorded without them;
 - the agent's stop: `STEP_FINISHED` for the open step, then a `CUSTOM` event named `maf-lab/testgen-stopped` with the
   stop reason, the last attempt, the best coverage and, for `budget`, the attempt not started;
 - the agent's takeover after a restart: `STEP_FINISHED` for the open step, then a `CUSTOM` event named
@@ -127,6 +129,16 @@ never talk to the agent.
 #### Scenario: Tool call as protocol events
 - **WHEN** the agent reports a run-tests call with build ok, 12 passed, 1 failed at 72.1%
 - **THEN** the stream carries `TOOL_CALL_START`, `TOOL_CALL_ARGS`, `TOOL_CALL_END` and `TOOL_CALL_RESULT` for one tool call id, the result holding that outcome
+
+#### Scenario: An attempt's scope in the event
+- **WHEN** the agent reports attempt 2 that ran 58 tests from 3 related files and was confirmed on the whole suite with
+  1219 tests
+- **THEN** the `maf-lab/testgen-attempt` event for attempt 2 carries scope `related`, 3 files, 58 tests, and a
+  confirmation with 1219 tests
+
+#### Scenario: An attempt recorded before scopes
+- **WHEN** a run recorded before this change is replayed
+- **THEN** its attempt events carry no scope and no confirmation, and nothing else about them changes
 
 #### Scenario: The stop closes the timeline
 - **WHEN** the agent stops for `budget` before attempt 3 and the run ends `completed_no_change`
@@ -347,6 +359,12 @@ The verification run SHALL run the whole suite. A diff whose tests break, or are
 then still ends `verification_failed`. The candidate's coverage SHALL be that run's measured coverage. Coverage
 refresh SHALL also run the whole suite.
 
+The verification run MAY be answered by the runner with a result it computed earlier for the identical request. In
+practice that is the agent's whole-suite confirmation of the same diff. That result is still computed by the runner,
+never reported by the agent. Unless configured to ask for a fresh run, the api SHALL accept it. The run's report SHALL
+record how verification was obtained: the scope, the test counts and, when the result was reused, the runner job that
+computed it and when. The candidate panel SHALL say when verification reused that result.
+
 #### Scenario: Proof runs the related tests
 - **WHEN** a completed run reports one suspected bug
 - **THEN** the api asks the runner for the related tests with that test un-skipped, and the test is among them
@@ -355,6 +373,16 @@ refresh SHALL also run the whole suite.
 - **WHEN** the api verifies a completed run
 - **THEN** the measured run's scope is the whole suite, and a failing test anywhere in it ends the run
   `verification_failed`
+
+#### Scenario: Verification reuses the confirmation
+- **WHEN** the agent's whole-suite confirmation of the final diff completed green a minute before the api verifies it
+- **THEN** the runner answers the verification request with that result without running the tests again. The run's
+  report records the whole-suite scope, the test counts and the runner job it was reused from. The candidate panel
+  says that verification reused the confirmation run.
+
+#### Scenario: A fresh verification is configured
+- **WHEN** the api is configured not to reuse results for verification
+- **THEN** it asks the runner for a fresh run, and the report records no reuse
 
 ### Requirement: When a run's work ended
 A run SHALL record when its work ended: the first time it leaves the running states (`submitted`, `working`,

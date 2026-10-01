@@ -19,6 +19,15 @@ public sealed class RunnerOptions
     /// <summary>How long a finished job's result stays readable.</summary>
     public TimeSpan KeepResultsFor { get; set; } = TimeSpan.FromHours(1);
 
+    /// <summary>
+    /// How long a complete result answers an identical request instead of a new run (the agent's whole-suite
+    /// confirmation, then the api's verification of the same diff). Zero: never reuse.
+    /// </summary>
+    public TimeSpan ReuseResultsFor { get; set; } = TimeSpan.FromMinutes(15);
+
+    /// <summary>The most results kept for reuse; the oldest goes first.</summary>
+    public int ReuseMaxResults { get; set; } = 16;
+
     /// <summary>The .NET unit test project and its coverage settings, relative to the repository root.</summary>
     public string DotnetTestProject { get; set; } = "tests/Maf.Lab.Tests";
     public string DotnetCoverageSettings { get; set; } = "tests/Maf.Lab.Tests/coverage.config.xml";

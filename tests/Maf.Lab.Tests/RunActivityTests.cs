@@ -274,6 +274,27 @@ public sealed class RunActivityTests : IAsyncLifetime
         Assert.Equal(RunActivityProjection.AttemptEvent, custom.Name);
         var value = JsonSerializer.SerializeToElement(custom.Value, AGUIStream.Json);
         Assert.Equal((2, 72.1), (value.GetProperty("attempt").GetInt32(), value.GetProperty("after").GetDouble()));
+        // An entry recorded without its scope reads as it always did.
+        Assert.False(value.TryGetProperty("run", out _));
+        Assert.False(value.TryGetProperty("confirmation", out _));
+    }
+
+    [Fact]
+    public async Task An_attempts_event_carries_what_it_ran_and_its_confirmation()
+    {
+        var view = new RunActivityProjection("r1");
+        var result = new AttemptActivity(41, 86.3, "ok", new TestCounts(1219, 0, 0), [], 0,
+            new AttemptRun(TestScope.Related, 3, 58), new AttemptRun(TestScope.All, 0, 1219, Reused: true, Pct: 86.3));
+
+        var events = await ProjectAsync(view, [Entry(1, ActivityType.Attempt, 2) with { Result = result }]);
+
+        var value = JsonSerializer.SerializeToElement(Assert.IsType<CustomEvent>(Assert.Single(events)).Value, AGUIStream.Json);
+        var run = value.GetProperty("run");
+        Assert.Equal((TestScope.Related, 3, 58), (run.GetProperty("scope").GetString(), run.GetProperty("files").GetInt32(), run.GetProperty("tests").GetInt32()));
+        Assert.False(run.TryGetProperty("reason", out _));
+        var confirmation = value.GetProperty("confirmation");
+        Assert.Equal((TestScope.All, 1219, true, 86.3), (confirmation.GetProperty("scope").GetString(), confirmation.GetProperty("tests").GetInt32(),
+            confirmation.GetProperty("reused").GetBoolean(), confirmation.GetProperty("pct").GetDouble()));
     }
 
     [Theory]

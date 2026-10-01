@@ -102,16 +102,7 @@ public sealed class RunActivityProjection(string runId)
                     yield return new CustomEvent
                     {
                         Name = AttemptEvent,
-                        Value = JsonSerializer.SerializeToElement(new
-                        {
-                            attempt = row.Attempt,
-                            before = result.Before,
-                            after = result.After,
-                            build = result.Build,
-                            tests = result.Tests,
-                            errors = result.Errors,
-                            violations = result.Violations,
-                        }, AGUIStream.Json),
+                        Value = AttemptValue(row.Attempt, result),
                     };
                     break;
                 case ActivityType.Resumed:
@@ -239,6 +230,33 @@ public sealed class RunActivityProjection(string runId)
         : new TextMessageContentEvent { MessageId = id, Delta = delta };
 
     private static string MessageId(long seq, string type) => $"{type}-{seq}";
+
+    /// <summary>
+    /// An attempt's result as the browser reads it. What the attempt ran (<c>run</c>) and its whole-suite confirmation
+    /// (<c>confirmation</c>) are present only when the entry recorded them, so an entry from before reads as it did.
+    /// </summary>
+    internal static JsonElement AttemptValue(int attempt, AttemptActivity result)
+    {
+        var value = JsonSerializer.SerializeToNode(new
+        {
+            attempt,
+            before = result.Before,
+            after = result.After,
+            build = result.Build,
+            tests = result.Tests,
+            errors = result.Errors,
+            violations = result.Violations,
+        }, AGUIStream.Json)!.AsObject();
+        if (result.Run is { } run)
+        {
+            value["run"] = JsonSerializer.SerializeToNode(run, TestGenKinds.Json);
+        }
+        if (result.Confirmation is { } confirmation)
+        {
+            value["confirmation"] = JsonSerializer.SerializeToNode(confirmation, TestGenKinds.Json);
+        }
+        return JsonSerializer.SerializeToElement(value, AGUIStream.Json);
+    }
 
     private static T? Data<T>(TestGenRunActivityRow row) where T : class =>
         row.DataJson is { } json ? JsonSerializer.Deserialize<T>(json, TestGenKinds.Json) : null;

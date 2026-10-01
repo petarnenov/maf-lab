@@ -57,6 +57,13 @@ public static class LabTelemetry
         public static readonly Counter<long> ToolCalls =
             Meter.CreateCounter<long>("maf.tool.calls", "{call}", "Tool calls, by tool and outcome.");
 
+        /// <summary>
+        /// Coverage-runner requests by what reuse did with them (<c>outcome</c>: hit, joined, miss, fresh, off), with the
+        /// toolchain and the scope. Never the commit, the diff or a path.
+        /// </summary>
+        public static readonly Counter<long> RunnerReuse =
+            Meter.CreateCounter<long>("maf.runner.reuse", "{request}", "Coverage-runner requests, by what reuse did with them.");
+
         public static readonly Histogram<double> RetrievalStage =
             Meter.CreateHistogram<double>("maf.retrieval.stage.duration", "ms", "How long a stage of retrieval takes.");
     }

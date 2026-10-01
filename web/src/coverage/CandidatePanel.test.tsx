@@ -71,13 +71,13 @@ const runDetail: RunDetail = {
   ],
 };
 
-function open(decision: (method: string) => Response, role: 'FIRM_ADMIN' | 'ADVISOR' = 'FIRM_ADMIN') {
+function open(decision: (method: string) => Response, role: 'FIRM_ADMIN' | 'ADVISOR' = 'FIRM_ADMIN', shown: RunDetail = runDetail) {
   const calls = stubCoverageApi({
     '/api/coverage/tree': () => jsonResponse(sampleTree),
     '/api/coverage/files': () => jsonResponse(detail({ run: candidate })),
     '/api/coverage/runs/r_1/accept': decision,
     '/api/coverage/runs/r_1/discard': decision,
-    '/api/coverage/runs/r_1': () => jsonResponse(runDetail),
+    '/api/coverage/runs/r_1': () => jsonResponse(shown),
   });
   renderWithProviders(<CoveragePage />, {
     route: '/coverage?file=src%2FLab%2FBeta.cs',
@@ -133,6 +133,34 @@ describe('candidate panel', () => {
 
     const panel = await screen.findByRole('region', { name: 'Candidate' });
     expect(within(panel).queryByRole('button', { name: 'Accept' })).toBeNull();
+  });
+
+  it('says when verification reused the runner result computed for the agent confirmation', async () => {
+    open(() => jsonResponse({}), 'FIRM_ADMIN', {
+      ...runDetail,
+      report: {
+        ...runDetail.report!,
+        verification: {
+          scope: 'all',
+          tests: { passed: 1219, failed: 0, skipped: 2 },
+          pct: 86,
+          reusedFrom: { jobId: 'job_1', completedAt: '2026-10-01T10:00:00Z' },
+        },
+      },
+    });
+
+    const panel = await screen.findByRole('region', { name: 'Candidate' });
+    expect(await within(panel).findByText(/Whole suite: 1,221 tests, 1,219 passed\./)).toHaveTextContent(
+      "verification reused that result",
+    );
+  });
+
+  it('says nothing about verification for a run verified before it was recorded', async () => {
+    open(() => jsonResponse({}));
+
+    const panel = await screen.findByRole('region', { name: 'Candidate' });
+    expect(await within(panel).findByText('tests/Lab.Tests/BetaTests.cs')).toBeInTheDocument();
+    expect(panel).not.toHaveTextContent('Whole suite');
   });
 
   it('counts each file of a diff', () => {

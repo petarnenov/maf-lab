@@ -16,6 +16,13 @@ public sealed class CoverageRunnerOptions
     public string PartnerId { get; set; } = "maf-lab-assistant";
 
     public TimeSpan PollEvery { get; set; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// Whether verification may be answered with a complete result the runner already computed for the identical
+    /// request (the agent's whole-suite confirmation of the same diff). False asks the runner for a fresh run: a second
+    /// sample of the whole suite, at the cost of running it again.
+    /// </summary>
+    public bool ReuseForVerification { get; set; } = true;
 }
 
 public static class CoverageRunnerRegistration

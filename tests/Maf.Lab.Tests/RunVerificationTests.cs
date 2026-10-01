@@ -83,7 +83,8 @@ public sealed class RunVerificationTests
         public void Dispose() => Api.Dispose();
     }
 
-    private static async Task<Harness> HarnessAsync(bool withToken = true, Func<RunnerRequest, RunnerResult>? runner = null)
+    private static async Task<Harness> HarnessAsync(bool withToken = true, Func<RunnerRequest, RunnerResult>? runner = null,
+        IReadOnlyDictionary<string, string?>? settings = null)
     {
         var repo = await RepoAsync();
         var fakeRunner = new FakeCoverageRunner
@@ -100,7 +101,7 @@ public sealed class RunVerificationTests
         {
             ["GitHub:Repository"] = "owner/repo",
             ["GitHub:TokenVariable"] = tokenVariable,
-        });
+        }.Concat(settings ?? new Dictionary<string, string?>()).ToDictionary());
         var previous = api.ConfigureTestServices;
         api.ConfigureTestServices = s =>
         {
@@ -173,6 +174,34 @@ public sealed class RunVerificationTests
         // Nobody's checkout was touched.
         Assert.False(File.Exists(Path.Combine(h.Repo.Root, "tests/Lab.Tests/CalcTests.cs")));
         Assert.Equal("", (await h.Repo.GitAsync(Ct, "status", "--porcelain")).Text.Trim());
+    }
+
+    [Fact]
+    public async Task A_verification_the_runner_answered_from_the_confirmation_records_it()
+    {
+        var confirmed = new RunnerReuse("job_confirmation", DateTimeOffset.UtcNow.AddMinutes(-1));
+        using var h = await HarnessAsync(runner: _ => FakeCoverageRunner.Result(FakeCoverageRunner.Report("/work/job", (Target, 21, 25)), targetPct: 84)
+            with { Selection = TestSelection.Whole, ReusedFrom = confirmed });
+
+        var run = await VerifyAsync(h, await VerifyingRunAsync(h, NewTest(GoodTest), reported: 88));
+
+        Assert.Equal(TestGenRunState.Candidate, run.State);
+        // Asked as any verification asks; the runner chose to answer from the result it had computed.
+        Assert.False(h.Runner.Requests.Last().Fresh);
+        var verification = JsonSerializer.Deserialize<TestGenReport>(run.ReportJson!, TestGenKinds.Json)!.Verification;
+        Assert.Equal(new VerificationRun(TestScope.All, new TestCounts(10, 0, 0), 84, confirmed), verification);
+    }
+
+    [Fact]
+    public async Task Verification_configured_not_to_reuse_asks_for_a_fresh_run()
+    {
+        using var h = await HarnessAsync(settings: new Dictionary<string, string?> { ["CoverageRunner:ReuseForVerification"] = "false" });
+
+        var run = await VerifyAsync(h, await VerifyingRunAsync(h, NewTest(GoodTest)));
+
+        Assert.Equal(TestGenRunState.Candidate, run.State);
+        Assert.True(h.Runner.Requests.Last().Fresh);
+        Assert.Null(JsonSerializer.Deserialize<TestGenReport>(run.ReportJson!, TestGenKinds.Json)!.Verification!.ReusedFrom);
     }
 
     [Fact]

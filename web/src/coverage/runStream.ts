@@ -18,6 +18,19 @@ export interface StopInfo {
   notStarted?: number | null;
 }
 
+/**
+ * What one runner job of an attempt ran: its scope, the related test files, the tests that ran, why the whole suite ran
+ * instead, and whether the runner reused a result it had already computed. `pct` is set on a confirmation.
+ */
+export interface AttemptRun {
+  scope: string;
+  files: number;
+  tests: number;
+  reason?: string | null;
+  reused?: boolean;
+  pct?: number | null;
+}
+
 export interface AttemptResult {
   attempt: number;
   before: number | null;
@@ -26,6 +39,28 @@ export interface AttemptResult {
   tests: { passed: number; failed: number; skipped: number };
   errors: string[];
   violations: number;
+  /** What the attempt's measured run ran; absent on entries recorded before attempts said so. */
+  run?: AttemptRun | null;
+  /** The whole-suite run that confirmed the attempt, whose counts are then the attempt's. */
+  confirmation?: AttemptRun | null;
+}
+
+const count = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+
+/**
+ * What an attempt ran, in words: "related: 3 files, 58 tests → whole suite: 1,219 tests (confirmation)", or
+ * "whole suite: <why>" when the whole suite ran instead. Null for an entry that does not say.
+ */
+export function attemptScope({ run, confirmation }: Pick<AttemptResult, 'run' | 'confirmation'>): string | null {
+  if (!run) return null;
+  const reused = run.reused ? ' (reused)' : '';
+  const ran =
+    run.scope === 'related'
+      ? `related: ${count(run.files, 'file', 'files')}, ${count(run.tests, 'test', 'tests')}${reused}`
+      : `whole suite: ${run.reason ? run.reason : count(run.tests, 'test', 'tests')}${reused}`;
+  if (!confirmation) return ran;
+  const how = confirmation.reused ? 'confirmation, reused' : 'confirmation';
+  return `${ran} → whole suite: ${count(confirmation.tests, 'test', 'tests')} (${how})`;
 }
 
 /** One line of a run's timeline, as the AG-UI stream told it. */
