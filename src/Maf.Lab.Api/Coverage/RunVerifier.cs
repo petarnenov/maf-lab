@@ -24,6 +24,7 @@ public sealed partial class RunVerifier(
     ILogger<RunVerifier> logger) : IRunVerifier
 {
     public const string NotReproduced = "suspected bug not reproduced";
+    public const string NotLintClean = "the tests do not pass lint (warnings, ESLint or Prettier in the diff's files)";
 
     public async Task VerifyAsync(string runId, CancellationToken ct)
     {
@@ -71,7 +72,8 @@ public sealed partial class RunVerifier(
             await copy.WriteAsync(bug.TestFile, unskipped, ct);
             var proof = await runner.RunAsync(new RunnerRequest(run.CommitSha, run.Toolchain, await copy.DiffAsync(ct)), ct);
             await copy.WriteAsync(bug.TestFile, content, ct);
-            if (!proof.Measured)
+            // The proof's copy is never merged: what counts is whether its tests ran, not whether it lints.
+            if (!proof.Measured && !LintDiagnostics.OnlyLint(proof))
             {
                 await FailAsync(runId, $"suspected bug {bug.Test} could not be checked ({proof.Status}, build {proof.Build})", ct);
                 return;
@@ -87,7 +89,8 @@ public sealed partial class RunVerifier(
         var measured = await runner.RunAsync(new RunnerRequest(run.CommitSha, run.Toolchain, report.Diff, run.Path), ct);
         if (!measured.Measured)
         {
-            await FailAsync(runId, measured.Status == RunnerStatus.Ok ? "the tests do not build" : $"the runner reported {measured.Status}", ct);
+            await FailAsync(runId, measured.Status != RunnerStatus.Ok ? $"the runner reported {measured.Status}"
+                : LintDiagnostics.OnlyLint(measured) ? NotLintClean : "the tests do not build", ct);
             return;
         }
         if (measured.Tests.Failed > 0)

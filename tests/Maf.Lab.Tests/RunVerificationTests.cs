@@ -187,6 +187,34 @@ public sealed class RunVerificationTests
         Assert.Null(run.Branch);
     }
 
+    private const string Ca2022 = "tests/Lab.Tests/CalcTests.cs(4,9): warning CA2022: Avoid inexact read with 'System.IO.Stream.Read(byte[], int, int)'";
+
+    [Fact]
+    public async Task A_candidate_that_would_fail_lint_fails_verification_and_records_nothing()
+    {
+        using var h = await HarnessAsync(runner: _ => FakeCoverageRunner.Result(FakeCoverageRunner.Report("/work/job", (Target, 9, 10)),
+            targetPct: 90, build: BuildOutcome.Failed) with { Diagnostics = [Ca2022] });
+
+        var run = await VerifyAsync(h, await VerifyingRunAsync(h, NewTest(GoodTest)));
+
+        Assert.Equal((TestGenRunState.VerificationFailed, RunVerifier.NotLintClean), (run.State, run.Reason));
+        Assert.Empty(await h.Get<CoverageStore>().CandidatesAsync([run.Id], Ct));
+        Assert.Null(run.Branch);
+    }
+
+    [Fact]
+    public async Task A_compile_error_beside_a_warning_is_a_build_failure()
+    {
+        using var h = await HarnessAsync(runner: _ => FakeCoverageRunner.Result(FakeCoverageRunner.EmptyReport, build: BuildOutcome.Failed) with
+        {
+            Diagnostics = ["tests/Lab.Tests/CalcTests.cs(4,51): error CS1002: ; expected", Ca2022],
+        });
+
+        var run = await VerifyAsync(h, await VerifyingRunAsync(h, NewTest(GoodTest)));
+
+        Assert.Equal((TestGenRunState.VerificationFailed, "the tests do not build"), (run.State, run.Reason));
+    }
+
     [Fact]
     public async Task A_diff_that_touches_production_code_fails_without_running_anything()
     {
@@ -271,6 +299,20 @@ public sealed class RunVerificationTests
                 // The un-skipped proof ran once, then the real verification.
         Assert.Equal(2, h.Runner.Requests.Count);
         Assert.DoesNotContain("Skip = ", h.Runner.Requests.First().Diff);
+    }
+
+    [Fact]
+    public async Task A_bug_proof_with_only_a_lint_finding_still_reproduces_the_bug()
+    {
+        // Un-skipping can leave the copy unformatted or warning; that copy is never merged, so its tests decide.
+        using var h = await HarnessAsync(runner: r => r.Diff!.Contains("Skip = ", StringComparison.Ordinal)
+            ? BugRunner(r)
+            : BugRunner(r) with { Build = BuildOutcome.Failed, Diagnostics = [Ca2022] });
+
+        var run = await VerifyAsync(h, await VerifyingRunAsync(h, NewTest(BugTest), bugs: [Bug]));
+
+        Assert.Equal(TestGenRunState.Candidate, run.State);
+        Assert.Single(h.GitHub.Issues);
     }
 
     [Fact]
