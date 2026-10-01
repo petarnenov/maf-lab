@@ -84,7 +84,7 @@ help: ## List the targets
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 # ── lifecycle ────────────────────────────────────────────────────────────────────────────────────────────────────
-up: require-docker ## Build and start the stack (replicas via API_REPLICAS/MCP_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy
+up: require-docker ## Build and start the stack (replicas via API_REPLICAS/MCP_REPLICAS/PORTFOLIO_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy
 	@if [ "$(CI_MODE)" != "1" ] && [ -z "$$OLLAMA_API_KEY" ]; then echo "⚠ OLLAMA_API_KEY is not set: the stack starts, but chat (Ollama Cloud) will fail. Run 'make setup'."; fi
 	@if [ "$(CI_MODE)" != "1" ] && [ -z "$$JEV_MAF_LAB" ]; then echo "⚠ JEV_MAF_LAB is not set: the stack starts, but no turn is classified (nothing forced to search)."; fi
 	@# compose itself waits for the balancer's dependencies to be healthy; if that fails, show which service and why.
