@@ -48,9 +48,12 @@ Microsoft Agent Framework hosting. The browser uses the official CopilotKit clie
   - Phases stay `STEP_*`, and tool calls, text and reasoning stay the protocol's own.
   - A late subscriber rejoins with the protocol's `connect`, or, if the spike shows the server cannot serve it, with a
     new run that replays the run's events through the same adapter.
-- **The web uses CopilotKit, headless.** It runs `@copilotkit/react-core` 1.76.0 with `selfManagedAgents`, and each
-  agent is an `@ag-ui/client` `HttpAgent` pointed at its .NET endpoint with the user's bearer token. There is no Node
-  `CopilotRuntime`.
+- **The web uses CopilotKit, headless, through CopilotKit's own runtime.**
+  - A new wiring-only Node service, `copilot-runtime`, is reached at `/copilotkit/` behind the balancer. It registers
+    the api's agents as `@ag-ui/client` `HttpAgent`s and forwards the user's bearer token.
+  - The browser runs `@copilotkit/react-core` 1.76.0 headless with `runtimeUrl`.
+  - The spike showed that the alternatives are CopilotKit's paid Enterprise tier (`selfManagedAgents`) or an API
+    declared dev only.
   - `sseParser`, `readChatStream`, `chatEvents`, `ChatStreamEvent`, the stream half of `chatReducer`, `runStream` and
     `useRunEvents` are deleted.
   - Screens read messages, tool calls, state, steps and run status from `useAgent`. They add renderers only through
@@ -106,7 +109,9 @@ monitor's live trace read from the trace API) is covered by `agui-stream` and `t
 - **Packages:**
   - .NET: `Microsoft.Agents.AI`, `.A2A` and `.Hosting.*` move 1.22 → 1.23. `Microsoft.Agents.AI.Hosting.AGUI.AspNetCore`
     1.23.0-preview.260928.1 is added.
-  - web: `@copilotkit/react-core` 1.76.0 and `@ag-ui/client` 1.0.1 are added, and `@ag-ui/core` moves 1.0.0 → 1.0.1.
+  - .NET: `Microsoft.Extensions.AI.Abstractions` moves 10.10.0 → 10.10.1, which the hosting package requires.
+  - web: `@copilotkit/react-core` 1.76.0 is added, and `@ag-ui/core` moves 1.0.0 → 1.0.1.
+  - copilot-runtime: `@copilotkit/runtime` 1.76.0 and `@ag-ui/client` 1.0.1.
   - DECISIONS.md gets a new entry, and §26, §49 and §52 are marked as revised.
 - **api:**
   - `Agent/ChatTurnRunner.cs` and `Agent/Streaming/*` are rewritten into the agent pipeline.
@@ -120,7 +125,8 @@ monitor's live trace read from the trace API) is covered by `agui-stream` and `t
 - **Evals and scripts:** `evals/ui-events.jsonl`, `scripts/capture_ui_events.sh`, `scripts/testgen_e2e.sh`.
 - **Tests:** new architecture tests, the conformance test and the swap test. Stream tests across api and web are
   rewritten against the official client.
-- **Nginx and compose:** the agent routes stay under `/api` on 7171. No new service, because there is no Node runtime.
+- **New service `copilot-runtime`** (Node 24, one replica, in compose and `make`, with `/health`), and a new nginx
+  location `/copilotkit/`. The agent endpoints stay under `/api` on 7171.
 - **Tenancy:** unchanged. The agent reads the principal from the request. No tenant parameter is added to any tool,
   endpoint or query builder.
 
@@ -135,9 +141,11 @@ monitor's live trace read from the trace API) is covered by `agui-stream` and `t
   `traceSeq` go away.
 - `README.md` (§ around line 366): the custom-event paragraph is replaced by the protocol-only rule and the CopilotKit
   client.
-- `openspec/project.md`: the Frontend stack names CopilotKit (headless) and `@ag-ui/client`. The `Maf.Lab.Api`
+- `openspec/project.md`: the Frontend stack names CopilotKit (headless, via its runtime), and the Containers list and
+  repository layout gain `copilot-runtime` (via `docs/docs-sync.toml` and `make docs`).
+- `docs/http-api.md` also gains the `/copilotkit/` route. The `Maf.Lab.Api`
   description gets "AG-UI via MAF `MapAGUIServer`", edited through its `.csproj` `<Description>` and `make docs`.
-- `CLAUDE.md`: a non-negotiable is added: "Only official AG-UI events: no `CUSTOM`, no hand-built events, no own SSE
+- `CLAUDE.md`: the entry point list gains `copilot-runtime` x1 behind the balancer. A non-negotiable is added: "Only official AG-UI events: no `CUSTOM`, no hand-built events, no own SSE
   code; agents via `MapAGUIServer`, web via CopilotKit".
 - `.github/copilot-instructions.md`: the same rule.
 - `docs/telemetry.md`: no change, because the OTel instrumentation stays and the AG-UI server adds its own activity

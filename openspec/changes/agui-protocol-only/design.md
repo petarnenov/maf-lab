@@ -24,24 +24,33 @@ See proposal.md for why.
 - `MapCall(tool, …)`, `MapInterrupt(…)`, `MapContent(…)`;
 - `MapStreamingToolCallArguments`, `WithUsageProvider`.
 
-CopilotKit 1.76.0 runs on `@ag-ui/client`/`@ag-ui/core` 1.0.1. It accepts `selfManagedAgents: Record<string,
-AbstractAgent>` and has a headless entry.
+CopilotKit 1.76.0 runs on `@ag-ui/client`/`@ag-ui/core` 1.0.1 and has a headless entry.
 
-The phase-0 spike checks the assumptions marked **[spike]** below. Each has its fallback decided here, so the spike's
-result picks a branch, not a new design.
+**Spike (phase 0, 2026-10-01): GO.** It ran against a fake `IChatClient` with MAF 1.23.0, the hosting package
+1.23.0-preview.260928.1, `AGUI.*` 1.0.0, MEAI 10.10.0 (Abstractions 10.10.1), CopilotKit 1.76.0 and
+`@ag-ui/client` 1.0.1. Its findings are folded into the decisions below:
+- Three setup items are required, and without them the official client rejects or breaks the stream:
+  - a null-omitting JSON resolver;
+  - the interrupt content types registered;
+  - `rawEvent` stripped.
+- `connect` is not supported. The server maps POST only, and `HttpAgent` throws `AGUIConnectNotImplementedError`,
+  which CopilotKit swallows.
+- CopilotKit OSS has no supported way to register an agent without its Node runtime. The only ways are
+  `selfManagedAgents` (Enterprise tier, licence key) and `agents__unsafe_dev_only`/`addAgent__unsafe_dev_only`.
 
 ## Goals / Non-Goals
 
 **Goals:**
 - One shape for every agent: an `AIAgent` behind `MapAGUIServer`, with all AG-UI output coming from the adapter and
   the hooks registered in one place.
-- One shape for every screen: CopilotKit's `useAgent` over an `HttpAgent`, plus optional renderers keyed by tool
-  name or activity type.
+- One shape for every screen: CopilotKit's `useAgent`, reached through CopilotKit's own runtime, plus optional
+  renderers keyed by tool name or activity type.
 - Keep every existing guarantee: tenant from the principal, the redaction of free text, the guard and answer checks,
   persistence, trace, frames, the themed progress feedback.
 
 **Non-Goals:**
-- No CopilotKit Node runtime, CopilotCloud, GraphQL client or CopilotKit's styled UI kit.
+- No CopilotCloud, no Intelligence tier, no GraphQL (v1) client, no CopilotKit styled UI kit, and no logic in the
+  runtime beyond registering agents.
 - No change to tools, MCP servers, A2A between api and agents, retrieval, Jev requests or the stored data model,
   beyond the additive fields named below.
 - No change to the screens' layout or copy, except where a spec delta says so.
@@ -56,10 +65,10 @@ result picks a branch, not a new design.
     These are exact versions, matching CopilotKit's own.
   - `zod` is added as CopilotKit's peer dependency.
 - One DECISIONS.md entry covers all of it in the same commit.
-- *Rejected:* staying on 1.22. Its hosting package is compiled against `AGUI.*` 0.0.6, and binding it to 1.0.0 is
-  unsupported **[spike checks whether it even loads]**.
-- *Rejected:* a Node `CopilotRuntime` service. It is a second backend and a GraphQL hop, and it would put a
-  non-.NET service in front of every agent.
+- `Microsoft.Extensions.AI.Abstractions` moves 10.10.0 → 10.10.1, which the hosting package requires.
+- *Rejected:* staying on 1.22. Its hosting package is compiled against `AGUI.*` 0.0.6. Forced to 1.0.0, it streams
+  plain text but is an unsupported combination, and the spike did not test interrupts on it.
+- `copilot-runtime` (D12) adds `@copilotkit/runtime` 1.76.0 and `@ag-ui/client` 1.0.1 on Node 24, at exact versions.
 
 ### D2. The chat agent is a `DelegatingAIAgent` around the MAF chat agent
 - `ChatAgent : DelegatingAIAgent` wraps the existing `ChatClientAgent` (same model, same tools). Its
@@ -86,28 +95,36 @@ result picks a branch, not a new design.
 |---|---|---|
 | `maf-lab/sources` | search tool's result content: `{ summary, sourceCount, sources: [{ docId, sectionPath, sourcePath, snippet }] }` (snippet as today) | `MapResult("search_documents" …)` |
 | cards | `ACTIVITY_SNAPSHOT` (`activityType` unchanged, e.g. `maf-lab/holdings`) | `MapResult(tool, …)` for the three allow-listed tools |
-| confirmation | `RUN_FINISHED` + interrupt, answered by `resume` | `MapInterrupt` on the proposal content **[spike: MAF approval content may map by itself]** |
-| focus | `STATE_SNAPSHOT { focus }` at start and on change | `MapResultAsStateSnapshot` for reads that move focus; the start snapshot is emitted by `MapContent` of a state content the agent yields first **[spike]** |
-| turn progress | `STEP_STARTED/FINISHED` (screening, routing, `tool: <name>`, answer check) | `MapContent` of a step content the agent yields |
+| confirmation | `RUN_FINISHED` + generic interrupt (`InterruptRequestContent`), answered by `resume` (`InterruptResponseContent.Payload`) | the adapter maps it by itself once the interrupt types are registered (D11) |
+| focus | `STATE_SNAPSHOT { focus }` at start and on change | `MapContent` of a state `DataContent` the agent yields first and after a focus change |
+| turn progress | `STEP_STARTED/FINISHED` (screening, routing, `tool: <name>`, answer check) | `MapContent` of a step `DataContent` marker the agent yields |
 | `maf-lab/trace` | not on the stream; trace API (D6) | — |
-| `TOOL_CALL_ARGS` and `RESULT` redaction | identifier-only args, summary results | `MapCall` / `MapResult` per tool; one default for all other tools **[spike: whether a mapping replaces or adds]** |
-| `rawEvent` | absent | adapter option **[spike]** |
+| `TOOL_CALL_ARGS` and `RESULT` redaction | identifier-only args, summary results | agent middleware (`AIAgentBuilder.Use(runStreamingFunc)`) rewrites `FunctionCallContent` arguments and `FunctionResultContent` before the adapter sees them |
+| `rawEvent` | absent | a System.Text.Json contract modifier on the AG-UI JSON options (D11) |
 
 - All hooks live in one class, `Agent/AGUI/AGUIMappings.cs`. That class is the only place in the solution allowed to
   construct a `BaseEvent`.
-- **Fallback if a hook adds instead of replaces, or `rawEvent` cannot be switched off:** a stream filter on the
-  endpoint (`RunRedaction`, kept) may *remove fields* from adapter events. It can never create, reorder or retype an
-  event.
+- `MapResult` only *adds* events after a result, so redaction cannot be a hook. It runs earlier, in agent middleware,
+  so the adapter never sees the free text. `RunRedaction` becomes that middleware, and no stream filter exists.
+- *Rejected for the confirmation:* MAF's `ApprovalRequiredAIFunction`. It maps to an interrupt automatically, but its
+  resume needs a server-side `AgentSessionStore` (the in-memory one is dev only) plus a no-history provider. Its
+  rejections surface only as a generic `RUN_ERROR`, and its resume payload must echo the tool call. Our
+  `ConfirmationService` already keeps the proposal durably, signed and owned, which is what the spec's "answering
+  twice" and "someone else's interrupt" rely on. A generic interrupt carries it unchanged.
 
 ### D4. Stop and rejoin
 - **Stop** is the client's abort. Ending the request cancels the run on the replica that serves it, and the run's
   token already hangs off the request (§26). `POST /api/chat/{runId}/stop` and `RunStopper`'s cross-replica fan-out
   are deleted.
-- **Rejoin.** If the server implements the protocol's `connect`, that is used **[spike]**. Otherwise a rejoin is an
-  ordinary run on the same thread with no new user message. The agent recognises it, finds the in-progress or ended
+- **Rejoin.** The server does not implement `connect` (spike), so a rejoin is an ordinary run on the same thread
+  with no new user message. The agent recognises it, finds the in-progress or ended
   run in `IRunStateStore`, and replays it as updates. The adapter turns them into events, and the run ends the way
   the original did.
-- `GET /api/chat/{runId}` is deleted in both cases.
+- `GET /api/chat/{runId}` is deleted.
+- **History.** The agent does not trust the history a client resends. It takes the new user message (or the interrupt
+  answer) from `RunAgentInput` and builds the rest from the stored conversation, as the runner does today. The inner
+  agent therefore runs with no history provider of its own, which also avoids the duplicate-key failure the spike
+  saw with MAF's default in-memory history.
 
 ### D5. The test-generation run is an agent
 - `TestGenRunAgent : AIAgent` is mapped at `/api/coverage/runs/agent`. The thread is `testgen:<run id>`, and any
@@ -133,29 +150,37 @@ result picks a branch, not a new design.
 
 ### D7. Frames
 - The frame recorder taps the adapter's output, not our channel (which no longer exists).
-- It reads the server's `AGUIServerInstrumentation` activity events if they carry each event **[spike]**. Otherwise it
-  tees the response body on agent routes and decodes it with `System.Net.ServerSentEvents.SseParser` (the platform's
-  decoder) and `AGUI.Abstractions` types.
+- It tees the response body on agent routes and decodes it with `System.Net.ServerSentEvents.SseParser` (the
+  platform's decoder) into `AGUI.Abstractions` types. It reads and never writes. It lives in
+  `Agent/AGUI/RunFrameTap.cs`, the one file the arch test lets read the event stream.
 - `name` and `traceSeq` leave the frame.
 
-### D8. Web: CopilotKit headless, one registry of agents
-- `AgentsProvider` wraps the app in `CopilotKitProvider` (headless) with `selfManagedAgents`:
-  - `chat` → `new HttpAgent({ url: '/api/chat', headers })`;
-  - `testgen:<id>` agents, created on first use and kept while subscribed, so every view of a run shares one stream
-    (the existing "one stream per run" rule);
-  - headers come from `useAuth` and are refreshed on token change.
+### D8. Web: CopilotKit headless, through the runtime
+- `AgentsProvider` creates one `CopilotKitCoreReact({ runtimeUrl: '/copilotkit', headers })` and provides it through
+  `CopilotKitContext` (from `@copilotkit/react-core/v2/context`):
+  - headers come from `useAuth` and are refreshed on token change;
+  - the agents are `chat` and `testgen`. A run is the `testgen` agent on thread `testgen:<id>`, and every view of one
+    run shares that agent and thread (the existing "one stream per run" rule).
+- *Why not `CopilotKitProvider`:* the `/v2` index entry imports Tailwind CSS and is the 16.5 MB build.
+- *Rejected after the spike:*
+  - `selfManagedAgents` is CopilotKit's Enterprise tier and needs a licence key.
+  - `agents__unsafe_dev_only` is declared dev only.
+  - `@ag-ui/client` alone would not be CopilotKit.
+
+  Decided by the user on 2026-10-01: CopilotKit's own runtime, D12.
 - The chat screen and the Activity modal use `useAgent`:
   - messages, `isRunning` and `state`;
   - tool calls from the messages;
   - steps from the agent's event subscription.
 - Renderers:
-  - cards via `useRenderActivityMessage(activityType)`;
+  - cards from the agent's activity messages, by `activityType` (`useRenderActivityMessage` is not in the headless
+    entry, so a small switch over `activityType` renders them; an unknown type is ignored);
   - sources via `useRenderToolCall('search_documents')`;
   - the confirmation via `useHumanInTheLoop` on the interrupt;
   - run attempts and notices are rendered from `state`.
 - Every other tool call or activity gets a generic card.
-- Styling: our CSS modules and theme tokens. No Tailwind and no CopilotKit stylesheet is imported **[spike: headless
-  works unstyled]**.
+- Styling: our CSS modules and theme tokens. The headless and context entries import no CSS and work unstyled
+  (spike). The `/v2` index entry imports a 90 KB Tailwind build and KaTeX fonts, so it is never imported.
 - Progress: one `RunProgress` component in the page theme reads `isRunning` and the current step, and is used for
   any agent.
 - History: opening a conversation loads `GET /api/conversations/{id}` (REST, unchanged) into the agent's messages.
@@ -192,6 +217,35 @@ result picks a branch, not a new design.
 
   It runs against the stack in `make verify`.
 
+### D11. Server setup the official client needs (spike)
+These are all in `Agent/AGUI/AGUIHosting.cs`:
+- **Null-omitting JSON:** `PostConfigure<JsonOptions>` inserts `AGUIJsonUtilities.DefaultTypeInfoResolver` first.
+  Without it, `HttpAgent` rejects `RUN_STARTED` (`parentRunId`, `input`, `subagentRunId` sent as `null`).
+- **`AGUIJsonUtilities.RegisterInterruptContentTypes`** on the same options. The hosting package does not call it, and
+  without it any interrupt ends in `RUN_ERROR` (to be reported upstream).
+- **A contract modifier** that stops `rawEvent` from serializing on every `BaseEvent`.
+- **`MapAGUIServer(...).RequireAuthorization()`**. The principal (`firm_id`) is read through `IHttpContextAccessor`
+  inside the agent and its tools, as everywhere else.
+- **Stream options** per endpoint via `.WithMetadata(AGUIMappings.For…())`, which wins over DI, so each agent's
+  mappings stay with its endpoint.
+
+### D12. `copilot-runtime`: CopilotKit's runtime, wiring only
+- **Where it lives:** a Node 24 service in `copilot-runtime/`: `package.json`, `server.ts` and a `Dockerfile`.
+- **What it runs:** `createCopilotNodeListener` with `new CopilotRuntime({ agents: ({ request }) => ({ chat, testgen }) })`.
+  - Each agent is an `HttpAgent` pointed at the api's `MapAGUIServer` endpoint through the balancer (`http://lb/...`),
+    created per request.
+  - The request's `Authorization` header is forwarded, so the api still resolves the principal and the tenant itself.
+    The runtime never reads the token.
+- **What it must not do:**
+  - add tools, prompts, middleware, memory or logging of content;
+  - run as an Intelligence runtime or send telemetry (`SCARF_ANALYTICS=false`, CopilotKit telemetry off).
+- **Routing:** nginx routes `/copilotkit/` to it, and nothing else reaches it. It runs as one replica. Its in-memory
+  agent runner only buffers a live run for a reconnecting browser. What a run is, and its rejoin, stay in the api
+  (D4), so a runtime restart loses nothing durable.
+- **Stop:** the browser's abort ends the runtime's request, which aborts its `HttpAgent` request to the api, which
+  cancels the run (D4). A test proves the chain.
+- **Health:** `/health`, in `make` and `make doctor`, like every other service.
+
 ### Jev
 No Jev request is added, removed or changed. The prompt screen, routing, tool-result guard, relevance judge and answer
 check keep their state fields, questions, thresholds, fallbacks and the pinned `jev-1.13.0`. Only the class that calls
@@ -199,18 +253,26 @@ them changes (D2). Their eval suites must stay at baseline.
 
 ## Risks / Trade-offs
 
-- **The hosting package is a preview.** → Pinned exactly, with the reason in DECISIONS. The spike runs the full
-  interrupt, resume and abort path before any code moves. The A2A hosting is already on a preview of the same train.
-- **A hook adds events instead of replacing them, leaking free text.** → D3's field-removing filter. A test asserts
-  that no `TOOL_CALL_ARGS` or `TOOL_CALL_RESULT` carries a query, a reason or document text (the existing redaction
-  tests move over unchanged).
+- **The hosting package is a preview, with two bugs found by the spike** (null fields, interrupt types). → Pinned
+  exactly, with the reason in DECISIONS. Both workarounds are in D11 with a test each, so an upgrade that fixes or
+  breaks them is noticed. Both are reported upstream.
+- **Free text leaking through the adapter.** → Redaction runs before the adapter (D3). A test asserts that no
+  `TOOL_CALL_ARGS` or `TOOL_CALL_RESULT` carries a query, a reason or document text (the existing redaction tests move
+  over unchanged).
 - **The card must follow its tool result.** The adapter's ordering differs from the runner's. → The activity is
   emitted by `MapResult` for the same call, so it is adjacent by construction. The existing card ordering test stays.
-- **CopilotKit's weight.** It pulls `rxjs`, `@ag-ui/client`, markdown and UI dependencies even headless. → The
-  headless entry and tree-shaking are measured in the spike. The budget is under +250 KB gzip on the chat route;
-  above it, `@ag-ui/client` alone is used through a thin `useAgent`-shaped hook, which is still the official client.
+- **CopilotKit's weight** (spike, minified and gzipped, on top of React's 68 KB):
+  - `HttpAgent` alone adds 187 KB;
+  - the headless core and hooks add 255 KB;
+  - the full `/v2` provider adds about 593 KB initial (16.5 MB JS in 466 chunks).
+
+  It also pulls `@scarf/scarf` (an install-time telemetry script). → Headless only, the chat and coverage routes
+  lazy-loaded, and `SCARF_ANALYTICS=false` set in the web build.
 - **Polling the live trace.** → 500 ms, only while the monitor is open and the run is live. It is one indexed query
   on `seq`.
+- **A Node hop in front of every agent.** It adds one service and one hop. → The service is wiring only (D12), is
+  covered by the conformance test through it, and is a single file anyone can read. An agent stays reachable directly
+  by any AG-UI client, and the conformance test also drives the api directly.
 - **Losing behaviour while rewriting a 1312-line class.** → The existing `ChatTurnRunner` tests are ported first,
   against the agent through the in-memory `MapAGUIServer` host, and must pass before the runner is deleted.
 - **Cross-replica stop is lost.** → It only existed for an explicit stop call reaching the wrong replica. Abort on the
@@ -221,7 +283,7 @@ them changes (D2). Their eval suites must stay at baseline.
 One branch, `agui-protocol-only`, merged to `main` when the whole change is green. Old and new paths are never shipped
 side by side, because two wire contracts is exactly what this removes.
 
-1. **Spike** (phase 0). Its findings are recorded in this design. Each **[spike]** gets its branch chosen.
+1. **Spike** (phase 0, done). Its findings are recorded in Context and D1–D11.
 2. Packages and the guard tests, with the current violations listed as the expected failures.
 3. Server chat: `ChatAgent`, `AGUIMappings`, `MapAGUIServer`, live trace API, frames. The ported runner tests turn
    green, and the runner is deleted.
