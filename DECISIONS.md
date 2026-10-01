@@ -2429,3 +2429,17 @@ said which account the conversation was about.
   suspected bug's proof run (the candidate with one test un-skipped, never merged) by its tests, not by lint.
 - **Not covered: the web type check.** Vitest does not type-check, so a test with a type error still passes the runner
   and fails `make build-web` (`tsc -b`). Follow-up.
+
+## 66. Index targets start their own infrastructure (make-index-starts-its-infrastructure, 2026-10-01)
+
+- **Why.** `make index` ran the host-side indexer against Qdrant and the compose Ollama but never started them, so from
+  a stopped stack (after `make down`, a reboot, a fresh checkout) it died on an unhandled gRPC `Unavailable` and a core
+  dump. No package or model moved.
+- **A Make prerequisite, not a script.** `make infra` is `$(COMPOSE) up -d --wait qdrant ollama`, then
+  `$(COMPOSE) up --no-log-prefix ollama-init` in the foreground (one-shot; some compose versions treat an exited
+  container under `--wait` as a failure). Only Make 3.81 syntax and compose v2 flags, so macOS (Docker Desktop, system
+  make) and Linux behave the same. `$(COMPOSE)` keeps the project name and the CI overlay, where `ollama-init` is a no-op.
+  The seven indexer targets depend on it; on a running stack it changes no container.
+- **Named, not thrown.** The indexer maps gRPC `Unavailable` to Qdrant (`Host:GrpcPort`) and an `HttpRequestException`
+  over a `SocketException` to the embedding endpoint, prints one line with "run 'make infra'" and exits 1. Built from
+  configuration and exception types only, never an exception message.
