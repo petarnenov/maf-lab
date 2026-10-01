@@ -33,8 +33,8 @@
 
 ## 4. Web on CopilotKit
 
-- [ ] 4.0 Create `copilot-runtime/` (D12): `CopilotRuntime` with a per-request agents factory (`chat`, `testgen`) as `HttpAgent`s to the api through the balancer, forwarding `Authorization`, `/health`, telemetry off, a Dockerfile, a compose service (one replica), an nginx `/copilotkit/` location, and `make`/`make doctor` health. Verify: `make` brings it up healthy, and through `http://localhost:7171/copilotkit/` a Node `HttpAgent` script runs a chat turn to `RUN_FINISHED` with the user's tenant, and gets 401 without a token
-- [ ] 4.0a Prove stop through the runtime. Verify: aborting the browser-side run cancels the api run within one second (the api reports cancelled, and no tool runs afterwards)
+- [x] 4.0 Create `copilot-runtime/` (D12): `CopilotRuntime` with a per-request agents factory (`chat`, `testgen`) as `HttpAgent`s to the api through the balancer, forwarding `Authorization`, `/health`, telemetry off, a Dockerfile, a compose service (one replica), an nginx `/copilotkit/` location, and `make`/`make doctor` health. Verify: `make` brings it up healthy, and through `http://localhost:7171/copilotkit/` a Node `HttpAgent` script runs a chat turn to `RUN_FINISHED` with the user's tenant, and gets 401 without a token
+- [x] 4.0a Prove stop through the runtime. Verify: aborting the browser-side run cancels the api run within one second (the api reports cancelled, and no tool runs afterwards)
 
 - [ ] 4.1 Add `AgentsProvider` (`CopilotKitCoreReact` with `runtimeUrl: '/copilotkit'` via `CopilotKitContext`, auth headers refreshed on token change, the `testgen` agent shared per `testgen:<id>` thread). Verify: a unit test shows that two subscribers of one run open one request, and that a token change updates headers
 - [ ] 4.2 Add a themed `RunProgress` and a generic tool/activity card. Verify: a test shows progress during a run longer than 3 s, in both themes, and an unknown tool renders generically

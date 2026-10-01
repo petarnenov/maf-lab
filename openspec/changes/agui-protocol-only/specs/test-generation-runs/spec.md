@@ -2,8 +2,9 @@
 
 ### Requirement: Progress to the browser over SSE
 The api SHALL offer, to any signed-in user, each run as an AG-UI agent that the browser follows with the protocol's own
-client. Nothing about a run SHALL reach the browser in any other form. Every event SHALL name the run (`runId` is the
-run's id and `threadId` is `testgen:<run id>`). The stream SHALL begin with `RUN_STARTED`, followed by a
+client. Nothing about a run SHALL reach the browser in any other form. A run SHALL be followed on the thread
+`testgen:<run id>`, which a page MAY suffix with `:<viewer>` so that each page following the run has a thread of its
+own; every event SHALL name that thread. The stream SHALL begin with `RUN_STARTED`, followed by a
 `STATE_SNAPSHOT` holding the run's state. That state SHALL contain:
 - the summary: state, reason, current phase, attempt n of N, latest coverage, target, model, budget, tokens and cost;
 - `attempts`: the result of every attempt finished so far, in order. When the entry records them, an attempt SHALL

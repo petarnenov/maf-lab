@@ -48,6 +48,9 @@ status, _, body = req("/dev/users")
 check("GET /dev/users through the balancer", status == 200 and "alice" in body)
 status, _, body = req("/lb-health")
 check("GET /lb-health", status == 200)
+status, _, body = req("/copilotkit/info")
+check("GET /copilotkit/info names the chat and test-run agents (agui-protocol-only)",
+      status == 200 and '"chat"' in body and '"testgen"' in body and '"telemetryDisabled":true' in body)
 for port in (5080, 5090, 5174):
     s = socket.socket(); s.settimeout(2)
     refused = s.connect_ex(("127.0.0.1", port)) != 0

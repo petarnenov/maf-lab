@@ -300,6 +300,20 @@ services:
     networks:
       - runner
 
+  # CopilotKit's runtime, wiring only (agui-protocol-only): the browser's CopilotKit reaches the api's AG-UI agents through
+  # it, through the balancer, with the caller's own bearer token. One replica: it keeps no state that matters.
+  copilot-runtime:
+    build:
+      context: ../copilot-runtime
+    environment:
+      AGENTS_BASE_URL: http://lb
+      PORT: "8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   web:
     build:
       context: ../web
@@ -398,6 +412,8 @@ services:
       coverage-runner:
         condition: service_healthy
       web:
+        condition: service_healthy
+      copilot-runtime:
         condition: service_healthy
       prometheus:
         condition: service_healthy

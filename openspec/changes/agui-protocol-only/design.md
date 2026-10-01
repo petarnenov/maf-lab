@@ -258,6 +258,23 @@ These are all in `Agent/AGUI/AGUIHosting.cs`:
 - **Stop:** the browser's abort ends the runtime's request, which aborts its `HttpAgent` request to the api, which
   cancels the run (D4). A test proves the chain.
 - **Health:** `/health`, in `make` and `make doctor`, like every other service.
+- *As built, and why it is more than registration:*
+  - **Cross-tenant leak.** Out of the box the runtime keeps every thread's events in memory with no owner and serves
+    them to anyone: `GET /threads`, `/threads/{id}/messages`, `/threads/{id}/events`, and `POST /agent/{id}/connect`.
+    A firm-b user read a firm-a conversation that way (found live, 2026-10-01). The service now serves only
+    `GET /copilotkit/info`, `POST /copilotkit/agent/{chat|testgen}/run` and `…/stop/{thread}`. Everything else is a
+    404. A stop is accepted only from the credentials (by digest) that started that thread. Every word an agent says
+    still comes from the api, which checks the caller on every run.
+  - **Supersede.** The runner refuses a second run on a busy thread by default, so it runs with
+    `onConcurrentRun: "supersede"`: a new message replaces the run in progress, as before.
+  - **Stop.** The runtime keeps a run going when its client goes, for reconnects this system does not use.
+    - The web stops through CopilotKit's `stopAgent`, which calls the runtime's stop.
+    - When a client walks away before the run ends, the service calls that stop itself. Measured live: the api run
+      ends within ~100 ms and no tool runs after.
+  - **One thread per viewer.** Because of the same one-run-per-thread rule, each page following a test run uses
+    `testgen:<run id>:<viewer>`, and the api reads the run id from the prefix.
+  - **The fetch handler, not the Node listener.** It is used with a small Node adapter, so the service can read the
+    request once, check it, and hand it on.
 
 ### Jev
 No Jev request is added, removed or changed. The prompt screen, routing, tool-result guard, relevance judge and answer

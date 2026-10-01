@@ -20,9 +20,21 @@ public sealed class TestGenRunAgent(TestGenRuns runs, RunActivityStore activity,
 
     public override string? Name => AgentName;
 
-    /// <summary>The run a thread is about, or null for a thread that is not a run's.</summary>
-    public static string? RunIdOf(string? threadId) =>
-        threadId is { Length: > 8 } t && t.StartsWith(ThreadPrefix, StringComparison.Ordinal) ? t[ThreadPrefix.Length..] : null;
+    /// <summary>
+    /// The run a thread is about, or null for a thread that is not a run's: <c>testgen:&lt;run id&gt;</c>, optionally
+    /// followed by <c>:&lt;viewer&gt;</c> so that each page following the run has its own thread.
+    /// </summary>
+    public static string? RunIdOf(string? threadId)
+    {
+        if (threadId is not { Length: > 8 } t || !t.StartsWith(ThreadPrefix, StringComparison.Ordinal))
+        {
+            return null;
+        }
+        var rest = t[ThreadPrefix.Length..];
+        var viewer = rest.IndexOf(':');
+        var runId = viewer < 0 ? rest : rest[..viewer];
+        return runId.Length > 0 ? runId : null;
+    }
 
     protected override ValueTask<AgentSession> CreateSessionCoreAsync(CancellationToken cancellationToken = default) =>
         ValueTask.FromResult<AgentSession>(new RunSession());

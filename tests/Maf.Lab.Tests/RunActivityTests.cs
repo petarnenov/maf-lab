@@ -337,4 +337,13 @@ public sealed class RunActivityTests : IAsyncLifetime
     [InlineData("something the agent said", "agent_failed")]
     public void A_failed_tasks_text_becomes_the_runs_reason(string text, string reason) =>
         Assert.Equal(reason, Maf.Lab.Api.Coverage.TestGenRuns.Code(text));
+
+    [Theory]
+    [InlineData("testgen:r1", "r1")]
+    [InlineData("testgen:r1:viewer42", "r1")]
+    [InlineData("testgen:", null)]
+    [InlineData("c_conversation", null)]
+    [InlineData(null, null)]
+    public void A_run_is_named_by_its_thread_whoever_follows_it(string? threadId, string? runId) =>
+        Assert.Equal(runId, TestGenRunAgent.RunIdOf(threadId));
 }

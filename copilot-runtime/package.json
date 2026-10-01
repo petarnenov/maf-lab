@@ -1,0 +1,17 @@
+{
+  "name": "maf-lab-copilot-runtime",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "CopilotKit's runtime, wiring only: the api's AG-UI agents as HttpAgents for the web (agui-protocol-only)",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node server.ts"
+  },
+  "dependencies": {
+    "@ag-ui/client": "1.0.1",
+    "@copilotkit/runtime": "1.76.0"
+  }
+}
