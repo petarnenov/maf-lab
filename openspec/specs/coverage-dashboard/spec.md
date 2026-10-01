@@ -32,6 +32,10 @@ averaged per file. A file whose coverage is below its effective threshold SHALL 
 rely on colour alone, and all colours SHALL come from the theme. A file that has a *candidate* coverage from a run
 awaiting acceptance SHALL show the candidate value alongside the current one, marked as candidate.
 
+A candidate measurement covers the whole project, but a run is judged only by the file it is for: each run awaiting
+acceptance SHALL contribute the candidate value of its own file only, taken from its newest candidate measurement.
+The tree SHALL load however many runs await acceptance at once.
+
 #### Scenario: Folder aggregate is line-weighted
 - **WHEN** a folder holds a 10-line file at 100% and a 90-line file at 0%
 - **THEN** the folder shows 10%, not 50%
@@ -43,6 +47,12 @@ awaiting acceptance SHALL show the candidate value alongside the current one, ma
 #### Scenario: Candidate awaiting acceptance
 - **WHEN** a verified run raised a file to 86% on a candidate branch that has not been accepted
 - **THEN** the file shows its current coverage and, marked as candidate, 86%
+
+#### Scenario: Several candidates at once
+- **WHEN** two runs await acceptance at once, one for `Small.cs` and one for `Large.cs`, and each run's candidate
+  measurement covers both files
+- **THEN** the tree loads, `Small.cs` shows the first run's candidate value for it and `Large.cs` shows the second
+  run's, each marked with its own run
 
 ### Requirement: Sorting and filtering
 The tree SHALL be sortable by name and by coverage, in both directions. It SHALL be filterable by a text match on the
