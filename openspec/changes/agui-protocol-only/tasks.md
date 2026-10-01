@@ -14,7 +14,7 @@
 
 ## 2. Chat agent on the official server
 
-- [ ] 2.0 Add `Agent/AGUI/AGUIHosting.cs` (D11): null-omitting resolver, interrupt content types, `rawEvent` modifier, and the `RequireAuthorization` mapping helper. Verify: a test per item (no `null` optional fields on `RUN_STARTED`, a generic interrupt serializes, no `rawEvent` on the wire, 401 without a token)
+- [x] 2.0 Add `Agent/AGUI/AGUIHosting.cs` (D11): null-omitting resolver, interrupt content types, `rawEvent` modifier, and the `RequireAuthorization` mapping helper. Verify: a test per item (no `null` optional fields on `RUN_STARTED`, a generic interrupt serializes, no `rawEvent` on the wire, 401 without a token)
 
 - [ ] 2.1 Port the `ChatTurnRunner` tests to drive the agent through an in-memory `MapAGUIServer` host (stream assertions on protocol events). Verify: they compile and fail only for the missing agent
 - [ ] 2.2 Create `ChatAgent : DelegatingAIAgent` with the pre-model steps (principal, thread ownership filter, prompt screen, Jev routing, domain loading, refusal and out-of-scope replies without a model call, routed tool call). Verify: the ported tests for refusal, out-of-scope, routing and forced search pass
