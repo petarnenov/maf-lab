@@ -75,6 +75,14 @@ public partial class Program
         {
             return "targetFile must be a path relative to the repository root.";
         }
+        if (request.Tests is not (null or TestScope.All or TestScope.Related))
+        {
+            return "tests must be all or related.";
+        }
+        if (request.Tests == TestScope.Related && request.TargetFile is null)
+        {
+            return "related tests need a targetFile.";
+        }
         return null;
     }
 }

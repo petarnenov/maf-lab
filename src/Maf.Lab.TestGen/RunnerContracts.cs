@@ -2,9 +2,38 @@ namespace Maf.Lab.TestGen;
 
 /// <summary>
 /// A request to the coverage runner: build and test one toolchain at one commit, optionally with a diff applied,
-/// optionally reporting one file. The runner answers with a job; the caller polls it until it is done.
+/// optionally reporting one file. <see cref="Tests"/> chooses the tests: <see cref="TestScope.All"/> (the default) or
+/// <see cref="TestScope.Related"/>, which needs the target file. The runner answers with a job; the caller polls it
+/// until it is done.
 /// </summary>
-public sealed record RunnerRequest(string Commit, string Toolchain, string? Diff = null, string? TargetFile = null);
+public sealed record RunnerRequest(string Commit, string Toolchain, string? Diff = null, string? TargetFile = null,
+    string? Tests = null);
+
+/// <summary>Which tests a runner job runs.</summary>
+public static class TestScope
+{
+    /// <summary>The toolchain's whole unit suite.</summary>
+    public const string All = "all";
+
+    /// <summary>The test files the diff adds or changes, and the tests that use the target or one of them.</summary>
+    public const string Related = "related";
+}
+
+/// <summary>
+/// What a job ran: the scope it used, the test files of a related run (at most <see cref="MaxFiles"/>), and why it ran
+/// the whole suite when related tests were asked for.
+/// </summary>
+public sealed record TestSelection(string Scope, IReadOnlyList<string> TestFiles, string? Reason = null)
+{
+    public const int MaxFiles = 50;
+
+    public static readonly TestSelection Whole = new(TestScope.All, []);
+
+    public static TestSelection FellBack(string reason) => new(TestScope.All, [], reason);
+}
+
+/// <summary>A file's executable lines as one run measured them: those it ran, and those it did not.</summary>
+public sealed record LineHits(IReadOnlyList<int> Covered, IReadOnlyList<int> Uncovered);
 
 /// <summary>A runner job as the caller sees it while it waits.</summary>
 public sealed record RunnerJob(string Id, string State, int QueuePosition, RunnerResult? Result);
@@ -30,10 +59,15 @@ public sealed record RunnerResult(
     string? MeasuredRoot,
     double? TargetPct,
     IReadOnlyList<int[]> Uncovered,
-    long DurationMs)
+    long DurationMs,
+    TestSelection? Selection = null,
+    LineHits? TargetLines = null)
 {
     public bool Measured => Status == RunnerStatus.Ok && Build == BuildOutcome.Ok;
     public bool Green => Measured && Tests.Failed == 0;
+
+    /// <summary>Only some of the tests ran: the target's coverage is what they covered.</summary>
+    public bool Focused => Selection?.Scope == TestScope.Related;
 
     public static RunnerResult Failed(string status, long durationMs, IReadOnlyList<string>? diagnostics = null) =>
         new(status, BuildOutcome.Skipped, diagnostics ?? [], new TestCounts(0, 0, 0), [], null, null, null, [], durationMs);

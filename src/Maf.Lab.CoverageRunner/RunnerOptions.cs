@@ -24,6 +24,12 @@ public sealed class RunnerOptions
     public string DotnetCoverageSettings { get; set; } = "tests/Maf.Lab.Tests/coverage.config.xml";
 
     /// <summary>
+    /// The web tests' setup file, relative to the repository root. Every test loads it and none imports it, so a diff
+    /// that changes it runs the whole suite even when related tests were asked for.
+    /// </summary>
+    public string VitestSetupFile { get; set; } = "web/src/test/setup.ts";
+
+    /// <summary>
     /// The web app's installed dependencies, prepared when the image was built (the runner has no network). Empty:
     /// the workspace must already have them, which is only true when running outside the container.
     /// </summary>
