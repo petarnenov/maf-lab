@@ -70,7 +70,7 @@ public sealed class RunDurationTests
         var run = Run("r_1", TestGenRunState.Accepted, finishedAt: Ten.AddMinutes(7));
         run.UpdatedAt = Ten.AddMinutes(90);
 
-        var listed = TestAgentOverview.Recent(run, new DateTimeOffset(Ten.AddHours(5)));
+        var listed = TestAgentOverview.Recent(run, new DateTimeOffset(Ten.AddHours(5)), []);
 
         Assert.Equal(new DateTimeOffset(Ten), listed.StartedAt);
         Assert.Equal(new DateTimeOffset(Ten.AddMinutes(7)), listed.FinishedAt);
@@ -80,7 +80,7 @@ public sealed class RunDurationTests
     [Fact]
     public void A_running_run_lasts_until_now()
     {
-        var listed = TestAgentOverview.Recent(Run("r_1", TestGenRunState.Working), new DateTimeOffset(Ten.AddSeconds(125)));
+        var listed = TestAgentOverview.Recent(Run("r_1", TestGenRunState.Working), new DateTimeOffset(Ten.AddSeconds(125)), []);
 
         Assert.Null(listed.FinishedAt);
         Assert.Equal(125_000L, listed.DurationMs);
@@ -89,7 +89,7 @@ public sealed class RunDurationTests
     [Fact]
     public void A_stopped_run_without_an_end_has_no_duration()
     {
-        var listed = TestAgentOverview.Recent(Run("r_1", TestGenRunState.Failed), new DateTimeOffset(Ten.AddHours(1)));
+        var listed = TestAgentOverview.Recent(Run("r_1", TestGenRunState.Failed), new DateTimeOffset(Ten.AddHours(1)), []);
 
         Assert.Null(listed.FinishedAt);
         Assert.Null(listed.DurationMs);
@@ -98,7 +98,7 @@ public sealed class RunDurationTests
     [Fact]
     public void A_clock_that_moved_back_never_gives_a_negative_duration()
     {
-        var listed = TestAgentOverview.Recent(Run("r_1", TestGenRunState.Working), new DateTimeOffset(Ten.AddSeconds(-3)));
+        var listed = TestAgentOverview.Recent(Run("r_1", TestGenRunState.Working), new DateTimeOffset(Ten.AddSeconds(-3)), []);
 
         Assert.Equal(0L, listed.DurationMs);
     }

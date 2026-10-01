@@ -275,7 +275,8 @@ asked of the reviewer, and every push delivery — each with its state, when it 
 task still running can be cancelled from there, through the same protocol call a partner would make. The same
 page shows the test-generation agent, through the api: whether its card answers, what the card says, what a run
 gets by default, and its runs by state with the most recent ones — each with how long its work took, counting on
-while it runs — each file opening on the Coverage page.
+while it runs, and what its model calls cost (the amount its budget counted, `≈` when the price is an estimate) —
+each file opening on the Coverage page.
 
 ## A second agent it consults (A2A, the other way round)
 

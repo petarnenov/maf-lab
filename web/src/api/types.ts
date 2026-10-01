@@ -584,6 +584,14 @@ export interface TestAgentRun {
   finishedAt: string | null;
   /** Work time in ms: start to end, or start to the api's answer while running; null when not known. */
   durationMs: number | null;
+  /** Tokens the run's model calls used (so far, while running). Missing from an api older than show-test-run-cost. */
+  tokens?: number;
+  /** What the run recorded, in USD: its model calls at the rates it started with — what its cost cap counts. */
+  costUsd?: number | null;
+  /** The model's rates are the lab's estimate (or the model is no longer on the allowlist). */
+  costIsEstimate?: boolean;
+  /** The caps chosen at start; a null cap is unlimited. */
+  budget?: RunBudget | null;
 }
 
 /** The test-generation agent as the agents page shows it. See docs/http-api.md. */

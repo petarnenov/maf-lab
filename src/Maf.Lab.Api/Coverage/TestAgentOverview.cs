@@ -16,9 +16,13 @@ public sealed record TestAgentRunCounts(int Running, int Candidates, int Accepte
 /// <summary>
 /// One run as the agents page lists it: no report, no diff, no activity text. <see cref="DurationMs"/> is the run's work
 /// time: start to <see cref="FinishedAt"/> once its work ended, start to now while it is running, null when unknown.
+/// <see cref="CostUsd"/> is what the run recorded: its model calls priced at the rates sent to the agent at start — the
+/// amount its cost cap counts, so far while it runs (show-test-run-cost). <see cref="CostIsEstimate"/>: those rates are
+/// the lab's estimate, or the model is no longer on the allowlist.
 /// </summary>
 public sealed record TestAgentRun(string Id, string Path, string State, string? Reason, int Attempt, int MaxAttempts, double? LastPct,
-    int TargetPct, string Model, DateTimeOffset UpdatedAt, DateTimeOffset StartedAt, DateTimeOffset? FinishedAt, long? DurationMs);
+    int TargetPct, string Model, DateTimeOffset UpdatedAt, DateTimeOffset StartedAt, DateTimeOffset? FinishedAt, long? DurationMs,
+    long Tokens, double CostUsd, bool CostIsEstimate, RunBudget Budget);
 
 /// <summary>Everything the agents page shows about the test-generation agent, in one answer.</summary>
 public sealed record TestAgentOverviewDto(TestAgentStatusDto Status, TestAgentCardDto? Card, TestAgentConnection? Connection,
@@ -59,7 +63,7 @@ public static class TestAgentOverview
                 .OrderByDescending(r => r.UpdatedAt)
                 .Take(RecentRuns)
                 .ToListAsync(ct))
-            .Select(r => Recent(r, now))
+            .Select(r => Recent(r, now, options.Models))
             .ToList();
 
         var model = options.Models.FirstOrDefault(m => m.Default) ?? options.Models.FirstOrDefault();
@@ -83,13 +87,15 @@ public static class TestAgentOverview
     /// <summary>A stored time is UTC without a kind; it leaves the api as an instant.</summary>
     private static DateTimeOffset Utc(DateTime at) => new(DateTime.SpecifyKind(at, DateTimeKind.Utc));
 
-    internal static TestAgentRun Recent(TestGenRunRow r, DateTimeOffset now)
+    internal static TestAgentRun Recent(TestGenRunRow r, DateTimeOffset now, IReadOnlyList<AgentModelOption> models)
     {
         var started = Utc(r.CreatedAt);
         DateTimeOffset? finished = r.FinishedAt is { } end ? Utc(end) : null;
         var until = finished ?? (TestGenRunState.Running.Contains(r.State) ? now : null);
         long? duration = until is { } u ? Math.Max(0, (long)(u - started).TotalMilliseconds) : null;
+        // The recorded cost is never repriced; only whether its price was an estimate is read from today's allowlist.
+        var estimate = models.FirstOrDefault(m => m.Tag == r.Model)?.PriceIsEstimate ?? true;
         return new TestAgentRun(r.Id, r.Path, r.State, r.Reason, r.Attempt, r.MaxAttempts, r.LastPct, r.TargetPct, r.Model,
-            Utc(r.UpdatedAt), started, finished, duration);
+            Utc(r.UpdatedAt), started, finished, duration, r.Tokens, r.CostUsd, estimate, new RunBudget(r.BudgetTokens, r.BudgetCostUsd));
     }
 }

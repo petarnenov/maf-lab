@@ -55,6 +55,10 @@ export const reachableAgent: TestAgentOverview = {
       startedAt: '2026-10-01T08:58:18Z',
       finishedAt: null,
       durationMs: 42_000,
+      tokens: 300_000,
+      costUsd: 0.0421,
+      costIsEstimate: true,
+      budget: { maxTokens: null, maxCostUsd: null },
     },
     {
       id: 'r_2',
@@ -70,6 +74,10 @@ export const reachableAgent: TestAgentOverview = {
       startedAt: '2026-10-01T06:56:55Z',
       finishedAt: '2026-10-01T07:00:00Z',
       durationMs: 185_000,
+      tokens: 2_760_003,
+      costUsd: 0.291,
+      costIsEstimate: true,
+      budget: { maxTokens: null, maxCostUsd: 0.5 },
     },
     {
       id: 'r_3',
@@ -85,6 +93,7 @@ export const reachableAgent: TestAgentOverview = {
       startedAt: '2026-10-01T05:00:00Z',
       finishedAt: null,
       durationMs: null,
+      // A run as an api from before show-test-run-cost lists it: no cost fields.
     },
   ],
 };

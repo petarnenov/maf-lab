@@ -21,6 +21,22 @@ export function elapsed(ms: number | null | undefined): string {
   return `${Math.floor(seconds / 3600)}h ${two(Math.floor(seconds / 60) % 60)}m`;
 }
 
+/**
+ * What a run cost, in US dollars: "$0.042" under a dollar, "$1.27" from one, "<$0.001" for an amount three decimals
+ * would show as nothing, "$0.00" for nothing spent, "—" when unknown. An amount priced at estimated rates reads "≈$0.042".
+ */
+export function cost(value: number | null | undefined, estimate = false): string {
+  if (value == null || !Number.isFinite(value)) return '—';
+  if (value <= 0) return '$0.00';
+  const approx = estimate ? '≈' : '';
+  if (value.toFixed(3) === '0.000') return `${approx}<$0.001`;
+  const amount =
+    Number(value.toFixed(3)) < 1
+      ? value.toFixed(3)
+      : value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${approx}$${amount}`;
+}
+
 export const shortSha = (sha: string) => sha.slice(0, 7);
 
 /**

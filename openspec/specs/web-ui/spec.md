@@ -522,6 +522,13 @@ Each recent run SHALL show how long it took, as the api reports it, in a compact
 the page, at least once a second, from the api's value plus the time since that answer arrived, until the next
 refresh replaces it.
 
+Each recent run SHALL also show, right after its duration, what it cost as the api reports it, in US dollars: three
+decimals under a dollar (`$0.042`), two from a dollar (`$1.27`), `<$0.001` for an amount above zero that would read
+as `$0.000`, `$0.00` when the api reports zero, and `—` when the api reports no cost. An amount above zero that the api
+marks as an estimate SHALL be prefixed with `≈` (`≈$0.042`). A running run's cost SHALL be marked as so far; it is
+brought up to date by the next refresh. The cost SHALL say, on hover, the tokens used, whether the price is an
+estimate, and the run's cost cap when it has one.
+
 While the screen's data loads or is refreshed it SHALL show the app's themed progress indicator
 (`role="progressbar"` with an accessible label), and the Refresh button SHALL NOT start a second refresh while one is
 in flight. A section that fails to load SHALL say what could not be loaded without hiding the other.
@@ -545,13 +552,19 @@ in flight. A section that fails to load SHALL say what could not be loaded witho
 #### Scenario: The test agent section
 - **WHEN** a FIRM_ADMIN opens the screen and the test agent is reachable
 - **THEN** the section shows it reachable, its card, its run defaults, the run counts with a link to Coverage, and
-  the recent runs with file, state, attempt n/N, coverage, reason, duration and when
+  the recent runs with file, state, attempt n/N, coverage, reason, duration, cost and when
 
 #### Scenario: Durations in the recent runs
 - **WHEN** the api reports a finished run that took 185 000 ms, a running run at 42 000 ms, and a run with no
   duration
 - **THEN** the first reads `3m 05s`, the second reads `42s` marked as so far and a second later `43s`, and the third
   reads `—`
+
+#### Scenario: Costs in the recent runs
+- **WHEN** the api reports a finished run that cost 0.291 at an estimated price with a $0.50 cost cap, a running run
+  at 1.2745 at a list price, a run at 0.0004, a run at 0, and a run with no cost
+- **THEN** the first reads `≈$0.291` with "of $0.50 budget" on hover, the second reads `$1.27` marked as so far, the
+  third reads `<$0.001`, the fourth `$0.00`, and the fifth `—`
 
 #### Scenario: The test agent is down
 - **WHEN** the api reports the test agent unreachable

@@ -78,7 +78,17 @@ describe('TestAgentSection', () => {
         within(table)
           .getAllByRole('columnheader')
           .map((h) => h.textContent),
-      ).toEqual(['File', 'State', 'Attempt', 'Coverage', 'Reason', 'Model', 'Duration', 'When']);
+      ).toEqual([
+        'File',
+        'State',
+        'Attempt',
+        'Coverage',
+        'Reason',
+        'Model',
+        'Duration',
+        'Cost',
+        'When',
+      ]);
       const cells = () => screen.getAllByTestId('test-agent-run-duration');
       expect(cells()[0]).toHaveTextContent(/^42s so far$/);
       expect(cells()[1]).toHaveTextContent(/^3m 05s$/);
@@ -92,6 +102,53 @@ describe('TestAgentSection', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('shows what each recent run cost, so far while running, and a dash for a run without one', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse(reachableAgent)),
+    );
+    renderWithProviders(<TestAgentSection />, admin);
+
+    await screen.findByTestId('test-agent-runs');
+    const cells = screen.getAllByTestId('test-agent-run-cost');
+    expect(cells[0]).toHaveTextContent(/^≈\$0\.042 so far$/);
+    expect(cells[0]).toHaveAttribute(
+      'title',
+      '300,000 tokens · estimated price · so far, as of the last refresh',
+    );
+    expect(cells[1]).toHaveTextContent(/^≈\$0\.291$/);
+    expect(cells[1]).toHaveAttribute(
+      'title',
+      '2,760,003 tokens · estimated price · of $0.50 budget',
+    );
+    // A run listed by an api from before costs were shown.
+    expect(cells[2]).toHaveTextContent(/^—$/);
+    expect(cells[2]).not.toHaveAttribute('title');
+  });
+
+  it('shows a list-priced and a free run without the estimate mark', async () => {
+    const [first, second] = reachableAgent.recent;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          ...reachableAgent,
+          recent: [
+            { ...second, costUsd: 1.2745, costIsEstimate: false, budget: null },
+            { ...first, state: 'failed', finishedAt: first.updatedAt, costUsd: 0, tokens: 0 },
+          ],
+        }),
+      ),
+    );
+    renderWithProviders(<TestAgentSection />, admin);
+
+    await screen.findByTestId('test-agent-runs');
+    const cells = screen.getAllByTestId('test-agent-run-cost');
+    expect(cells[0]).toHaveTextContent(/^\$1\.27$/);
+    expect(cells[0]).toHaveAttribute('title', '2,760,003 tokens · list price');
+    expect(cells[1]).toHaveTextContent(/^\$0\.00$/);
   });
 
   it('says an unreachable agent is unreachable, and still shows its defaults and runs', async () => {
