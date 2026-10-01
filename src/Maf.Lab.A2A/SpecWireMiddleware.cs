@@ -160,7 +160,15 @@ internal sealed class SpecWireStream(Stream inner, bool expectStream, Func<JsonN
     public override Task WriteAsync(byte[] source, int offset, int count, CancellationToken cancellationToken) =>
         WriteAsync(source.AsMemory(offset, count), cancellationToken).AsTask();
 
-    public override void Flush() => inner.Flush();
+    // A document has nothing to drain until it is finished, so a flush of one is a no-op, as FlushAsync's is; passing
+    // it on would be a synchronous write the server refuses.
+    public override void Flush()
+    {
+        if (streaming)
+        {
+            inner.Flush();
+        }
+    }
 
     public override Task FlushAsync(CancellationToken cancellationToken) =>
         streaming ? DrainEventsAsync(cancellationToken).ContinueWith(_ => inner.FlushAsync(cancellationToken),

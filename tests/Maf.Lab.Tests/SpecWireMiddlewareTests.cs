@@ -79,6 +79,23 @@ public class SpecWireMiddlewareTests
             await WriteJsonAsync(context, new JsonObject { ["jsonrpc"] = "2.0", ["id"] = 1, ["echo"] = handed });
         });
 
+        // The HTTP+JSON send: a body that is a message is answered with the SDK's bare task; anything else is echoed,
+        // so a test can see that a body the middleware could not read reached the endpoint as it arrived.
+        app.MapPost("/a2a/message:send", async (HttpContext context) =>
+        {
+            using var reader = new StreamReader(context.Request.Body);
+            var handed = await reader.ReadToEndAsync(context.RequestAborted);
+            if (IsJsonObject(handed))
+            {
+                await WriteSdkTaskAsync(context);
+                return;
+            }
+            await WriteJsonAsync(context, new JsonObject { ["jsonrpc"] = "2.0", ["id"] = 1, ["echo"] = handed });
+        });
+
+        // The HTTP+JSON cancel, answered as the SDK answers it: the task, bare.
+        app.MapPost("/a2a/tasks/t-1:cancel", WriteSdkTaskAsync);
+
         // A fixed answer in the SDK's own dialect: a bare task, wrapped in nothing.
         app.MapPost("/a2a/task", async (HttpContext context) =>
         {
@@ -162,7 +179,7 @@ public class SpecWireMiddlewareTests
         {
             var body = context.Response.Body;
             var threw = new List<string>();
-            try { body.Read(new byte[1], 0, 1); }
+            try { body.ReadExactly(new byte[1], 0, 1); }
             catch (NotSupportedException) { threw.Add("read"); }
             try { _ = body.Seek(0, SeekOrigin.Begin); }
             catch (NotSupportedException) { threw.Add("seek"); }
@@ -195,6 +212,28 @@ public class SpecWireMiddlewareTests
             var handed = await reader.ReadToEndAsync(context.RequestAborted);
             await WriteJsonAsync(context, new JsonObject { ["jsonrpc"] = "2.0", ["id"] = 1, ["echo"] = handed });
         });
+    }
+
+    private static async Task WriteSdkTaskAsync(HttpContext context)
+    {
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsync(new JsonObject
+        {
+            ["id"] = "t-1",
+            ["status"] = new JsonObject { ["state"] = "TASK_STATE_WORKING" },
+        }.ToJsonString(), context.RequestAborted);
+    }
+
+    private static bool IsJsonObject(string text)
+    {
+        try
+        {
+            return JsonNode.Parse(text) is JsonObject;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     private static async Task WriteJsonAsync(HttpContext context, JsonObject envelope)
