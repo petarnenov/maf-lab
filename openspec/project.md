@@ -30,7 +30,8 @@ production system.
   (React Query), Vitest + Testing Library. No UI framework required; plain
   CSS modules are fine.
 - Containers: Docker Compose — lb (nginx, the one entry point on 7171),
-  api, mcp-retrieval, mcp-portfolio, mcp-code, compliance, web, qdrant,
+  api, mcp-retrieval, mcp-portfolio, mcp-code, compliance, test-agent,
+  coverage-runner, web, qdrant,
   ollama, ollama-init, redis, otel-collector, prometheus, jaeger, and
   the dev-only inspectors a2a-inspector, mcp-inspector and redis-insight
   (profile `inspectors`, off in CI). One command (`make`) brings

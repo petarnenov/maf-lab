@@ -22,7 +22,7 @@ monitor shows where a turn crosses from one into the other.
 - HTTP contract between API and web: [`docs/http-api.md`](docs/http-api.md); the trace event format:
   [`docs/trace-events.md`](docs/trace-events.md); telemetry: [`docs/telemetry.md`](docs/telemetry.md); shared state:
   [`docs/shared-state.md`](docs/shared-state.md)
-- Screens: `/chat`, `/evals`, `/topology`, `/telemetry`, `/curriculum`, and for admins `/admin/index`, `/admin/feedback`,
+- Screens: `/chat`, `/evals`, `/topology`, `/telemetry`, `/coverage`, `/curriculum`, and for admins `/admin/index`, `/admin/feedback`,
   `/admin/compliance`, `/admin/jev`, `/admin/a2a`
 
 ```mermaid
@@ -35,6 +35,8 @@ flowchart TB
     web["🖥️ web<br/>React SPA"]
     api["🧠 api ×2<br/>Agent Framework<br/>chat SSE · A2A · admin"]
     compliance["🛡️ compliance ×2<br/>A2A reviewer"]
+    testagent["🧪 test-agent<br/>A2A test generation"]
+    runner["coverage-runner<br/>build + test, no egress"]
   end
 
   subgraph mcp["MCP servers · one per domain, reached through lb"]
@@ -61,9 +63,12 @@ flowchart TB
   lb -- "/api · /dev · /a2a" --> api
   lb -- "/compliance" --> compliance
   lb -- "/mcp · /portfolio/mcp · /code/mcp" --> mcp
-  api -- "A2A" --> compliance
+  api -- "A2A" --> compliance & testagent
+  testagent -- "run tests" --> runner
+  api -- "coverage · verify" --> runner
   api -- "MCP tools" --> mcp
   mcp -- "hybrid search · embed" --> qdrant & ollama
+  mcp -- "relevance" --> jev
   api --> sqlite & redis & cloud & jev
   app & mcp -. "OTLP" .-> obs
 
@@ -73,7 +78,7 @@ flowchart TB
   classDef model fill:#f3e8ff,stroke:#a855f7,color:#3b0764
   classDef ext fill:#f1f5f9,stroke:#64748b,color:#0f172a
   class lb entry
-  class web,api,compliance,billing,portfolio,code svc
+  class web,api,compliance,testagent,runner,billing,portfolio,code svc
   class qdrant,sqlite,redis store
   class ollama,cloud,jev model
   class clients,obs ext
@@ -82,9 +87,11 @@ flowchart TB
 ```
 
 Everything user- and agent-facing goes through **one entry point on port 7171**. api, mcp-retrieval, mcp-portfolio and
-compliance run two replicas each, mcp-code one (`X-Instance` response header shows which one answered). The balancer
-also serves Jaeger at `/jaeger` and takes the browser's OTLP traces at `/v1/traces`. Only Qdrant and Ollama are
-published besides 7171.
+compliance run two replicas each, mcp-code one (`X-Instance` response header shows which one answered).
+test-agent and coverage-runner run one each and have no route of their own: the api reaches them inside the compose
+network. The balancer also serves Jaeger at `/jaeger` and takes the browser's OTLP traces at `/v1/traces`. Besides
+7171, only Qdrant and Ollama are published, plus the [inspectors](#inspecting-a2a-mcp-and-redis) on `127.0.0.1`
+(7172–7174).
 
 The balancer's routes, as `compose/lb/nginx.conf` declares them:
 
@@ -153,7 +160,7 @@ make help                  # every target
 |---|---|
 | `make all` | Start everything: build, run, wait for health, index if empty (default) |
 | `make help` | List the targets |
-| `make up` | Build and start the stack (replicas via API_REPLICAS/MCP_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy |
+| `make up` | Build and start the stack (replicas via API_REPLICAS/MCP_REPLICAS/PORTFOLIO_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy |
 | `make down` | Stop the stack (data volumes are kept) |
 | `make restart` | Stop and start the stack |
 | `make ps` | Show services, state and health |
@@ -229,9 +236,9 @@ a question that did not search the code, the tab shows related code, labelled as
 The corpus is English. A question written in another language is translated into the corpus language *before* it is
 embedded and before BM25 encodes it, so both halves of hybrid retrieval work on the same vocabulary as the index;
 the answer still comes back in the language of the question. The monitor's Retrieval tab shows both texts, and the
-retrieval eval reports recall per language. Measured over the eval set, Bulgarian recall@5 went from **0.21 to
-0.68** while English stayed at 0.69. Switch it off with `Retrieval__NormalizeQueryLanguage=false`; the corpus
-language is `Retrieval__CorpusLanguage` (default `en`).
+retrieval eval reports recall per language. When translation was introduced, Bulgarian recall@5 over the eval set went
+from **0.21 to 0.68** while English stayed at 0.69; today's accepted figures are in `evals/baseline.json`. Switch it
+off with `Retrieval__NormalizeQueryLanguage=false`; the corpus language is `Retrieval__CorpusLanguage` (default `en`).
 
 ## Another agent talking to this one (A2A)
 
@@ -292,6 +299,27 @@ and it must decide about the adjustment and the account we asked about. `evals/i
 broken or hostile reviewer might send — an instruction buried in its reason, a verdict about a different account,
 a decision that is neither approved nor refused — and each one is driven through that check and through the write
 flow against a reviewer that answers with it verbatim. None of them changes what executes.
+
+## Coverage, and a third agent that writes tests
+
+**`/coverage`** shows how well the lab's own C# and TypeScript source is covered by tests — folder by folder, file by
+file and line by line, each file against its threshold (a configured default, or the file's own override). Any
+signed-in user can look; only a FIRM_ADMIN can change a threshold, refresh coverage or start, cancel, accept or
+discard a run, and the server enforces that. `make coverage` refreshes the snapshot at `main` through the running
+stack.
+
+Raising a file's threshold above its current coverage asks to confirm, then for a model and its cost estimate, and
+then starts a **test-generation run**. The api hands the file to the **test-agent**, a third agent reachable only over
+A2A and only by the api. It reads the repository at the run's commit, may write only test files, and loops — write
+tests, run them with coverage, read the result — until the file reaches the target or it runs out of attempts. The
+tests run in the **coverage-runner**, which has no secrets and no route to the internet. A test the agent believes
+exposes a bug is skipped and reported, not worked around.
+
+The api then checks the result itself before anyone sees it, commits it to a candidate branch
+(`test-agent/<file-slug>-<runId>`), and waits for a FIRM_ADMIN to accept it — a conflict-free merge into `main` — or
+discard it. A suspected bug whose test still fails when un-skipped becomes a GitHub issue (`GITHUB_ISSUES_TOKEN`). The page
+follows a run live, and `/admin/a2a` shows the agent and its runs. `make testgen-e2e` drives the whole path without a
+model; `make ci-e2e` includes it.
 
 ## The first thing it can change
 
@@ -470,7 +498,7 @@ GitHub Actions ([`.github/workflows`](.github/workflows)) — `make ci` runs the
 
 | Workflow | Trigger | What runs |
 |---|---|---|
-| **CI** (`ci.yml`) | every push and pull request | `specs` (OpenSpec strict validation and `make docs-check`) · `dotnet` (build with warnings as errors, unit + Testcontainers integration tests) · `web` (lint, Vitest, build) · `e2e` (full stack behind the balancer on :7171, corpus indexed, `make verify` and the A2A conformance probe: `make ci-e2e`) |
+| **CI** (`ci.yml`) | every push and pull request | `specs` (OpenSpec strict validation and `make docs-check`) · `dotnet` (build with warnings as errors, unit + Testcontainers integration tests) · `web` (lint, Vitest, build) · `e2e` (full stack behind the balancer on :7171, corpus indexed, `make verify`, the A2A conformance probe and model-free test generation: `make ci-e2e`) |
 | **Evals** (`evals.yml`) | manual (*Actions → Evals → Run workflow*, choose a suite) | real embeddings in compose Ollama + chat on Ollama Cloud and intent on Jev (`OLLAMA_API_KEY` and `JEV_MAF_LAB` repository secrets); reports uploaded as an artifact |
 
 The e2e job needs **no model and no secret**, so it also runs for pull requests from forks. `CI_MODE=1` replaces the
@@ -509,12 +537,14 @@ files changed. It never blocks: CI is the gate.
 - a document runs a `make` target that does not exist;
 - a document names a chat, embedding or Jev model other than the configured one;
 - a relative link is broken;
+- a page the web app registers (`web/src/App.tsx`) is not named in this README as `` `/path` ``;
 - an active OpenSpec change has no `## Documentation impact` section.
 
 It runs in `make ci` and in the CI `specs` job, with Python 3.11+ and nothing else. Deliberate exceptions live in
 [`docs/docs-sync.toml`](docs/docs-sync.toml), each with its reason:
 - a route left out of the API reference;
 - a route an SDK registers;
+- a route another host serves behind the same balancer;
 - a model name that is not the default.
 
 `DECISIONS.md`, eval reports and archived changes are history, and are not checked. Prose is checked by review:
@@ -555,10 +585,11 @@ make eval-accept        # run the suites and accept their metrics as the new bas
 
 A run never moves the baseline by itself, and a run below its thresholds is refused rather than blessed. A metric
 the baseline does not mention is reported as *new* and one it mentions but the run did not produce as *missing* —
-both are how a rename silently switches the gate off. The tolerance is `Evals:RegressionTolerance` (0.02) with a
-per-suite override; `retrieval` uses 0.03 because a non-English query is translated by a live model, and
-`recall@5:bg` was measured alternating between 0.660 and 0.681 across four runs while the English metric never
-moved. `/evals` plots any metric across past runs with the baseline marked.
+both are how a rename silently switches the gate off. The tolerance is `Evals:RegressionTolerance` (0.02), overridden
+per metric in `Evals:RegressionTolerances`, each override carrying what it was measured from: in `retrieval`,
+`recall@5:bg` and `recall@20` use 0.025, because a non-English query is translated by a live model and moved about
+0.021 over five runs while `recall@5:en` did not move at all; in `generation`, `relevance` uses 0.035 (an LLM judge
+scoring prose). `/evals` plots any metric across past runs with the baseline marked.
 
 Datasets are JSONL under `evals/`; reports land in `evals/reports/` (JSON for the `/evals` page, Markdown for humans).
 Three of them are not run by the harness: `a2a-conformance.jsonl` is run by the probe (`make eval-a2a`), and

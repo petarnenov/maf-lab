@@ -494,6 +494,38 @@ def check_links(repo: Repo) -> list[Finding]:
     return findings
 
 
+# ── pages ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+WEB_ROUTES = "web/src/App.tsx"
+# `<Route path="…" element={<X` across lines; X = Navigate is a redirect. `index` routes carry no path and do not match.
+PAGE_ROUTE = re.compile(r"<Route\s+path=\"([^\"]+)\"\s+element=\{\s*<([A-Za-z0-9_.]+)")
+
+
+def web_pages(repo: Repo) -> list[tuple[str, int]]:
+    """(path, line) of every page the web app registers: not redirects, not the catch-all, parameter segments dropped."""
+    if not repo.exists(WEB_ROUTES):
+        return []
+    text = repo.read(WEB_ROUTES)
+    pages = []
+    for m in PAGE_ROUTE.finditer(text):
+        path, element = m[1], m[2]
+        if element == "Navigate" or path.strip("/") in ("*", ""):
+            continue
+        segments = [s for s in path.strip("/").split("/") if s and not s.startswith(":") and s != "*"]
+        if segments:
+            pages.append(("/" + "/".join(segments), text.count("\n", 0, m.start(1)) + 1))
+    return pages
+
+
+def check_pages(repo: Repo) -> list[Finding]:
+    if not repo.exists("README.md"):
+        return []
+    readme = repo.read("README.md")
+    return [Finding(WEB_ROUTES, line, "pages", f"page `{path}` is not named in README.md",
+                    f"name it in README.md as `{path}`")
+            for path, line in web_pages(repo) if f"`{path}`" not in readme]
+
+
 def check_change_proposals(repo: Repo) -> list[Finding]:
     findings = []
     changes = repo.root / "openspec" / "changes"
@@ -554,6 +586,7 @@ def check(root: Path) -> int:
     findings += check_make_references(on_disk)
     findings += check_models(on_disk)
     findings += check_links(on_disk)
+    findings += check_pages(on_disk)
     findings += check_change_proposals(on_disk)
     for f in findings:
         print(f)
@@ -561,7 +594,8 @@ def check(root: Path) -> int:
     if findings:
         print(f"docs-check: {len(findings)} finding(s)")
         return 1
-    print(f"docs-check: {documents} documents, {blocks} generated blocks, {route_count} routes — in sync")
+    print(f"docs-check: {documents} documents, {blocks} generated blocks, {route_count} routes, "
+          f"{len(web_pages(on_disk))} pages — in sync")
     return 0
 
 

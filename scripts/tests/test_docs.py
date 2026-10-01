@@ -460,6 +460,73 @@ class LinkTests(DocsTestCase):
         self.assertCheckPasses()
 
 
+APP_TSX = """\
+export function App() {
+  return (
+    <Routes>
+      <Route element={<Layout />}>
+        <Route index element={<Navigate to="/chat" replace />} />
+        <Route path="chat/:conversationId?" element={<ChatPage />} />
+        <Route path="coverage" element={<CoveragePage />} />
+        <Route
+          path="admin/jev"
+          element={
+            <RequireAdmin>
+              <JevPage />
+            </RequireAdmin>
+          }
+        />
+        <Route path="admin/intents" element={<Navigate to="/admin/jev" replace />} />
+        <Route path="*" element={<Navigate to="/chat" replace />} />
+      </Route>
+    </Routes>
+  );
+}
+"""
+
+
+class PageTests(DocsTestCase):
+    def setUp(self):
+        super().setUp()
+        self.generated()
+
+    def with_app(self) -> None:
+        self.fx.write("web/src/App.tsx", APP_TSX)
+        self.fx.edit("docs/docs-sync.toml", '"tools" = "Tools"', '"tools" = "Tools"\n"web" = "Web app"')
+        self.generated()
+
+    def test_no_web_app_means_no_finding(self):
+        self.assertCheckPasses()
+
+    def test_every_named_page_passes(self):
+        self.with_app()
+        self.fx.edit("README.md", "Run `make up`", "Screens: `/chat`, `/coverage`, [`/admin/jev`](https://example.com/admin/jev). Run `make up`")
+        out = self.assertCheckPasses()
+        self.assertIn("3 pages", out)
+
+    def test_unnamed_page_fails_at_its_route(self):
+        self.with_app()
+        self.fx.edit("README.md", "Run `make up`", "Screens: `/chat`, `/admin/jev`. Run `make up`")
+        out = self.assertCheckFails("web/src/App.tsx:7: pages: page `/coverage` is not named in README.md")
+        self.assertNotIn("`/chat`", out)
+
+    def test_multiline_route_reports_its_path_line(self):
+        self.with_app()
+        self.fx.edit("README.md", "Run `make up`", "Screens: `/chat`, `/coverage`. Run `make up`")
+        self.assertCheckFails("web/src/App.tsx:9: pages: page `/admin/jev`")
+
+    def test_redirects_catch_all_and_parameters_are_not_pages(self):
+        self.with_app()
+        self.fx.edit("README.md", "Run `make up`", "Screens: `/chat`, `/coverage`, `/admin/jev`. Run `make up`")
+        out = self.assertCheckPasses()
+        self.assertNotIn("/admin/intents", out)
+
+    def test_plain_prose_mention_is_not_enough(self):
+        self.with_app()
+        self.fx.edit("README.md", "Run `make up`", "Open /coverage, `/chat` and `/admin/jev`. Run `make up`")
+        self.assertCheckFails("page `/coverage` is not named")
+
+
 class ProposalTests(DocsTestCase):
     def setUp(self):
         super().setUp()
