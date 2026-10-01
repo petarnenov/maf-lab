@@ -159,6 +159,7 @@ make help                  # every target
 | `make ps` | Show services, state and health |
 | `make logs` | Follow logs (SERVICE=api to narrow) |
 | `make clean` | Remove the stack WITH volumes (index, conversations) and build outputs; asks unless FORCE=1 |
+| `make infra` | Start only the indexer's infrastructure (Qdrant, Ollama + the embedding model) and wait until healthy |
 | `make index` | Index both domains' corpora and the codebase (unchanged documents are skipped) |
 | `make index-portfolio` | Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only |
 | `make index-code` | Index the repository itself (→ maf_code_chunks, served by mcp-code) only; unchanged files are skipped |

@@ -69,7 +69,7 @@ INDEXER_SRC  := $(shell find src/Maf.Lab.Indexing src/Maf.Lab.Retrieval src/Maf.
                 Directory.Build.props Directory.Packages.props global.json
 INDEXER      := $(DOTNET) $(INDEXER_DLL)
 
-.PHONY: all help up down restart ps logs clean index index-portfolio index-code reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
+.PHONY: all help up down restart ps logs clean infra index index-portfolio index-code reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
         coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-answer-check eval-a2a dev doctor banner index-if-empty \
         specs docs docs-check lint-dotnet lint-web build-web ci ci-e2e setup \
         require-docker require-dotnet require-npm require-python
@@ -117,6 +117,11 @@ banner:
 	@echo ""
 
 # ── data ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+infra: require-docker ## Start only the indexer's infrastructure (Qdrant, Ollama + the embedding model) and wait until healthy
+	@# Host-side indexer CLIs need Qdrant (6333/6334) and the compose Ollama (11435); a no-op when the stack is already up.
+	@$(COMPOSE) up -d --wait qdrant ollama
+	@$(COMPOSE) up --no-log-prefix ollama-init
+
 index-if-empty: require-dotnet
 	@$(HOST_ENV) scripts/index_if_empty.sh
 
@@ -125,29 +130,29 @@ $(INDEXER_DLL): $(INDEXER_SRC) | require-dotnet
 	@$(DOTNET) build src/Maf.Lab.Indexing -v quiet -nologo
 	@touch $@
 
-index: require-dotnet $(INDEXER_DLL) ## Index both domains' corpora and the codebase (unchanged documents are skipped)
+index: require-dotnet infra $(INDEXER_DLL) ## Index both domains' corpora and the codebase (unchanged documents are skipped)
 	$(HOST_ENV) $(INDEXER) index
 	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) index
 	$(HOST_ENV) $(CODE_ENV) $(INDEXER) index
 
-index-portfolio: require-dotnet $(INDEXER_DLL) ## Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only
+index-portfolio: require-dotnet infra $(INDEXER_DLL) ## Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only
 	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) index
 
-index-code: require-dotnet $(INDEXER_DLL) ## Index the repository itself (→ maf_code_chunks, served by mcp-code) only; unchanged files are skipped
+index-code: require-dotnet infra $(INDEXER_DLL) ## Index the repository itself (→ maf_code_chunks, served by mcp-code) only; unchanged files are skipped
 	$(HOST_ENV) $(CODE_ENV) $(INDEXER) index
 
-reindex: require-dotnet $(INDEXER_DLL) ## Re-embed every document of both domains (--force)
+reindex: require-dotnet infra $(INDEXER_DLL) ## Re-embed every document of both domains (--force)
 	$(HOST_ENV) $(INDEXER) index --force
 	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) index --force
 	$(HOST_ENV) $(CODE_ENV) $(INDEXER) index --force
 
-drift: require-dotnet $(INDEXER_DLL) ## Report stale documents (source newer than index)
+drift: require-dotnet infra $(INDEXER_DLL) ## Report stale documents (source newer than index)
 	$(HOST_ENV) $(INDEXER) drift
 
-rebuild-index: require-dotnet $(INDEXER_DLL) ## Re-create the collection with every configured dense vector and re-index (asks unless FORCE=1)
+rebuild-index: require-dotnet infra $(INDEXER_DLL) ## Re-create the collection with every configured dense vector and re-index (asks unless FORCE=1)
 	$(HOST_ENV) $(INDEXER) rebuild $(if $(filter 1,$(FORCE)),--yes,)
 
-migrate: require-dotnet $(INDEXER_DLL) ## Fill a provisioned dense vector with its configured model (TO=dense_v3)
+migrate: require-dotnet infra $(INDEXER_DLL) ## Fill a provisioned dense vector with its configured model (TO=dense_v3)
 	$(HOST_ENV) $(INDEXER) migrate --to $(TO)
 
 # ── quality ──────────────────────────────────────────────────────────────────────────────────────────────────────

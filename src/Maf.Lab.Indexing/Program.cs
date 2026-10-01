@@ -145,6 +145,13 @@ public static class Program
             Console.Error.WriteLine("Cancelled.");
             return 130;
         }
+        catch (Exception ex) when (UnreachableService.Describe(ex,
+            services.GetRequiredService<IOptions<Retrieval.Configuration.QdrantOptions>>().Value,
+            services.GetRequiredService<IOptions<Retrieval.Configuration.ModelOptions>>().Value) is { } unreachable)
+        {
+            Console.Error.WriteLine(unreachable);
+            return 1;
+        }
     }
 
     /// <summary>
