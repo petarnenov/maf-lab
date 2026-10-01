@@ -19,6 +19,10 @@ public static class ChildProcess
         "NUGET_FALLBACK_PACKAGES", "npm_config_cache", "NODE_PATH",
     ];
 
+    /// <summary>
+    /// The most output kept: the first half of it and the last half. A test run's summary — how many failed — is the
+    /// last thing it prints, so a cap that kept only the beginning would lose exactly what a result is read from.
+    /// </summary>
     public const int MaxOutputChars = 400_000;
 
     public static async Task<ProcessOutcome> RunAsync(string file, IEnumerable<string> args, string workingDirectory, TimeSpan timeout,
@@ -56,19 +60,12 @@ public static class ChildProcess
 
         using var process = Process.Start(info) ?? throw new InvalidOperationException($"{file} did not start");
         process.StandardInput.Close();
-        var output = new StringBuilder();
+        var output = new CappedOutput(MaxOutputChars);
         void Collect(object _, DataReceivedEventArgs e)
         {
-            if (e.Data is null)
+            if (e.Data is not null)
             {
-                return;
-            }
-            lock (output)
-            {
-                if (output.Length < MaxOutputChars)
-                {
-                    output.AppendLine(e.Data);
-                }
+                output.Add(e.Data);
             }
         }
         process.OutputDataReceived += Collect;
@@ -100,9 +97,51 @@ public static class ChildProcess
         }
         // Let the output handlers drain what the process wrote before it ended.
         process.WaitForExit(2_000);
-        lock (output)
+        return new ProcessOutcome(timedOut ? -1 : process.ExitCode, output.ToString(), timedOut);
+    }
+}
+
+/// <summary>Output lines up to a cap: the first half of the cap from the start, the rest from the end.</summary>
+internal sealed class CappedOutput(int maxChars)
+{
+    private readonly StringBuilder _head = new();
+    private readonly Queue<string> _tail = new();
+    private int _tailChars;
+    private long _dropped;
+
+    public void Add(string line)
+    {
+        lock (_head)
         {
-            return new ProcessOutcome(timedOut ? -1 : process.ExitCode, output.ToString(), timedOut);
+            if (_head.Length + line.Length + 1 <= maxChars / 2)
+            {
+                _head.AppendLine(line);
+                return;
+            }
+            _tail.Enqueue(line);
+            _tailChars += line.Length + 1;
+            while (_tailChars > maxChars / 2 && _tail.Count > 1)
+            {
+                _tailChars -= _tail.Dequeue().Length + 1;
+                _dropped++;
+            }
+        }
+    }
+
+    public override string ToString()
+    {
+        lock (_head)
+        {
+            var text = new StringBuilder(_head.ToString());
+            if (_dropped > 0)
+            {
+                text.AppendLine($"... {_dropped} line(s) of output omitted ...");
+            }
+            foreach (var line in _tail)
+            {
+                text.AppendLine(line);
+            }
+            return text.ToString();
         }
     }
 }

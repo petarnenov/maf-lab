@@ -52,7 +52,16 @@ public sealed partial class DotnetToolchain(RunnerOptions options) : IToolchainR
                 failures.Add(new TestFailure(m.Groups[1].Value, string.Join(" ", message)));
             }
         }
-        var tests = new TestCounts(Last(text, "succeeded"), Last(text, "failed"), Last(text, "skipped"));
+        // A run that names failed tests failed, whatever its summary says or whether one was printed at all. Without
+        // a summary, nothing says every test ran and passed: the run counts as failed, never as zero failures.
+        var summarised = Summary("total").IsMatch(text);
+        var failed = Math.Max(Last(text, "failed"), failures.Count);
+        if (!buildFailed && !summarised && failed == 0)
+        {
+            failed = 1;
+            failures.Add(new TestFailure("(test run)", "The test run printed no summary, so it is not known that every test passed."));
+        }
+        var tests = new TestCounts(Last(text, "succeeded"), failed, Last(text, "skipped"));
         return new ToolchainOutcome(buildFailed ? BuildOutcome.Failed : BuildOutcome.Ok, diagnostics, tests,
             failures.Take(50).ToList(), buildFailed ? null : report, outcome.TimedOut);
     }

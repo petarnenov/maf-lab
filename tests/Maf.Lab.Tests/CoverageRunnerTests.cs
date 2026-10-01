@@ -308,6 +308,44 @@ public sealed class CoverageRunnerTests
     }
 
     [Fact]
+    public void A_dotnet_run_whose_summary_is_missing_is_not_green()
+    {
+        // The summary was lost (the output was cut short), but the failed tests had already been named.
+        const string named = """
+            failed Lab.Tests.CalcTests.Adds (12ms)
+              Assert.Equal() Failure: Values differ
+            failed Lab.Tests.CalcTests.Subtracts (3ms)
+              Assert.Equal() Failure: Values differ
+            """;
+        var cut = DotnetToolchain.Parse(new ProcessOutcome(2, named, false), "/work/job/ws", "/out/r.xml");
+        Assert.Equal((BuildOutcome.Ok, 2), (cut.Build, cut.Tests.Failed));
+
+        // Nothing named and no summary: nothing says every test passed.
+        var silent = DotnetToolchain.Parse(new ProcessOutcome(0, "Building...\n", false), "/work/job/ws", "/out/r.xml");
+        Assert.Equal(1, silent.Tests.Failed);
+        Assert.Contains("no summary", silent.Failures.Single().Message);
+    }
+
+    [Fact]
+    public void Output_over_the_cap_keeps_its_beginning_and_its_end()
+    {
+        var output = new CappedOutput(1_000);
+        output.Add("first line");
+        for (var i = 0; i < 1_000; i++)
+        {
+            output.Add($"noise {i}");
+        }
+        output.Add("  failed: 4");
+
+        var text = output.ToString();
+
+        Assert.StartsWith("first line", text);
+        Assert.EndsWith("  failed: 4" + Environment.NewLine, text);
+        Assert.Contains("omitted", text);
+        Assert.True(text.Length < 1_200);
+    }
+
+    [Fact]
     public void Vitest_json_gives_counts_failures_and_load_errors()
     {
         const string json = """
