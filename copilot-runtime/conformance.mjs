@@ -7,6 +7,7 @@
 // changed), and a run stopped by its client ends on the api within seconds.
 //
 // Usage: node copilot-runtime/conformance.mjs [base_url]   (default http://localhost:7171; the stack must be up)
+// MODEL_FREE=1 (CI's stub model, which calls no tool) skips the interrupt check: only a real model proposes a write.
 import { EventType, HttpAgent } from '@ag-ui/client';
 
 const base = process.argv[2] ?? 'http://localhost:7171';
@@ -75,6 +76,7 @@ for (const via of ['direct', 'runtime']) {
   });
 
   check(`chat (${via}): a write pauses on an interrupt, and the answer resumes it`, async () => {
+    if (process.env.MODEL_FREE === '1') return 'skipped: the stub model proposes no write';
     const threadId = thread();
     const asked = await run(routes.chat[via], {
       threadId,

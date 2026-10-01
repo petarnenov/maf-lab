@@ -81,6 +81,10 @@ jobs:
           path: .nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', '**/*.csproj') }}
           restore-keys: nuget-${{ runner.os }}-
+      # make verify drives every agent with a bare AG-UI client (copilot-runtime/conformance.mjs).
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
       - name: Stack with the Ollama stub → index → verify through the balancer on :7171
         run: make ci-e2e WAIT_TIMEOUT=600
       - name: Collect diagnostics
