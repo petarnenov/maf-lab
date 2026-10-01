@@ -2460,3 +2460,31 @@ said which account the conversation was about.
   once a second while a listed run is running, so the browser's clock never enters it; no polling was added.
 - **Compact form.** `42s`, `3m 05s`, `1h 02m`, `—` when unknown; a running run reads "… so far". The Coverage page's
   own run timer (`0m 42s`) is unchanged.
+
+## 68. The A2A, MCP and Redis inspectors run with the stack (run-inspectors-with-the-stack, 2026-10-01)
+
+- **Why.** The lab's A2A agents, MCP servers and shared state had no interactive window from the outside. The official
+  tools exist, but a container's `localhost` is itself, so a plain `docker run` of an inspector cannot reach the URLs the
+  agent cards advertise (`http://localhost:7171/a2a`) without host networking, which macOS does not give by default.
+- **Pins.** A2A Inspector: built by compose from `github.com/a2aproject/a2a-inspector` at commit
+  `8aa064639af106ff771d60428ef6d460f5454743` (2026-08-08); the project publishes no image. MCP Inspector:
+  `ghcr.io/modelcontextprotocol/inspector:2.9.0`. Redis Insight: `redis/redisinsight:3.8.0`. All multi-arch
+  (amd64/arm64). No repository package moved.
+- **Inside the balancer's network namespace.** `a2a-inspector` and `mcp-inspector` use `network_mode: service:lb`, and
+  nginx also listens on 7171 there, so `http://localhost:7171/...` inside them is the balancer — identical on Docker
+  Desktop and Linux. `lb` publishes their ports (`127.0.0.1:7172`, `127.0.0.1:7173`); a recreated `lb` recreates them.
+  Rejected: `network_mode: host` (Linux-only by default, every interface), `extra_hosts` (cannot remap `localhost`).
+- **Redis Insight on the compose network.** It needs only `redis:6379`, publishes `127.0.0.1:7174` itself, and opens
+  pre-connected (`RI_REDIS_HOST/PORT/ALIAS`). `RI_ACCEPT_TERMS_AND_CONDITIONS=true` accepts its EULA without a dialog
+  and leaves analytics and notifications off. It is SSPL-licensed; used as a local developer tool, never shipped.
+  Rejected: redis-commander (thin, slow-moving), p3x-redis-ui (connections only from its GUI), phpRedisAdmin (basic).
+- **Loopback only, no volumes.** The MCP Inspector spawns processes on request and embeds its API token in its page;
+  Redis Insight has no login and can write. Neither keeps state on disk: no plaintext `secrets.json`, and the Redis
+  connection is recreated from the environment each start.
+- **Ready to use, without forking.** `compose/a2a-inspector/lab_app.py` (mounted read-only) imports upstream's app,
+  serves its page plus a defaults script, and adds `/lab/token`, which mints a partner token per page load from the dev
+  credentials compose passes in; the token follows the agent when the card URL changes. `compose/mcp-inspector/start.mjs`
+  writes the catalog (billing, portfolio, code, each with a dev user's token) and rewrites it hourly. Rejected: patching
+  the pinned sources, a long-lived dev token, a catalog in the repo (an expiring credential in git).
+- **Profile `inspectors`.** The Makefile exports `COMPOSE_PROFILES=inspectors` unless `CI_MODE=1`, so CI and
+  `ci-e2e` never build or pull them. The web UI links to them after "Curriculum", on the page's own host.
