@@ -184,6 +184,29 @@ public sealed class TestAgentOverviewApiTests
     }
 
     [Fact]
+    public async Task Each_recent_run_says_what_it_cost()
+    {
+        using var api = Api("");
+        var accepted = Run("r_acc", "src/A.cs", TestGenRunState.Accepted, 1);
+        accepted.Tokens = 2_760_003;
+        accepted.CostUsd = 0.291;
+        accepted.BudgetCostUsd = 0.5;
+        var working = Run("r_work", "src/B.cs", TestGenRunState.Working, 2);
+        working.Tokens = 300_000;
+        working.CostUsd = 0.0421;
+        var nothing = Run("r_none", "src/C.cs", TestGenRunState.Failed, 3);
+        await SeedAsync(api, accepted, working, nothing);
+
+        var recent = (await OverviewAsync(api)).Recent.ToDictionary(r => r.Id);
+
+        Assert.Equal((2_760_003L, 0.291, new RunBudget(null, 0.5)), (recent["r_acc"].Tokens, recent["r_acc"].CostUsd, recent["r_acc"].Budget));
+        // The configured models are priced at the lab's estimate.
+        Assert.True(recent["r_acc"].CostIsEstimate);
+        Assert.Equal(0.0421, recent["r_work"].CostUsd);
+        Assert.Equal((0L, 0.0), (recent["r_none"].Tokens, recent["r_none"].CostUsd));
+    }
+
+    [Fact]
     public async Task At_most_ten_recent_runs_are_listed()
     {
         using var api = Api("");

@@ -37,7 +37,7 @@ export function isUnlimited(budget: RunBudget | null | undefined): boolean {
 }
 
 /** An amount as typed, so a cap below a cent is not shown as $0.00: two decimals, or as many as it needs. */
-const dollars = (value: number) =>
+export const dollars = (value: number) =>
   `$${value >= 0.01 ? value.toFixed(2) : value.toLocaleString('en-US', { maximumSignificantDigits: 3 })}`;
 
 /** A budget in a few words: "unlimited", "$0.50", "400,000 tokens" or both. */

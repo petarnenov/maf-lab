@@ -310,12 +310,18 @@ maxSuspectedBugs }` of `{ min, max, default }` that `/api/coverage/models` retur
 because a run started without a budget has none. `runs` is `{ running, candidates, accepted, failed, other, total }`
 (running is submitted, working or verifying; failed includes verification failed), and `recent` is the ten runs that
 changed last, `[{ id, path, state, reason, attempt, maxAttempts, lastPct, targetPct, model, updatedAt, startedAt,
-finishedAt, durationMs }]`. `finishedAt` is when the run's work ended — the first time it left submitted, working
+finishedAt, durationMs, tokens, costUsd, costIsEstimate, budget }]`. `finishedAt` is when the run's work ended — the first time it left submitted, working
 and verifying, into a candidate or a final state — so accepting or discarding a candidate later does not move it; it
 is null while the run is running. `durationMs` is the work time: `finishedAt − startedAt`, or, while running, the time
 from `startedAt` to this answer (the page counts on from there); null when a stopped run's end is not known. Runs
 stored before ends were recorded get one at api start, from their first update in a non-running state (or their last
-change when they have no updates). Runs describe the repository, not a firm, so nothing here is scoped by tenant and
+change when they have no updates). `tokens` and `costUsd` are what the run recorded for the agent's model calls
+(so far, while it runs): the tokens priced, in USD, at the model's rates as the api sent them to the agent when the run
+started — the amount the run's cost cap is checked against, not a recomputation at today's prices; 0 when no model
+call was made or the model is priced at zero. The coverage runner's build and test time is not in it.
+`costIsEstimate` is true when the run's model is priced at the lab's estimated rates in `TestAgent:Models`
+(`PriceIsEstimate`), or is no longer on that allowlist. `budget` is `{ maxTokens, maxCostUsd }` as chosen at start;
+null caps are unlimited. Runs describe the repository, not a firm, so nothing here is scoped by tenant and
 the route takes no parameter.
 
 ## Compliance (FIRM_ADMIN only, otherwise `403`)

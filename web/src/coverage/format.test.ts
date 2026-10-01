@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { elapsed } from './format';
+import { cost, elapsed } from './format';
 
 describe('elapsed', () => {
   it('reads seconds under a minute', () => {
@@ -25,5 +25,35 @@ describe('elapsed', () => {
     expect(elapsed(undefined)).toBe('—');
     expect(elapsed(Number.NaN)).toBe('—');
     expect(elapsed(-5_000)).toBe('0s');
+  });
+});
+
+describe('cost', () => {
+  it('reads three decimals under a dollar and two from one', () => {
+    expect(cost(0.0421)).toBe('$0.042');
+    expect(cost(0.291)).toBe('$0.291');
+    expect(cost(0.001)).toBe('$0.001');
+    expect(cost(1.2745)).toBe('$1.27');
+    expect(cost(0.9996)).toBe('$1.00');
+    expect(cost(1234.5)).toBe('$1,234.50');
+  });
+
+  it('reads an amount too small for three decimals as under a tenth of a cent', () => {
+    expect(cost(0.0004)).toBe('<$0.001');
+    expect(cost(0.0001)).toBe('<$0.001');
+  });
+
+  it('reads nothing spent as $0.00 and an unknown cost as a dash', () => {
+    expect(cost(0)).toBe('$0.00');
+    expect(cost(0, true)).toBe('$0.00');
+    expect(cost(null)).toBe('—');
+    expect(cost(undefined)).toBe('—');
+    expect(cost(Number.NaN)).toBe('—');
+  });
+
+  it('marks an amount priced at estimated rates', () => {
+    expect(cost(0.0421, true)).toBe('≈$0.042');
+    expect(cost(1.2745, true)).toBe('≈$1.27');
+    expect(cost(0.0004, true)).toBe('≈<$0.001');
   });
 });
