@@ -2716,3 +2716,18 @@ said which account the conversation was about.
       and passes 8/8 on the live stack with the real model.
     - The unchanged chat screen renders an agent it was never written for (`ChatPage.swap.test.tsx`).
     - `AGUIProtocolOnlyTests` and ESLint keep it so.
+- **Jev and the evals after the move** (2026-10-01, live stack, real model).
+  - **Jev requests:** none changed. The §7 checklist is unchanged on every item: same questions, state, thresholds,
+    fallbacks, `jev-1.13.0`, retries. The prompt screen and the answer check only gained a step around them.
+  - **Suites at or above baseline:**
+    - selection, on its rerun; the first run's one miss was the model skipping a search;
+    - intent, including 25 bg and 28 bg-latn;
+    - answer-check, which is new and has no baseline yet;
+    - confirmation;
+    - injection.
+  - **guardrail and domain fall short of baseline, but not because of this change.** Both call Jev or the
+    classifier directly, not the turn, and their misses are rows added to the datasets after the baseline was taken:
+    `4f01fb7` (33 codebase rows) and `874c352` (64 → 81 rows). They need a re-baseline, which is the owner's call.
+  - **No Cyrillic cases:** confirmation and injection have none. That is a gap.
+  - **What the evals do not exercise:** they drive `ChatTurnRunner` directly, so they do not reach the new `ChatAgent`
+    / `ChatRunFilter` layer. The api tests and `make verify`'s conformance cover that layer.

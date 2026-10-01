@@ -21,9 +21,11 @@ resume run before the answer request is sent.
   event pipeline, and the behind-the-scenes panel remains available during the answer run
 
 ### Requirement: Resume events reach the monitor
-The answer stream SHALL dispatch its AG-UI events through the same reducer path used for ordinary sends, so trace and
-tool events from the resume run are visible in the monitor.
+The answer run that follows an approval or a rejection SHALL be followed by the same client path as an ordinary send,
+so its tool calls and steps are shown in the conversation, and the monitor shows its trace while it runs, read from
+the trace API like any other turn.
 
 #### Scenario: Resume stream includes tool activity
-- **WHEN** a resume response emits tool call and trace events and the stream is read to completion
-- **THEN** the monitor receives those events and the resume turn renders the streamed answer text
+- **WHEN** a resume run calls a tool and is read to completion
+- **THEN** the conversation shows the tool call and the streamed answer text, and the monitor shows the run's trace
+  events

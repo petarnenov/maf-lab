@@ -24,7 +24,7 @@
 - [x] 2.6 Map `/api/chat` with `MapAGUIServer` (`ChatTurnRunner` stays as the turn's logic behind `ChatAgent`, no longer writing events). Delete `AGUIStream`'s chat event factories, `POST /api/chat/{runId}/stop` and `GET /api/chat/{runId}`. Implement rejoin per D4. Verify: the stop, rejoin, ownership and "run begins and ends once" tests pass, and the arch test no longer lists chat files
 - [x] 2.7 Add `GET /api/runs/{runId}/trace?after=` (D6), with the access rules of the turn trace. Verify: tests for owner, other user (404), resume run, and incremental `after`
 - [x] 2.8 Re-home the frame recorder on the adapter output (D7) and drop `name` and `traceSeq`. Verify: the frame tests (every event recorded, cap, no payload in logs) pass
-- [ ] 2.9 Move `Maf.Lab.Eval/Hosting/EvalAgentHost.cs` to the new agent. Verify: `make eval SUITE=selection` and the guard, answer-check and confirmation suites match the accepted baseline
+- [x] 2.9 Move `Maf.Lab.Eval/Hosting/EvalAgentHost.cs` to the new agent. Verify: `make eval SUITE=selection` and the guard, answer-check and confirmation suites match the accepted baseline
 
 ## 3. Test-generation run as an agent
 
@@ -50,9 +50,9 @@
 
 ## 6. Jev, evals and end-to-end
 
-- [ ] 6.1 Run the Jev review checklist (docs/rules/jev-usage.md §7) on the moved call sites, and test on labeled inputs including Bulgarian ones (prompt screen, routing, tool-result guard, answer check). Verify: the checklist outcome is recorded in DECISIONS.md, and the labeled cases give the same decisions as on `main`
-- [ ] 6.2 Update `evals/ui-events.jsonl`, `scripts/capture_ui_events.sh` and `scripts/testgen_e2e.sh` to protocol-only events. Verify: re-capture `evals/ui-events.jsonl` from the stack and check that no frame is `CUSTOM`, and `scripts/testgen_e2e.sh` passes
-- [ ] 6.3 Run the full stack: chat with a card, a confirmation approve and reject, a stop, a reload during a run, and a test-generation run watched from two views. Verify: `make ci` is green and the manual walk-through matches the specs
+- [x] 6.1 Run the Jev review checklist (docs/rules/jev-usage.md §7) on the moved call sites, and test on labeled inputs including Bulgarian ones (prompt screen, routing, tool-result guard, answer check). Verify: the checklist outcome is recorded in DECISIONS.md, and the labeled cases give the same decisions as on `main`
+- [x] 6.2 Update `evals/ui-events.jsonl`, `scripts/capture_ui_events.sh` and `scripts/testgen_e2e.sh` to protocol-only events. Verify: re-capture `evals/ui-events.jsonl` from the stack and check that no frame is `CUSTOM`, and `scripts/testgen_e2e.sh` passes
+- [x] 6.3 Run the full stack: chat with a card, a confirmation approve and reject, a stop, a reload during a run, and a test-generation run watched from two views. Verify: `make ci` is green and the manual walk-through matches the specs
 
 ## 7. Documentation
 
