@@ -2443,3 +2443,20 @@ said which account the conversation was about.
 - **Named, not thrown.** The indexer maps gRPC `Unavailable` to Qdrant (`Host:GrpcPort`) and an `HttpRequestException`
   over a `SocketException` to the embedding endpoint, prints one line with "run 'make infra'" and exits 1. Built from
   configuration and exception types only, never an exception message.
+
+## 67. Recent test runs show how long they took (show-test-run-duration, 2026-10-01)
+
+- **Why.** The agents page's Recent runs table said when a run last changed, not how long it took. No package or model
+  moved.
+- **Duration is work time, not time to a decision.** From the run's start to the first time it leaves submitted,
+  working and verifying (into a candidate or a final state). Accepting or discarding a candidate later does not
+  lengthen it; `UpdatedAt − CreatedAt` would have counted the reviewer's delay.
+- **Stored, not derived on read.** A nullable `TestGenRuns.FinishedAt`, stamped once by `TestGenRuns.StampFinish` from
+  the two places a run's state moves (`ApplyAsync`, `FinishAsync`). The column comes from the additive schema pass;
+  rows from before get it once at startup from their first event in a non-running state (`json_extract` over the
+  event JSON), else their last change. `TestGenRunState.Running` names the running states once.
+- **Computed by the api.** Each `recent` item gains `startedAt`, `finishedAt` and `durationMs`; a running run's
+  `durationMs` runs to the answer's time (`TimeProvider`). The page adds the time since that answer arrived and ticks
+  once a second while a listed run is running, so the browser's clock never enters it; no polling was added.
+- **Compact form.** `42s`, `3m 05s`, `1h 02m`, `—` when unknown; a running run reads "… so far". The Coverage page's
+  own run timer (`0m 42s`) is unchanged.
