@@ -7,8 +7,8 @@
 
 ## 1. Packages and guards
 
-- [ ] 1.1 Move `Microsoft.Agents.AI.*` to 1.23 and `Microsoft.Extensions.AI.Abstractions` to 10.10.1, add `Microsoft.Agents.AI.Hosting.AGUI.AspNetCore` 1.23.0-preview.260928.1, and write the DECISIONS.md entry (revising §26, §49, §52) in the same commit. Verify: `dotnet build` and `make test` pass, and `dotnet list package --include-transitive` shows `AGUI.*` 1.0.0
-- [ ] 1.2 Add `@copilotkit/react-core` 1.76.0 and `zod` to the web, and move `@ag-ui/core` to 1.0.1 (exact versions, `SCARF_ANALYTICS=false` in the web image; DECISIONS in the same commit). Verify: `make build-web` passes
+- [x] 1.1 Move `Microsoft.Agents.AI.*` to 1.23 and `Microsoft.Extensions.AI.Abstractions` to 10.10.1, add `Microsoft.Agents.AI.Hosting.AGUI.AspNetCore` 1.23.0-preview.260928.1, and write the DECISIONS.md entry (revising §26, §49, §52) in the same commit. Verify: `dotnet build` and `make test` pass, and `dotnet list package --include-transitive` shows `AGUI.*` 1.0.0
+- [x] 1.2 Add `@copilotkit/react-core` 1.76.0 and `zod` to the web, and move `@ag-ui/core` to 1.0.1 (exact versions, `SCARF_ANALYTICS=false` in the web image; DECISIONS in the same commit). Verify: `make build-web` passes
 - [x] 1.3 Add the .NET architecture test (D9): no `CustomEvent`, AG-UI types only under `Agent/AGUI/`, events built only in `AGUIMappings.cs`, no own event stream. Verify: the test fails today, listing `AGUIStream.cs`, `RunActivityProjection.cs`, `ChatTurnRunner.cs` and the two endpoint files among the expected violations
 - [x] 1.4 Add the web ESLint restrictions (D9). Verify: `make lint` reports today's violations in `chatEvents.ts`, `readChatStream.ts`, `useChatStream.ts` and `runStream.ts` (importers of `sseParser`), and nothing else
 

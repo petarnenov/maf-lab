@@ -7,6 +7,7 @@
     <PackageReference Include="Microsoft.Agents.AI" />
     <PackageReference Include="A2A" />
     <PackageReference Include="Microsoft.Agents.AI.A2A" />
+    <PackageReference Include="Microsoft.Agents.AI.Hosting.AGUI.AspNetCore" />
     <PackageReference Include="ModelContextProtocol" />
     <PackageReference Include="Microsoft.Extensions.AI" />
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />

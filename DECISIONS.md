@@ -2635,3 +2635,44 @@ said which account the conversation was about.
   which is what an api replica from before this change answers during a rolling update.
 - **Money only.** The coverage runner's build and test time is compute, not spend, and is not in it. The Coverage page
   already showed tokens and cost per run and is unchanged.
+
+## 74. Only the official AG-UI protocol, from the official libraries (agui-protocol-only, 2026-10-01)
+
+- **Why.** §26 let custom events in ("a consumer may ignore a custom event it does not know"). After that, every agent
+  grew its own events (`maf-lab/sources`, `maf-lab/trace`, four `maf-lab/testgen-*`) and its own hand-written
+  producer and consumer, so neither an agent nor a screen could be swapped without rewriting the other side. This
+  entry revises §26 (custom events, own translation, own stream), §49 (cards stay `ACTIVITY_SNAPSHOT`, now produced by
+  the adapter's `MapResult`) and §52 (focus stays `STATE_SNAPSHOT`, now produced through the adapter).
+- **Packages moved:**
+  - `Microsoft.Agents.AI` 1.22.0 → 1.23.0.
+  - `Microsoft.Agents.AI.A2A` 1.22.0-preview.260918.1 → 1.23.0-preview.260928.1.
+  - `Microsoft.Extensions.AI.Abstractions` 10.10.0 → 10.10.1.
+  - `Microsoft.Agents.AI.Hosting.AGUI.AspNetCore` 1.23.0-preview.260928.1 is added.
+  - The hosting package is the reason for the rest. Its 1.22 build is compiled against `AGUI.*` 0.0.6 and its 1.23
+    build against the 1.0.0 we pin. It requires MEAI Abstractions ≥ 10.10.1, and the A2A preview has to move with the
+    train.
+  - `dotnet list package --include-transitive` shows `AGUI.*` 1.0.0, Hosting 1.23.0-preview.260928.1 and Workflows
+    1.23.0. The whole test suite passes on 1.23, apart from the protocol-only architecture tests, which fail on purpose
+    until the migration is done.
+- **Web:**
+  - `@copilotkit/react-core` 1.76.0 is added. Its peer `zod` is pinned at 4.6.5, which satisfies `>=3.25`.
+  - `@ag-ui/core` 1.0.0 → 1.0.1, the version CopilotKit is built on.
+  - CopilotKit depends on `@scarf/scarf`, an install-time telemetry script, so the web image sets
+    `SCARF_ANALYTICS=false`.
+- **A spike decided the shape** (2026-10-01, fake `IChatClient`, no network). The hosting package works, with three
+  workarounds that the official client needs:
+  - optional fields are written as `null`, which `HttpAgent` rejects, so the AG-UI JSON resolver is put first to omit
+    them;
+  - the interrupt content types are never registered, so every interrupt ends in `RUN_ERROR`;
+  - `rawEvent` (the whole `ChatResponseUpdate`) is always attached and has no option, so a contract modifier drops it.
+
+  Both bugs are to be reported upstream. The spike also found that `connect` is not served, so rejoin is a run on the
+  same thread, and that `MapResult` adds events rather than replacing them, so redaction runs before the adapter.
+- **CopilotKit reaches the agents through its own runtime.** In CopilotKit OSS a browser can register an agent
+  directly only through `selfManagedAgents`, which is the Enterprise Intelligence tier and needs a licence key, or
+  through `agents__unsafe_dev_only`. The user chose the supported free path on 2026-10-01: a wiring-only
+  `copilot-runtime` Node service that registers the api's `MapAGUIServer` endpoints as `HttpAgent`s and forwards the
+  bearer token. Rejected: `@ag-ui/client` alone, because it would not be CopilotKit.
+- **Guards.** An xUnit source scan (`AGUIProtocolOnlyTests`) and ESLint rules fail the build on `CUSTOM`, on AG-UI
+  types outside `Agent/AGUI/`, on events built outside `AGUIMappings.cs`, and on any event stream or `fetch` to an
+  agent of our own.

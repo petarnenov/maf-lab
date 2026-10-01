@@ -2,6 +2,8 @@
 
 FROM node:24.21.0-alpine AS build
 WORKDIR /app
+# CopilotKit depends on @scarf/scarf, an install-time telemetry script: off (agui-protocol-only).
+ENV SCARF_ANALYTICS=false
 COPY package.json package-lock.json .npmrc ./
 RUN npm ci --no-audit --no-fund
 COPY . .
