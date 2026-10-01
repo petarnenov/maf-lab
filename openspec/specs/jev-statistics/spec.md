@@ -134,12 +134,13 @@ The Domains section SHALL hold numbers only.
 The Jev statistics SHALL count the answer check as a request-bearing site named `answer`: its requests, how many were
 unavailable (a request that ended `unchecked`) and its latency percentiles SHALL appear in the overview's per-site
 breakdown, and its requests SHALL be included in the overview's totals and in its requests and unavailability over
-time. An answer check that sent no request (disabled, no key) SHALL NOT be counted as a request.
+time. An answer check that sent no request (disabled, no key, sources over cap) SHALL NOT be counted as a request.
 
 The response SHALL also carry an answer-check section: how many turns were checked (received a verdict other than
 `unchecked`), how many of those were below the relevance floor and how many below the grounding floor — each against
-the floor recorded with its event — how many turns were left unchecked and how many of those because Jev was
-unavailable, and the check's latency percentiles and histogram. Numbers only.
+the floor recorded with its event — how many were `uncertain` (optional in the contract, so an older client still
+reads the response), how many turns were left unchecked and how many of those because Jev was unavailable, and the
+check's latency percentiles and histogram. Numbers only.
 
 #### Scenario: The answer site in the overview
 - **WHEN** the window holds two checked answers and one whose check was rejected by Jev
@@ -148,6 +149,14 @@ unavailable, and the check's latency percentiles and histogram. Numbers only.
 #### Scenario: The answer-check section
 - **WHEN** the window holds one passing answer, one below the grounding floor and one unchecked
 - **THEN** the section reports two checked, one not grounded, none not relevant and one unchecked
+
+#### Scenario: Uncertain answers are counted apart
+- **WHEN** the window holds one passing answer and one `uncertain` answer
+- **THEN** the section reports two checked, one uncertain, and none below either floor
+
+#### Scenario: Over the cap sends no request
+- **WHEN** the window holds one answer left `unchecked` because its sources were over the cap
+- **THEN** the `answer` site counts no request for it and no unavailability, and the section counts it as unchecked
 
 ### Requirement: Calls skipped by an open circuit are counted apart
 A Jev call that an open circuit skipped sent nothing to Jev. Such a call is recorded with reason `circuit open` and with
