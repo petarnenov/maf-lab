@@ -19,13 +19,12 @@ it and when that job completed. A result the runner computed for the request SHA
 
 While an identical request is queued or running, a new request SHALL wait for it instead of running a second copy, and
 SHALL report that job's state and queue position. When that job's result can be reused, the waiting request SHALL get
-it as a reused result. When it cannot, the waiting request SHALL run on its own in its original place in the queue. A
-request that asks for a fresh run SHALL neither wait for nor reuse another job, and its complete result SHALL replace
+it as a reused result. When it cannot, the waiting request SHALL be queued to run on its own. A request that asks for a fresh run SHALL neither wait for nor reuse another job, and its complete result SHALL replace
 any kept one.
 
 The runner SHALL keep at most a configured number of results for reuse (16 by default), dropping the oldest first, and
 SHALL forget them on restart. For every request it SHALL log and count whether it was a hit, joined a running job, was
-a miss or was a fresh run, with the toolchain and scope only and no request content.
+a miss, was a fresh run or could not be reused at all, with the toolchain and scope only and no request content.
 
 #### Scenario: The same request twice
 - **WHEN** a whole-suite request for a commit, a diff and a target completes green, and the same request comes 40

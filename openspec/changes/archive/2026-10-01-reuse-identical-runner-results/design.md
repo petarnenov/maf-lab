@@ -74,8 +74,8 @@ A second identical request while the first is queued or running gets its own job
 the leader's state and queue position. When the leader finishes:
 
 - with a reusable result: every follower is done with that result, marked reused;
-- otherwise: each follower becomes an ordinary queued job, keeps its original order, and is written to the channel. It
-  then runs once the queue reaches it.
+- otherwise: the first follower becomes an ordinary queued job at the end of the queue (a new order, so the positions
+  it reports are true), and the others follow it.
 
 A `fresh` request is never a leader for others: it does not register as in flight, so nobody attaches to it. That
 keeps "fresh" meaning an independent sample. Its reusable result still replaces the stored one.
