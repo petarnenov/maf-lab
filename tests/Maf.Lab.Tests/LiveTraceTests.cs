@@ -81,4 +81,30 @@ public class LiveTraceTests
         Assert.True(doc!.Ended);
         Assert.Null(doc.TurnId);
     }
+
+    [Fact]
+    public async Task A_run_is_there_to_ask_about_from_before_its_first_event()
+    {
+        var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tools = new FakeToolSource
+        {
+            BeforeSearchExecutes = async () =>
+            {
+                reached.TrySetResult();
+                await release.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            },
+        };
+        using var api = new ApiFactory(ApiFactory.ProceduralModel(), tools);
+        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+
+        var run = ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing", runId: "r_early");
+        await reached.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        var live = await adam.GetFromJsonAsync<LiveTraceDocument>("/api/runs/r_early/trace", Json, Ct);
+        release.TrySetResult();
+        await run;
+
+        Assert.False(live!.Ended);
+        Assert.NotEmpty(live.Events);
+    }
 }

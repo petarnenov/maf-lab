@@ -67,6 +67,10 @@ public sealed class ChatRunFilter : IEndpointFilter
         }
 
         context.HttpContext.Items[RunKey] = new ChatRun(principal, conversationId, input.RunId, resume is not null || rejoin);
+        // The run exists from here on, for every replica: its trace can be asked for before its first event is written.
+        await new Maf.Lab.Api.Agent.Streaming.RunStateTracker(services.GetRequiredService<IRunStateStore>(), principal,
+            conversationId, input.RunId, resume is not null || rejoin ? null : input.RunId,
+            services.GetRequiredService<TimeProvider>()).SaveAsync(ct);
         return await next(context);
     }
 
