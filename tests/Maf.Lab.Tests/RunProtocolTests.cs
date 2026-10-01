@@ -123,6 +123,26 @@ public class RunProtocolTests
     }
 
     [Fact]
+    public async Task A_run_id_used_before_starts_no_run()
+    {
+        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var thread = ApiFactory.ThreadOf(await ApiFactory.ChatAsync(client, "hello", runId: "r_once"));
+
+        // The run id names the turn it recorded: a second run under it is refused before it starts.
+        var response = await client.PostAsJsonAsync("/api/chat", new
+        {
+            threadId = thread,
+            runId = "r_once",
+            messages = new[] { new { id = "u2", role = "user", content = "hello again" } },
+        }, Ct);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        await using var db = ChatApiTests.Db(api);
+        Assert.Equal(1, await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(db.Turns, Ct));
+    }
+
+    [Fact]
     public async Task There_is_no_stop_endpoint_beside_the_protocol()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());

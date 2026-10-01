@@ -19,6 +19,7 @@
 "tests" = "xUnit unit tests and Testcontainers integration tests"
 "tools" = "Developer tools outside the running stack"
 "tools/screenshots" = "Playwright script that captures the README screenshots in both themes"
+"copilot-runtime" = "CopilotKit's runtime (Node), wiring only: the web reaches the api's AG-UI agents through it; the AG-UI conformance check"
 "web" = "Vite + React app"
 
 # Registered by the api but deliberately not rows in docs/http-api.md.
@@ -31,9 +32,14 @@
 "/a2a/message:send" = "MapA2A registers the HTTP+JSON binding beside the JSON-RPC endpoint"
 "/a2a/message:stream" = "MapA2A registers the HTTP+JSON binding beside the JSON-RPC endpoint"
 "/a2a/tasks…" = "MapA2A registers the HTTP+JSON task paths beside the JSON-RPC endpoint"
+"/api/chat" = "MapAGUIServer (the Agent Framework's AG-UI hosting) registers it at ChatAgentEndpoint.Path"
+"/api/coverage/runs/agent" = "MapAGUIServer (the Agent Framework's AG-UI hosting) registers it at TestGenRunEndpoint.Path"
 
 # Rows in docs/http-api.md for routes another host serves behind the same balancer.
 [routes.elsewhere]
+"/copilotkit/info" = "copilot-runtime (CopilotKit's runtime, Node) serves it behind the balancer at /copilotkit/"
+"/copilotkit/agent/{}/run" = "copilot-runtime serves it behind the balancer at /copilotkit/, for the chat and testgen agents"
+"/copilotkit/agent/{}/stop/{}" = "copilot-runtime serves it behind the balancer at /copilotkit/, for the chat and testgen agents"
 "/compliance/.well-known/agent-card.json" = "The compliance agent's MapA2ASurface, under its A2A:PathBase /compliance"
 "/compliance/a2a/token" = "The compliance agent's MapA2ASurface, under its A2A:PathBase /compliance"
 "/compliance/a2a" = "The compliance agent's MapA2A, under its A2A:PathBase /compliance"

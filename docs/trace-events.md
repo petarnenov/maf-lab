@@ -1,8 +1,9 @@
 # Turn trace events
 
 Every chat turn produces an ordered list of `TraceEvent`s: `{ seq, atMs, kind, title, durationMs?, data, truncated }`.
-They are streamed live as an AG-UI custom event named `maf-lab/trace`, whose `value` is one TraceEvent (see
-[http-api.md](http-api.md)), and stored with the turn:
+They never travel on the run's AG-UI stream (agui-protocol-only). While the run is going they are read from the trace
+API — `GET /api/runs/{runId}/trace?after=<seq>` → `{ runId, turnId, ended, events }`, the run's owner only, from any
+replica (see [http-api.md](http-api.md)) — and once it is over they are stored with the turn:
 `GET /api/turns/{turnId}/trace` → `{ turnId, conversationId, createdAt, events: TraceEvent[], aguiFrames }` (owner, or
 a FIRM_ADMIN of the same firm for turns in the review queue; otherwise 404). Text fields are capped at 20,000
 characters and a trace at 1 MB; `truncated: true` marks a capped event. JSON is camelCase.
@@ -50,33 +51,32 @@ A question in two domains forces both searches together: `… intent → domain 
 Typical order for a procedural question: `turn.start → intent → domain → guardrail → prompt → history → tool.forced → tool.call →
 tool.result → retrieval → relevance → guardrail → audit → envelope → model.request → reasoning.delta… → answer.delta… → model.response →
 memory → answer.check → sources → signals → turn.end`.
-The trace is stored before `done` is sent, so the stored copy is readable as soon as the stream ends. The answer check
+The trace is stored before the run's terminal event is sent, so the stored copy is readable as soon as the stream ends. The answer check
 runs before both, so the run's terminal event waits for it (at most `Jev:AnswerCheck:TimeoutSeconds`).
 
 ## AG-UI frames
 
 The trace says what the system did; the frames say what it put on the wire. Every event of a run is recorded as it
-goes out — including the ones a client may ignore (`RUN_STARTED`, `TEXT_MESSAGE_START`/`END`, `TOOL_CALL_END`, a
-custom event under an unknown name) and the terminal event — and stored with the turn the run recorded:
+goes out — read off what the official AG-UI server wrote, including the ones a client may ignore (`RUN_STARTED`,
+`STEP_*`, `TEXT_MESSAGE_START`/`END`, `TOOL_CALL_END`) and the terminal event — and stored with the turn the run
+recorded:
 
-`RunFrame` = `{ seq, atMs, type, name?, bytes, traceSeq?, payload?, truncated }`
+`RunFrame` = `{ seq, atMs, type, bytes, payload?, truncated }`
 
 | field | meaning |
 |---|---|
 | `seq` | position in the run, from 1 |
 | `atMs` | milliseconds since the run's first frame |
 | `type` | the protocol event type, e.g. `TEXT_MESSAGE_CONTENT` |
-| `name` | a custom event's name, e.g. `maf-lab/trace` |
 | `bytes` | the frame's size on the wire |
-| `traceSeq` | for a `maf-lab/trace` frame, the `seq` of the TraceEvent it carried |
-| `payload` | the event itself; absent for a trace frame and for a frame past the cap |
+| `payload` | the event itself; absent for a frame past the cap |
 | `truncated` | true when the run's 256 KB cap left the frame without its payload |
 
-A trace frame is kept by reference: its TraceEvent is already in `events`, and a second copy would double what the
-turn holds. The frames ride on the turn's trace row, so they are read by whoever may read the trace and deleted when
+Turns recorded before agui-protocol-only may also carry `name` (a custom event's name) and `traceSeq` (the TraceEvent a
+`maf-lab/trace` frame carried, kept by reference, without its payload). The frames ride on the turn's trace row, so they are read by whoever may read the trace and deleted when
 it is. A run that records no turn — an answer to a confirmation, or one the client walked away from — has nowhere to
 put them, and `aguiFrames` is `null` for a turn whose frames were never recorded.
 
-The web client records the same frames itself as it reads the stream, so a turn on screen shows what actually
-arrived (a frame whose JSON did not parse included, as `unparsed`) and a reopened turn shows the stored copy. Both
+The web client records the same frames itself as CopilotKit hands it each event, so a turn on screen shows what
+actually arrived and a reopened turn shows the stored copy. Both
 are listed, one row each, in the monitor's **AG-UI** view.

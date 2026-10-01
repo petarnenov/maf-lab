@@ -45,8 +45,8 @@
 
 ## 5. Proof of swappability
 
-- [ ] 5.1 Add the test-only `EchoAgent` and a web test that runs the unchanged chat screen against it. Verify: the echo answer, the generic tool card and the finished state are shown
-- [ ] 5.2 Add the conformance test that drives the chat and testgen agents with a bare `HttpAgent`, both directly on the api and through `/copilotkit/`: start, interrupt, resume, abort, no `CUSTOM`, one terminal event. Wire it into `make verify`. Verify: it passes against `make` on http://localhost:7171
+- [x] 5.1 Add the test-only `EchoAgent` (behind the official server, `AGUIHostingTests`) and a web test that runs the unchanged chat screen against an agent it was never written for (`ChatPage.swap.test.tsx`). Verify: the echo answer, the generic tool card and the finished state are shown
+- [x] 5.2 Add the conformance test that drives the chat and testgen agents with a bare `HttpAgent`, both directly on the api and through `/copilotkit/`: start, interrupt, resume, abort, no `CUSTOM`, one terminal event. Wire it into `make verify`. Verify: it passes against `make` on http://localhost:7171
 
 ## 6. Jev, evals and end-to-end
 
@@ -56,7 +56,7 @@
 
 ## 7. Documentation
 
-- [ ] 7.1 Update `docs/http-api.md`: the AG-UI section without `CUSTOM`, sources in the search result, stop and rejoin, the testgen agent, the live trace endpoint, and card activity types as data. Verify: `make docs-check` passes for routes
-- [ ] 7.2 Update `docs/trace-events.md`: the trace is no longer streamed, the live endpoint, and the frame fields. Verify: by review against D6 and D7
-- [ ] 7.3 Update `README.md` (the custom-event paragraph), `CLAUDE.md` (the protocol-only non-negotiable) and `.github/copilot-instructions.md`. Verify: `grep -rn "maf-lab/trace\|maf-lab/sources\|testgen-attempt" README.md CLAUDE.md docs .github` returns nothing
-- [ ] 7.4 Update `openspec/project.md` (frontend stack, containers), `docs/docs-sync.toml` (layout entry for `copilot-runtime/`), `CLAUDE.md` (entry point list) and the `Maf.Lab.Api` `.csproj` `<Description>`, then run `make docs` (never editing a `generated:` block by hand). Verify: `make docs-check` passes
+- [x] 7.1 Update `docs/http-api.md`: the AG-UI section without `CUSTOM`, sources in the search result, stop and rejoin, the testgen agent, the live trace endpoint, and card activity types as data. Verify: `make docs-check` passes for routes
+- [x] 7.2 Update `docs/trace-events.md`: the trace is no longer streamed, the live endpoint, and the frame fields. Verify: by review against D6 and D7
+- [x] 7.3 Update `README.md` (the custom-event paragraph), `CLAUDE.md` (the protocol-only non-negotiable) and `.github/copilot-instructions.md`. Verify: `grep -rn "maf-lab/trace\|maf-lab/sources\|testgen-attempt" README.md CLAUDE.md docs .github` returns nothing
+- [x] 7.4 Update `openspec/project.md` (frontend stack, containers), `docs/docs-sync.toml` (layout entry for `copilot-runtime/`), `CLAUDE.md` (entry point list) and the `Maf.Lab.Api` `.csproj` `<Description>`, then run `make docs` (never editing a `generated:` block by hand). Verify: `make docs-check` passes

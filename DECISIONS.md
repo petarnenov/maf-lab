@@ -2676,3 +2676,43 @@ said which account the conversation was about.
 - **Guards.** An xUnit source scan (`AGUIProtocolOnlyTests`) and ESLint rules fail the build on `CUSTOM`, on AG-UI
   types outside `Agent/AGUI/`, on events built outside `AGUIMappings.cs`, and on any event stream or `fetch` to an
   agent of our own.
+- **As built — what the migration found.**
+  - **CopilotKit's runtime leaked conversations across firms by default.**
+    - The runtime keeps every thread's events in memory with no owner, and serves them to anyone: `GET /threads`,
+      `/threads/{id}/messages`, `/threads/{id}/events`, and `POST /agent/{id}/connect`. A firm-b user read a firm-a
+      conversation that way, measured live.
+    - `copilot-runtime` therefore serves only `info`, `run` and `stop`; everything else is a 404. A stop is accepted
+      only from the credentials (by digest) that ran the thread.
+    - Every word an agent says still comes from the api, which checks the caller on every run.
+  - **The runtime keeps a run going when its client leaves, and refuses a second run on a busy thread.**
+    - `copilot-runtime` stops a run whose client walked away, measured at ~100 ms with no tool after.
+    - It runs with `onConcurrentRun: "supersede"`.
+    - Each page following a test run uses its own thread, `testgen:<id>:<viewer>`.
+  - **The official AG-UI adapter has two more traps besides the three in the spike:**
+    - a `RunErrorEvent` returned by a mapping hook, or passed through as a raw event, is followed by a
+      `RUN_FINISHED`;
+    - nothing in the run's result can be set.
+
+    A failed turn or test run therefore ends in the server's own short `RUN_ERROR`, its reason in the trace or the run's
+    state. The turn is named by its run: `turnId = runId`. Both are to be reported upstream, with the null-fields and
+    interrupt-registration bugs.
+  - **Ids and threads.**
+    - The run id is client-chosen, so a run id used before is refused with `409` before any run starts.
+    - Protocol clients name their own threads, so a well-formed thread id nobody has is claimed for the caller;
+      another principal's stays a 404.
+  - **The official client is stricter than our old reader, and that paid off.** It rejected four fixtures that the
+    real server never sends:
+    - an interrupt without `reason`;
+    - reasoning with role `assistant`;
+    - `RUN_FINISHED` while a step was open;
+    - content before its message start.
+
+    The server now closes its screening and answer-check steps in `finally`, so an error cannot leave one open.
+  - **Weight.** The web bundle is 380 KB gzip with the headless core; the spike measured the core and its hooks at
+    +255 KB. Lazy-loading the chat and coverage routes is left as a follow-up.
+  - **Proof.**
+    - `make verify` drives the chat and test-run agents with a bare `HttpAgent`, both directly and through
+      `/copilotkit/`: one well-formed run, interrupt then resume, stop. It asserts no `CUSTOM` and one terminal event,
+      and passes 8/8 on the live stack with the real model.
+    - The unchanged chat screen renders an agent it was never written for (`ChatPage.swap.test.tsx`).
+    - `AGUIProtocolOnlyTests` and ESLint keep it so.

@@ -103,6 +103,10 @@ knows its turn without being told. Every event of a run SHALL name the run and t
 - **WHEN** a run answers a question
 - **THEN** the turn it records has the run's identifier, and its trace is read under that identifier
 
+#### Scenario: A run identifier used before
+- **WHEN** a run names a run identifier that an earlier run used
+- **THEN** the request is refused as a conflict and no run starts
+
 ### Requirement: A run can be stopped
 A caller SHALL be able to stop a run it started by abandoning or aborting its stream through the protocol's client. A
 stopped run SHALL end within one second, reporting that it was cancelled rather than that it succeeded, and no tool

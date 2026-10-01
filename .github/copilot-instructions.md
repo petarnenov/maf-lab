@@ -52,6 +52,8 @@ MCP note: workspace MCP server config lives in `.mcp.json` (Playwright server vi
 | Path | Match | Served by |
 |---|---|---|
 | `/lb-health` | exact | the balancer itself |
+| `/api/coverage/runs/agent` | exact | `api` |
+| `/copilotkit/` | prefix | `copilot-runtime` |
 | `/api/chat` | exact | `api` |
 | `/api/` | prefix | `api` |
 | `/dev/` | prefix | `api` |
@@ -71,6 +73,7 @@ MCP note: workspace MCP server config lives in `.mcp.json` (Playwright server vi
 - **Progress feedback (top priority):** every CLI tool shows a progress bar for the work it does, and every process started from the UI that can take longer than 3 seconds shows progress that matches the page's theme and design (spec: `progress-feedback`).
 - Read `openspec/project.md` first for stack/layout conventions; active proposals live under `openspec/changes/`.
 - **Tenant isolation rule:** tenant (`firm_id`) is derived from the authenticated principal only. Do not add tenant parameters to endpoints, tools, or query builders.
+- **Only official AG-UI events (agui-protocol-only):** agents are Agent Framework `AIAgent`s behind `MapAGUIServer`; what this system adds is content mapped in `src/Maf.Lab.Api/Agent/AGUI/AGUIMappings.cs`, the only place an AG-UI event is built. Never emit or consume a `CUSTOM` event, and never write SSE or call an agent with `fetch`: the web reaches agents only through CopilotKit and its runtime. `AGUIProtocolOnlyTests` and ESLint enforce it.
 - **Single tenant query path:** all tenant-scoped Qdrant reads go through `TenantScopedSearch.QueryAsync(...)` and `TenantFilter` (`src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs`). Do not add alternate query-building paths.
 - **Tool output shape:** MCP tools return model-facing DTOs/structured content (see `SearchDocumentsTool.Structured(...)`), never persistence entities.
 - **Logging rule:** keep logs structured (tool names, timings, counts) and never log message content.

@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
-    <Description>ASP.NET Core host: the agent, chat endpoints (AG-UI over SSE), history, feedback, admin, A2A</Description>
+    <Description>ASP.NET Core host: the agents behind the Agent Framework's AG-UI server (MapAGUIServer), history, feedback, admin, A2A</Description>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="AGUI.Server" />

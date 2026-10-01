@@ -60,9 +60,14 @@ check("the candidate is on its own branch", detail["run"]["branch"].startswith("
 status, decided = req(f"/api/coverage/runs/{run['id']}/accept", "POST", {}, token)
 check("accept merges it into main", status == 200 and decided["run"]["state"] == "accepted", str(decided)[:300])
 
-# The run as the Coverage screen's Activity sees it: its AG-UI stream, replayed now that the run is over.
-def stream(path, token):
-    r = urllib.request.Request(base + path, headers={"Accept": "text/event-stream", "Authorization": f"Bearer {token}"})
+# The run as the Coverage screen's Activity sees it: a run of its AG-UI agent, replayed now that the run is over —
+# through CopilotKit's runtime, as the browser follows it (agui-protocol-only).
+def stream(run_id, token):
+    body = {"threadId": f"testgen:{run_id}:e2e", "runId": "r_e2e_" + run_id, "messages": [], "tools": [], "context": [],
+            "state": {}, "forwardedProps": {}}
+    r = urllib.request.Request(base + "/copilotkit/agent/testgen/run", data=json.dumps(body).encode(), method="POST",
+                               headers={"Accept": "text/event-stream", "Content-Type": "application/json",
+                                        "Authorization": f"Bearer {token}"})
     events = []
     with urllib.request.urlopen(r, timeout=60) as resp:
         for raw in resp:
@@ -71,14 +76,16 @@ def stream(path, token):
                 events.append(json.loads(line[len("data: "):]))
     return events
 
-events = stream(f"/api/coverage/runs/{run['id']}/events", token)
+events = stream(run["id"], token)
 names = [e.get("type") for e in events]
 terminals = [n for n in names if n in ("RUN_FINISHED", "RUN_ERROR")]
 check("the run's AG-UI stream starts once and ends once",
       names[:1] == ["RUN_STARTED"] and len(terminals) == 1 and names[-1] == terminals[0], f"{names[:3]} … {names[-3:]}")
-check("it carries the agent's steps, tool calls, text and attempt results",
+check("it carries the agent's steps, tool calls, text and attempt results, and only the protocol's own events",
       {"STATE_SNAPSHOT", "STEP_STARTED", "TOOL_CALL_START", "TOOL_CALL_RESULT", "TEXT_MESSAGE_CONTENT"} <= set(names)
-      and any(e.get("name") == "maf-lab/testgen-attempt" for e in events), str(sorted(set(names))))
+      and "CUSTOM" not in names
+      and any(e.get("snapshot", {}).get("attempts") for e in events if e.get("type") == "STATE_SNAPSHOT"),
+      str(sorted(set(names))))
 print(f"  … {len(events)} AG-UI events; reasoning {'streamed' if 'REASONING_MESSAGE_CONTENT' in names else 'not returned by the provider'}", flush=True)
 
 status, after = req(f"/api/coverage/files?path={q}", token=token)

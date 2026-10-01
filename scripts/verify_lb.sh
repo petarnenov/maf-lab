@@ -93,20 +93,21 @@ check("8 MCP calls succeed across >= 2 mcp replicas (no affinity)", ok_calls == 
 # 4.2 SSE through the balancer --------------------------------------------------------------------------
 run_input = {
     "threadId": None,
-    "runId": "r_verify_lb",
+    "runId": "r_verify_lb_" + uuid.uuid4().hex[:12],
     "messages": [{"id": "u_verify_lb", "role": "user", "content": "What is the procedure when a fee schedule is missing?"}],
 }
 r = urllib.request.Request(BASE + "/api/chat", data=json.dumps(run_input).encode(),
                            method="POST", headers={"content-type": "application/json", "authorization": f"Bearer {adam}"})
-events, name = [], None
+events = []
 with urllib.request.urlopen(r, timeout=300) as resp:
     for raw in resp:
         line = raw.decode().rstrip("\n")
-        if line.startswith("event:"):
-            name = line[6:].strip()
-            events.append((name, time.monotonic()))
+        # An AG-UI event names itself in its payload (the official server leaves the SSE event name out).
+        if line.startswith("data:"):
+            events.append((json.loads(line[5:].strip())["type"], time.monotonic()))
 order = [e for e, _ in events]
 dedup = [e for i, e in enumerate(order) if i == 0 or e != order[i - 1]]
+check("only the protocol's own events, never a custom one (agui-protocol-only)", "CUSTOM" not in order, " ".join(sorted(set(order))))
 check("a run starts, calls a tool, answers and finishes, in that order",
       order[0] == "RUN_STARTED" and order[-1] == "RUN_FINISHED"
       and order.index("TOOL_CALL_START") < order.index("TOOL_CALL_RESULT")

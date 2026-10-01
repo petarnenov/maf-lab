@@ -32,8 +32,9 @@ flowchart TB
 
   subgraph app["Application"]
     direction LR
-    web["🖥️ web<br/>React SPA"]
-    api["🧠 api ×2<br/>Agent Framework<br/>chat SSE · A2A · admin"]
+    web["🖥️ web<br/>React SPA · CopilotKit"]
+    copilot["🔌 copilot-runtime<br/>CopilotKit runtime · wiring only"]
+    api["🧠 api ×2<br/>Agent Framework<br/>AG-UI agents · A2A · admin"]
     compliance["🛡️ compliance ×2<br/>A2A reviewer"]
     testagent["🧪 test-agent<br/>A2A test generation"]
     runner["coverage-runner<br/>build + test, no egress"]
@@ -60,6 +61,8 @@ flowchart TB
 
   clients --> lb
   lb -- "/" --> web
+  lb -- "/copilotkit" --> copilot
+  copilot -- "AG-UI · the caller's token" --> lb
   lb -- "/api · /dev · /a2a" --> api
   lb -- "/compliance" --> compliance
   lb -- "/mcp · /portfolio/mcp · /code/mcp" --> mcp
@@ -78,7 +81,7 @@ flowchart TB
   classDef model fill:#f3e8ff,stroke:#a855f7,color:#3b0764
   classDef ext fill:#f1f5f9,stroke:#64748b,color:#0f172a
   class lb entry
-  class web,api,compliance,testagent,runner,billing,portfolio,code svc
+  class web,copilot,api,compliance,testagent,runner,billing,portfolio,code svc
   class qdrant,sqlite,redis store
   class ollama,cloud,jev model
   class clients,obs ext
@@ -87,7 +90,7 @@ flowchart TB
 ```
 
 Everything user- and agent-facing goes through **one entry point on port 7171**. api, mcp-retrieval, mcp-portfolio and
-compliance run two replicas each, mcp-code one (`X-Instance` response header shows which one answered).
+compliance run two replicas each, mcp-code and copilot-runtime one (`X-Instance` response header shows which one answered).
 test-agent and coverage-runner run one each and have no route of their own: the api reaches them inside the compose
 network. The balancer also serves Jaeger at `/jaeger` and takes the browser's OTLP traces at `/v1/traces`. Besides
 7171, only Qdrant and Ollama are published, plus the [inspectors](#inspecting-a2a-mcp-and-redis) on `127.0.0.1`
@@ -99,6 +102,8 @@ The balancer's routes, as `compose/lb/nginx.conf` declares them:
 | Path | Match | Served by |
 |---|---|---|
 | `/lb-health` | exact | the balancer itself |
+| `/api/coverage/runs/agent` | exact | `api` |
+| `/copilotkit/` | prefix | `copilot-runtime` |
 | `/api/chat` | exact | `api` |
 | `/api/` | prefix | `api` |
 | `/dev/` | prefix | `api` |
@@ -188,7 +193,7 @@ make help                  # every target
 | `make ci-e2e` | Model-free end-to-end: stack with the Ollama stub, index, verify, A2A conformance, test generation (CI mode) |
 | `make testgen-e2e` | Model-free test generation end to end: refresh, run, verify, accept (used by ci-e2e, against its clone) |
 | `make coverage` | Refresh the coverage snapshot at main (both toolchains, through the running stack) |
-| `make verify` | Verify the running stack through the load balancer (35 checks) |
+| `make verify` | Verify the running stack through the load balancer (37 checks), then AG-UI conformance of every agent (8 checks) |
 | `make eval` | Run evals (SUITE=all\|selection\|retrieval\|generation\|injection\|confirmation\|intent\|domain\|presentation\|guardrail\|answer-check) against the stack's MCP servers |
 | `make ask` | Ask one question through the agent and print its trace (Q="…" FIRM=firm-a), e.g. a cross-domain one |
 | `make screenshots` | Re-take the README screenshots from the running stack into docs/screenshots (SHOTS=chat,topology for a subset) |
@@ -361,14 +366,21 @@ own eval suite, which checks that the sentence states the account, the amount an
 ## What the browser and the API speak
 
 A turn is a **run of the agent**, streamed as [AG-UI](https://github.com/ag-ui-protocol/ag-ui) — a protocol
-someone else defined, with a stable 1.0 schema and an official .NET SDK. A run starts, the answer streams as a
-text message, each tool call streams as the protocol's four tool events, and the run finishes exactly once. The
-two things AG-UI has no word for — the sources of an answer and the behind-the-scenes trace — travel as custom
-events, which a consumer that does not know them may ignore.
+someone else defined, with a stable 1.0 schema and official SDKs on both sides — and **nothing but AG-UI**: only the
+protocol's own event types travel, built only by its official libraries. On the server every agent is a Microsoft Agent
+Framework `AIAgent` behind the Agent Framework's own AG-UI server (`MapAGUIServer`); what this system adds is content
+the server's registered mappings turn into the protocol's events — data cards as activities, the account in focus as
+shared state, what the turn is doing as steps, a write waiting for a person as an interrupt. The sources of an answer
+travel in its search's own tool result, and the behind-the-scenes trace never travels on the stream: the monitor reads
+it from a trace API while the run is live. In the browser, CopilotKit (headless, through its own runtime) is the only
+way to an agent, and the screens render the protocol's events — so an agent can be swapped behind a screen, or a
+screen behind an agent, without the other changing. An architecture test and lint rules fail the build on a custom
+event, an event built outside the mappings, or stream code of our own; `make verify` drives every agent with a bare
+AG-UI client (DECISIONS §74).
 
 Arguments and results are identifiers and summaries on the wire, never the words a user typed or the documents a
-tool found. The SDK's adapter attaches the whole originating chat update to every event; it is stripped before
-anything leaves, which is the sort of thing worth checking rather than assuming.
+tool found. The official adapter attaches the whole originating chat update to every event; the server drops it, and
+redacts calls and results before the adapter sees them — the sort of thing worth checking rather than assuming.
 
 A write waiting for a person is the protocol's own **interrupt**: the run pauses carrying what to check, the
 shape of the answer and when the proposal expires. Approving or rejecting is a new run that resumes it. There is

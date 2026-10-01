@@ -1,5 +1,8 @@
 using AGUI.Abstractions;
+using Maf.Lab.Api.Storage;
+using Maf.Lab.Domain.SharedState;
 using Maf.Lab.Retrieval.Auth;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maf.Lab.Api.Agent.AGUI;
 
@@ -56,8 +59,25 @@ public sealed class ChatRunFilter : IEndpointFilter
             return Results.NotFound();
         }
 
+        // A run id names the turn the run records, so one that was used before cannot start another run.
+        if (await UsedAsync(services, input.RunId, ct))
+        {
+            return Results.Problem(type: "run_id_used", title: "Run id already used",
+                detail: "A run id names the turn it records; use a new one for a new run.", statusCode: StatusCodes.Status409Conflict);
+        }
+
         context.HttpContext.Items[RunKey] = new ChatRun(principal, conversationId, input.RunId, resume is not null || rejoin);
         return await next(context);
+    }
+
+    private static async Task<bool> UsedAsync(IServiceProvider services, string runId, CancellationToken ct)
+    {
+        if (await services.GetRequiredService<IRunStateStore>().GetAsync(runId, ct) is not null)
+        {
+            return true;
+        }
+        await using var db = await services.GetRequiredService<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(ct);
+        return await db.Turns.AnyAsync(t => t.Id == runId, ct) || await db.TurnTraces.AnyAsync(t => t.TurnId == runId, ct);
     }
 
     private static IResult Invalid(string field, string message) =>

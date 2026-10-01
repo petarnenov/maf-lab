@@ -45,10 +45,12 @@ says how long what was said is kept, the other how long the working of a turn is
 
 ## Rejoining a run
 
-`GET /api/chat/{runId}` returns where the run stands: the answer so far, the tool calls and how each ended,
-whether it is waiting for a person, and how it finished. Any replica can answer, because the state is not any
-one replica's. It is a snapshot and not a replay — a client is told where the turn stands, not the frames it
-missed. See [http-api.md](http-api.md).
+A run's snapshot (`run:{runId}`) holds where the run stands: the answer so far, the tool calls and how each ended,
+whether it is waiting for a person, and how it finished. A client rejoins through the protocol itself — a run on the
+same thread naming the lost run as its parent — and any replica can answer it from the snapshot, because the state is
+not any one replica's. It is a snapshot and not a replay: the client is told where the turn stands, as the protocol's
+events, not the frames it missed. While a run is going its trace is kept beside it (`runtrace:{runId}`, one list entry
+per event, for the same grace period) so the monitor can follow it from any replica. See [http-api.md](http-api.md).
 
 ## A test run across an agent restart
 
