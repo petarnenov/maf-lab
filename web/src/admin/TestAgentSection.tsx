@@ -1,9 +1,9 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import type { LimitBounds, TestAgentOverview } from '../api/types';
+import type { LimitBounds, TestAgentOverview, TestAgentRun } from '../api/types';
 import styles from '../components/Page.module.css';
 import { Progress } from '../components/Progress';
-import { duration, pct, reasonLabel, RUN_LABELS } from '../coverage/format';
+import { duration, elapsed, pct, reasonLabel, RUN_LABELS } from '../coverage/format';
 import { formatDate } from '../evals/format';
 import own from './TestAgentSection.module.css';
 import { useTestAgentOverview } from './testAgentOverview';
@@ -30,15 +30,33 @@ export function TestAgentSection() {
           The test agent overview could not be loaded.
         </p>
       ) : (
-        <Overview data={overview.data} />
+        <Overview data={overview.data} answeredAt={overview.dataUpdatedAt} />
       )}
     </section>
   );
 }
 
-function Overview({ data }: { data: TestAgentOverview }) {
+/** A run the api reports as still running: no end yet, and a duration up to the api's answer. */
+const isRunning = (r: TestAgentRun) => r.finishedAt == null && r.durationMs != null;
+
+/** Now, ticking once a second while `live`; still otherwise, so a page with no running run sets no timer. */
+function useNow(live: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!live) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [live]);
+  return now;
+}
+
+function Overview({ data, answeredAt }: { data: TestAgentOverview; answeredAt: number }) {
   const { status, card, connection, defaultModel, limits, defaultBudget, runs, recent } = data;
   const unlimited = defaultBudget.maxTokens == null && defaultBudget.maxCostUsd == null;
+  // A running run's duration counts on from the api's value by the time since that answer arrived, so the browser's
+  // clock never enters it; the next refresh replaces it with the api's value.
+  const now = useNow(recent.some(isRunning));
+  const sinceAnswer = Math.max(0, now - answeredAt);
 
   return (
     <>
@@ -186,6 +204,7 @@ function Overview({ data }: { data: TestAgentOverview }) {
                 <th>Coverage</th>
                 <th>Reason</th>
                 <th>Model</th>
+                <th>Duration</th>
                 <th>When</th>
               </tr>
             </thead>
@@ -207,6 +226,16 @@ function Overview({ data }: { data: TestAgentOverview }) {
                   <td>{reasonLabel(r.reason) ?? '—'}</td>
                   <td>
                     <code className={styles.mono}>{r.model}</code>
+                  </td>
+                  <td data-testid="test-agent-run-duration">
+                    {isRunning(r) ? (
+                      <span title="Still running: counted from the last refresh">
+                        {elapsed(r.durationMs! + sinceAnswer)}{' '}
+                        <span className={styles.muted}>so far</span>
+                      </span>
+                    ) : (
+                      elapsed(r.durationMs)
+                    )}
                   </td>
                   <td>{formatDate(r.updatedAt)}</td>
                 </tr>

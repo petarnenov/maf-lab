@@ -52,6 +52,9 @@ export const reachableAgent: TestAgentOverview = {
       targetPct: 85,
       model: 'glm-5.3:cloud',
       updatedAt: '2026-10-01T08:59:00Z',
+      startedAt: '2026-10-01T08:58:18Z',
+      finishedAt: null,
+      durationMs: 42_000,
     },
     {
       id: 'r_2',
@@ -64,6 +67,9 @@ export const reachableAgent: TestAgentOverview = {
       targetPct: 90,
       model: 'glm-5.3:cloud',
       updatedAt: '2026-10-01T07:00:00Z',
+      startedAt: '2026-10-01T06:56:55Z',
+      finishedAt: '2026-10-01T07:00:00Z',
+      durationMs: 185_000,
     },
     {
       id: 'r_3',
@@ -76,6 +82,9 @@ export const reachableAgent: TestAgentOverview = {
       targetPct: 80,
       model: 'kimi-k3:cloud',
       updatedAt: '2026-10-01T06:00:00Z',
+      startedAt: '2026-10-01T05:00:00Z',
+      finishedAt: null,
+      durationMs: null,
     },
   ],
 };

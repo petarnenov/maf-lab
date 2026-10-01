@@ -162,6 +162,28 @@ public sealed class TestAgentOverviewApiTests
     }
 
     [Fact]
+    public async Task Each_recent_run_says_how_long_it_took()
+    {
+        using var api = Api("");
+        var accepted = Run("r_acc", "src/A.cs", TestGenRunState.Accepted, 1);
+        accepted.CreatedAt = DateTime.UtcNow.AddMinutes(-60);
+        accepted.FinishedAt = accepted.CreatedAt.AddMinutes(7);
+        var working = Run("r_work", "src/B.cs", TestGenRunState.Working, 2);
+        working.CreatedAt = DateTime.UtcNow.AddMinutes(-2);
+        var unknown = Run("r_old", "src/C.cs", TestGenRunState.Failed, 3);
+        await SeedAsync(api, accepted, working, unknown);
+
+        var recent = (await OverviewAsync(api)).Recent.ToDictionary(r => r.Id);
+
+        Assert.Equal(7 * 60_000L, recent["r_acc"].DurationMs);
+        Assert.Equal(accepted.FinishedAt.Value, recent["r_acc"].FinishedAt!.Value.UtcDateTime, TimeSpan.FromMilliseconds(1));
+        Assert.Null(recent["r_work"].FinishedAt);
+        Assert.InRange(recent["r_work"].DurationMs!.Value, 2 * 60_000L, 3 * 60_000L);
+        Assert.Equal(working.CreatedAt, recent["r_work"].StartedAt.UtcDateTime, TimeSpan.FromMilliseconds(1));
+        Assert.Null(recent["r_old"].DurationMs);
+    }
+
+    [Fact]
     public async Task At_most_ten_recent_runs_are_listed()
     {
         using var api = Api("");

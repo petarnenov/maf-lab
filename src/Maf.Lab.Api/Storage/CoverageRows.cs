@@ -65,6 +65,11 @@ public sealed class TestGenRunRow
     public string? ReportJson { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    /// <summary>
+    /// When the run's work ended: the first time it left the running states, into a candidate or a final state. A later
+    /// decision on a candidate does not move it; a running run has none (show-test-run-duration).
+    /// </summary>
+    public DateTime? FinishedAt { get; set; }
     public required string CreatedBy { get; set; }
     /// <summary>The replica following the run's task, and when it last said so: a lease any replica can take over.</summary>
     public string? Follower { get; set; }
@@ -147,6 +152,9 @@ public static class TestGenRunState
     public const string VerificationFailed = "verification_failed";
 
     public static readonly IReadOnlySet<string> Active = new HashSet<string> { Submitted, Working, Verifying, Candidate };
+
+    /// <summary>The states in which a run's work is still going on: with the agent, or being verified by the api.</summary>
+    public static readonly IReadOnlySet<string> Running = new HashSet<string> { Submitted, Working, Verifying };
 
     /// <summary>The same states as an array: what a database query can translate.</summary>
     public static readonly string[] ActiveStates = [Submitted, Working, Verifying, Candidate];
