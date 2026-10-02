@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local development without the balancer: Qdrant + Ollama in compose, mcp-retrieval (:5090), mcp-portfolio (:5091),
+# Local development without the balancer: Qdrant, Neo4j + Ollama in compose, mcp-retrieval (:5090), mcp-portfolio (:5091),
 # mcp-code (:5092), api (:5080) and the Vite dev server (:5174) as foreground processes with prefixed output. Ctrl-C stops all.
 set -euo pipefail
 # compose mounts the repository at MAF_LAB_REPO (make exports it); outside make, it is this checkout.
@@ -9,8 +9,11 @@ FILE="$ROOT/compose/docker-compose.yml"
 DOTNET="${DOTNET:-dotnet}"
 NPM="${NPM:-npm}"
 export Models__OllamaEndpoint="${Models__OllamaEndpoint:-http://localhost:11435}"
+# The graph store's Bolt port, published on loopback, with the compose password.
+export Neo4j__Uri="${Neo4j__Uri:-bolt://localhost:7687}"
+export Neo4j__Password="${Neo4j__Password:-${NEO4J_PASSWORD:-maf-lab-dev-graph}}"
 
-docker compose -f "$FILE" up -d qdrant ollama ollama-init
+docker compose -f "$FILE" up -d qdrant neo4j ollama ollama-init
 docker compose -f "$FILE" stop a2a-inspector mcp-inspector lb api mcp-retrieval mcp-portfolio mcp-code web >/dev/null 2>&1 || true
 
 pids=()

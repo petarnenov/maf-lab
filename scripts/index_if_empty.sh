@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Indexes each domain's corpus only when its Qdrant collection is missing or empty.
+# Then builds the graph when the graph store holds no nodes.
 # Env: QDRANT_URL (http://localhost:6333), Qdrant__Collection (maf_chunks), DOTNET (dotnet),
-#      Models__OllamaEndpoint (http://localhost:11435 — the compose Ollama).
+#      Models__OllamaEndpoint (http://localhost:11435 — the compose Ollama), NEO4J_PASSWORD (the compose default).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 QDRANT_URL="${QDRANT_URL:-http://localhost:6333}"
@@ -29,3 +30,16 @@ index_domain maf_portfolio_chunks "$ROOT/data-portfolio" maf_portfolio_meta
 # The codebase: the repository itself, cut by structure, in embedding tokens (see CODE_ENV in the Makefile).
 Indexing__Layout=repository Indexing__MaxChunkTokens=1024 Indexing__Bm25Tokenizer=code \
   index_domain maf_code_chunks "$ROOT" maf_code_meta
+
+# The graph: billing relationships and the code graph (make graph). Counted through cypher-shell in the neo4j container,
+# so the host needs no Neo4j client.
+nodes=$(MAF_LAB_REPO="${MAF_LAB_REPO:-$ROOT}" docker compose -f "$ROOT/compose/docker-compose.yml" exec -T neo4j \
+  cypher-shell -u neo4j -p "${NEO4J_PASSWORD:-maf-lab-dev-graph}" --format plain "MATCH (n) RETURN count(n) AS nodes" 2>/dev/null \
+  | tail -1 | tr -dc '0-9' || true)
+if [[ "${nodes:-0}" -gt 0 ]]; then
+  echo "✓ graph present ($nodes nodes) — skipping the graph build"
+else
+  echo "… graph is empty — building it (billing relationships and the code graph)"
+  Neo4j__Uri="${Neo4j__Uri:-bolt://localhost:7687}" Neo4j__Password="${NEO4J_PASSWORD:-maf-lab-dev-graph}" \
+    "$DOTNET" run --project "$ROOT/src/Maf.Lab.Indexing" -- graph
+fi

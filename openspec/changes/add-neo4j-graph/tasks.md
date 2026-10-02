@@ -26,75 +26,75 @@ the selection cases in 9.1.
 
 ## 3. Graph store access (Retrieval)
 
-- [ ] 3.1 Add `Graph/GraphOptions` and `AddGraphStore()`, which register an `IDriver` singleton. Verify that a unit test
+- [x] 3.1 Add `Graph/GraphOptions` and `AddGraphStore()`, which register an `IDriver` singleton. Verify that a unit test
   binds the options from configuration and that the password never appears in `ToString()` or in logs.
-- [ ] 3.2 Add the `GraphQuery<T>` sealed records `BillingNeighbourhood`, `SymbolTrace` and `FileImpact`, with constant
+- [x] 3.2 Add the `GraphQuery<T>` sealed records `BillingNeighbourhood`, `SymbolTrace` and `FileImpact`, with constant
   Cypher per allowed depth, typed parameters, a depth cap and a node limit. Verify with unit tests that out-of-range
   depth is rejected and that no template is built by concatenation.
-- [ ] 3.3 Implement `TenantScopedGraph.ReadAsync(Principal, GraphQuery<T>, ct)`. It binds `$readable` from
+- [x] 3.3 Implement `TenantScopedGraph.ReadAsync(Principal, GraphQuery<T>, ct)`. It binds `$readable` from
   `principal.ReadableTenants`, runs a read transaction, applies the limit and sets truncated, and emits the
   `graph.read` span and `maf_graph_query_duration_seconds`. Verify with a unit test that the parameters always contain
   `readable` and that no other parameter can be named `readable`.
-- [ ] 3.4 Implement `TenantScopedGraphMaintenance`: create the constraints and indexes, batched `MERGE` writes keyed by
+- [x] 3.4 Implement `TenantScopedGraphMaintenance`: create the constraints and indexes, batched `MERGE` writes keyed by
   `(label, tenant_id, key)` with `run_id` and `content_hash`, stale removal per source, and rejection of nodes without
   a tenant. Verify the rejection and batching with unit tests.
-- [ ] 3.5 Add the template guard test, which fails if any node variable in any template lacks
+- [x] 3.5 Add the template guard test, which fails if any node variable in any template lacks
   `tenant_id IN $readable`. Add a deliberately unguarded fixture template and verify the test catches it.
-- [ ] 3.6 Extend `QueryPathEnumerationTests` so that only `TenantScopedGraph` and `TenantScopedGraphMaintenance`
+- [x] 3.6 Extend `QueryPathEnumerationTests` so that only `TenantScopedGraph` and `TenantScopedGraphMaintenance`
   reference `IDriver`, `IAsyncSession` or `IAsyncQueryRunner`. Add a rogue graph fixture. Verify the suite passes, and
   that it fails with the fixture enabled.
 
 ## 4. Graph build (Indexing)
 
-- [ ] 4.1 Implement `BillingGraphBuilder`. It reads the three seed files without `note`, reads the documents through
+- [x] 4.1 Implement `BillingGraphBuilder`. It reads the three seed files without `note`, reads the documents through
   `CorpusLoader`, finds mention edges by whole-word id match, and extracts `FeeSchedule` nodes with the fixed code
   pattern under the document's tenant. Verify with unit tests on fixture data that `A-1042` links to `HH-RIDGELINE` and
   its firm, that a mention edge exists, that two documents sharing `NW-INST-2026-083` link to one fee schedule, that
   `NW-CANARY-7731-HH0005` is not a fee schedule, and that no property contains the canary text.
-- [ ] 4.2 Implement `CodeGraphBuilder` with one `CSharpCompilation` per project, in `ProjectReference` order, and a
+- [x] 4.2 Implement `CodeGraphBuilder` with one `CSharpCompilation` per project, in `ProjectReference` order, and a
   semantic walker that emits Project, File, Type and Method nodes, `CALLS` edges for in-repo targets only, and
   `DocumentationCommentId` keys and line spans. Verify with a unit test over a small fixture solution that the call
   edges resolve across two projects, that external calls produce no node, and that an uncompilable file is counted
   but does not fail the build.
-- [ ] 4.3 Add the `graph [--only billing|code]` command, with a `GraphProgressBar` over `ConsoleProgress` (phases, and
+- [x] 4.3 Add the `graph [--only billing|code]` command, with a `GraphProgressBar` over `ConsoleProgress` (phases, and
   items out of the total), a JSON summary on stdout, and a named error with a non-zero exit when Neo4j is
   unreachable. Verify the terminal and CI output modes by hand, and the unreachable path with a unit test.
-- [ ] 4.4 Make: add `graph` (`## ` help comment, depends on `infra` and the indexer), add `neo4j` to `infra`, and make
+- [x] 4.4 Make: add `graph` (`## ` help comment, depends on `infra` and the indexer), add `neo4j` to `infra`, and make
   `index` end with `graph`. Extend `scripts/index_if_empty.sh` with a `cypher-shell` count check. Add a Neo4j
   reachability check to `scripts/doctor.sh`, and the 7175 URL to `banner`. Verify `make help`, `make graph` twice (the
   second run writes 0 and removes 0), and `make doctor`.
 
 ## 5. Billing graph tool
 
-- [ ] 5.1 Add the `BillingRelationships` DTO in `Maf.Lab.Domain/Graph`, with a node cap and a truncated flag, and
+- [x] 5.1 Add the `BillingRelationships` DTO in `Maf.Lab.Domain/Graph`, with a node cap and a truncated flag, and
   without notes or fee amounts. Add `trace_billing_relationships` in `Retrieval/Tools/BillingGraphTools.cs`
   (an account id, a household id or a fee schedule code; read-only annotations; depth 1–2; `ToolErrors` for failures, an unknown id and another firm's id answered
   identically). Register it in `Program.cs`. Verify with unit tests on a substituted `TenantScopedGraph`.
-- [ ] 5.2 Write the "use when / do not use for" description, naming `search_documents`, `get_billing_run_status` and
+- [x] 5.2 Write the "use when / do not use for" description, naming `search_documents`, `get_billing_run_status` and
   `search_billing_runs`. Verify with a tool-list test asserting the description content and that there is no
   tenant or firm field in the schema.
 
 ## 6. Code graph tools
 
-- [ ] 6.1 Add the `CodeTrace` and `ChangeImpact` DTOs. Add `trace_code_symbol` (callers or callees, depth 1–3,
+- [x] 6.1 Add the `CodeTrace` and `ChangeImpact` DTOs. Add `trace_code_symbol` (callers or callees, depth 1–3,
   candidates listed when ambiguous, an empty result with a `search_codebase` hint) and `change_impact` (a
   repository-relative path only, rejecting `..` and absolute paths before any query, tests grouped by file) in
   `CodeSearch/Tools/CodeGraphTools.cs`. Register them and call `AddGraphStore()`. Verify with unit tests for each
   scenario in `specs/code-graph`.
-- [ ] 6.2 Write the descriptions naming `search_codebase` and `ask_codebase`. Verify with a tool-list test.
+- [x] 6.2 Write the descriptions naming `search_codebase` and `ask_codebase`. Verify with a tool-list test.
 
 ## 7. Integration tests (Testcontainers)
 
-- [ ] 7.1 Add a `Neo4jFixture` (assembly fixture, the same pinned image as compose). Verify that it starts and that
+- [x] 7.1 Add a `Neo4jFixture` (a collection fixture, so only the graph tests start it; the same pinned image as compose). Verify that it starts and that
   `VerifyConnectivityAsync` passes.
-- [ ] 7.2 Add a leakage test: build a graph where a firm B node is bridged through a shared node to a firm A account,
+- [x] 7.2 Add a leakage test: build a graph where a firm B node is bridged through a shared node to a firm A account,
   trace it as firm A, and assert that only firm A and shared nodes come back. Also assert that a firm B id answers
   like an unknown id.
-- [ ] 7.3 Add an idempotency test: build twice and assert 0 writes and 0 removals on the second run. Remove one seed
+- [x] 7.3 Add an idempotency test: build twice and assert 0 writes and 0 removals on the second run. Remove one seed
   account, rebuild, and assert that only its node and edges are gone.
-- [ ] 7.4 Add a code graph test over the real repository: the edge `DocumentSearchService → TenantScopedSearch.QueryAsync`
+- [x] 7.4 Add a code graph test over the real repository: the edge `DocumentSearchService → TenantScopedSearch.QueryAsync`
   exists, and `change_impact` on `TenantScopedSearch.cs` includes `TenancyAcceptanceTests`.
-- [ ] 7.5 Add a degradation test: with Neo4j stopped, a graph tool returns the unavailable error without hostnames,
+- [x] 7.5 Add a degradation test: with Neo4j stopped, a graph tool returns the unavailable error without hostnames,
   and `search_documents` still answers.
 
 ## 8. Topology and telemetry

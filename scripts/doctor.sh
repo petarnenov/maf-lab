@@ -84,4 +84,11 @@ else
   warn host-ollama "host Ollama (optional)" "not running, and not needed — this is a separate host Ollama, not the stack's own on :11435"
 fi
 
+# The graph store, when the stack (or make infra) is up: the host-side indexer reaches it on loopback.
+if (exec 3<>/dev/tcp/127.0.0.1/7687) 2>/dev/null; then
+  ok neo4j "Neo4j (when running)" "listening on 127.0.0.1:7687 — make graph can build the graph"
+else
+  warn neo4j "Neo4j (when running)" "not listening on 127.0.0.1:7687 — 'make' or 'make infra' starts it"
+fi
+
 exit $missing

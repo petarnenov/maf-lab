@@ -33,10 +33,10 @@ public sealed class McpServerTests(CorpusIndexFixture corpus) : IAsyncDisposable
         var tools = await client.ListToolsAsync(cancellationToken: Ct);
 
         Assert.Equal(
-            ["get_billing_run_status", "propose_fee_adjustment", "search_billing_runs", "search_documents"],
+            ["get_billing_run_status", "propose_fee_adjustment", "search_billing_runs", "search_documents", "trace_billing_relationships"],
             tools.Select(t => t.Name).Order());
 
-        string[] reading = ["get_billing_run_status", "search_billing_runs", "search_documents"];
+        string[] reading = ["get_billing_run_status", "search_billing_runs", "search_documents", "trace_billing_relationships"];
         foreach (var tool in tools.Where(t => reading.Contains(t.Name)).Select(t => t.ProtocolTool))
         {
             Assert.True(tool.Annotations!.ReadOnlyHint);
@@ -191,6 +191,25 @@ public sealed class McpServerTests(CorpusIndexFixture corpus) : IAsyncDisposable
     }
 
     private static string Text(CallToolResult result) => string.Join("\n", result.Content.OfType<TextContentBlock>().Select(t => t.Text));
+
+    [Fact]
+    public async Task With_the_graph_store_down_the_graph_tool_says_so_and_search_still_answers()
+    {
+        var factory = Factory(v =>
+        {
+            v["Neo4j:Uri"] = "bolt://127.0.0.1:1";
+            v["Neo4j:ConnectTimeoutSeconds"] = "1";
+        });
+        var client = await ClientAsync("adam", "firm-a", Role.ADVISOR, factory);
+
+        var graph = await client.CallToolAsync("trace_billing_relationships", new Dictionary<string, object?> { ["entityId"] = "A-1042" }, cancellationToken: Ct);
+        Assert.True(graph.IsError);
+        Assert.Equal("Graph lookup is temporarily unavailable; try again shortly.", Text(graph));
+
+        var search = await client.CallToolAsync("search_documents", new Dictionary<string, object?> { ["query"] = "fee schedule procedure" }, cancellationToken: Ct);
+        Assert.NotEqual(true, search.IsError);
+        Assert.True(search.StructuredContent!.Value.GetProperty("results").GetArrayLength() > 0);
+    }
 
     private WebApplicationFactory<Maf.Lab.Retrieval.Program> Factory(Action<Dictionary<string, string?>>? configure = null)
     {

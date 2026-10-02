@@ -61,7 +61,8 @@ export DOTNET
 export DOTNET_CLI_TELEMETRY_OPTOUT := 1
 export DOTNET_NOLOGO := 1
 # Host-side CLIs use the compose infrastructure: Qdrant on 6333/6334, embeddings from the compose Ollama on 11435.
-HOST_ENV := Models__OllamaEndpoint=http://localhost:11435
+# The graph store's Bolt port is published on loopback (7687) for these CLIs, with the compose password.
+HOST_ENV := Models__OllamaEndpoint=http://localhost:11435 Neo4j__Uri=bolt://localhost:7687 Neo4j__Password=$${NEO4J_PASSWORD:-maf-lab-dev-graph}
 # The portfolio domain is indexed by the same indexer into its own collection and BM25 vocabulary.
 PORTFOLIO_ENV := Indexing__CorpusRoot=$(ROOT)/data-portfolio Qdrant__Collection=maf_portfolio_chunks Qdrant__MetaCollection=maf_portfolio_meta
 # The codebase is indexed from the repository itself, by structure, into its own collection: chunks sized in embedding
@@ -77,7 +78,7 @@ INDEXER_SRC  := $(shell find src/Maf.Lab.Indexing src/Maf.Lab.Retrieval src/Maf.
                 Directory.Build.props Directory.Packages.props global.json
 INDEXER      := $(DOTNET) $(INDEXER_DLL)
 
-.PHONY: all help up down restart ps logs clean infra index index-portfolio index-code reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
+.PHONY: all help up down restart ps logs clean infra index index-portfolio index-code graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
         coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-answer-check eval-a2a dev doctor banner index-if-empty \
         specs docs docs-check lint-dotnet lint-web build-web ci ci-e2e setup \
         require-docker require-dotnet require-npm require-python
@@ -124,13 +125,13 @@ clean: require-docker ## Remove the stack WITH volumes (index, conversations) an
 banner:
 	@echo ""
 	@echo "  maf-lab is up →  $(BASE_URL)   (make help · make verify · make logs · make down)"
-	@if [ "$(CI_MODE)" != "1" ]; then echo "  inspectors    →  A2A http://localhost:7172 · MCP http://localhost:7173 · Redis http://localhost:7174"; fi
+	@if [ "$(CI_MODE)" != "1" ]; then echo "  inspectors    →  A2A http://localhost:7172 · MCP http://localhost:7173 · Redis http://localhost:7174 · Neo4j http://localhost:7175"; fi
 	@echo ""
 
 # ── data ─────────────────────────────────────────────────────────────────────────────────────────────────────────
-infra: require-docker ## Start only the indexer's infrastructure (Qdrant, Ollama + the embedding model) and wait until healthy
-	@# Host-side indexer CLIs need Qdrant (6333/6334) and the compose Ollama (11435); a no-op when the stack is already up.
-	@$(COMPOSE) up -d --wait qdrant ollama
+infra: require-docker ## Start only the indexer's infrastructure (Qdrant, Neo4j, Ollama + the embedding model) and wait until healthy
+	@# Host-side indexer CLIs need Qdrant (6333/6334), Neo4j (7687) and the compose Ollama (11435); a no-op when the stack is already up.
+	@$(COMPOSE) up -d --wait qdrant neo4j ollama
 	@$(COMPOSE) up --no-log-prefix ollama-init
 
 index-if-empty: require-dotnet
@@ -141,10 +142,14 @@ $(INDEXER_DLL): $(INDEXER_SRC) | require-dotnet
 	@$(DOTNET) build src/Maf.Lab.Indexing -v quiet -nologo
 	@touch $@
 
-index: require-dotnet infra $(INDEXER_DLL) ## Index both domains' corpora and the codebase (unchanged documents are skipped)
+index: require-dotnet infra $(INDEXER_DLL) ## Index both domains' corpora and the codebase, then build the graph (unchanged documents are skipped)
 	$(HOST_ENV) $(INDEXER) index
 	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) index
 	$(HOST_ENV) $(CODE_ENV) $(INDEXER) index
+	$(HOST_ENV) $(INDEXER) graph
+
+graph: require-dotnet infra $(INDEXER_DLL) ## Build the Neo4j graph: billing relationships and the code graph (unchanged nodes are not rewritten)
+	$(HOST_ENV) $(INDEXER) graph
 
 index-portfolio: require-dotnet infra $(INDEXER_DLL) ## Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only
 	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) index
