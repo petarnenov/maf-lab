@@ -2688,14 +2688,19 @@ said which account the conversation was about.
     - `copilot-runtime` stops a run whose client walked away, measured at ~100 ms with no tool after.
     - It runs with `onConcurrentRun: "supersede"`.
     - Each page following a test run uses its own thread, `testgen:<id>:<viewer>`.
-  - **The official AG-UI adapter has two more traps besides the three in the spike:**
-    - a `RunErrorEvent` returned by a mapping hook, or passed through as a raw event, is followed by a
-      `RUN_FINISHED`;
-    - nothing in the run's result can be set.
-
-    A failed turn or test run therefore ends in the server's own short `RUN_ERROR`, its reason in the trace or the run's
-    state. The turn is named by its run: `turnId = runId`. Both are to be reported upstream, with the null-fields and
-    interrupt-registration bugs.
+  - **The official AG-UI adapter does not let a run set its `RUN_FINISHED` result.** A failed turn or test run ends in
+    the server's own short `RUN_ERROR`, raised by throwing; its reason is in the trace or the run's state. The turn is
+    named by its run: `turnId = runId`.
+    - Correction (2026-10-02): this entry first said that a `RunErrorEvent` returned by a mapping hook, or passed
+      through raw, is followed by a `RUN_FINISHED`. That was read off decompiled code and is wrong. An isolated
+      reproduction against `AGUI.Server` 1.0.0 ends the run on `RUN_ERROR` with nothing after it. The design does not
+      depend on it.
+  - **Upstream:**
+    - The hosting package's null fields are microsoft/agent-framework#7919, confirmed there for 1.23.
+    - Its unregistered interrupt types are #8962.
+    - `rawEvent` with no opt-out is ag-ui-protocol/ag-ui#2297. The privacy angle was added there: it carries tool
+      arguments and results.
+    - The AG-UI SDK side of the null fields is ag-ui-protocol/ag-ui#2816.
   - **Ids and threads.**
     - The run id is client-chosen, so a run id used before is refused with `409` before any run starts.
     - Protocol clients name their own threads, so a well-formed thread id nobody has is claimed for the caller;
