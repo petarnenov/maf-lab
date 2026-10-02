@@ -47,8 +47,10 @@ the selection cases in 9.1.
 ## 4. Graph build (Indexing)
 
 - [ ] 4.1 Implement `BillingGraphBuilder`. It reads the three seed files without `note`, reads the documents through
-  `CorpusLoader`, and finds mention edges by whole-word id match. Verify with unit tests on fixture data that `A-1042`
-  links to `HH-RIDGELINE` and its firm, that a mention edge exists, and that no property contains the canary text.
+  `CorpusLoader`, finds mention edges by whole-word id match, and extracts `FeeSchedule` nodes with the fixed code
+  pattern under the document's tenant. Verify with unit tests on fixture data that `A-1042` links to `HH-RIDGELINE` and
+  its firm, that a mention edge exists, that two documents sharing `NW-INST-2026-083` link to one fee schedule, that
+  `NW-CANARY-7731-HH0005` is not a fee schedule, and that no property contains the canary text.
 - [ ] 4.2 Implement `CodeGraphBuilder` with one `CSharpCompilation` per project, in `ProjectReference` order, and a
   semantic walker that emits Project, File, Type and Method nodes, `CALLS` edges for in-repo targets only, and
   `DocumentationCommentId` keys and line spans. Verify with a unit test over a small fixture solution that the call
@@ -66,7 +68,7 @@ the selection cases in 9.1.
 
 - [ ] 5.1 Add the `BillingRelationships` DTO in `Maf.Lab.Domain/Graph`, with a node cap and a truncated flag, and
   without notes or fee amounts. Add `trace_billing_relationships` in `Retrieval/Tools/BillingGraphTools.cs`
-  (read-only annotations, depth 1–2, `ToolErrors` for failures, an unknown id and another firm's id answered
+  (an account id, a household id or a fee schedule code; read-only annotations; depth 1–2; `ToolErrors` for failures, an unknown id and another firm's id answered
   identically). Register it in `Program.cs`. Verify with unit tests on a substituted `TenantScopedGraph`.
 - [ ] 5.2 Write the "use when / do not use for" description, naming `search_documents`, `get_billing_run_status` and
   `search_billing_runs`. Verify with a tool-list test asserting the description content and that there is no
@@ -105,7 +107,8 @@ the selection cases in 9.1.
 
 ## 9. Evals
 
-- [ ] 9.1 Add selection cases to `evals/selection.jsonl`, in English and Bulgarian, for `trace_billing_relationships`,
+- [ ] 9.1 Add selection cases to `evals/selection.jsonl`, in English and Bulgarian, for `trace_billing_relationships` (households
+  and accounts, and fee schedules such as `NW-INST-2026-083`),
   `trace_code_symbol` and `change_impact`, plus negative cases where a procedural or code question must not call them.
   Run `make eval SUITE=selection` and `make eval SUITE=domain`. Verify no regression against `evals/baseline.json`, and
   update the baseline only after the run is accepted.
@@ -113,7 +116,7 @@ the selection cases in 9.1.
 ## 10. End-to-end checks
 
 - [ ] 10.1 Starting from `make down` and removing the `neo4j-data` volume, run `make`. Verify that the graph is built
-  by `index-if-empty`, that a chat question ("which accounts share a household with A-1042?") calls
+  by `index-if-empty`, that a chat question as firm B ("which households use fee schedule NW-INST-2026-083?") calls
   `trace_billing_relationships` and answers correctly, and that `make verify` and `make test` pass.
 - [ ] 10.2 Run `make lint` and `make specs` (`openspec validate --all --strict`). Verify that both pass.
 

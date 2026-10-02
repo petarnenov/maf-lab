@@ -50,7 +50,7 @@ Neo4j Community has one user database. Every node carries `tenant_id` (a firm id
 - *Alternative:* a database per tenant (Enterprise only). Rejected because of the licence, and because it diverges
   from the single-collection Qdrant model that the lab is designed to exercise.
 - *Alternative:* a separate graph per subgraph. Rejected because one instance with labelled subgraphs is enough.
-  Billing nodes use labels `Firm`, `Household`, `Account`, `BillingRun` and `Document`. Code nodes use `Project`,
+  Billing nodes use labels `Firm`, `Household`, `Account`, `BillingRun`, `FeeSchedule` and `Document`. Code nodes use `Project`,
   `File`, `Type` and `Method`. No query crosses the two subgraphs.
 
 ### D2. Closed set of Cypher templates and one read method
@@ -109,6 +109,14 @@ Idempotency:
   Qdrant's.
 - Finds mentions by matching known account and household ids from the seed against document text, using a
   whole-word match.
+- Finds fee schedules with one fixed pattern, `\b[A-Z]{2,6}(-[A-Z0-9]{2,6}){1,3}-20\d{2}-\d{3}\b`, over document text.
+  Each distinct code becomes a `FeeSchedule` keyed by the code under the document's tenant, with a `MENTIONS` edge
+  from every document that contains it.
+  - The pattern requires a year and a three-digit serial at the end, so internal reference codes such as
+    `NW-CANARY-7731-HH0005` and `ACME-CANARY-4410` do not match.
+  - *Why:* while implementing it turned out that no corpus document contains a seed account or household id. Firm B's
+    household profiles and fee-schedule notes do share schedule codes (about 120 of them), which gives the billing
+    graph real edges. The seed-id mentions stay in place for when the corpus does name accounts.
 
 **Code builder:**
 - Uses `CSharpCompilation` per `.csproj`. The sources are the git-tracked `.cs` files under each project folder. The

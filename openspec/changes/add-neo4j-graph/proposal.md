@@ -17,7 +17,8 @@ DTO-only tool results, progress feedback and documentation sync.
   - Neo4j Browser is published on loopback as a dev inspector on `http://localhost:7175`, profile `inspectors`.
 - **One graph database with two subgraphs:**
   - The **billing graph** is built from the seed data (`compose/seed/*.json`) and the billing corpus (`data/`). It
-    holds firms, households, accounts, billing runs and documents, and every node carries `tenant_id`.
+    holds firms, households, accounts, billing runs, fee schedules (codes found in the documents) and documents,
+    and every node carries `tenant_id`.
   - The **code graph** is built from the repository with Roslyn. It holds projects, files, types and methods, linked
     by contains, declares, calls and project-reference edges. It is a shared (`tenant_id = shared`) corpus, like
     `mcp-code`.
@@ -25,8 +26,8 @@ DTO-only tool results, progress feedback and documentation sync.
   parameterised Cypher templates, binding the readable tenants itself. Writes go through one maintenance type keyed
   by `TenantId`. The model never writes Cypher, and no tool has a tenant argument.
 - **New MCP tools:**
-  - `trace_billing_relationships` on `mcp-retrieval`. It returns a bounded neighbourhood of an account or household
-    as a DTO.
+  - `trace_billing_relationships` on `mcp-retrieval`. It returns a bounded neighbourhood of an account, a household
+    or a fee schedule as a DTO.
   - `trace_code_symbol` (callers or callees of a symbol) and `change_impact` (what a file's code is reached from,
     including tests) on `mcp-code`.
   - All three are read-only, and their descriptions say when to use the search tools instead.
