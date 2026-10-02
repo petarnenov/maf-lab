@@ -66,6 +66,10 @@ public static class LabTelemetry
 
         public static readonly Histogram<double> RetrievalStage =
             Meter.CreateHistogram<double>("maf.retrieval.stage.duration", "ms", "How long a stage of retrieval takes.");
+
+        /// <summary>Graph reads by template name (<c>query</c>) and outcome. Never an argument value.</summary>
+        public static readonly Histogram<double> GraphQueryDuration =
+            Meter.CreateHistogram<double>("maf.graph.query.duration", "ms", "How long a graph read takes, by named query.");
     }
 
     /// <summary>

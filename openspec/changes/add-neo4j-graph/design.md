@@ -148,18 +148,19 @@ neo4j:
   environment:
     NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-maf-lab-dev}
     NEO4J_server_memory_heap_max__size: 512m
-    NEO4J_server_bolt_advertised__address: localhost:7176
+    NEO4J_server_bolt_advertised__address: localhost:7687
+  ports: ["127.0.0.1:7687:7687"]
   volumes: [neo4j-data:/data]
   healthcheck: wget -qO- http://127.0.0.1:7474 (interval 5s, retries 30, start_period 20s)
 ```
-- No `ports:` on `neo4j` itself.
+- Bolt is published on loopback only. The indexer runs on the host (`make graph` under `HOST_ENV`, as `make index`
+  reaches Qdrant on 6334), so it needs Bolt there; nothing listens on other interfaces.
 - `x-app-env` gains `Neo4j__Uri: bolt://neo4j:7687`, `Neo4j__User: neo4j` and `Neo4j__Password: ${NEO4J_PASSWORD:-maf-lab-dev}`.
 - `mcp-retrieval` and `mcp-code` gain `depends_on: neo4j: service_healthy`, and `lb` waits for neo4j.
-- Neo4j Browser is a page served by 7474 that connects to Bolt from the user's browser, so both ports must reach the
-  host. A dev-only `neo4j-browser` service (profile `inspectors`, a pinned `alpine/socat` image) forwards
-  `127.0.0.1:7175 → neo4j:7474` and `127.0.0.1:7176 → neo4j:7687`.
-  - This keeps `neo4j` publishing nothing, so with `CI_MODE=1` nothing is published.
-  - *Alternative:* publish on `neo4j` directly. Rejected because ports cannot be profile-gated per service.
+- Neo4j Browser is a page served by 7474 that opens Bolt from the user's browser at the advertised
+  `localhost:7687`. A dev-only `neo4j-browser` service (profile `inspectors`, a pinned `alpine/socat` image) forwards
+  `127.0.0.1:7175 → neo4j:7474`, so with `CI_MODE=1` no Browser port is published.
+  - *Alternative:* publish 7474 on `neo4j` directly. Rejected because ports cannot be profile-gated per service.
 - No nginx location is added. Graph access is service-to-service, and the browser is an inspector like Redis Insight,
   outside the balancer. `lb-routes` is therefore unchanged.
 

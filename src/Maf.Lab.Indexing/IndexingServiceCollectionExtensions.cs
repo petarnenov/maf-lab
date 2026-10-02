@@ -1,5 +1,6 @@
 using Maf.Lab.Indexing.Pipeline;
 using Maf.Lab.Retrieval;
+using Maf.Lab.Retrieval.Graph;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -21,6 +22,8 @@ public static class IndexingServiceCollectionExtensions
         services.TryAddSingleton<IndexingPipeline>();
         services.TryAddSingleton<DriftService>();
         services.TryAddSingleton<MigrationService>();
+        services.AddGraphStore(configuration);
+        services.TryAddSingleton<Graph.GraphBuildService>();
         return services;
     }
 }

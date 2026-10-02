@@ -5,6 +5,7 @@
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol.AspNetCore" />
     <PackageReference Include="Qdrant.Client" />
+    <PackageReference Include="Neo4j.Driver" />
     <PackageReference Include="Microsoft.Data.Sqlite" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
     <PackageReference Include="Microsoft.Extensions.AI" />
@@ -21,6 +22,8 @@
     <!-- The portfolio server reuses the search tool's result shaping, the seed paths and the bootstrap loop. -->
     <InternalsVisibleTo Include="Maf.Lab.Portfolio" />
     <InternalsVisibleTo Include="Maf.Lab.CodeSearch" />
+    <!-- The graph build reads the same seed files the billing tools do. -->
+    <InternalsVisibleTo Include="Maf.Lab.Indexing" />
   </ItemGroup>
   <ItemGroup>
     <Content Update="retrieval.json" CopyToOutputDirectory="PreserveNewest" />

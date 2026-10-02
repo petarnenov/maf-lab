@@ -13,7 +13,8 @@ DTO-only tool results, progress feedback and documentation sync.
 
 - **New service `neo4j`** in Docker Compose:
   - Pinned image, a named volume and a healthcheck.
-  - Bolt is reachable only inside the compose network.
+  - Bolt is reachable inside the compose network and on the host's loopback (`127.0.0.1:7687`) for the host-side
+    indexer, never on other interfaces.
   - Neo4j Browser is published on loopback as a dev inspector on `http://localhost:7175`, profile `inspectors`.
 - **One graph database with two subgraphs:**
   - The **billing graph** is built from the seed data (`compose/seed/*.json`) and the billing corpus (`data/`). It

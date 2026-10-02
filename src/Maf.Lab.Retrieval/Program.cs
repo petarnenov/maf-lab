@@ -1,4 +1,5 @@
 using Maf.Lab.Retrieval.Auth;
+using Maf.Lab.Retrieval.Graph;
 using Maf.Lab.Retrieval.Store;
 using Maf.Lab.Retrieval.Tools;
 
@@ -28,6 +29,9 @@ public partial class Program
 
         builder.Services.AddMafRetrievalCore(builder.Configuration);
         builder.Services.AddDevJwtAuthentication(builder.Configuration);
+        // The graph store: billing relationships. The driver connects on first use, so the server starts without it and
+        // the graph tool answers "temporarily unavailable" until it is back.
+        builder.Services.AddGraphStore(builder.Configuration);
         // The writable store belongs to this server alone, so it is registered here and not in the shared core.
         builder.Services.AddSingleton<Billing.FeeAdjustmentLedger>();
         builder.Services.AddSingleton<Billing.AccountFees>();
@@ -39,7 +43,8 @@ public partial class Program
             .WithHttpTransport(o => o.Stateless = true)
             .WithTools<SearchDocumentsTool>()
             .WithTools<BillingTools>()
-            .WithTools<FeeAdjustmentTools>();
+            .WithTools<FeeAdjustmentTools>()
+            .WithTools<BillingGraphTools>();
 
         var app = builder.Build();
         // Resolved now so a missing JEV_MAF_LAB is reported once at startup, not on the first gated search.

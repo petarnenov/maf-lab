@@ -20,6 +20,8 @@ Pinned versions and the architectural decisions of maf-lab. **If a version moves
 | Prometheus | `prom/prometheus:v3.14.0` | `compose/docker-compose.yml` |
 | Jaeger | `jaegertracing/all-in-one:1.76.0` | `compose/docker-compose.yml` |
 | Redis | `redis:8.8.3-alpine` | `compose/docker-compose.yml` |
+| Neo4j (graph store, §75) | `neo4j:2026.09.0-community` (compose and Testcontainers) | `compose/docker-compose.yml`, `tests/.../Neo4jFixture.cs` |
+| socat (Neo4j Browser inspector, §75) | `alpine/socat:1.8.1.3` | `compose/docker-compose.yml` (`neo4j-browser`) |
 | Playwright (README screenshots only) | `playwright` 1.63.0, Chromium headless shell 153 | `tools/screenshots/package.json` + lockfile — see §55 |
 
 ### Models (Ollama)
@@ -51,6 +53,7 @@ model is served, not its size.
 | OllamaSharp | 5.4.30 |
 | ModelContextProtocol / ModelContextProtocol.AspNetCore | 2.2.0 |
 | Qdrant.Client | 1.19.0 |
+| Neo4j.Driver (§75) | 6.3.0 |
 | Microsoft.AspNetCore.Authentication.JwtBearer | 10.0.12 |
 | System.IdentityModel.Tokens.Jwt | 8.23.0 |
 | Microsoft.EntityFrameworkCore.Sqlite | 10.0.12 |
@@ -62,6 +65,7 @@ model is served, not its size.
 | Microsoft.NET.Test.Sdk | 18.10.1 |
 | Microsoft.AspNetCore.Mvc.Testing | 10.0.12 |
 | Testcontainers.Qdrant | 4.15.0 |
+| Testcontainers.Neo4j (§75) | 4.15.0 |
 | Mono.Cecil | 0.11.6 |
 | NSubstitute (tests only, §59) | 6.2.0 |
 | StackExchange.Redis | 3.3.0 |
@@ -2736,3 +2740,47 @@ said which account the conversation was about.
   - **No Cyrillic cases:** confirmation and injection have none. That is a gap.
   - **What the evals do not exercise:** they drive `ChatTurnRunner` directly, so they do not reach the new `ChatAgent`
     / `ChatRunFilter` layer. The api tests and `make verify`'s conformance cover that layer.
+
+## 75. Neo4j as the graph store for billing and code relationships (add-neo4j-graph, 2026-10-02)
+
+- **Why.** Qdrant finds passages. It cannot say how things connect: which households use a fee schedule, who calls a
+  method, which tests reach a file. A graph store next to the vector store lets the lab exercise GraphRAG with the same
+  bars as retrieval: tenant isolation, DTO-only tools, progress, docs sync.
+- **Pins.**
+  - Image `neo4j:2026.09.0-community`, used by compose and Testcontainers.
+  - `Neo4j.Driver` 6.3.0 and `Testcontainers.Neo4j` 4.15.0, on the same line as `Testcontainers.Qdrant`.
+  - `alpine/socat:1.8.1.3`, for the Browser inspector only.
+  - The indexer now references `Microsoft.CodeAnalysis.CSharp` 5.9.0, which was already pinned. No other package
+    moved.
+- **One Community database, tenancy as a property.** Every node carries `tenant_id` (a firm id or `shared`), and every
+  key is unique per `(label, tenant_id, key)`. Rejected: a database per tenant (Enterprise only, and it diverges from
+  the single-collection Qdrant model), and a separate instance for code.
+- **A closed set of Cypher templates and one read method.** `TenantScopedGraph.ReadAsync(Principal, GraphQuery<T>)`
+  binds `$readable` itself. Every node pattern in a template is guarded by `tenant_id IN $readable`, and so is every
+  node of a variable-length path. A unit test parses the templates to prove it, and the Cecil query-path test allows
+  only `TenantScopedGraph` and `TenantScopedGraphMaintenance` to open a Neo4j session.
+  - Depth is chosen from constant texts, never by concatenation.
+  - Rejected: text-to-Cypher by the model, because it makes the model a query author and gives prompt injection a
+    database to reach.
+- **The build is deterministic and has no model.** `Maf.Lab.Indexing graph` writes with `MERGE` on stable keys,
+  stamps a `run_id`, and deletes per source what an older run left.
+  - The billing builder reads the seeds without `note` and reads the corpus through `CorpusLoader`, so `doc_id` and
+    tenancy match Qdrant's.
+  - Fee schedules come from one fixed code pattern (`NW-INST-2026-083`). No corpus document names a seed account, but
+    Firm B's household profiles and fee-schedule notes share about 120 schedule codes.
+  - The code builder uses one `CSharpCompilation` per project over git-tracked files, with the runtime's platform
+    assemblies and the other projects as references. Calls into NuGet packages stay unresolved and are counted.
+    Rejected: `MSBuildWorkspace` (it needs MSBuild and a restore inside the indexer).
+- **Bolt on loopback only.** `neo4j` publishes `127.0.0.1:7687`, because the indexer runs on the host as it does for
+  Qdrant, and nothing on other interfaces. The dev-only `neo4j-browser` (profile `inspectors`) forwards
+  `127.0.0.1:7175` to the Browser page, which then opens Bolt at the advertised `localhost:7687`. Rejected: publishing
+  7474 on `neo4j` itself, because ports cannot be profile-gated.
+- **The driver needs IPv6 in the kernel.** `Neo4j.Driver` 6.x always opens a dual-mode IPv6 socket
+  (`TcpSocketClient.InitClient`), even for an IPv4 address. Docker hosts and CI runners have IPv6 in the kernel, even
+  without IPv6 addresses. A kernel built without it fails with "address family not supported" before any packet is
+  sent. The driver has no switch for this.
+- **Degrade, don't refuse.** The MCP servers start without Neo4j, and graph tools then answer "temporarily
+  unavailable".
+- **Not routed by Jev.** The graph tools are chosen by the model from their descriptions and measured by the
+  selection suite. Adding them to the intent request is a separate change, because it brings the Jev review, labelled
+  sets and thresholds.

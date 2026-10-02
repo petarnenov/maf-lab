@@ -8,7 +8,8 @@ tenant-scoped path.
 
 ### Requirement: Graph store service
 The stack SHALL run one graph database service, started by `make` with the rest of the stack, with persistent storage
-and a healthcheck. Its query port SHALL be reachable only from inside the compose network. Its credentials SHALL come
+and a healthcheck. Its query port SHALL be reachable only from inside the compose network and from the host's loopback interface, where
+the host-side indexer builds the graph. Its credentials SHALL come
 from the environment, with a development default, and MUST NOT appear in logs, traces, tool results or the topology
 report. The services that read it SHALL start only once it is healthy.
 

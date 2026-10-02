@@ -11,10 +11,18 @@ namespace Maf.Lab.Indexing;
 /// </summary>
 internal static class UnreachableService
 {
-    public static string? Describe(Exception ex, QdrantOptions qdrant, ModelOptions models)
+    public static string? Describe(Exception ex, QdrantOptions qdrant, ModelOptions models, Retrieval.Graph.GraphOptions? graph = null)
     {
         for (var e = ex; e is not null; e = e.InnerException)
         {
+            if (e is Neo4j.Driver.ServiceUnavailableException or Neo4j.Driver.SessionExpiredException)
+            {
+                return Line("Neo4j", graph?.Authority ?? "its configured address");
+            }
+            if (e is Neo4j.Driver.AuthenticationException)
+            {
+                return $"✗ Neo4j at {graph?.Authority ?? "its configured address"} refused the credentials — check NEO4J_PASSWORD matches the one the graph store was created with";
+            }
             if (e is RpcException { StatusCode: StatusCode.Unavailable })
             {
                 return Line("Qdrant", $"{qdrant.Host}:{qdrant.GrpcPort}");

@@ -6,22 +6,22 @@ the selection cases in 9.1.
 
 ## 1. Pins and packages
 
-- [ ] 1.1 Pick the latest stable `neo4j:<x>-community` image, `Neo4j.Driver`, `Testcontainers.Neo4j` (same line as
+- [x] 1.1 Pick the latest stable `neo4j:<x>-community` image, `Neo4j.Driver`, `Testcontainers.Neo4j` (same line as
   `Testcontainers.Qdrant`) and `alpine/socat`. Add them to `Directory.Packages.props` and reference the packages from
   Retrieval, Indexing and IntegrationTests. Verify `dotnet restore` and `dotnet build` succeed.
-- [ ] 1.2 Write DECISIONS.md §75 (add-neo4j-graph) with the pins table rows and the decisions D1–D7. It goes in the
+- [x] 1.2 Write DECISIONS.md §75 (add-neo4j-graph) with the pins table rows and the decisions D1–D7. It goes in the
   same commit as 1.1. Verify that `grep -n "## 75" DECISIONS.md` finds it.
 
 ## 2. Compose
 
-- [ ] 2.1 Add the `neo4j` service as in design D5 (pinned image, `NEO4J_AUTH` from `NEO4J_PASSWORD`, a heap and page
-  cache cap, `neo4j-data` volume, a healthcheck with `start_period`, no `ports:`), and declare the volume. Verify that
-  `make up` reports it healthy and `docker port` lists nothing for it.
-- [ ] 2.2 Add `Neo4j__Uri`, `Neo4j__User` and `Neo4j__Password` to `x-app-env`. Add `depends_on: neo4j:
+- [x] 2.1 Add the `neo4j` service as in design D5 (pinned image, `NEO4J_AUTH` from `NEO4J_PASSWORD`, a heap and page
+  cache cap, `neo4j-data` volume, a healthcheck with `start_period`, Bolt published on `127.0.0.1:7687` only), and declare the
+  volume. Verify that `make up` reports it healthy and `docker port` lists only the loopback Bolt port.
+- [x] 2.2 Add `Neo4j__Uri`, `Neo4j__User` and `Neo4j__Password` to `x-app-env`. Add `depends_on: neo4j:
   service_healthy` to `mcp-retrieval`, `mcp-code` and `lb`. Verify with `docker compose config` that the start order is
   neo4j, then the MCP servers.
-- [ ] 2.3 Add the `neo4j-browser` inspector (profile `inspectors`, `alpine/socat`, `127.0.0.1:7175 → neo4j:7474` and
-  `127.0.0.1:7176 → neo4j:7687`, a healthcheck, `depends_on: neo4j healthy`). Verify that
+- [x] 2.3 Add the `neo4j-browser` inspector (profile `inspectors`, `alpine/socat`, `127.0.0.1:7175 → neo4j:7474`, a
+  healthcheck, `depends_on: neo4j healthy`). Verify that
   `http://localhost:7175` opens Neo4j Browser and connects, and that with `CI_MODE=1` `make ps` shows no such container.
 
 ## 3. Graph store access (Retrieval)

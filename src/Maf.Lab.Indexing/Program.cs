@@ -16,6 +16,7 @@ namespace Maf.Lab.Indexing;
 /// <summary>
 /// dotnet run --project src/Maf.Lab.Indexing [-- command] [--tenants firm-a,shared] [--force] [--contextual on|off]
 /// Commands: index (default) | drift | status | migrate --to <vector> [--batch 64] | rebuild --yes | chunks [--doc text] [--match text] [--tokens]
+///           | graph [--only billing|code]
 /// </summary>
 public static class Program
 {
@@ -91,6 +92,18 @@ public static class Program
                     }
                     return 0;
                 }
+                case "graph":
+                {
+                    var only = flags.GetValueOrDefault("only");
+                    if (only is not null && !Retrieval.Graph.GraphSources.All.Contains(only))
+                    {
+                        Console.Error.WriteLine($"--only must be one of: {string.Join(", ", Retrieval.Graph.GraphSources.All)}.");
+                        return 2;
+                    }
+                    var summaries = await GraphWithProgressAsync(services, only is null ? Retrieval.Graph.GraphSources.All : [only], cts.Token);
+                    Console.WriteLine(JsonSerializer.Serialize(summaries, Pretty));
+                    return 0;
+                }
                 case "drift":
                 {
                     var report = await services.GetRequiredService<DriftService>().ComputeAsync(tenants, cts.Token);
@@ -136,7 +149,7 @@ public static class Program
                     return 0;
                 }
                 default:
-                    Console.Error.WriteLine($"Unknown command '{command}'. Use index | drift | status | migrate | rebuild.");
+                    Console.Error.WriteLine($"Unknown command '{command}'. Use index | drift | status | migrate | rebuild | graph.");
                     return 2;
             }
         }
@@ -147,7 +160,8 @@ public static class Program
         }
         catch (Exception ex) when (UnreachableService.Describe(ex,
             services.GetRequiredService<IOptions<Retrieval.Configuration.QdrantOptions>>().Value,
-            services.GetRequiredService<IOptions<Retrieval.Configuration.ModelOptions>>().Value) is { } unreachable)
+            services.GetRequiredService<IOptions<Retrieval.Configuration.ModelOptions>>().Value,
+            services.GetRequiredService<IOptions<Retrieval.Graph.GraphOptions>>().Value) is { } unreachable)
         {
             Console.Error.WriteLine(unreachable);
             return 1;
@@ -167,6 +181,33 @@ public static class Program
             var summary = await services.GetRequiredService<IndexingPipeline>().RunAsync(request with { Progress = new IndexProgressBar(bar) }, ct);
             bar.Succeed($"{summary.DocumentsIndexed} indexed, {summary.DocumentsUnchanged} unchanged, {summary.ChunksWritten} chunks written");
             return summary;
+        }
+        catch (OperationCanceledException)
+        {
+            bar.Cancel();
+            throw;
+        }
+        catch (Exception ex)
+        {
+            bar.Fail(ex.GetType().Name);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Builds the graph under a progress bar on stderr (stdout keeps the JSON summary): the stage names the subgraph,
+    /// the count is items read and written of the total. Ends in one line with what was written, unchanged and removed.
+    /// </summary>
+    private static async Task<IReadOnlyList<Graph.GraphBuildSummary>> GraphWithProgressAsync(IServiceProvider services, IReadOnlyCollection<string> sources, CancellationToken ct)
+    {
+        using var bar = new ConsoleProgress($"graph {string.Join("+", sources)}");
+        try
+        {
+            var summaries = await services.GetRequiredService<Graph.GraphBuildService>().RunAsync(sources, new IndexProgressBar(bar), ct);
+            bar.Succeed(string.Join("; ", summaries.Select(s =>
+                $"{s.Source}: {s.NodesWritten + s.EdgesWritten} written, {s.NodesUnchanged + s.EdgesUnchanged} unchanged, " +
+                $"{s.NodesRemoved + s.EdgesRemoved} removed ({s.NodesTotal} nodes, {s.EdgesTotal} edges)")));
+            return summaries;
         }
         catch (OperationCanceledException)
         {
