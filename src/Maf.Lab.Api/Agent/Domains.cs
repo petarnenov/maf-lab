@@ -34,5 +34,15 @@ public static class Domains
     /// </summary>
     public static string OfTool(string tool) =>
         SearchTool.FirstOrDefault(kv => kv.Value == tool).Key
-        ?? (Jev.DataToolRouter.ToolDomain.TryGetValue(tool, out var domain) ? domain : Billing);
+        ?? (Jev.DataToolRouter.ToolDomain.TryGetValue(tool, out var domain) ? domain : null)
+        ?? GraphTool.GetValueOrDefault(tool)
+        ?? Billing;
+
+    /// <summary>The graph tools (add-neo4j-graph), by the domain whose server offers them.</summary>
+    public static readonly IReadOnlyDictionary<string, string> GraphTool = new Dictionary<string, string>
+    {
+        [Maf.Lab.Domain.Graph.GraphTools.TraceBilling] = Billing,
+        [Maf.Lab.Domain.Graph.GraphTools.TraceCodeSymbol] = Codebase,
+        [Maf.Lab.Domain.Graph.GraphTools.ChangeImpact] = Codebase,
+    };
 }

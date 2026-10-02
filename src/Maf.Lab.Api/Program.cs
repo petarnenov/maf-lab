@@ -84,6 +84,8 @@ public partial class Program
         builder.Services.AddMemoryCache();
         builder.Services.AddHttpClient("topology");
         builder.Services.AddSingleton<Topology.IServiceResolver, Topology.DnsServiceResolver>();
+        // The graph store's driver, for the topology report's reachability probe only; the api reads no graph data.
+        Maf.Lab.Retrieval.Graph.GraphServiceCollectionExtensions.AddGraphStore(builder.Services, builder.Configuration);
         builder.Services.AddSingleton<Topology.TopologyProbe>();
         builder.Services.Configure<Telemetry.TelemetryQueryOptions>(
             builder.Configuration.GetSection(Telemetry.TelemetryQueryOptions.Section));

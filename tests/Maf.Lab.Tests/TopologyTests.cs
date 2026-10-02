@@ -19,16 +19,19 @@ public class TopologyTests
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private static ApiFactory Api(StubHandler handler, IReadOnlyDictionary<string, string[]>? dns = null,
-        string complianceUrl = "http://compliance", FakeToolSource? tools = null, string testAgentUrl = "")
+        string complianceUrl = "http://compliance", FakeToolSource? tools = null, string testAgentUrl = "",
+        IReadOnlyDictionary<string, string?>? settings = null)
     {
-        var api = new ApiFactory(ApiFactory.ProceduralModel(), tools)
+        var extra = new Dictionary<string, string?>
         {
-            ExtraSettings = new Dictionary<string, string?>
-            {
-                ["Compliance:BaseUrl"] = complianceUrl,
-                ["TestAgent:BaseUrl"] = testAgentUrl,
-            },
+            ["Compliance:BaseUrl"] = complianceUrl,
+            ["TestAgent:BaseUrl"] = testAgentUrl,
         };
+        foreach (var (key, value) in settings ?? new Dictionary<string, string?>())
+        {
+            extra[key] = value;
+        }
+        var api = new ApiFactory(ApiFactory.ProceduralModel(), tools) { ExtraSettings = extra };
         api.ConfigureTestServices = s =>
         {
             s.RemoveAll<IServiceResolver>();
@@ -142,6 +145,25 @@ public class TopologyTests
         Assert.Equal("http://localhost:5092/mcp", node.Facts["endpoint"]);
         Assert.Contains(report.Edges, e => e is { From: "api", To: "mcp-code" });
         Assert.Contains(report.Edges, e => e is { From: "mcp-code", To: "qdrant" });
+    }
+
+    [Fact]
+    public async Task The_graph_store_is_reported_with_its_edges_and_without_its_password()
+    {
+        using var api = Api(StubHandler.AllHealthy(), settings: new Dictionary<string, string?>
+        {
+            ["Neo4j:Uri"] = "bolt://127.0.0.1:1",
+            ["Neo4j:Password"] = "s3cret-graph",
+        });
+
+        var report = await GetAsync(api);
+
+        var node = Assert.Single(report.Nodes, n => n.Id == "neo4j");
+        Assert.Equal(NodeHealth.Unreachable, node.Health);
+        Assert.Equal(("graph store", "127.0.0.1:1"), (node.Facts["role"], node.Facts["host"]));
+        Assert.Contains(report.Edges, e => e is { From: "mcp", To: "neo4j" });
+        Assert.Contains(report.Edges, e => e is { From: "mcp-code", To: "neo4j" });
+        Assert.DoesNotContain("s3cret-graph", JsonSerializer.Serialize(report, Json));
     }
 
     [Fact]

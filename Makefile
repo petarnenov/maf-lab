@@ -174,7 +174,7 @@ migrate: require-dotnet infra $(INDEXER_DLL) ## Fill a provisioned dense vector 
 # ── quality ──────────────────────────────────────────────────────────────────────────────────────────────────────
 test: test-dotnet test-web ## Run all tests (.NET unit + integration, web)
 
-test-dotnet: require-dotnet require-docker ## .NET tests (integration tests start Qdrant via Testcontainers)
+test-dotnet: require-dotnet require-docker ## .NET tests (integration tests start Qdrant and Neo4j via Testcontainers)
 	$(DOTNET) test --solution maf-lab.sln
 
 test-web: require-npm ## Web tests (Vitest)

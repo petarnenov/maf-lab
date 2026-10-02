@@ -53,6 +53,8 @@ public sealed class TopologyProbe(
     IOptions<Coverage.TestAgentOptions> testAgent,
     IToolSource tools,
     QdrantClient qdrantClient,
+    Neo4j.Driver.IDriver graphDriver,
+    IOptions<Maf.Lab.Retrieval.Graph.GraphOptions> graphOptions,
     IHttpClientFactory http,
     IMemoryCache cache,
     Maf.Lab.Hosting.SharedStateHealth shared,
@@ -84,6 +86,9 @@ public sealed class TopologyProbe(
         new("mcp-code", "ollama-embeddings", "embed"),
         new("mcp-code", "chat-provider", "ask_codebase"),
         new("mcp-code", "otel-collector", "OTLP"),
+        // The graph store (add-neo4j-graph): billing relationships for the billing server, the code graph for mcp-code.
+        new("mcp", "neo4j", "Bolt"),
+        new("mcp-code", "neo4j", "Bolt"),
         // Where everything the lab emits about itself goes, and where it is kept.
         new("api", "otel-collector", "OTLP"),
         new("mcp", "otel-collector", "OTLP"),
@@ -112,7 +117,7 @@ public sealed class TopologyProbe(
     /// <summary>Node ids the report always contains; the drawn diagram must hold exactly these.</summary>
     public static IReadOnlyList<string> NodeIds { get; } =
     [
-        "lb", "web", "api", "mcp", "mcp-portfolio", "mcp-code", "compliance", "test-agent", "coverage-runner", "qdrant",
+        "lb", "web", "api", "mcp", "mcp-portfolio", "mcp-code", "compliance", "test-agent", "coverage-runner", "qdrant", "neo4j",
         "ollama-embeddings", "chat-provider", "otel-collector", "prometheus", "jaeger", "redis",
     ];
 
@@ -155,13 +160,14 @@ public sealed class TopologyProbe(
         var agentNode = TestAgentAsync(testAgentAddresses, timeout, ct);
         var runnerNode = ReplicasAsync("coverage-runner", "coverage runner", runnerAddresses, timeout, ct);
         var store = QdrantAsync(timeout, ct);
+        var graph = GraphAsync(timeout, ct);
         var embeddings = EmbeddingsAsync(timeout, ct);
         var collector = Http("otel-collector", "otel collector", o.CollectorHealthUrl, timeout, ct);
         var metrics = Http("prometheus", "prometheus", o.PrometheusHealthUrl, timeout, ct);
         var traces = Http("jaeger", "jaeger", o.JaegerHealthUrl, timeout, ct);
         var shared = SharedStateAsync(ct);
 
-        var probed = await Task.WhenAll(lb, web, api, mcp, portfolio, code, compliance, agentNode, runnerNode, store, embeddings, collector,
+        var probed = await Task.WhenAll(lb, web, api, mcp, portfolio, code, compliance, agentNode, runnerNode, store, graph, embeddings, collector,
             metrics, traces, shared);
         var byId = probed.Append(ChatProvider()).ToDictionary(n => n.Id);
         var ordered = NodeIds.Select(id => byId[id]).ToList();
@@ -369,6 +375,27 @@ public sealed class TopologyProbe(
         catch (Exception ex)
         {
             return new TopologyNode("qdrant", "qdrant", NodeHealth.Unreachable, [], facts, Describe(ex, timeout));
+        }
+    }
+
+    /// <summary>
+    /// The graph store, asked only whether it answers: the api reads no graph data, and a count would be a query outside
+    /// the one tenant-scoped read path. Its address and database are facts; its credentials never are.
+    /// </summary>
+    private async Task<TopologyNode> GraphAsync(TimeSpan timeout, CancellationToken ct)
+    {
+        var o = graphOptions.Value;
+        var facts = new Dictionary<string, string> { ["role"] = "graph store", ["host"] = o.Authority, ["database"] = o.Database };
+        try
+        {
+            using var cts = Linked(timeout, ct);
+            await graphDriver.VerifyConnectivityAsync().WaitAsync(cts.Token);
+            return new TopologyNode("neo4j", "neo4j", NodeHealth.Healthy, [], facts, null);
+        }
+        catch (Exception ex)
+        {
+            return new TopologyNode("neo4j", "neo4j", NodeHealth.Unreachable, [], facts,
+                ex is Neo4j.Driver.AuthenticationException ? "credentials refused" : Describe(ex, timeout));
         }
     }
 

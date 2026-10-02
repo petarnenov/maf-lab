@@ -42,6 +42,9 @@
         <mxCell id="qdrant" value="qdrant&#10;vector store" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
           <mxGeometry x="860" y="220" width="140" height="80" as="geometry" />
         </mxCell>
+        <mxCell id="neo4j" value="neo4j&#10;graph store" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="300" width="140" height="80" as="geometry" />
+        </mxCell>
 
         <mxCell id="ollama-embeddings" value="ollama&#10;embeddings" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
           <mxGeometry x="860" y="380" width="160" height="80" as="geometry" />
@@ -141,6 +144,12 @@
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e-api-code" value="/code/mcp via lb" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="api" target="mcp-code">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-mcp-neo4j" value="Bolt" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="mcp" target="neo4j">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-code-neo4j" value="Bolt" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="mcp-code" target="neo4j">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e-code-qdrant" value="gRPC" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="mcp-code" target="qdrant">

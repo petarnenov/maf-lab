@@ -37,3 +37,13 @@
 {"id": "s-72", "question": "как в кода се прави идемпотентност на тул?", "expectedTools": ["search_codebase"], "category": "codebase", "firmId": "firm-a"}
 {"id": "s-73", "question": "покажи ми дефиницията на code mcp сървъра", "expectedTools": ["search_codebase"], "category": "codebase", "firmId": "firm-a"}
 {"id": "s-74", "question": "Which class splits Markdown documents by headings?", "expectedTools": ["search_codebase"], "category": "codebase", "firmId": "firm-a"}
+{"id": "s-75", "question": "Which households use fee schedule NW-INST-2026-083?", "expectedTools": ["trace_billing_relationships"], "category": "graph", "firmId": "firm-b"}
+{"id": "s-76", "question": "Кои домакинства са на тарифа NW-INST-2026-083?", "expectedTools": ["trace_billing_relationships"], "category": "graph", "firmId": "firm-b"}
+{"id": "s-77", "question": "Which accounts are in the same household as A-1042?", "expectedTools": ["trace_billing_relationships"], "category": "graph", "firmId": "firm-a"}
+{"id": "s-78", "question": "Кои документи споменават домакинство HH-RIDGELINE?", "expectedTools": ["trace_billing_relationships"], "category": "graph", "firmId": "firm-a"}
+{"id": "s-79", "question": "Who calls TenantScopedSearch.QueryAsync?", "expectedTools": ["search_codebase", "trace_code_symbol"], "category": "graph", "firmId": "firm-a"}
+{"id": "s-80", "question": "Кой извиква TenantScopedSearch.QueryAsync в кода?", "expectedTools": ["search_codebase", "trace_code_symbol"], "category": "graph", "firmId": "firm-a"}
+{"id": "s-81", "question": "What tests cover src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs?", "expectedTools": ["search_codebase", "change_impact"], "category": "graph", "firmId": "firm-a"}
+{"id": "s-82", "question": "Кои тестове покриват src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs?", "expectedTools": ["search_codebase", "change_impact"], "category": "graph", "firmId": "firm-a"}
+{"id": "s-83", "question": "How is a household's fee schedule applied when an account joins it?", "expectedTools": ["search_documents"], "category": "graph", "firmId": "firm-b"}
+{"id": "s-84", "question": "Как се прилага тарифата на домакинство, когато към него се добави сметка?", "expectedTools": ["search_documents"], "category": "graph", "firmId": "firm-b"}

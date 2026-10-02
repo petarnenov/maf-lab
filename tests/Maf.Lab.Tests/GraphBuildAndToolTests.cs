@@ -319,6 +319,13 @@ public class GraphBuildAndToolTests
         }
     }
 
+    [Theory]
+    [InlineData(GraphTools.TraceBilling, "billing")]
+    [InlineData(GraphTools.TraceCodeSymbol, "codebase")]
+    [InlineData(GraphTools.ChangeImpact, "codebase")]
+    public void A_stored_graph_tool_call_is_attributed_to_its_servers_domain(string tool, string domain) =>
+        Assert.Equal(domain, Maf.Lab.Api.Agent.Domains.OfTool(tool));
+
     private static SymbolCandidate Candidate(string type, string symbol, string key) =>
         new(key, symbol, type, "src/x.cs", 10, 20);
 

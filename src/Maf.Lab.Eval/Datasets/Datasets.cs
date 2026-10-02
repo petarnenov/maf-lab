@@ -70,9 +70,10 @@ public static class DatasetLoader
         ["search_documents", "get_billing_run_status", "search_billing_runs", Maf.Lab.Domain.Billing.FeeAdjustmentTool.Name,
             Maf.Lab.Domain.Portfolio.PortfolioTools.Search, Maf.Lab.Domain.Portfolio.PortfolioTools.GetPortfolio,
             Maf.Lab.Domain.Portfolio.PortfolioTools.AumHistory, Maf.Lab.Domain.Portfolio.PortfolioTools.ListAccounts,
-            Maf.Lab.Domain.Code.CodeTools.Search];
+            Maf.Lab.Domain.Code.CodeTools.Search, Maf.Lab.Domain.Graph.GraphTools.TraceBilling, Maf.Lab.Domain.Graph.GraphTools.TraceCodeSymbol,
+            Maf.Lab.Domain.Graph.GraphTools.ChangeImpact];
     public static readonly string[] SelectionCategories =
-        ["obvious-docs", "obvious-data", "boundary", "negative", "feedback", "portfolio", "cross-domain", "codebase"];
+        ["obvious-docs", "obvious-data", "boundary", "negative", "feedback", "portfolio", "cross-domain", "codebase", "graph"];
 
     public static IReadOnlyList<SelectionCase> Selection(string root) => Load(root, "selection.jsonl", (e, where) =>
     {

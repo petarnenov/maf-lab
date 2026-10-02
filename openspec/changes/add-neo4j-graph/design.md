@@ -119,9 +119,13 @@ Idempotency:
     graph real edges. The seed-id mentions stay in place for when the corpus does name accounts.
 
 **Code builder:**
-- Uses `CSharpCompilation` per `.csproj`. The sources are the git-tracked `.cs` files under each project folder. The
-  references are the runtime's trusted platform assemblies plus the other repository projects' compilations, as
-  `CompilationReference`s.
+- Uses one `CSharpCompilation` over all git-tracked `.cs` files under `src/`, `tests/` and `tools/`, plus one
+  syntax tree of the SDKs' implicit global usings. The references are the runtime's trusted platform assemblies, minus
+  the indexer's own `Maf.Lab.*` copies, which would compete with the sources.
+  - *Changed while implementing:* the plan was one compilation per `.csproj`, with the other projects as
+    `CompilationReference`s. One compilation binds calls between projects with no ordering, and handles
+    `tests/Shared/*.cs`, which no single project owns. A file's project comes from the deepest `.csproj` folder
+    that contains it. Type-name clashes between projects did not occur; source wins over metadata if one ever does.
 - A `CSharpSyntaxWalker` with the `SemanticModel` resolves invocations. Only targets whose `DeclaringSyntaxReferences`
   are in the repository produce `CALLS` edges.
 - NuGet assemblies are not restored, so calls into them do not resolve. They are counted as unresolved and dropped,
@@ -131,8 +135,9 @@ Idempotency:
   container, which makes the build slower and more fragile.
 
 Progress:
-- An `IndexProgressBar`-style `GraphProgressBar` over `ConsoleProgress`, with phases `billing` and `code`.
-- The total is the number of seed records plus documents, and then the number of files.
+- The existing `IndexProgressBar` over `ConsoleProgress` (stages `billing: …` and `code: …`), so the graph build looks
+  like the index build.
+- The count is the files read plus the nodes and edges written. It never moves back between phases.
 - stdout carries the JSON summary, which is: written, unchanged, removed, rejected and unresolved calls.
 
 Make:
@@ -174,7 +179,8 @@ neo4j:
 - **Telemetry:**
   - `TenantScopedGraph` starts the activity `graph.read` with the tags `graph.query` (template name),
     `graph.rows`, `graph.truncated` and `graph.duration_ms`. Maintenance starts `graph.write` with counts.
-  - The histogram is `maf_graph_query_duration_seconds{query}`.
+  - The histogram is `maf.graph.query.duration` (ms), tagged `query` and `outcome`, beside the lab's other `maf.*`
+    instruments.
   - None of these carry parameter values.
 
 ### D7. Pins (DECISIONS.md §75)
@@ -191,16 +197,15 @@ All exact versions are recorded in §75 in the same commit that adds them.
   any node pattern `(x…)` without a guard fails the check. The integration leakage test (a firm B node bridged
   through a shared node) is the behavioural backstop.
 - [Roslyn without NuGet references leaves many calls unresolved, for example extension methods from packages] → Only
-  repository-internal edges are needed. The unresolved count is reported in the summary. If calls *between*
-  repository projects fail to resolve, the project compilations are referenced in topological order of
-  `ProjectReference`.
+  repository-internal edges are needed. The unresolved count is reported in the summary. A call that binds to a method
+  with no walked declaration (a record's synthesized members, an implicit constructor) is dropped and counted too.
 - [Neo4j memory in the dev stack] → The heap is capped at 512m and the page cache at 256m. The corpus and the repo are
   small.
 - [Selection regressions from three new tools] → The descriptions name their siblings. Selection evals run before
   merge, and the baseline is updated only after the run is accepted.
 - [The graph and the vector store drift apart, for example a document re-indexed in Qdrant but not in the graph] →
-  `make index` always ends with `graph`. Document nodes carry `content_hash`. `make drift` reports
-  graph-vs-Qdrant `doc_id` mismatches as an extra section (read-only).
+  `make index` always ends with `graph`, and document nodes use the corpus loader's `doc_id`. A graph-vs-Qdrant
+  section in `make drift` is left for a follow-up.
 - [The forced `search_codebase` precedes graph tools on codebase turns] → This is accepted for now. Jev routing for
   graph tools is the named follow-up.
 

@@ -6,7 +6,8 @@ A learning lab: a RAG-backed assistant for a TAMP, over three domains — **bill
 **codebase** — each served by its own **MCP server** with its own retrieval **tool** (`search_documents`,
 `search_portfolio_documents`, `search_codebase`) over its own **multi-tenant Qdrant** collection, consumed by a **Microsoft Agent Framework** agent, with a React chat UI, an eval
 harness and tested prompt-injection defences. TypeSafe's Jev decides which domains a question belongs to, and the
-monitor shows where a turn crosses from one into the other.
+monitor shows where a turn crosses from one into the other. Beside the vector store, a **Neo4j** graph answers how things
+connect: billing relationships (`trace_billing_relationships`) and the code graph (`trace_code_symbol`, `change_impact`).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/chat-dark.png">
@@ -42,14 +43,15 @@ flowchart TB
 
   subgraph mcp["MCP servers · one per domain, reached through lb"]
     direction LR
-    billing["💳 mcp-retrieval ×2<br/>billing<br/>search_documents"]
+    billing["💳 mcp-retrieval ×2<br/>billing<br/>search_documents · trace_billing_relationships"]
     portfolio["📈 mcp-portfolio ×2<br/>portfolio<br/>search_portfolio_documents"]
-    code["🧩 mcp-code<br/>codebase<br/>search_codebase · ask_codebase"]
+    code["🧩 mcp-code<br/>codebase<br/>search_codebase · ask_codebase<br/>trace_code_symbol · change_impact"]
   end
 
   subgraph backing["State and models"]
     direction LR
     qdrant[("Qdrant<br/>one collection per domain")]
+    neo4j[("Neo4j<br/>billing + code graph")]
     sqlite[("SQLite<br/>conversations · turns · audit")]
     redis[("Redis<br/>shared state")]
     ollama["Ollama<br/>embeddinggemma"]
@@ -71,6 +73,7 @@ flowchart TB
   api -- "coverage · verify" --> runner
   api -- "MCP tools" --> mcp
   mcp -- "hybrid search · embed" --> qdrant & ollama
+  mcp -- "graph lookups" --> neo4j
   mcp -- "relevance" --> jev
   api --> sqlite & redis & cloud & jev
   app & mcp -. "OTLP" .-> obs
@@ -82,7 +85,7 @@ flowchart TB
   classDef ext fill:#f1f5f9,stroke:#64748b,color:#0f172a
   class lb entry
   class web,copilot,api,compliance,testagent,runner,billing,portfolio,code svc
-  class qdrant,sqlite,redis store
+  class qdrant,neo4j,sqlite,redis store
   class ollama,cloud,jev model
   class clients,obs ext
   classDef group fill:transparent,stroke:#94a3b8,stroke-dasharray:4 3
@@ -93,8 +96,8 @@ Everything user- and agent-facing goes through **one entry point on port 7171**.
 compliance run two replicas each, mcp-code and copilot-runtime one (`X-Instance` response header shows which one answered).
 test-agent and coverage-runner run one each and have no route of their own: the api reaches them inside the compose
 network. The balancer also serves Jaeger at `/jaeger` and takes the browser's OTLP traces at `/v1/traces`. Besides
-7171, only Qdrant and Ollama are published, plus the [inspectors](#inspecting-a2a-mcp-and-redis) on `127.0.0.1`
-(7172–7174).
+7171, only Qdrant and Ollama are published, Neo4j's Bolt port on `127.0.0.1:7687` for the host-side indexer, plus the
+[inspectors](#inspecting-a2a-mcp-and-redis) on `127.0.0.1` (7172–7175).
 
 The balancer's routes, as `compose/lb/nginx.conf` declares them:
 
@@ -171,8 +174,9 @@ make help                  # every target
 | `make ps` | Show services, state and health |
 | `make logs` | Follow logs (SERVICE=api to narrow) |
 | `make clean` | Remove the stack WITH volumes (index, conversations) and build outputs; asks unless FORCE=1 |
-| `make infra` | Start only the indexer's infrastructure (Qdrant, Ollama + the embedding model) and wait until healthy |
-| `make index` | Index both domains' corpora and the codebase (unchanged documents are skipped) |
+| `make infra` | Start only the indexer's infrastructure (Qdrant, Neo4j, Ollama + the embedding model) and wait until healthy |
+| `make index` | Index both domains' corpora and the codebase, then build the graph (unchanged documents are skipped) |
+| `make graph` | Build the Neo4j graph: billing relationships and the code graph (unchanged nodes are not rewritten) |
 | `make index-portfolio` | Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only |
 | `make index-code` | Index the repository itself (→ maf_code_chunks, served by mcp-code) only; unchanged files are skipped |
 | `make reindex` | Re-embed every document of both domains (--force) |
@@ -180,7 +184,7 @@ make help                  # every target
 | `make rebuild-index` | Re-create the collection with every configured dense vector and re-index (asks unless FORCE=1) |
 | `make migrate` | Fill a provisioned dense vector with its configured model (TO=dense_v3) |
 | `make test` | Run all tests (.NET unit + integration, web) |
-| `make test-dotnet` | .NET tests (integration tests start Qdrant via Testcontainers) |
+| `make test-dotnet` | .NET tests (integration tests start Qdrant and Neo4j via Testcontainers) |
 | `make test-web` | Web tests (Vitest) |
 | `make lint` | Build .NET with warnings as errors; ESLint + Prettier for web |
 | `make lint-dotnet` | .NET build with warnings as errors |
@@ -230,6 +234,14 @@ question in the codebase domain, the turn loads only the codebase server's `sear
 `path:start-end`. The right pane switches to **Code snippets**, which shows exactly the snippets the answer used. For
 a question that did not search the code, the tab shows related code, labelled as not used. Other MCP clients can call
 `search_codebase` and `ask_codebase` at `http://localhost:7171/code/mcp` with a dev token.
+
+The repository is also a graph (`make graph`, also run by `make index`), built with Roslyn so a call edge is the method
+the compiler binds. "Who calls TenantScopedSearch.QueryAsync?" goes to `trace_code_symbol`, and "what tests cover
+src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs?" goes to `change_impact`, which follows callers four calls deep and
+groups the tests it reaches by file. The billing side of the same graph links firms, households, accounts, billing runs,
+fee schedules and documents: "which households use fee schedule NW-INST-2026-083?" goes to
+`trace_billing_relationships`, which returns the documents by the same id `search_documents` uses. Both graphs are read
+only through one tenant-scoped method that runs a fixed set of Cypher queries, so the model never writes a query.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/code-snippets-dark.png">
@@ -453,7 +465,7 @@ tool result `_meta`, which the model never sees.
 
 ## Inspecting A2A, MCP and Redis
 
-`make` also starts three inspectors, linked from the top of the web UI after "Curriculum". They run only on this
+`make` also starts four inspectors, linked from the top of the web UI after "Curriculum". They run only on this
 machine (published on `127.0.0.1`), and not at all in CI (`CI_MODE=1`).
 
 Each opens ready to use — nothing to type:
@@ -463,6 +475,7 @@ Each opens ready to use — nothing to type:
 | [A2A Inspector](https://github.com/a2aproject/a2a-inspector) | http://localhost:7172 | the assistant's card URL and a fresh partner token (`acme-portal`); press **Connect**. Change the URL to `http://localhost:7171/compliance/.well-known/agent-card.json` and the token switches to one for the compliance agent |
 | [MCP Inspector](https://github.com/modelcontextprotocol/inspector) | http://localhost:7173 | "maf-lab billing", "maf-lab portfolio" and "maf-lab code", each with a dev token for `adam` (ADVISOR, firm-a, set by `LAB_USER_ID`/`LAB_FIRM_ID`/`LAB_ROLE`); switch one on |
 | [Redis Insight](https://redis.io/insight/) | http://localhost:7174 | the `maf-lab` database |
+| [Neo4j Browser](https://neo4j.com/docs/browser/) | http://localhost:7175 | the graph store; connect to `bolt://localhost:7687` as `neo4j` with `NEO4J_PASSWORD` (dev default `maf-lab-dev-graph`) |
 
 The tokens are minted from the dev credentials in `compose/docker-compose.yml` — the A2A page asks for a new one each
 time it opens (`/lab/token`), the MCP catalog is rewritten with a new one every hour — and are never stored outside the
@@ -471,13 +484,15 @@ A2A audience is refused by the other.
 
 The A2A and MCP inspectors share the balancer's network, so `localhost:7171` means the lab inside them too — which is
 why the URL a card advertises works as is, on macOS and Linux alike. Redis Insight has no login and can change or
-delete keys: it is a window onto dev state, not a tool for anything you want to keep. The MCP Inspector keeps the
+delete keys: it is a window onto dev state, not a tool for anything you want to keep. The same goes for Neo4j Browser:
+it runs any Cypher you type, writes included, while the lab itself reads the graph only through its fixed,
+tenant-scoped queries. `make graph` rebuilds whatever you change. The MCP Inspector keeps the
 servers you add only until its container restarts.
 
 ## Local development (without the balancer)
 
 `make dev` bypasses the balancer: web on :5174 (Vite proxies `/api` and `/dev` to :5080), api on :5080, MCP servers on :5090 (billing), :5091 (portfolio) and :5092 (codebase),
-with Qdrant and Ollama from compose (the compose app services are stopped first). The manual equivalent:
+with Qdrant, Neo4j and Ollama from compose (the compose app services are stopped first). The manual equivalent:
 
 Prerequisites: .NET SDK 10.0.401 (`global.json`), Node 24, Docker, Ollama (host or compose).
 
@@ -503,7 +518,7 @@ under `Models:Embeddings` (one entry per Qdrant named vector).
 ## Tests
 
 ```bash
-make test        # dotnet test --solution maf-lab.sln (Testcontainers starts qdrant/qdrant:v1.19.1) + web Vitest
+make test        # dotnet test --solution maf-lab.sln (Testcontainers starts qdrant/qdrant:v1.19.1 and neo4j:2026.09.0-community) + web Vitest
 make lint        # .NET build with warnings as errors + ESLint/Prettier
 make docs-check  # scripts/docs.py's unit tests, then the docs-vs-code check (Python only)
 ```
@@ -660,6 +675,6 @@ is — the chain proves what was recorded, not that the recorded person is who t
 
 ## Non-negotiables
 
-Tenant comes from the token only · one tenant-scoped query path · tool results are DTOs · no message content in logs ·
+Tenant comes from the token only · one tenant-scoped query path (and one for the graph, no model-written Cypher) · tool results are DTOs · no message content in logs ·
 version moves update `DECISIONS.md` · `generated:` blocks are never edited by hand (`make docs`). See
 [`CLAUDE.md`](CLAUDE.md).

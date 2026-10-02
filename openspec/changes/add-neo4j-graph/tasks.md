@@ -33,7 +33,7 @@ the selection cases in 9.1.
   depth is rejected and that no template is built by concatenation.
 - [x] 3.3 Implement `TenantScopedGraph.ReadAsync(Principal, GraphQuery<T>, ct)`. It binds `$readable` from
   `principal.ReadableTenants`, runs a read transaction, applies the limit and sets truncated, and emits the
-  `graph.read` span and `maf_graph_query_duration_seconds`. Verify with a unit test that the parameters always contain
+  `graph.read` span and `maf.graph.query.duration`. Verify with a unit test that the parameters always contain
   `readable` and that no other parameter can be named `readable`.
 - [x] 3.4 Implement `TenantScopedGraphMaintenance`: create the constraints and indexes, batched `MERGE` writes keyed by
   `(label, tenant_id, key)` with `run_id` and `content_hash`, stale removal per source, and rejection of nodes without
@@ -51,12 +51,12 @@ the selection cases in 9.1.
   pattern under the document's tenant. Verify with unit tests on fixture data that `A-1042` links to `HH-RIDGELINE` and
   its firm, that a mention edge exists, that two documents sharing `NW-INST-2026-083` link to one fee schedule, that
   `NW-CANARY-7731-HH0005` is not a fee schedule, and that no property contains the canary text.
-- [x] 4.2 Implement `CodeGraphBuilder` with one `CSharpCompilation` per project, in `ProjectReference` order, and a
+- [x] 4.2 Implement `CodeGraphBuilder` with one `CSharpCompilation` over the repository's C# (see design D4), and a
   semantic walker that emits Project, File, Type and Method nodes, `CALLS` edges for in-repo targets only, and
   `DocumentationCommentId` keys and line spans. Verify with a unit test over a small fixture solution that the call
   edges resolve across two projects, that external calls produce no node, and that an uncompilable file is counted
   but does not fail the build.
-- [x] 4.3 Add the `graph [--only billing|code]` command, with a `GraphProgressBar` over `ConsoleProgress` (phases, and
+- [x] 4.3 Add the `graph [--only billing|code]` command, with the existing `IndexProgressBar` over `ConsoleProgress` (phases, and
   items out of the total), a JSON summary on stdout, and a named error with a non-zero exit when Neo4j is
   unreachable. Verify the terminal and CI output modes by hand, and the unreachable path with a unit test.
 - [x] 4.4 Make: add `graph` (`## ` help comment, depends on `infra` and the indexer), add `neo4j` to `infra`, and make
@@ -99,11 +99,12 @@ the selection cases in 9.1.
 
 ## 8. Topology and telemetry
 
-- [ ] 8.1 Add node `neo4j` ("Graph store"), its connectivity probe, and the edges from `mcp-retrieval` and `mcp-code`
+- [x] 8.1 Add node `neo4j` ("Graph store"), its connectivity probe, and the edges from `mcp-retrieval` and `mcp-code`
   to `TopologyProbe`. Add the node and edges to `docs/topology.drawio` without overlaps. Verify that `TopologyTests`
   passes and that `/api/topology` lists `neo4j` healthy in the running stack.
 - [ ] 8.2 Verify in Jaeger that a graph tool call shows a `graph.read` span with the query name and counts, and no
   argument values. Verify that `make logs SERVICE=mcp-retrieval` shows no ids from the message.
+  - *Open:* needs the full stack. The span name and tags are in `TenantScopedGraph`, and the tools log only error types. Not yet seen in Jaeger.
 
 ## 9. Evals
 
@@ -112,24 +113,27 @@ the selection cases in 9.1.
   `trace_code_symbol` and `change_impact`, plus negative cases where a procedural or code question must not call them.
   Run `make eval SUITE=selection` and `make eval SUITE=domain`. Verify no regression against `evals/baseline.json`, and
   update the baseline only after the run is accepted.
+  - *Open:* cases s-75 to s-84 are added and pass dataset validation. Running the suites needs `OLLAMA_API_KEY` and `JEV_MAF_LAB`, which this environment does not have; the baseline is unchanged.
 
 ## 10. End-to-end checks
 
 - [ ] 10.1 Starting from `make down` and removing the `neo4j-data` volume, run `make`. Verify that the graph is built
   by `index-if-empty`, that a chat question as firm B ("which households use fee schedule NW-INST-2026-083?") calls
   `trace_billing_relationships` and answers correctly, and that `make verify` and `make test` pass.
+  - *Open:* needs the full stack with chat keys. Verified piecewise: the `index-if-empty` graph check, `Maf.Lab.Indexing graph` twice (second run: 0 written, 0 removed), and the tool against a real Neo4j in integration tests.
 - [ ] 10.2 Run `make lint` and `make specs` (`openspec validate --all --strict`). Verify that both pass.
+  - *Open:* `make specs` passes. `make lint` stops on one error that is already on `main` (`tests/Maf.Lab.Tests/ModelAvailabilityTests.cs:233`, xUnit1051); nothing this change adds warns.
 
 ## 11. Documentation
 
-- [ ] 11.1 README.md: add `neo4j` to the services and architecture, add Neo4j Browser (7175) to the inspectors, and
+- [x] 11.1 README.md: add `neo4j` to the services and architecture, add Neo4j Browser (7175) to the inspectors, and
   describe the graph tools.
-- [ ] 11.2 CLAUDE.md: add the inspector URL, the graph read-path non-negotiable ("one method runs graph reads and
+- [x] 11.2 CLAUDE.md: add the inspector URL, the graph read-path non-negotiable ("one method runs graph reads and
   applies the tenant filter; Cypher never comes from the model"), and `make graph`.
-- [ ] 11.3 openspec/project.md: add Neo4j and the Bolt driver to the tech stack, `neo4j` and `neo4j-browser` to the
+- [x] 11.3 openspec/project.md: add Neo4j and the Bolt driver to the tech stack, `neo4j` and `neo4j-browser` to the
   compose service list, and the graph read-path rule to the conventions. `.github/copilot-instructions.md` gets the
   same rule.
-- [ ] 11.4 docs/telemetry.md: add the `graph.read` and `graph.write` spans and the duration metric, if span names are
+- [x] 11.4 docs/telemetry.md: add the `graph.read` and `graph.write` spans and the duration metric, if span names are
   listed there.
-- [ ] 11.5 Run `make docs` to regenerate the make-targets, repo-layout and project-context blocks. Never edit inside a
+- [x] 11.5 Run `make docs` to regenerate the make-targets, repo-layout and project-context blocks. Never edit inside a
   `generated:` block. Then run `make docs-check`, and verify it passes.

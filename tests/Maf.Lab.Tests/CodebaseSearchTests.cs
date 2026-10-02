@@ -522,7 +522,7 @@ public class CodebaseSearchTests
 
         var tools = await client.ListToolsAsync(cancellationToken: Ct);
 
-        Assert.Equal([GraphTools.ChangeImpact, CodeTools.Ask, CodeTools.Search, GraphTools.TraceCodeSymbol], tools.Select(t => t.Name).Order(StringComparer.Ordinal));
+        Assert.Equal([CodeTools.Ask, GraphTools.ChangeImpact, CodeTools.Search, GraphTools.TraceCodeSymbol], tools.Select(t => t.Name).Order(StringComparer.Ordinal));
         foreach (var tool in tools.Select(t => t.ProtocolTool))
         {
             Assert.True(tool.Annotations!.ReadOnlyHint);
