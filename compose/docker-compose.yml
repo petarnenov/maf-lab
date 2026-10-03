@@ -220,11 +220,13 @@ services:
       # The second domain's server, also through the balancer. The billing server above keeps the domain "billing".
       Agent__Servers__0__Domain: portfolio
       Agent__Servers__0__Endpoint: http://lb/portfolio/mcp
-      # The codebase as the agent's third domain (add-codebase-domain): only its search is offered to the agent;
-      # ask_codebase writes an answer of its own and stays for other MCP clients.
+      # The codebase as the agent's third domain (add-codebase-domain): its search and the code-graph tools
+      # (add-neo4j-graph) are offered to the agent; ask_codebase writes an answer of its own and stays for other MCP clients.
       Agent__Servers__1__Domain: codebase
       Agent__Servers__1__Endpoint: http://lb/code/mcp
       Agent__Servers__1__Tools__0: search_codebase
+      Agent__Servers__1__Tools__1: trace_code_symbol
+      Agent__Servers__1__Tools__2: change_impact
       # The Code snippets tab asks the codebase server, as the user, through the balancer.
       CodeSearch__Endpoint: http://lb/code/mcp
       Storage__ConnectionString: Data Source=/app-data/maf-lab.db

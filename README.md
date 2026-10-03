@@ -230,7 +230,8 @@ and stops it being continued; its turns stay for the review queue and evals.
 The repository itself is a corpus (`make index-code`). It is indexed by structure: each type and member with its doc
 comment, sized under embeddinggemma's 2048-token window, and searchable by identifier as well as by meaning. Ask in the
 chat, "how does the code make a tool call idempotent?" or "покажи ми дефиницията на code mcp сървъра". Jev puts the
-question in the codebase domain, the turn loads only the codebase server's `search_codebase`, and the answer cites
+question in the codebase domain, the turn loads the codebase server's `search_codebase` (plus `trace_code_symbol` and
+`change_impact` for who-calls and what-tests-cover questions), and the answer cites
 `path:start-end`. The right pane switches to **Code snippets**, which shows exactly the snippets the answer used. For
 a question that did not search the code, the tab shows related code, labelled as not used. Other MCP clients can call
 `search_codebase` and `ask_codebase` at `http://localhost:7171/code/mcp` with a dev token.
