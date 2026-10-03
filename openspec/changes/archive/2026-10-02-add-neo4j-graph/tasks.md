@@ -109,12 +109,17 @@ the selection cases in 9.1.
 
 ## 9. Evals
 
-- [ ] 9.1 Add selection cases to `evals/selection.jsonl`, in English and Bulgarian, for `trace_billing_relationships` (households
+- [x] 9.1 Add selection cases to `evals/selection.jsonl`, in English and Bulgarian, for `trace_billing_relationships` (households
   and accounts, and fee schedules such as `NW-INST-2026-083`),
   `trace_code_symbol` and `change_impact`, plus negative cases where a procedural or code question must not call them.
   Run `make eval SUITE=selection` and `make eval SUITE=domain`. Verify no regression against `evals/baseline.json`, and
   update the baseline only after the run is accepted.
-  - *Open:* cases s-75 to s-84 are added and pass dataset validation. Running the suites needs `OLLAMA_API_KEY` and `JEV_MAF_LAB`, which this environment does not have; the baseline is unchanged.
+  - Run on 2026-10-03. The first selection run failed s-79 to s-82: the codebase server's agent allow-list offered only
+    `search_codebase`, and under system.v4 the model answered "which tests cover <file>" from snippets that merely
+    mention the path. Fixed by adding the code-graph tools to the allow-list and by system.v5, which names the graph
+    tools (DECISIONS §75). On v5 selection, generation and injection pass, and s-75 to s-84 all match. Selection and
+    generation baselines were accepted on v5. Domain is unchanged by this branch; its crossingPrecision drop
+    (0.947 → 0.905) comes from `domain.jsonl` growing to 81 cases after its baseline and is left for `main`.
 
 ## 10. End-to-end checks
 
