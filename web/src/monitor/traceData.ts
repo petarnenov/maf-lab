@@ -145,6 +145,36 @@ export interface RetrievalData {
   };
 }
 
+/** One Neo4j read a graph tool call made: the template, what came back and how it went. Structure only. */
+export interface GraphReadData {
+  query?: string;
+  limit?: number;
+  rows?: number;
+  truncated?: boolean;
+  durationMs?: number;
+  /** ok, unavailable (the graph store could not be reached), cancelled or error. */
+  outcome?: string;
+  /** The exception's type name for a read that did not succeed; never its message. */
+  errorType?: string | null;
+}
+
+/**
+ * A graph tool call's reads of Neo4j (the `graph` event, add-graph-trace-event). Never an argument value: those are
+ * in the same call's `tool.call`.
+ */
+export interface GraphData {
+  callId?: string;
+  tool?: string;
+  instance?: string | null;
+  tenantScope?: string[];
+  reads?: GraphReadData[];
+  rows?: number;
+  truncated?: boolean;
+  /** Total time spent in Neo4j. */
+  durationMs?: number;
+  outcome?: string;
+}
+
 /**
  * Jev's relevance judgment of one search (the `relevance` event, and the shared part of `retrieval.relevance`).
  * Numbers only — no query, passage or chunk id.
@@ -259,7 +289,19 @@ export function mcpInstances(events: TraceEvent[]): string[] {
     const name = dataOf<RetrievalData>(e).instance;
     if (name) names.add(name);
   }
+  for (const e of byKind(events, 'graph')) {
+    const name = dataOf<GraphData>(e).instance;
+    if (name) names.add(name);
+  }
   return [...names];
+}
+
+/** Neo4j reads made by the turn's graph tool calls so far (an event missing its reads counts as none). */
+export function graphReadCount(events: TraceEvent[]): number {
+  return byKind(events, 'graph').reduce((n, e) => {
+    const reads = dataOf<GraphData>(e).reads;
+    return n + (Array.isArray(reads) ? reads.length : 0);
+  }, 0);
 }
 
 export function formatMs(ms: number | null | undefined): string {

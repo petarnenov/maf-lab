@@ -68,29 +68,29 @@
 
 ## 4. Web: timeline, retrieval view, header
 
-- [ ] 4.1 `traceData.ts`:
-  - add the `GraphData` and `GraphReadData` types;
+- [x] 4.1 `traceData.ts`:
+  - add the `GraphData` and `GraphReadData` types and `graphReadCount`;
   - make `mcpInstances` include a `graph` event's instance.
 
   Verify with Vitest: `mcpInstances` lists a graph event's instance.
-- [ ] 4.2 Add `--kind-graph: light-dark(#c2410c, #fb923c)` to `index.css`, and make `kindColor('graph')` return it.
+- [x] 4.2 Add `--kind-graph: light-dark(#be185d, #f472b6)` to `index.css`, and make `kindColor('graph')` return it.
   Verify:
   - `kindColors.test.ts` covers `graph`;
   - a test checks that no other kind resolves to `--kind-graph`.
-- [ ] 4.3 `RetrievalTab`:
-  - render one graph card per `graph` event: tool, `mcp:` instance, scope, rows, a `neo4j <ms>` timing chip (same style as `qdrant <ms>`), the outcome when it is
-    not `ok`, and a reads table;
+- [x] 4.3 `RetrievalTab`:
+  - render one graph card per `graph` event: tool, `mcp:` instance, scope, rows, a `neo4j <ms>` timing chip (same
+    style as `qdrant <ms>`), the outcome when it is not `ok`, and a reads table;
   - show the empty state only when there are no searches, no judgments and no graph events.
 
   Verify with Vitest:
   - a graph-only turn shows the card with both reads;
   - an unavailable event says so;
   - an event with missing fields renders "n/a" without throwing.
-- [ ] 4.4 `MonitorPanel` header: show the chip "N graph reads" when the visible events have any. Verify with Vitest:
+- [x] 4.4 `MonitorPanel` header: show the chip "N graph reads" when the visible events have any. Verify with Vitest:
   - with the cursor before the `graph` event, there is no chip and no card;
   - at the event, both appear;
   - a fixture with no graph event shows no chip.
-- [ ] 4.5 Add a graph turn to `fixtures.ts` (`graphTurn`), used by the tests above. Verify:
+- [x] 4.5 Add a graph turn to `fixtures.ts` (`fixtureGraphTrace`), used by the tests above. Verify:
   - the existing monitor tests still pass;
   - the timeline renders a `graph` row with `data-kind="graph"` and the graph colour.
 

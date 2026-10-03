@@ -20,6 +20,7 @@
   --kind-danger: light-dark(#b42318, #f07167);
   --kind-tool: light-dark(#8e44ad, #c08ae0);
   --kind-retrieval: light-dark(#1d7a3c, #4cc27a);
+  --kind-graph: light-dark(#be185d, #f472b6);
   --kind-check: light-dark(#3f7d20, #9ccc65);
   --kind-domain: light-dark(#0f7b5f, #3cc4a0);
   --kind-context: light-dark(#8a6d3b, #d0ad6e);

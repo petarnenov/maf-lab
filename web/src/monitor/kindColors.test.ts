@@ -20,6 +20,7 @@ describe('category colours', () => {
     'envelope',
     'retrieval',
     'relevance',
+    'graph',
     'answer.check',
     'domain',
     'boundary',

@@ -97,8 +97,11 @@
 7. **Placement:** directly after the call's `tool.result`, the same slot `retrieval` takes for a search. Graph tools
    have no `retrieval` or `relevance` event, so there is no ordering conflict.
 8. **Web.**
-   - `kindColor('graph')` returns `--kind-graph`, an orange, `light-dark(#c2410c, #fb923c)`. That gives 5.2:1 with
-     `--on-accent` in light, 8.4:1 in dark, and 7.6:1 on the dark surface. The hue is not used by any other kind.
+   - `kindColor('graph')` returns `--kind-graph`, a pink, `light-dark(#be185d, #f472b6)`. That gives 6.0:1 with
+     `--on-accent` in light, 7.1:1 in dark, and 6.5:1 on the dark surface. The hue is not used by any other kind.
+     An orange was considered and dropped: in the light theme it sat too close to `--kind-danger`'s red.
+   - The card's time chip reads `neo4j <ms>`, in the same style as a search card's `qdrant <ms>`, so the store is
+     named where Qdrant is named.
    - The Retrieval view gets a graph card per event. Searches and graph reads both answer "what did the tools read
      from the stores", and a separate tab for one or two cards per turn would be noise.
    - The header chip appears only when the count is above 0, so turns without graph reads look unchanged.
