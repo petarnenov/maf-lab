@@ -96,21 +96,23 @@
 
 ## 5. Checks
 
-- [ ] 5.1 No Jev call is added or changed, so the Jev review checklist (docs/rules/jev-usage.md §7) does not apply.
+- [x] 5.1 No Jev call is added or changed, so the Jev review checklist (docs/rules/jev-usage.md §7) does not apply.
   Confirm with `git diff` that no file under `Agent/Jev` or `Jev*` changed.
-- [ ] 5.2 Run the unit tests (`dotnet test tests/Maf.Lab.Tests`), the web tests (`npm test` in `web`), `make lint`
-  and `make specs`. Verify: all green.
+- [x] 5.2 Run the unit tests (`dotnet test tests/Maf.Lab.Tests`), the web tests (`npm test` in `web`), `make lint`
+  and `make specs`. Verify: all green. Results: 1432 .NET unit tests, plus the graph integration tests on
+  Testcontainers Neo4j (4); 615 web tests; lint and build clean; 47 specs valid.
 - [ ] 5.3 Live check: on the running stack, ask "which households are on NW-INST-2026-083" and "who calls
   TenantScopedSearch.QueryAsync". In the monitor, check the `graph` rows, the graph cards and the header chip in both
   themes. Then stop Neo4j and check the `unavailable` title. Verify: as in the specs' scenarios.
+  *Needs the live stack; run after merge. Another change is using the stack, so it was not touched here.*
 
 ## 6. Documentation
 
-- [ ] 6.1 `docs/trace-events.md`:
+- [x] 6.1 `docs/trace-events.md`:
   - add the `graph` row;
   - name `maf-lab/graph` among the `_meta` keys the `tool.result` row says are lifted out;
   - add a typical order for a graph question.
-- [ ] 6.2 `docs/telemetry.md`: the `graph.read` row says the same numbers reach the turn trace's `graph` event.
-- [ ] 6.3 `README.md`: in the code-graph paragraph, say that each graph tool call shows in the monitor's timeline as a
+- [x] 6.2 `docs/telemetry.md`: the `graph.read` row says the same numbers reach the turn trace's `graph` event.
+- [x] 6.3 `README.md`: in the code-graph paragraph, say that each graph tool call shows in the monitor's timeline as a
   `graph` event (Neo4j templates, rows, time).
-- [ ] 6.4 Run `make docs` and then `make docs-check`. Verify: no generated block changed by hand, and the check passes.
+- [x] 6.4 Run `make docs` and then `make docs-check`. Verify: no generated block changed by hand, and the check passes.
