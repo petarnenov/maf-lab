@@ -4,10 +4,10 @@ namespace Maf.Lab.Api.Agent;
 public sealed class SystemPrompt
 {
     /// <summary>
-    /// The prompt in use unless <c>Agent:SystemPrompt</c> names another. v4 (add-codebase-domain) adds the codebase domain
-    /// and its citation rule to v3's data cards; <c>Agent:SystemPrompt=system.v3</c> rolls back.
+    /// The prompt in use unless <c>Agent:SystemPrompt</c> names another. v5 (add-neo4j-graph) adds the graph tools to v4's
+    /// codebase domain and citation rule; <c>Agent:SystemPrompt=system.v4</c> rolls back.
     /// </summary>
-    public const string DefaultVersion = "system.v4";
+    public const string DefaultVersion = "system.v5";
 
     public SystemPrompt(IConfiguration configuration)
     {

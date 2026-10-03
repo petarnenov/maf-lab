@@ -45,7 +45,8 @@ public sealed partial class CodeGraphTools(IGraphReader graph, IPrincipalAccesso
         "Shows what a change to one C# file of the maf-lab repository can affect, from the code graph: the methods the file " +
         "declares, the methods that reach them through calls, and the tests among those, grouped by test file.\n" +
         "Use when: the user asks what a change to a file affects or which tests cover it, e.g. 'what tests cover " +
-        "src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs'.\n" +
+        "src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs' — also after search_codebase: a snippet that mentions a file " +
+        "is not a test that exercises it, so only this tool answers which tests cover a file.\n" +
         "Do not use for: reading or explaining the code — use search_codebase or ask_codebase. For one method's callers, use " +
         "trace_code_symbol.\n" +
         "Pass the path from the repository root, e.g. 'src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs'.";

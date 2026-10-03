@@ -102,9 +102,10 @@ the selection cases in 9.1.
 - [x] 8.1 Add node `neo4j` ("Graph store"), its connectivity probe, and the edges from `mcp-retrieval` and `mcp-code`
   to `TopologyProbe`. Add the node and edges to `docs/topology.drawio` without overlaps. Verify that `TopologyTests`
   passes and that `/api/topology` lists `neo4j` healthy in the running stack.
-- [ ] 8.2 Verify in Jaeger that a graph tool call shows a `graph.read` span with the query name and counts, and no
+- [x] 8.2 Verify in Jaeger that a graph tool call shows a `graph.read` span with the query name and counts, and no
   argument values. Verify that `make logs SERVICE=mcp-retrieval` shows no ids from the message.
-  - *Open:* needs the full stack. The span name and tags are in `TenantScopedGraph`, and the tools log only error types. Not yet seen in Jaeger.
+  - Seen on 2026-10-03: `graph.read` with `graph.query=billing_neighbourhood_2`, `graph.rows=6`, `graph.truncated=false`;
+    no argument value in the trace, and no id or name from the message in either mcp-retrieval replica's log.
 
 ## 9. Evals
 
@@ -117,12 +118,17 @@ the selection cases in 9.1.
 
 ## 10. End-to-end checks
 
-- [ ] 10.1 Starting from `make down` and removing the `neo4j-data` volume, run `make`. Verify that the graph is built
+- [x] 10.1 Starting from `make down` and removing the `neo4j-data` volume, run `make`. Verify that the graph is built
   by `index-if-empty`, that a chat question as firm B ("which households use fee schedule NW-INST-2026-083?") calls
   `trace_billing_relationships` and answers correctly, and that `make verify` and `make test` pass.
-  - *Open:* needs the full stack with chat keys. Verified piecewise: the `index-if-empty` graph check, `Maf.Lab.Indexing graph` twice (second run: 0 written, 0 removed), and the tool against a real Neo4j in integration tests.
-- [ ] 10.2 Run `make lint` and `make specs` (`openspec validate --all --strict`). Verify that both pass.
-  - *Open:* `make specs` passes. `make lint` stops on one error that is already on `main` (`tests/Maf.Lab.Tests/ModelAvailabilityTests.cs:233`, xUnit1051); nothing this change adds warns.
+  - Done on 2026-10-03: `index-if-empty` built the graph on first start (billing 787 nodes / 497 edges, code 4706 /
+    14324; the one billing rejection is the `data/unowned` fixture). The firm B question called
+    `trace_billing_relationships` and named all five households. `make verify` first failed on its exact billing
+    `tools/list`, which did not yet expect `trace_billing_relationships`; fixed in `scripts/verify_lb.sh`. `make test`
+    passes (1463 .NET, 607 web).
+- [x] 10.2 Run `make lint` and `make specs` (`openspec validate --all --strict`). Verify that both pass.
+  - Both pass. The xUnit1051 error already on `main` (`tests/Maf.Lab.Tests/ModelAvailabilityTests.cs:233`) was fixed on
+    this branch, as the user chose.
 
 ## 11. Documentation
 

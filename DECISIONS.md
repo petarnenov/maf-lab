@@ -2784,3 +2784,10 @@ said which account the conversation was about.
 - **Not routed by Jev.** The graph tools are chosen by the model from their descriptions and measured by the
   selection suite. Adding them to the intent request is a separate change, because it brings the Jev review, labelled
   sets and thresholds.
+- **The agent is offered the graph tools, and system.v5 names them** (2026-10-03, from the first eval run).
+  - The codebase server's allow-list (§ add-codebase-domain: "only `search_codebase` for the agent") now also names
+    `trace_code_symbol` and `change_impact`. Without it the agent never saw them. `ask_codebase` stays out.
+  - Descriptions alone did not move "which tests cover <file>": the forced `search_codebase` returns tests that only
+    mention the path, and the model answered from them, which is wrong. **system.v5** adds the three graph tools with
+    one example each and says that coverage and callers come from the graph, not from a snippet. v4 is a setting
+    away (`Agent:SystemPrompt=system.v4`).

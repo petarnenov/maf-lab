@@ -29,7 +29,8 @@ public sealed class CodeSearchTools(CodeSearchService service, IPrincipalAccesso
         "line range and symbol. It never returns a synthesized answer.\n" +
         "Use when: you need to find where something is implemented, how a type or method works, which spec or decision covers a " +
         "behaviour, or the code behind an error message.\n" +
-        "Do not use for: questions about fee billing or portfolio data — use search_documents or search_portfolio_documents.\n" +
+        "Do not use for: questions about fee billing or portfolio data — use search_documents or search_portfolio_documents. " +
+        "Who calls a method and which tests cover a file come from the code graph: trace_code_symbol and change_impact.\n" +
         "Pass a natural-language phrase or an identifier, e.g. 'where is the tenant filter applied' or 'TenantScopedSearch'.";
 
     public const string AskDescription =
