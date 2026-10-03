@@ -61,7 +61,15 @@ public sealed partial class CodeGraphTools(IGraphReader graph, IPrincipalAccesso
         CallDirection? direction = null,
         [Description("How many calls to follow, 1-3 (default 2).")]
         int? depth = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        RequestContext<CallToolRequestParams>? context = null)
+    {
+        // Asked for diagnostics: the read path records each read for the turn trace's graph event, structure only.
+        using var reads = GraphReadLog.BeginIf(SearchDocumentsTool.TraceRequested(context));
+        return GraphReadLog.Attach(await TraceCoreAsync(symbol, direction, depth, cancellationToken), reads);
+    }
+
+    private async Task<CallToolResult> TraceCoreAsync(string? symbol, CallDirection? direction, int? depth, CancellationToken cancellationToken)
     {
         var name = symbol?.Trim() ?? "";
         if (name.Length is 0 or > 300)
@@ -113,7 +121,14 @@ public sealed partial class CodeGraphTools(IGraphReader graph, IPrincipalAccesso
     public async Task<CallToolResult> ImpactAsync(
         [Description("The C# file's path from the repository root, e.g. 'src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs'.")]
         string path,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        RequestContext<CallToolRequestParams>? context = null)
+    {
+        using var reads = GraphReadLog.BeginIf(SearchDocumentsTool.TraceRequested(context));
+        return GraphReadLog.Attach(await ImpactCoreAsync(path, cancellationToken), reads);
+    }
+
+    private async Task<CallToolResult> ImpactCoreAsync(string? path, CancellationToken cancellationToken)
     {
         if (NormalizePath(path) is not { } file)
         {

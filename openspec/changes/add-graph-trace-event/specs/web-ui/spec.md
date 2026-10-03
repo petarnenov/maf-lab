@@ -9,7 +9,7 @@ The monitor SHALL show each `graph` event of a turn.
 - **Retrieval view.** For each `graph` event, the view SHALL show a graph card next to the turn's searches, with:
   - the tool and the MCP replica that served it;
   - the tenant scope;
-  - the total rows and the time spent in Neo4j;
+  - the total rows, and the time spent in Neo4j as a `neo4j <ms>` timing chip styled like a search's `qdrant <ms>` chip;
   - the outcome, when it is not `ok`;
   - one row per read, with the template's name, the rows returned out of its limit, whether it was truncated, its
     duration and its outcome.
@@ -28,7 +28,7 @@ field SHALL render with that field shown as not available rather than failing th
 
 #### Scenario: Graph reads in the retrieval view
 - **WHEN** a person opens the retrieval view of that turn
-- **THEN** a graph card shows the tool, the replica, the scope, 9 rows, the Neo4j time, and one row each for
+- **THEN** a graph card shows the tool, the replica, the scope, 9 rows, a `neo4j 12 ms` chip, and one row each for
   `billing_neighbourhood_2` and `firm_runs` with their rows, limits and durations
 
 #### Scenario: Graph unavailable in the monitor

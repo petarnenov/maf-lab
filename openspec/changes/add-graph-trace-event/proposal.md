@@ -2,12 +2,17 @@
 
 ## Why
 
-The monitor's timeline gives a Qdrant search an event of its own: `retrieval`, with the tenant scope, the settings
-and the `qdrantMs` timing, plus the Retrieval view's cards. A graph tool call (`trace_billing_relationships`,
+The monitor's timeline gives a Qdrant search an event of its own. The timeline shows it as a `retrieval` kind tag.
+There is no literal "qdrant" tag: Qdrant is named only by the `qdrant <ms>` timing chip in the Retrieval view's
+search card, next to the tenant scope and the settings. A graph tool call (`trace_billing_relationships`,
 `trace_code_symbol`, `change_impact`) appears only as a generic `tool.call` and `tool.result`. The trace never says
 that Neo4j was read, which named Cypher templates ran, how many rows they returned, whether a result was truncated,
 how long Neo4j took, or that Neo4j was unavailable. `TenantScopedGraph.ReadAsync` already records all of this on its
 `graph.read` span. Today it is visible only in Jaeger, and only for whoever opens the right trace there.
+
+The fix mirrors `retrieval`. A `graph` kind gets its own timeline tag and colour. Neo4j is named where it can be
+seen: in the row's title ("Neo4j billing_neighbourhood_2 · 6 rows"), and in a `neo4j <ms>` timing chip on the
+detail card, styled like the `qdrant <ms>` chip.
 
 ## What Changes
 
@@ -31,7 +36,7 @@ how long Neo4j took, or that Neo4j was unavailable. `TenantScopedGraph.ReadAsync
   `Neo4j billing_neighbourhood_2 · unavailable`. A failed read records `error`.
 - **Monitor.**
   - The timeline gives `graph` its own colour token, `--kind-graph`, in light and dark.
-  - The Retrieval view shows a "Graph" card per call: tool, instance, scope, total rows and Neo4j time, and a table
+  - The Retrieval view shows a "Graph" card per call: tool, instance, scope, total rows and a `neo4j <ms>` timing chip, and a table
     of reads.
   - The header shows "N graph reads" when the turn has any.
   - The views follow the time-travel cursor like every other view.

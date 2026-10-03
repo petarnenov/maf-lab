@@ -34,6 +34,9 @@ public sealed class TenantScopedGraph(IDriver driver, IOptions<GraphOptions> opt
         span?.SetTag("graph.query", query.Name);
         var started = Stopwatch.GetTimestamp();
         var outcome = "ok";
+        var rowCount = 0;
+        var truncated = false;
+        Exception? failure = null;
         try
         {
             var result = await driver.ExecutableQuery(query.Cypher)
@@ -41,11 +44,12 @@ public sealed class TenantScopedGraph(IDriver driver, IOptions<GraphOptions> opt
                 .WithConfig(new QueryConfig(RoutingControl.Readers, _database))
                 .ExecuteAsync(ct);
             var rows = result.Result.Select(r => (IGraphRow)new RecordRow(r)).ToList();
-            var truncated = rows.Count > query.Limit;
+            truncated = rows.Count > query.Limit;
             if (truncated)
             {
                 rows.RemoveRange(query.Limit, rows.Count - query.Limit);
             }
+            rowCount = rows.Count;
             span?.SetTag("graph.rows", rows.Count);
             span?.SetTag("graph.truncated", truncated);
             return query.Map(rows, truncated);
@@ -53,6 +57,7 @@ public sealed class TenantScopedGraph(IDriver driver, IOptions<GraphOptions> opt
         catch (Exception ex)
         {
             outcome = "error";
+            failure = ex;
             span?.SetStatus(ActivityStatusCode.Error, ex.GetType().Name);
             throw;
         }
@@ -62,6 +67,12 @@ public sealed class TenantScopedGraph(IDriver driver, IOptions<GraphOptions> opt
             span?.SetTag("graph.duration_ms", Math.Round(elapsed, 1));
             LabTelemetry.Instruments.GraphQueryDuration.Record(elapsed,
                 new KeyValuePair<string, object?>("query", query.Name), new KeyValuePair<string, object?>("outcome", outcome));
+            // The turn trace's graph event (add-graph-trace-event): the span's numbers and the tenants bound here, for
+            // a call whose tool asked. The exception's type name only — a driver message can name the host.
+            GraphReadLog.Current?.Add(
+                new GraphReadRecord(query.Name, query.Limit, rowCount, truncated, Math.Round(elapsed, 1),
+                    GraphReadLog.OutcomeOf(failure), failure?.GetType().Name),
+                principal.ReadableTenants.Select(t => t.Value).ToList());
         }
     }
 

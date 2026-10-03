@@ -28,6 +28,8 @@ public static class TraceKinds
     public const string Retrieval = "retrieval";
     /// <summary>Jev's relevance judgment of one search: the gate's verdict, the highest probability, the judge's latency.</summary>
     public const string Relevance = "relevance";
+    /// <summary>A graph tool call's reads of Neo4j: template names, rows, truncation, time and outcome — structure only.</summary>
+    public const string Graph = "graph";
     public const string Envelope = "envelope";
     public const string AnswerDelta = "answer.delta";
     /// <summary>A chunk of what the model reasoned before it answered, recorded the way the answer is.</summary>

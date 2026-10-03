@@ -2,7 +2,7 @@
 
 ## 1. Read path: record each read
 
-- [ ] 1.1 Add `GraphReadLog` and `GraphReadRecord` in `src/Maf.Lab.Retrieval/Graph/GraphReadLog.cs`:
+- [x] 1.1 Add `GraphReadLog` and `GraphReadRecord` in `src/Maf.Lab.Retrieval/Graph/GraphReadLog.cs`:
   - `Begin()` opens an `AsyncLocal` scope, and `Dispose` restores the previous one.
   - `Current` returns the open log, or none.
   - `Add` is internal and takes a lock.
@@ -16,7 +16,7 @@
   - a disposed scope stops recording;
   - `Attach` leaves a result untouched for a null or empty log;
   - each exception maps to its outcome.
-- [ ] 1.2 In `TenantScopedGraph.ReadAsync`, append one record per read to `GraphReadLog.Current`, from the `finally`
+- [x] 1.2 In `TenantScopedGraph.ReadAsync`, append one record per read to `GraphReadLog.Current`, from the `finally`
   block. Record the template name, limit, rows, truncation, duration rounded to 0.1 ms, outcome and error type name,
   and the bound tenants. Leave the span and metric unchanged.
 
@@ -27,7 +27,7 @@
 
 ## 2. Graph tools attach their reads
 
-- [ ] 2.1 `BillingGraphTools.TraceAsync`:
+- [x] 2.1 `BillingGraphTools.TraceAsync`:
   - take `RequestContext<CallToolRequestParams>? context = null` after the cancellation token, so existing callers
     still compile;
   - open a log only when `SearchDocumentsTool.TraceRequested(context)`;
@@ -39,14 +39,14 @@
   - the structured content is unchanged;
   - the entity id is not in `_meta`;
   - `context` is not in the tool's input schema.
-- [ ] 2.2 Do the same for `CodeGraphTools.TraceAsync` and `ImpactAsync`. Verify with unit tests: `symbol_candidates`
+- [x] 2.2 Do the same for `CodeGraphTools.TraceAsync` and `ImpactAsync`. Verify with unit tests: `symbol_candidates`
   and `callers_2` for a trace, and `file_methods` and `callers_4` for an impact; no symbol, path or method key in
   `_meta`.
 
 ## 3. Api: lift and record the event
 
-- [ ] 3.1 Add `TraceKinds.Graph = "graph"` and `TraceMeta.Graph = "maf-lab/graph"`.
-- [ ] 3.2 Add `GraphTraceEvent.From(callId, tool, node)` in `src/Maf.Lab.Api/Agent/Tracing/`. It returns the title,
+- [x] 3.1 Add `TraceKinds.Graph = "graph"` and `TraceMeta.Graph = "maf-lab/graph"`.
+- [x] 3.2 Add `GraphTraceEvent.From(callId, tool, node)` in `src/Maf.Lab.Api/Agent/Tracing/`. It returns the title,
   the data (with `rows`, `truncated`, `durationMs` and `outcome` totals) and the duration, or null for a payload with
   no reads.
 
@@ -57,7 +57,7 @@
   - an unavailable read gives `Neo4j billing_neighbourhood_2 · unavailable`;
   - the duration is the rounded sum;
   - a malformed payload yields null.
-- [ ] 3.3 In `ChatTurnRunner.TraceToolResult`:
+- [x] 3.3 In `ChatTurnRunner.TraceToolResult`:
   - lift `maf-lab/graph` out of the recorded result's `_meta`, removing `_meta` when it is left empty;
   - add the `graph` event right after `tool.result`.
 
@@ -78,7 +78,7 @@
   - `kindColors.test.ts` covers `graph`;
   - a test checks that no other kind resolves to `--kind-graph`.
 - [ ] 4.3 `RetrievalTab`:
-  - render one graph card per `graph` event: tool, `mcp:` instance, scope, rows, Neo4j time, the outcome when it is
+  - render one graph card per `graph` event: tool, `mcp:` instance, scope, rows, a `neo4j <ms>` timing chip (same style as `qdrant <ms>`), the outcome when it is
     not `ok`, and a reads table;
   - show the empty state only when there are no searches, no judgments and no graph events.
 
