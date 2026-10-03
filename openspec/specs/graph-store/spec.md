@@ -39,10 +39,15 @@ loopback only, under the same profile as the other inspectors, so it is off in C
 - **THEN** no graph browser port is published
 
 ### Requirement: One tenant-scoped graph read path
-Every read from the graph store SHALL go through exactly one method that takes the caller's principal and one query
-from a fixed, named set defined in code, together with that query's typed arguments. The method SHALL bind the
-principal's readable tenants itself. No caller SHALL supply query text or tenant values. Each query SHALL bound its
-traversal depth and the number of nodes it returns.
+Every read from the graph store made on behalf of a request, a tool or the model SHALL go through exactly one method.
+That method takes the caller's principal and one query from a fixed, named set defined in code, together with that
+query's typed arguments. The method SHALL bind the principal's readable tenants itself. No caller SHALL supply query
+text or tenant values. Each query SHALL bound its traversal depth and the number of nodes it returns.
+
+The only other reads SHALL be the maintenance reads of the graph maintenance path, which the build and drift
+reporting use: counts, stale-node removal and the listing of billing document nodes. Each maintenance read SHALL run
+fixed query text defined in code, take no query text and no tenant value from its caller, and return keys, tenants
+and hashes, never free text. No graph tool and no model-facing code SHALL reach a maintenance read.
 
 #### Scenario: Only named queries run
 - **WHEN** a component asks to read the graph
@@ -53,14 +58,27 @@ traversal depth and the number of nodes it returns.
 - **WHEN** a query reaches more nodes than its limit
 - **THEN** it returns at most the limit and marks the result as truncated
 
+#### Scenario: Maintenance reads stay off the request path
+- **WHEN** the query-path check scans the services that host graph tools
+- **THEN** no tool or agent code calls a maintenance read, and only the read-path method and the maintenance component
+  open a graph session
+
 ### Requirement: One graph maintenance path
 Every write to the graph store SHALL go through one maintenance component, whose operations name the tenant the
 written nodes belong to. Every node written SHALL carry its tenant, either a firm id or `shared`. A node without a
 tenant MUST be rejected.
 
+The same component SHALL list the billing document nodes, each with its tenant, document id and source content hash,
+for drift reporting. The caller filters the list to the tenants it may report.
+
 #### Scenario: Node without a tenant
 - **WHEN** a build step produces a node with no tenant
 - **THEN** the node is not written, and the build reports it as rejected
+
+#### Scenario: Listing document nodes
+- **WHEN** drift reporting lists the billing document nodes after a build
+- **THEN** it receives one entry per document node, with its tenant, document id and source content hash, and no
+  title, path or text
 
 ### Requirement: Graph build command
 The indexer SHALL offer a `graph` command that builds the billing graph and the code graph, and `make graph` SHALL run
@@ -108,9 +126,17 @@ unavailable, with no hostnames, query text or stack traces. The MCP server SHALL
 
 ### Requirement: Graph logs carry structure only
 Graph reads and writes SHALL be logged and traced with the query name, duration, row and node counts and the outcome,
-never with node properties, document text or argument values that came from a chat message.
+never with node properties, document text or argument values that came from a chat message. This SHALL hold for the
+turn trace as well: the read path SHALL record each read for the turn trace at the point where it binds the tenants,
+from the same template name, row count, truncation, duration and outcome that its span carries, and with nothing
+more than those and the tenants it bound.
 
 #### Scenario: A traced graph lookup
 - **WHEN** a graph tool runs during a chat turn
 - **THEN** its span carries the query name, duration and result count, and no account names, ids from the message, or
   document text
+
+#### Scenario: The turn trace's graph event matches the span
+- **WHEN** a graph tool runs during a chat turn with diagnostics requested
+- **THEN** the turn trace's `graph` event names the same templates, with the same row counts and truncation as their
+  `graph.read` spans, and holds no id from the message, no node property and no document text
