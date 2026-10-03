@@ -80,7 +80,8 @@ def mcp(method, params, tok):
 status, _, listing = mcp("tools/list", {}, adam)
 names = sorted(t["name"] for t in listing.get("result", {}).get("tools", []))
 check("MCP tools/list through /mcp",
-      names == ["get_billing_run_status", "propose_fee_adjustment", "search_billing_runs", "search_documents"],
+      names == ["get_billing_run_status", "propose_fee_adjustment", "search_billing_runs", "search_documents",
+               "trace_billing_relationships"],
       str(names or listing))
 mcp_instances = collections.Counter()
 ok_calls = 0
