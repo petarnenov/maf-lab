@@ -42,6 +42,16 @@ public static class GraphRelations
     };
 }
 
+/// <summary>Node properties read back by maintenance (add-graph-drift).</summary>
+public static class GraphProperties
+{
+    /// <summary>
+    /// A document node's source content hash: the same value its chunks carry as <c>content_hash</c> in Qdrant. The node's
+    /// own <c>content_hash</c> is a hash of its properties, used to skip unchanged writes.
+    /// </summary>
+    public const string DocHash = "doc_hash";
+}
+
 /// <summary>The two subgraphs; every node and edge records which build wrote it, so stale ones are removed per source.</summary>
 public static class GraphSources
 {

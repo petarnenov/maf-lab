@@ -106,7 +106,7 @@ public static class Program
                 }
                 case "drift":
                 {
-                    var report = await services.GetRequiredService<DriftService>().ComputeAsync(tenants, cts.Token);
+                    var report = await DriftWithProgressAsync(services, tenants, cts.Token);
                     Console.WriteLine(JsonSerializer.Serialize(report, Pretty));
                     return 0;
                 }
@@ -220,6 +220,36 @@ public static class Program
             throw;
         }
     }
+
+    /// <summary>
+    /// Drift under a progress bar on stderr (stdout keeps the JSON report): reading the corpus, the tenants listed from
+    /// the index, then the graph. Ends in one line with the index's and the graph's drift (add-graph-drift).
+    /// </summary>
+    private static async Task<Domain.Admin.DriftReport> DriftWithProgressAsync(IServiceProvider services, IReadOnlySet<TenantId>? tenants, CancellationToken ct)
+    {
+        using var bar = new ConsoleProgress("drift");
+        try
+        {
+            var report = await services.GetRequiredService<DriftService>().ComputeAsync(tenants, ct, new IndexProgressBar(bar));
+            bar.Succeed(DriftSummary(report));
+            return report;
+        }
+        catch (OperationCanceledException)
+        {
+            bar.Cancel();
+            throw;
+        }
+        catch (Exception ex)
+        {
+            bar.Fail(ex.GetType().Name);
+            throw;
+        }
+    }
+
+    /// <summary>"624 documents: index 0 stale, graph 0 out of sync" — or "graph unavailable" when the graph store could not be read.</summary>
+    internal static string DriftSummary(Domain.Admin.DriftReport report) =>
+        $"{report.TotalDocuments} documents: index {report.StaleDocuments} stale, " +
+        (report.Graph is { Available: true } graph ? $"graph {graph.OutOfSync} out of sync" : "graph unavailable");
 
     private static HashSet<TenantId> AllTenants(IServiceProvider services)
     {

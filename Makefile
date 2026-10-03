@@ -162,7 +162,7 @@ reindex: require-dotnet infra $(INDEXER_DLL) ## Re-embed every document of both 
 	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) index --force
 	$(HOST_ENV) $(CODE_ENV) $(INDEXER) index --force
 
-drift: require-dotnet infra $(INDEXER_DLL) ## Report stale documents (source newer than index)
+drift: require-dotnet infra $(INDEXER_DLL) ## Report stale documents: the index and the billing graph against the source
 	$(HOST_ENV) $(INDEXER) drift
 
 rebuild-index: require-dotnet infra $(INDEXER_DLL) ## Re-create the collection with every configured dense vector and re-index (asks unless FORCE=1)

@@ -103,6 +103,7 @@ public static partial class BillingGraphBuilder
             Node(GraphLabels.Document, doc.Tenant, doc.DocId, new()
             {
                 ["title"] = Title(doc), ["source_type"] = doc.SourceType, ["path"] = doc.SourcePath,
+                [GraphProperties.DocHash] = doc.ContentHash,
             });
             if (knownPattern is not null)
             {

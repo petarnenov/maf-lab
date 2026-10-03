@@ -31,6 +31,15 @@ describe('IndexAdminPage', () => {
             },
           ],
           missingFromIndex: [],
+          graph: {
+            available: true,
+            reason: null,
+            outOfSync: 3,
+            outOfSyncPercent: 7.5,
+            missingFromGraph: ['firm-a/docs/new.md'],
+            behind: ['firm-a/docs/a.md', 'firm-a/docs/b.md'],
+            notInCorpus: [],
+          },
         });
       if (url === '/api/admin/index/run' && init?.method === 'POST')
         return jsonResponse(
@@ -54,6 +63,7 @@ describe('IndexAdminPage', () => {
     renderWithProviders(<IndexAdminPage />, { session: makeSession('FIRM_ADMIN') });
 
     expect(await screen.findByTestId('drift-percent')).toHaveTextContent('5.0%');
+    expect(screen.getByTestId('drift-graph')).toHaveTextContent('Graph: 3 of 40 out of sync');
     expect(await screen.findByText('nomic-embed-text@v1')).toBeInTheDocument();
     expect(screen.getByText('300')).toBeInTheDocument();
     expect(screen.getByText('firm-a/docs/a.md')).toBeInTheDocument();
@@ -61,5 +71,39 @@ describe('IndexAdminPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Run indexing' }));
     expect(await screen.findByTestId('job-status')).toHaveTextContent('succeeded');
     expect(jobPolls).toBeGreaterThan(0);
+  });
+
+  it('says the graph is unavailable without turning the drift card into an error', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/api/admin/index/status')
+          return jsonResponse({ modelVersions: [], activeDenseVector: 'dense_v3', currentJob: null });
+        if (url === '/api/admin/index/drift')
+          return jsonResponse({
+            totalDocuments: 40,
+            staleDocuments: 0,
+            stalePercent: 0,
+            stale: [],
+            missingFromIndex: [],
+            graph: {
+              available: false,
+              reason: 'unreachable',
+              outOfSync: 0,
+              outOfSyncPercent: 0,
+              missingFromGraph: [],
+              behind: [],
+              notInCorpus: [],
+            },
+          });
+        return jsonResponse({}, 404);
+      }),
+    );
+
+    renderWithProviders(<IndexAdminPage />, { session: makeSession('FIRM_ADMIN') });
+
+    expect(await screen.findByTestId('drift-percent')).toHaveTextContent('0.0%');
+    expect(screen.getByTestId('drift-graph')).toHaveTextContent('Graph: unavailable');
+    expect(screen.queryByText('Unavailable')).not.toBeInTheDocument();
   });
 });

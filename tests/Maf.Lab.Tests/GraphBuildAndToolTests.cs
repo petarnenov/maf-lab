@@ -78,6 +78,19 @@ public class GraphBuildAndToolTests
     }
 
     [Fact]
+    public void A_document_node_records_the_source_content_hash_the_index_uses()
+    {
+        var doc = Doc(A, "docs/ridgeline.md", "# Ridgeline review\n\nAccount A-1042.");
+        var changed = Doc(A, "docs/ridgeline.md", "# Ridgeline review\n\nAccount A-1042, reviewed.");
+
+        string? HashOf(SourceDocument d) => (string?)BillingGraphBuilder.Build(Accounts, Households, Runs, [d]).Nodes
+            .Single(n => n.Label == GraphLabels.Document).Properties[GraphProperties.DocHash];
+
+        Assert.Equal(doc.ContentHash, HashOf(doc));
+        Assert.NotEqual(HashOf(doc), HashOf(changed));
+    }
+
+    [Fact]
     public void Two_documents_sharing_a_fee_schedule_code_link_to_one_fee_schedule_of_their_firm()
     {
         var build = Billing();

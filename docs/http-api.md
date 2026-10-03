@@ -245,7 +245,7 @@ summary a person was asked to approve, so the UI offers it only on a turn that a
 | GET | `/api/admin/feedback/queue` | — | `ReviewQueueItem[]` |
 | POST | `/api/admin/feedback/{turnId}/label` | `LabelRequest` | `204` |
 | GET | `/api/admin/index/status` | — | `IndexStatus` |
-| GET | `/api/admin/index/drift` | — | `DriftReport` |
+| GET | `/api/admin/index/drift` | — | `DriftReport` for the caller's readable tenants: the index against the source, plus `graph` (add-graph-drift) — `{ available, reason, outOfSync, outOfSyncPercent, missingFromGraph, behind, notInCorpus }`, the billing graph against the same source documents; `available: false, reason: "unreachable"` when Neo4j cannot be read |
 | POST | `/api/admin/index/run` | — | `202 AdminJob` |
 | POST | `/api/admin/index/migrate` | `{ targetModel? }` | `202 AdminJob` |
 | GET | `/api/admin/jobs/{jobId}` | — | `AdminJob` |

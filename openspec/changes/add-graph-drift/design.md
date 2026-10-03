@@ -37,7 +37,7 @@
 1. **The graph is compared against the source.** The other options were Qdrant as the reference, or a three-way
    matrix. With the source as the reference, each side reports what it lacks, with the same meaning and the same
    denominator (the source documents in scope). A difference between graph and Qdrant then follows from the two
-   lists, and the fix is obvious: `make graph` for the graph list, and `make index-docs` for the index list.
+   lists, and the fix is obvious: `make graph` for the graph list, and `make index` for the index list.
 2. **A new node property `doc_hash`.** It is set by `BillingGraphBuilder` to `SourceDocument.ContentHash` and sits
    next to the existing node-level `content_hash`.
    - *Rejected:* redefining `content_hash` as the source hash. The maintenance code depends on it to detect unchanged
@@ -69,7 +69,7 @@
    - `Step("reading corpus")` (indeterminate);
    - `SetTotal(tenants)` and `Advance()` per tenant listed from Qdrant;
    - `Step("reading graph")`;
-   - `Succeed("{n} documents — index {stale} stale, graph {outOfSync} out of sync")`, with
+   - `Succeed("{n} documents: index {stale} stale, graph {outOfSync} out of sync")`, with
      `graph unavailable` in place of the graph count when it is unavailable.
 
    `DriftService.ComputeAsync` takes an optional `IProgress<IndexProgress>`. The api passes none. The JSON on stdout is

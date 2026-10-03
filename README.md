@@ -180,7 +180,7 @@ make help                  # every target
 | `make index-portfolio` | Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only |
 | `make index-code` | Index the repository itself (→ maf_code_chunks, served by mcp-code) only; unchanged files are skipped |
 | `make reindex` | Re-embed every document of both domains (--force) |
-| `make drift` | Report stale documents (source newer than index) |
+| `make drift` | Report stale documents: the index and the billing graph against the source |
 | `make rebuild-index` | Re-create the collection with every configured dense vector and re-index (asks unless FORCE=1) |
 | `make migrate` | Fill a provisioned dense vector with its configured model (TO=dense_v3) |
 | `make test` | Run all tests (.NET unit + integration, web) |

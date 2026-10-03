@@ -99,6 +99,36 @@ public sealed class GraphIntegrationTests(Neo4jFixture neo4j) : IDisposable
     private const string TwoAccounts = """[{"firmId":"firm-a","accountId":"A-1","name":"One"},{"firmId":"firm-a","accountId":"A-2","name":"Two"}]""";
 
     [Fact]
+    public async Task Drift_lists_every_billing_document_node_with_its_tenant_and_source_hash_only()
+    {
+        await using var services = neo4j.Services();
+        await neo4j.ResetAsync(services);
+        var maintenance = services.GetRequiredService<TenantScopedGraphMaintenance>();
+        await maintenance.EnsureSchemaAsync(Ct);
+        GraphNode Doc(TenantId tenant, string key, string? hash) => new(GraphLabels.Document, tenant, key,
+            new Dictionary<string, object?> { ["title"] = "T", ["path"] = key, [GraphProperties.DocHash] = hash });
+        await maintenance.WriteNodesAsync(GraphSources.Billing, "r1",
+        [
+            Doc(A, "firm-a/docs/a.md", "aaaa"),
+            Doc(B, "firm-b/docs/b.md", "bbbb"),
+            // Built before doc_hash existed.
+            Doc(TenantId.Shared, "shared/docs/old.md", null),
+            Node(GraphLabels.Account, A, "A-1"),
+        ], Ct);
+
+        var documents = await maintenance.ListDocumentsAsync(GraphSources.Billing, Ct);
+
+        Assert.Equal(
+            [
+                new GraphDocument(A, "firm-a/docs/a.md", "aaaa"),
+                new GraphDocument(B, "firm-b/docs/b.md", "bbbb"),
+                new GraphDocument(TenantId.Shared, "shared/docs/old.md", null),
+            ],
+            documents);
+        Assert.Empty(await maintenance.ListDocumentsAsync(GraphSources.Code, Ct));
+    }
+
+    [Fact]
     public async Task Rebuilding_unchanged_sources_writes_nothing_and_a_removed_account_disappears()
     {
         var (first, provider) = BillingBuild(TwoAccounts);

@@ -67,7 +67,7 @@ unavailable, together with the elapsed time.
 #### Scenario: Terminal run
 - **WHEN** `make drift` runs in a terminal
 - **THEN** a progress bar advances on stderr and ends in a line such as
-  `✓ drift: done 624 documents in 0.9s — index 0 stale, graph 0 out of sync`, and stdout holds only the JSON report
+  `✓ drift: done 4/4 in 0.9s — 624 documents: index 0 stale, graph 0 out of sync`, and stdout holds only the JSON report
 
 #### Scenario: Graph store down
 - **WHEN** `make drift` runs while the graph store is stopped

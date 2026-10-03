@@ -71,6 +71,13 @@ export function IndexAdminPage() {
               <div className={styles.muted}>
                 {drift.data.staleDocuments} of {drift.data.totalDocuments} documents
               </div>
+              {drift.data.graph && (
+                <div className={styles.muted} data-testid="drift-graph">
+                  {drift.data.graph.available
+                    ? `Graph: ${drift.data.graph.outOfSync} of ${drift.data.totalDocuments} out of sync`
+                    : 'Graph: unavailable'}
+                </div>
+              )}
             </>
           )}
         </div>

@@ -2791,3 +2791,22 @@ said which account the conversation was about.
     mention the path, and the model answered from them, which is wrong. **system.v5** adds the three graph tools with
     one example each and says that coverage and callers come from the graph, not from a snippet. v4 is a setting
     away (`Agent:SystemPrompt=system.v4`).
+
+## 76. Graph drift is measured against the source (add-graph-drift, 2026-10-03)
+
+- **Why.** The billing corpus lives in two stores. `make drift` checked only Qdrant, so a graph that fell behind
+  (indexed without `make graph`, or a failed build) went unnoticed while `trace_billing_relationships` answered from it.
+- **Against the source, not against Qdrant.** Both halves of the report compare their store with the same source
+  documents in the same tenant scope. Each list then names its own fix: `make index` for the index, `make graph` for
+  the graph. Rejected: a graph-vs-Qdrant diff, which says that the stores disagree but not which one is wrong.
+- **`doc_hash` next to the node `content_hash`.** A billing document node records the source content hash its chunks
+  carry in Qdrant. The node's own `content_hash` keeps hashing the node's properties, because the maintenance path uses
+  it to skip unchanged writes. A node without `doc_hash` (built before this change) reads as behind. The first
+  `make graph` after the change rewrites every document node once (624 on the dev corpus).
+- **A maintenance read, outside the read path.** `TenantScopedGraphMaintenance.ListDocumentsAsync(source)` runs one
+  fixed query and returns tenant, id and hash only. It takes no tenant, and the caller keeps its scope.
+  `TenantScopedGraph.ReadAsync` stays the only read on behalf of a request, a tool or the model. A Cecil test keeps
+  tool and agent code away from maintenance reads, and the graph-store spec now names this boundary. It always
+  existed for counts and stale removal.
+- **Degrade.** An unreachable Neo4j makes the graph section `unavailable` (reason `unreachable`, exception type logged
+  only). The index half and the exit code are unchanged.

@@ -186,6 +186,34 @@ public class GraphStoreTests
         Assert.DoesNotContain("s3cret", line);
     }
 
+    [Fact]
+    public void No_tool_or_agent_code_reaches_a_maintenance_read()
+    {
+        // add-graph-drift: maintenance reads (counts, stale removal, the drift listing) serve the indexer and the admin
+        // drift report only; the request path reads the graph through TenantScopedGraph.ReadAsync alone.
+        string[] requestPath = ["Maf.Lab.Retrieval.Tools", "Maf.Lab.CodeSearch.Tools", "Maf.Lab.Api.Agent"];
+        string[] maintenance = [typeof(TenantScopedGraphMaintenance).FullName!, "Maf.Lab.Indexing.Pipeline.DriftService"];
+
+        var calls = new List<string>();
+        foreach (var path in ProductAssemblies())
+        {
+            using var assembly = AssemblyDefinition.ReadAssembly(path);
+            foreach (var type in assembly.MainModule.GetTypes().Where(t => requestPath.Any(ns => TopLevel(t).Namespace.StartsWith(ns, StringComparison.Ordinal))))
+            {
+                foreach (var method in type.Methods.Where(m => m.HasBody))
+                {
+                    calls.AddRange(method.Body.Instructions
+                        .Where(i => i.OpCode == OpCodes.Call || i.OpCode == OpCodes.Callvirt || i.OpCode == OpCodes.Newobj)
+                        .Select(i => i.Operand).OfType<MethodReference>()
+                        .Where(t => maintenance.Contains(t.DeclaringType.FullName))
+                        .Select(t => $"{Owner(type).FullName}.{method.Name} -> {t.DeclaringType.Name}.{t.Name}"));
+                }
+            }
+        }
+
+        Assert.Empty(calls);
+    }
+
     private static IGraphRow Row(params (string Key, object? Value)[] values) => new DictionaryRow(values.ToDictionary(v => v.Key, v => v.Value));
 
     private sealed class DictionaryRow(Dictionary<string, object?> values) : IGraphRow
@@ -233,6 +261,8 @@ public class GraphStoreTests
         }
         return result;
     }
+
+    private static TypeDefinition TopLevel(TypeDefinition type) => type.DeclaringType is null ? type : TopLevel(type.DeclaringType);
 
     private static TypeDefinition Owner(TypeDefinition type)
     {

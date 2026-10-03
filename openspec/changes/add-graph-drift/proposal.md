@@ -4,7 +4,7 @@
 
 The billing corpus now lives in two stores: Qdrant holds its passages, and Neo4j holds a document node for every
 billing document, with the mention edges that `trace_billing_relationships` follows. `make drift` checks only Qdrant
-against the source. When the graph falls behind, for example after `make index-docs` without `make graph`, or after
+against the source. When the graph falls behind, for example after the indexer's `index` command ran without `graph`, or after
 a `make graph` that failed, nothing says so. The agent then answers relationship questions from a stale graph, and the
 graph's document ids no longer lead to the passages `search_documents` returns. add-neo4j-graph left this as a
 follow-up.
@@ -30,7 +30,7 @@ follow-up.
 - **`make drift` shows a progress bar** (progress-feedback) on stderr and keeps the JSON report on stdout:
   - an indeterminate bar while the corpus is read;
   - then the tenants listed from Qdrant out of the total, and a graph step;
-  - one final line, for example `✓ drift: 624 documents — index 0 stale, graph 0 out of sync`, or `graph unavailable`
+  - one final line, for example `✓ drift: done 4/4 in 0.9s — 624 documents: index 0 stale, graph 0 out of sync`, or `graph unavailable`
     when Neo4j cannot be reached.
 
   The command did not show a bar before this change.

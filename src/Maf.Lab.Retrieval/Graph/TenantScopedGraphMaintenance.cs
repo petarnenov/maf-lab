@@ -31,6 +31,12 @@ public sealed record GraphRemoval(int Nodes, int Edges);
 public sealed record GraphCounts(long Nodes, long Edges);
 
 /// <summary>
+/// A billing document node as drift sees it (add-graph-drift): its tenant, document id and the source content hash it was
+/// built from — null for a node built before it was recorded. Never a title, path or text.
+/// </summary>
+public sealed record GraphDocument(TenantId Tenant, string DocId, string? DocHash);
+
+/// <summary>
 /// THE graph write path, for the indexer only. Every write names the tenant of what it writes (from the corpus layout or
 /// a seed record, never from a request); a node without one is rejected. Nodes and edges are merged on stable keys and
 /// stamped with the build's run id, so a build over unchanged sources writes nothing new and a later
@@ -155,15 +161,34 @@ public sealed class TenantScopedGraphMaintenance(IDriver driver, IOptions<GraphO
         return new GraphCounts(nodes[0]["c"].As<long>(), edges[0]["c"].As<long>());
     }
 
+    /// <summary>
+    /// Every document node of a source, for drift reporting: one fixed query, no tenant from the caller — the caller
+    /// keeps the tenants it may report. A maintenance read: no tool or agent code reaches it (graph-store).
+    /// </summary>
+    public async Task<IReadOnlyList<GraphDocument>> ListDocumentsAsync(string source, CancellationToken ct)
+    {
+        RequireSource(source);
+        var rows = await RunAsync($"""
+            MATCH (d:{GraphLabels.Document}) WHERE d.source = $source
+            RETURN d.tenant_id AS tenant, d.key AS key, d.{GraphProperties.DocHash} AS hash
+            ORDER BY key
+            """, new() { ["source"] = source }, ct, read: true);
+        // Every write carries a valid tenant, so the filter only guards against a node written by hand.
+        return [.. rows
+            .Select(r => (Ok: TenantId.TryParse(r["tenant"].As<string?>(), out var tenant), Tenant: tenant, Row: r))
+            .Where(x => x.Ok)
+            .Select(x => new GraphDocument(x.Tenant, x.Row["key"].As<string>(), x.Row["hash"].As<string?>()))];
+    }
+
     public Task VerifyConnectivityAsync() => driver.VerifyConnectivityAsync();
 
-    private async Task<IReadOnlyList<IRecord>> RunAsync(string cypher, Dictionary<string, object?>? parameters, CancellationToken ct)
+    private async Task<IReadOnlyList<IRecord>> RunAsync(string cypher, Dictionary<string, object?>? parameters, CancellationToken ct, bool read = false)
     {
-        using var span = LabTelemetry.Source.StartActivity("graph.write");
+        using var span = LabTelemetry.Source.StartActivity(read ? "graph.maintenance_read" : "graph.write");
         var started = Stopwatch.GetTimestamp();
         var result = await driver.ExecutableQuery(cypher)
             .WithParameters(parameters?.ToDictionary(p => p.Key, p => p.Value!) ?? [])
-            .WithConfig(new QueryConfig(RoutingControl.Writers, _database))
+            .WithConfig(new QueryConfig(read ? RoutingControl.Readers : RoutingControl.Writers, _database))
             .ExecuteAsync(ct);
         span?.SetTag("graph.rows", result.Result.Count);
         span?.SetTag("graph.duration_ms", Math.Round(Stopwatch.GetElapsedTime(started).TotalMilliseconds, 1));
