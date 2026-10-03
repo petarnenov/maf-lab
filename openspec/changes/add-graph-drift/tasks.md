@@ -48,21 +48,29 @@
   error state when the graph is unavailable.
 - [x] 4.3 Time `GET /api/admin/index/drift` on the running stack as FIRM_ADMIN. Verify it stays under 3 s. If it does
   not, add the page's themed progress to the card per `progress-feedback`.
+  - Measured: 0.09–0.57 s with Neo4j up; about 8 s with Neo4j down (its connect timeout), so the card shows the
+    page's `Progress` while it loads.
 
 ## 5. End to end
 
-- [ ] 5.1 On the running stack:
+- [x] 5.1 On the running stack:
   - Run `make graph` once, which adds `doc_hash`. Verify `make drift` reports the graph at 0 out of sync.
   - Touch one billing document's text and run only the indexer's `index` command (no graph build). Verify the document is listed under graph
     `behind` and not under index `stale`.
   - Run `make graph`. Verify it is back to 0.
   - Restore the document.
-- [ ] 5.2 Stop `neo4j` and run `make drift`. Verify the graph section is `unavailable`, the final line says so, the
+- [x] 5.2 Stop `neo4j` and run `make drift`. Verify the graph section is `unavailable`, the final line says so, the
   exit code is 0, and stderr carries no hostname or stack trace. Start `neo4j` again.
-- [ ] 5.3 Open `/admin/index` as a firm admin in the browser. Verify the graph line in the page's theme in light and
+- [x] 5.3 Open `/admin/index` as a firm admin in the browser. Verify the graph line in the page's theme in light and
   dark, with no other firm's ids in the response.
-- [ ] 5.4 Run `make test`, `make lint`, `make verify` and `make specs` (`openspec validate --all --strict`). Verify all
+- [x] 5.4 Run `make test`, `make lint`, `make verify` and `make specs` (`openspec validate --all --strict`). Verify all
   pass.
+  - 2026-10-03, after merging add-graph-trace-event:
+    - `make test`: 1505/1506 .NET. The one failure, `RunProtocolTests.A_run_stopped_by_its_client_ends_and_nothing_runs_after`
+      (a client-abort race, IOException instead of OperationCanceledException), passes when its class runs alone (10/10).
+    - Web: 616/616.
+    - `make lint`, `make verify` (37 + 8), `make specs` (47) and `make docs-check` pass.
+    - Found live: indexer warnings went to stdout and broke the JSON, so console logs now go to stderr.
 
 ## 6. Documentation
 

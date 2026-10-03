@@ -78,7 +78,11 @@ describe('IndexAdminPage', () => {
       'fetch',
       vi.fn(async (url: string) => {
         if (url === '/api/admin/index/status')
-          return jsonResponse({ modelVersions: [], activeDenseVector: 'dense_v3', currentJob: null });
+          return jsonResponse({
+            modelVersions: [],
+            activeDenseVector: 'dense_v3',
+            currentJob: null,
+          });
         if (url === '/api/admin/index/drift')
           return jsonResponse({
             totalDocuments: 40,
@@ -102,6 +106,9 @@ describe('IndexAdminPage', () => {
 
     renderWithProviders(<IndexAdminPage />, { session: makeSession('FIRM_ADMIN') });
 
+    expect(
+      screen.getByRole('progressbar', { name: 'Checking the index and the graph…' }),
+    ).toBeInTheDocument();
     expect(await screen.findByTestId('drift-percent')).toHaveTextContent('0.0%');
     expect(screen.getByTestId('drift-graph')).toHaveTextContent('Graph: unavailable');
     expect(screen.queryByText('Unavailable')).not.toBeInTheDocument();

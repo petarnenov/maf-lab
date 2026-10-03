@@ -101,10 +101,15 @@
 - [x] 5.2 Run the unit tests (`dotnet test tests/Maf.Lab.Tests`), the web tests (`npm test` in `web`), `make lint`
   and `make specs`. Verify: all green. Results: 1432 .NET unit tests, plus the graph integration tests on
   Testcontainers Neo4j (4); 615 web tests; lint and build clean; 47 specs valid.
-- [ ] 5.3 Live check: on the running stack, ask "which households are on NW-INST-2026-083" and "who calls
+- [x] 5.3 Live check: on the running stack, ask "which households are on NW-INST-2026-083" and "who calls
   TenantScopedSearch.QueryAsync". In the monitor, check the `graph` rows, the graph cards and the header chip in both
   themes. Then stop Neo4j and check the `unavailable` title. Verify: as in the specs' scenarios.
-  *Needs the live stack; run after merge. Another change is using the stack, so it was not touched here.*
+  - Done on 2026-10-03 after the merge:
+    - The billing question gave `graph` "Neo4j billing_neighbourhood_2 · 6 rows · 146 ms", a Retrieval card with
+      `neo4j 146 ms` and scope firm-b + shared, and "1 graph read" in the header, in both themes.
+    - The code question gave "Neo4j symbol_candidates + callers_2 · 4 rows" and "2 graph reads".
+    - With Neo4j stopped, the title read "Neo4j billing_neighbourhood_2 · unavailable", and the agent answered that
+      it could not get the list.
 
 ## 6. Documentation
 

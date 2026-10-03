@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import type { AdminJob, DriftReport, IndexStatus } from '../api/types';
 import { useApi, useAuth } from '../auth/useAuth';
 import styles from '../components/Page.module.css';
+import { Progress } from '../components/Progress';
 import { formatDate } from '../evals/format';
 import { isJobActive } from './jobs';
 
@@ -61,7 +62,8 @@ export function IndexAdminPage() {
       <div className={styles.cards}>
         <div className={styles.card}>
           <div className={styles.muted}>Drift (stale documents)</div>
-          {drift.isLoading && <div className={styles.muted}>Loading…</div>}
+          {/* With Neo4j down the graph half waits for its connect timeout (~5-8 s): progress-feedback. */}
+          {drift.isLoading && <Progress label="Checking the index and the graph…" />}
           {drift.isError && <div className={styles.error}>Unavailable</div>}
           {drift.data && (
             <>

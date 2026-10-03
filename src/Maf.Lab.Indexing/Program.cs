@@ -37,6 +37,8 @@ public static class Program
         // The progress bar owns stderr's last line and ends in the run's outcome; informational logs would break into
         // it and repeat that outcome, so the console shows warnings and errors only.
         builder.Logging.SetMinimumLevel(LogLevel.Warning);
+        // stdout carries only the JSON a command prints (drift, graph, index summaries): logs go to stderr with the bar.
+        builder.Services.Configure<Microsoft.Extensions.Logging.Console.ConsoleLoggerOptions>(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
         using var host = builder.Build();
         var services = host.Services;
         using var cts = new CancellationTokenSource();
