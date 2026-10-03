@@ -84,6 +84,10 @@ services:
     image: ollama/ollama:0.34.2
     ports:
       - "11435:11434"
+    environment:
+      # Keep the embedding model loaded: Ollama's default unloads it after 5 idle minutes, and the next search then
+      # waits ~4-5 s for a cold load (embed is ~0.1 s warm). ollama-init loads it once at start.
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:--1}
     volumes:
       - ${OLLAMA_MODELS_DIR:-ollama-models}:/root/.ollama
     healthcheck:
