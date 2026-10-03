@@ -9,7 +9,7 @@
 - [x] 2.1 Add the `ollama-batch` service (same image, `OLLAMA_KEEP_ALIVE`, `OLLAMA_NOPRUNE=1`, models volume, port 11436, healthcheck) and `cpuset` from `OLLAMA_INTERACTIVE_CPUS` (default `0-3`) on `ollama` and `OLLAMA_BATCH_CPUS` (default `4-15`) on `ollama-batch`; verify `docker compose config` is valid and `docker inspect` shows the two CPU sets
 - [x] 2.2 Add `Models__BatchOllamaEndpoint: http://ollama-batch:11434` to `x-app-env`; verify `docker compose config` shows it on api, mcp-retrieval, mcp-portfolio, mcp-code
 - [x] 2.3 Make `ollama-init` depend on both instances and only pull; add one-shot `ollama-warm` (`alpine:3.22`, busybox `wget --post-data` with each role's `num_thread`) and point the app services' `depends_on` at it; verify `docker exec` `ollama ps` on each instance shows `embeddinggemma` `UNTIL Forever` after `make`
-- [ ] 2.4 CI override: `ollama-batch` uses the stub image and healthcheck; verify `make ci-e2e` passes
+- [x] 2.4 CI override: `ollama-batch` uses the stub image and healthcheck; verify `make ci-e2e` passes
 
 ## 3. Routing in code
 

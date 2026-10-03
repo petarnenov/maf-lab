@@ -552,8 +552,8 @@ GitHub Actions ([`.github/workflows`](.github/workflows)) — `make ci` runs the
 | **CI** (`ci.yml`) | every push and pull request | `specs` (OpenSpec strict validation and `make docs-check`) · `dotnet` (build with warnings as errors, unit + Testcontainers integration tests) · `web` (lint, Vitest, build) · `e2e` (full stack behind the balancer on :7171, corpus indexed, `make verify`, the A2A conformance probe and model-free test generation: `make ci-e2e`) |
 | **Evals** (`evals.yml`) | manual (*Actions → Evals → Run workflow*, choose a suite) | real embeddings in compose Ollama + chat on Ollama Cloud and intent on Jev (`OLLAMA_API_KEY` and `JEV_MAF_LAB` repository secrets); reports uploaded as an artifact |
 
-The e2e job needs **no model and no secret**, so it also runs for pull requests from forks. `CI_MODE=1` replaces the
-`ollama` service with a deterministic Ollama-compatible stub (`compose/ollama-stub`): hash-based embeddings and a
+The e2e job needs **no model and no secret**, so it also runs for pull requests from forks. `CI_MODE=1` replaces both
+Ollama services (`ollama`, `ollama-batch`) with a deterministic Ollama-compatible stub (`compose/ollama-stub`): hash-based embeddings and a
 scripted, streamed chat answer. Forced retrieval still calls `search_documents` over MCP, so tool calls, SSE, sources,
 tenancy, failover and admin jobs are exercised for real. Try it locally: `make ci-e2e` (indexing takes about 15 s with the stub).
 Locally it runs as its own compose project, `maf-lab-e2e`, with its own volumes: it stops the dev stack first (its
