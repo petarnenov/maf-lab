@@ -230,7 +230,7 @@ public sealed class ModelAvailabilityTests
             options: new TestAgentOptions { AvailabilityCacheFor = TimeSpan.FromMilliseconds(50) });
 
         var first = await availability.CheckAsync(Tag, Ct);
-        await Task.Delay(200);
+        await Task.Delay(200, Ct);
         var second = await availability.CheckAsync(Tag, Ct);
 
         Assert.Equal(first, second);

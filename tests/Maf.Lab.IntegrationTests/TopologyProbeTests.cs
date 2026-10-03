@@ -26,6 +26,9 @@ public class TopologyProbeTests(QdrantFixture qdrant)
             Options.Create(new Maf.Lab.Api.Coverage.TestAgentOptions()),
             new FakeToolSource(),
             client,
+            // The graph store is not under test here: an address nothing listens on, so it reports unreachable.
+            Neo4j.Driver.GraphDatabase.Driver("bolt://127.0.0.1:1", Neo4j.Driver.AuthTokens.None),
+            Options.Create(new Maf.Lab.Retrieval.Graph.GraphOptions { Uri = "bolt://127.0.0.1:1" }),
             new StubHttpClientFactory(),
             new MemoryCache(new MemoryCacheOptions()),
             new Maf.Lab.Hosting.SharedStateHealth(new ServiceCollection().BuildServiceProvider()),

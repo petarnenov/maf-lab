@@ -58,14 +58,15 @@
         "agent": {
           "faithfulness": 1,
           "jevChecked": 1,
-          "jevGroundedAgreement": 0.75,
+          "jevGroundedAgreement": 1,
           "jevRelevantAgreement": 1,
+          "jevUncertain": 0.1667,
           "relevance": 1,
-          "sourceRecall": 0.875
+          "sourceRecall": 0.9167
         }
       },
-      "acceptedFrom": "20260929-034436-generation",
-      "acceptedAt": "2026-09-29T03:45:30.569544+00:00"
+      "acceptedFrom": "20261003-063144-generation",
+      "acceptedAt": "2026-10-03T06:32:38.565657+00:00"
     },
     "guardrail": {
       "metrics": {
@@ -235,14 +236,14 @@
     "selection": {
       "metrics": {
         "agent": {
-          "exactMatch": 0.931,
+          "exactMatch": 0.9592,
           "negativeAccuracy": 1,
-          "precision": 0.9429,
+          "precision": 0.9661,
           "recall": 1
         }
       },
-      "acceptedFrom": "20260928-221037-selection",
-      "acceptedAt": "2026-09-28T22:12:04.886529+00:00"
+      "acceptedFrom": "20261003-062222-selection",
+      "acceptedAt": "2026-10-03T06:24:41.62931+00:00"
     }
   }
 }

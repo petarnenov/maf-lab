@@ -20,6 +20,8 @@ Pinned versions and the architectural decisions of maf-lab. **If a version moves
 | Prometheus | `prom/prometheus:v3.14.0` | `compose/docker-compose.yml` |
 | Jaeger | `jaegertracing/all-in-one:1.76.0` | `compose/docker-compose.yml` |
 | Redis | `redis:8.8.3-alpine` | `compose/docker-compose.yml` |
+| Neo4j (graph store, §75) | `neo4j:2026.09.0-community` (compose and Testcontainers) | `compose/docker-compose.yml`, `tests/.../Neo4jFixture.cs` |
+| socat (Neo4j Browser inspector, §75) | `alpine/socat:1.8.1.3` | `compose/docker-compose.yml` (`neo4j-browser`) |
 | Playwright (README screenshots only) | `playwright` 1.63.0, Chromium headless shell 153 | `tools/screenshots/package.json` + lockfile — see §55 |
 
 ### Models (Ollama)
@@ -51,6 +53,7 @@ model is served, not its size.
 | OllamaSharp | 5.4.30 |
 | ModelContextProtocol / ModelContextProtocol.AspNetCore | 2.2.0 |
 | Qdrant.Client | 1.19.0 |
+| Neo4j.Driver (§75) | 6.3.0 |
 | Microsoft.AspNetCore.Authentication.JwtBearer | 10.0.12 |
 | System.IdentityModel.Tokens.Jwt | 8.23.0 |
 | Microsoft.EntityFrameworkCore.Sqlite | 10.0.12 |
@@ -62,6 +65,7 @@ model is served, not its size.
 | Microsoft.NET.Test.Sdk | 18.10.1 |
 | Microsoft.AspNetCore.Mvc.Testing | 10.0.12 |
 | Testcontainers.Qdrant | 4.15.0 |
+| Testcontainers.Neo4j (§75) | 4.15.0 |
 | Mono.Cecil | 0.11.6 |
 | NSubstitute (tests only, §59) | 6.2.0 |
 | StackExchange.Redis | 3.3.0 |
@@ -2736,3 +2740,107 @@ said which account the conversation was about.
   - **No Cyrillic cases:** confirmation and injection have none. That is a gap.
   - **What the evals do not exercise:** they drive `ChatTurnRunner` directly, so they do not reach the new `ChatAgent`
     / `ChatRunFilter` layer. The api tests and `make verify`'s conformance cover that layer.
+
+## 75. Neo4j as the graph store for billing and code relationships (add-neo4j-graph, 2026-10-02)
+
+- **Why.** Qdrant finds passages. It cannot say how things connect: which households use a fee schedule, who calls a
+  method, which tests reach a file. A graph store next to the vector store lets the lab exercise GraphRAG with the same
+  bars as retrieval: tenant isolation, DTO-only tools, progress, docs sync.
+- **Pins.**
+  - Image `neo4j:2026.09.0-community`, used by compose and Testcontainers.
+  - `Neo4j.Driver` 6.3.0 and `Testcontainers.Neo4j` 4.15.0, on the same line as `Testcontainers.Qdrant`.
+  - `alpine/socat:1.8.1.3`, for the Browser inspector only.
+  - The indexer now references `Microsoft.CodeAnalysis.CSharp` 5.9.0, which was already pinned. No other package
+    moved.
+- **One Community database, tenancy as a property.** Every node carries `tenant_id` (a firm id or `shared`), and every
+  key is unique per `(label, tenant_id, key)`. Rejected: a database per tenant (Enterprise only, and it diverges from
+  the single-collection Qdrant model), and a separate instance for code.
+- **A closed set of Cypher templates and one read method.** `TenantScopedGraph.ReadAsync(Principal, GraphQuery<T>)`
+  binds `$readable` itself. Every node pattern in a template is guarded by `tenant_id IN $readable`, and so is every
+  node of a variable-length path. A unit test parses the templates to prove it, and the Cecil query-path test allows
+  only `TenantScopedGraph` and `TenantScopedGraphMaintenance` to open a Neo4j session.
+  - Depth is chosen from constant texts, never by concatenation.
+  - Rejected: text-to-Cypher by the model, because it makes the model a query author and gives prompt injection a
+    database to reach.
+- **The build is deterministic and has no model.** `Maf.Lab.Indexing graph` writes with `MERGE` on stable keys,
+  stamps a `run_id`, and deletes per source what an older run left.
+  - The billing builder reads the seeds without `note` and reads the corpus through `CorpusLoader`, so `doc_id` and
+    tenancy match Qdrant's.
+  - Fee schedules come from one fixed code pattern (`NW-INST-2026-083`). No corpus document names a seed account, but
+    Firm B's household profiles and fee-schedule notes share about 120 schedule codes.
+  - The code builder uses one `CSharpCompilation` per project over git-tracked files, with the runtime's platform
+    assemblies and the other projects as references. Calls into NuGet packages stay unresolved and are counted.
+    Rejected: `MSBuildWorkspace` (it needs MSBuild and a restore inside the indexer).
+- **Bolt on loopback only.** `neo4j` publishes `127.0.0.1:7687`, because the indexer runs on the host as it does for
+  Qdrant, and nothing on other interfaces. The dev-only `neo4j-browser` (profile `inspectors`) forwards
+  `127.0.0.1:7175` to the Browser page, which then opens Bolt at the advertised `localhost:7687`. Rejected: publishing
+  7474 on `neo4j` itself, because ports cannot be profile-gated.
+- **The driver needs IPv6 in the kernel.** `Neo4j.Driver` 6.x always opens a dual-mode IPv6 socket
+  (`TcpSocketClient.InitClient`), even for an IPv4 address. Docker hosts and CI runners have IPv6 in the kernel, even
+  without IPv6 addresses. A kernel built without it fails with "address family not supported" before any packet is
+  sent. The driver has no switch for this.
+- **Degrade, don't refuse.** The MCP servers start without Neo4j, and graph tools then answer "temporarily
+  unavailable".
+- **Not routed by Jev.** The graph tools are chosen by the model from their descriptions and measured by the
+  selection suite. Adding them to the intent request is a separate change, because it brings the Jev review, labelled
+  sets and thresholds.
+- **The agent is offered the graph tools, and system.v5 names them** (2026-10-03, from the first eval run).
+  - The codebase server's allow-list (§ add-codebase-domain: "only `search_codebase` for the agent") now also names
+    `trace_code_symbol` and `change_impact`. Without it the agent never saw them. `ask_codebase` stays out.
+  - Descriptions alone did not move "which tests cover <file>": the forced `search_codebase` returns tests that only
+    mention the path, and the model answered from them, which is wrong. **system.v5** adds the three graph tools with
+    one example each and says that coverage and callers come from the graph, not from a snippet. v4 is a setting
+    away (`Agent:SystemPrompt=system.v4`).
+
+## 76. Graph drift is measured against the source (add-graph-drift, 2026-10-03)
+
+- **Why.** The billing corpus lives in two stores. `make drift` checked only Qdrant, so a graph that fell behind
+  (indexed without `make graph`, or a failed build) went unnoticed while `trace_billing_relationships` answered from it.
+- **Against the source, not against Qdrant.** Both halves of the report compare their store with the same source
+  documents in the same tenant scope. Each list then names its own fix: `make index` for the index, `make graph` for
+  the graph. Rejected: a graph-vs-Qdrant diff, which says that the stores disagree but not which one is wrong.
+- **`doc_hash` next to the node `content_hash`.** A billing document node records the source content hash its chunks
+  carry in Qdrant. The node's own `content_hash` keeps hashing the node's properties, because the maintenance path uses
+  it to skip unchanged writes. A node without `doc_hash` (built before this change) reads as behind. The first
+  `make graph` after the change rewrites every document node once (624 on the dev corpus).
+- **A maintenance read, outside the read path.** `TenantScopedGraphMaintenance.ListDocumentsAsync(source)` runs one
+  fixed query and returns tenant, id and hash only. It takes no tenant, and the caller keeps its scope.
+  `TenantScopedGraph.ReadAsync` stays the only read on behalf of a request, a tool or the model. A Cecil test keeps
+  tool and agent code away from maintenance reads, and the graph-store spec now names this boundary. It always
+  existed for counts and stale removal.
+- **Degrade.** An unreachable Neo4j makes the graph section `unavailable` (reason `unreachable`, exception type logged
+  only). The index half and the exit code are unchanged.
+
+## 77. Query and batch embeddings on separate Ollama instances (split-ollama-interactive-batch, 2026-10-03)
+
+- **Why.** One CPU-only Ollama (`OLLAMA_NUM_PARALLEL=1`, 16 threads) served search queries and every batch. Measured on
+  the dev machine (i7-10700K, Docker Desktop, 16 CPUs): a warm query embed takes 44 ms, a ~470-token chunk ~565 ms,
+  and throughput is ~1.7 chunks/s at any batch size (1–64) or client count (1–4) with the CPU at ~1850 %. A search
+  arriving behind a 32-chunk batch waited for it (~20 s).
+- **Isolation, not replicas.** Replicas of the same instance on the same CPUs add no throughput (measured: 2 and 4
+  clients give the same total chunks/s) and do not keep queries out of a batch's queue. Two instances do: `ollama`
+  (host 11435) embeds queries only, `ollama-batch` (host 11436) documents. Routing is by operation in `DenseEncoder`
+  (`EmbedQueryAsync` → interactive, `EmbedDocumentsAsync` → batch), never by caller; `Models:BatchOllamaEndpoint`
+  unset sends both to the one endpoint, as before. Same image, same model, same vectors: nothing is re-indexed.
+- **CPU sets, and the thread count in every request.** `cpuset` `0-3` / `4-15` by default (`OLLAMA_INTERACTIVE_CPUS`,
+  `OLLAMA_BATCH_CPUS`). Ollama 0.34.2 does not derive threads from the cpuset (a spike with `--cpuset-cpus 4-15` still
+  logged `n_threads = 16`) and has no environment variable for it; `options.num_thread` works, but a request with
+  another value — or none — reloads the runner (a cold load) with all CPUs. So every request carries its instance's
+  count (`Models:OllamaNumThread` / `Models:BatchOllamaNumThread`, from `OLLAMA_INTERACTIVE_THREADS=4` /
+  `OLLAMA_BATCH_THREADS=12`), and both embedding paths use OllamaSharp's native `EmbedAsync`, because
+  Microsoft.Extensions.AI cannot pass it. A manual `curl` without `num_thread` reloads the model; `make doctor` checks
+  that the sets fit Docker's CPUs and that the counts match them. Rejected: `cpu_shares` (llama.cpp's threads sync at
+  barriers, so oversubscribed threads stall each other) and Modelfile-derived models with `PARAMETER num_thread` (a
+  second model name in `DenseModelVersions`).
+- **Warm-up moved to `ollama-warm`.** `ollama run` cannot pass `num_thread` (its stdin is embedded as text) and the
+  ollama image has no HTTP client, so `ollama-init` only pulls (once, into the shared volume) and a one-shot
+  `alpine:3.22` (already pinned for `api-data-init`; no new image) POSTs one `/api/embed` per instance with busybox
+  `wget`. The app services wait for it. `OLLAMA_NOPRUNE=1` on both, so neither prunes blobs while the other pulls.
+- **Cost.** Batches get 12 CPUs instead of 16; ~1.2 GiB more RAM for the second loaded model.
+- **Measured after the change (2026-10-03, same machine).** Query embed on the interactive instance, idle: median
+  43 ms, p90 49 ms (before: 44 / 89 ms on one 16-thread instance). During ~86 s of continuous forced portfolio
+  re-indexing on the batch instance: median 74 ms, p90 121 ms, max 431 ms — 1.7× idle, where before a query waited for
+  the whole batch in front of it. The rest of the slowdown is what CPU sets do not separate (hyper-thread siblings, L3,
+  memory bandwidth). Every re-index request reached `ollama-batch` only, neither runner reloaded (one `threadpool init`
+  each), and the same text gives bit-identical vectors on both instances. Forced portfolio re-index: 142 chunks in
+  ~21 s.

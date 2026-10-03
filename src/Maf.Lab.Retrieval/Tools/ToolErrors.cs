@@ -14,7 +14,9 @@ public static class ToolErrors
 
     public static string ForException(Exception ex, string capability) => ex switch
     {
-        RpcException or HttpRequestException or TimeoutException or TaskCanceledException =>
+        RpcException or HttpRequestException or TimeoutException or TaskCanceledException
+            or Neo4j.Driver.ServiceUnavailableException or Neo4j.Driver.SessionExpiredException
+            or Neo4j.Driver.TransientException or Neo4j.Driver.SecurityException =>
             $"{capability} is temporarily unavailable; try again shortly.",
         UnauthorizedAccessException => "The request is not authorized.",
         _ => $"{capability} failed; try rephrasing the request.",

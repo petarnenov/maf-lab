@@ -3,18 +3,23 @@ using Microsoft.Extensions.Configuration;
 
 namespace Maf.Lab.Tests;
 
-/// <summary>Which system prompt the agent runs with (add-system-prompt-v3, add-codebase-domain), and that the previous one is a setting away.</summary>
+/// <summary>Which system prompt the agent runs with (add-system-prompt-v3, add-codebase-domain, add-neo4j-graph), and that the previous one is a setting away.</summary>
 public class SystemPromptTests
 {
     private static SystemPrompt Load(string? version) => new(new ConfigurationBuilder()
         .AddInMemoryCollection(new Dictionary<string, string?> { ["Agent:SystemPrompt"] = version }).Build());
 
     [Fact]
-    public void The_default_is_v4_with_the_codebase_and_v3s_data_cards()
+    public void The_default_is_v5_with_the_graph_tools_on_top_of_v4()
     {
         var prompt = Load(null);
 
-        Assert.Equal("system.v4", prompt.Version);
+        Assert.Equal("system.v5", prompt.Version);
+        // add-neo4j-graph: the graph tools are named, and coverage and callers come from them, not from a snippet.
+        Assert.Contains("trace_billing_relationships", prompt.Text);
+        Assert.Contains("trace_code_symbol", prompt.Text);
+        Assert.Contains("change_impact", prompt.Text);
+        Assert.Contains("not from search_codebase", prompt.Text);
         Assert.Contains("## Data cards", prompt.Text);
         Assert.Contains("never calculate trades", prompt.Text);
         // add-codebase-domain: the codebase is a domain with its search, code is cited by place, general programming stays out.
@@ -22,6 +27,16 @@ public class SystemPromptTests
         Assert.Contains("path:start-end", prompt.Text);
         Assert.Contains("general programming that is not about this system", prompt.Text);
         Assert.DoesNotContain("travel, coding,", prompt.Text);
+    }
+
+    [Fact]
+    public void Configuration_rolls_back_to_v4()
+    {
+        var prompt = Load("system.v4");
+
+        Assert.Equal("system.v4", prompt.Version);
+        Assert.Contains("search_codebase", prompt.Text);
+        Assert.DoesNotContain("change_impact", prompt.Text);
     }
 
     [Fact]

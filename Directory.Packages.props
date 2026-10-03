@@ -22,6 +22,8 @@
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
     <!-- Vector store -->
     <PackageVersion Include="Qdrant.Client" Version="1.19.0" />
+    <!-- Graph store: the official Bolt driver (see DECISIONS.md §75) -->
+    <PackageVersion Include="Neo4j.Driver" Version="6.3.0" />
     <!-- ASP.NET Core / hosting / data -->
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
     <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.23.0" />
@@ -54,6 +56,7 @@
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
     <PackageVersion Include="Testcontainers.Qdrant" Version="4.15.0" />
+    <PackageVersion Include="Testcontainers.Neo4j" Version="4.15.0" />
     <PackageVersion Include="Mono.Cecil" Version="0.11.6" />
     <!-- Substitutes for interfaces in unit tests, for people and the test agent (see DECISIONS.md §59) -->
     <PackageVersion Include="NSubstitute" Version="6.2.0" />

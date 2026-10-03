@@ -45,7 +45,7 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
         await using var tools = await source.GetToolsAsync(token, null, TestContext.Current.CancellationToken);
 
         Assert.Equal(
-            ["get_billing_run_status", "propose_fee_adjustment", "search_billing_runs", "search_documents"],
+            ["get_billing_run_status", "propose_fee_adjustment", "search_billing_runs", "search_documents", "trace_billing_relationships"],
             tools.Names.Order());
         var search = (AIFunction)tools.Tools.Single(t => t.Name == "search_documents");
         var result = await search.InvokeAsync(new AIFunctionArguments { ["query"] = "household rebalancing fee" }, TestContext.Current.CancellationToken);

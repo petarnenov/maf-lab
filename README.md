@@ -6,7 +6,8 @@ A learning lab: a RAG-backed assistant for a TAMP, over three domains — **bill
 **codebase** — each served by its own **MCP server** with its own retrieval **tool** (`search_documents`,
 `search_portfolio_documents`, `search_codebase`) over its own **multi-tenant Qdrant** collection, consumed by a **Microsoft Agent Framework** agent, with a React chat UI, an eval
 harness and tested prompt-injection defences. TypeSafe's Jev decides which domains a question belongs to, and the
-monitor shows where a turn crosses from one into the other.
+monitor shows where a turn crosses from one into the other. Beside the vector store, a **Neo4j** graph answers how things
+connect: billing relationships (`trace_billing_relationships`) and the code graph (`trace_code_symbol`, `change_impact`).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/chat-dark.png">
@@ -42,17 +43,19 @@ flowchart TB
 
   subgraph mcp["MCP servers · one per domain, reached through lb"]
     direction LR
-    billing["💳 mcp-retrieval ×2<br/>billing<br/>search_documents"]
+    billing["💳 mcp-retrieval ×2<br/>billing<br/>search_documents · trace_billing_relationships"]
     portfolio["📈 mcp-portfolio ×2<br/>portfolio<br/>search_portfolio_documents"]
-    code["🧩 mcp-code<br/>codebase<br/>search_codebase · ask_codebase"]
+    code["🧩 mcp-code<br/>codebase<br/>search_codebase · ask_codebase<br/>trace_code_symbol · change_impact"]
   end
 
   subgraph backing["State and models"]
     direction LR
     qdrant[("Qdrant<br/>one collection per domain")]
+    neo4j[("Neo4j<br/>billing + code graph")]
     sqlite[("SQLite<br/>conversations · turns · audit")]
     redis[("Redis<br/>shared state")]
-    ollama["Ollama<br/>embeddinggemma"]
+    ollama["Ollama · queries<br/>embeddinggemma"]
+    ollamabatch["Ollama · batch<br/>embeddinggemma"]
     cloud["☁️ Ollama Cloud<br/>gpt-oss:120b"]
     jev["TypeSafe Jev<br/>domains · guard · relevance · answer check"]
   end
@@ -71,8 +74,10 @@ flowchart TB
   api -- "coverage · verify" --> runner
   api -- "MCP tools" --> mcp
   mcp -- "hybrid search · embed" --> qdrant & ollama
+  mcp -- "graph lookups" --> neo4j
   mcp -- "relevance" --> jev
   api --> sqlite & redis & cloud & jev
+  api -- "index runs · embed" --> ollamabatch
   app & mcp -. "OTLP" .-> obs
 
   classDef entry fill:#fff4e5,stroke:#f59e0b,color:#7c2d12
@@ -82,8 +87,8 @@ flowchart TB
   classDef ext fill:#f1f5f9,stroke:#64748b,color:#0f172a
   class lb entry
   class web,copilot,api,compliance,testagent,runner,billing,portfolio,code svc
-  class qdrant,sqlite,redis store
-  class ollama,cloud,jev model
+  class qdrant,neo4j,sqlite,redis store
+  class ollama,ollamabatch,cloud,jev model
   class clients,obs ext
   classDef group fill:transparent,stroke:#94a3b8,stroke-dasharray:4 3
   class app,mcp,backing group
@@ -93,8 +98,16 @@ Everything user- and agent-facing goes through **one entry point on port 7171**.
 compliance run two replicas each, mcp-code and copilot-runtime one (`X-Instance` response header shows which one answered).
 test-agent and coverage-runner run one each and have no route of their own: the api reaches them inside the compose
 network. The balancer also serves Jaeger at `/jaeger` and takes the browser's OTLP traces at `/v1/traces`. Besides
-7171, only Qdrant and Ollama are published, plus the [inspectors](#inspecting-a2a-mcp-and-redis) on `127.0.0.1`
-(7172–7174).
+7171, only Qdrant and the two Ollamas are published, Neo4j's Bolt port on `127.0.0.1:7687` for the host-side indexer,
+plus the [inspectors](#inspecting-a2a-mcp-and-redis) on `127.0.0.1` (7172–7175).
+
+The embedding model runs in **two Ollama instances**: `ollama` (11435) embeds search queries only, `ollama-batch`
+(11436) embeds documents — `make index*`, `rebuild-index`, `migrate` and index runs from `/admin/index`. A batch takes
+~20 s on CPU and Ollama serves one request at a time, so on one instance a search would queue behind it. Each instance
+is pinned to its own CPUs (`OLLAMA_INTERACTIVE_CPUS=0-3`, `OLLAMA_BATCH_CPUS=4-15`) and every request names the
+matching thread count (`OLLAMA_INTERACTIVE_THREADS=4`, `OLLAMA_BATCH_THREADS=12`): Ollama does not derive it from the
+container, and a request with another count — or none, e.g. a manual `curl` — reloads the model on all CPUs. Change a
+set and its thread count together; `make doctor` checks them against Docker's CPUs.
 
 The balancer's routes, as `compose/lb/nginx.conf` declares them:
 
@@ -171,16 +184,17 @@ make help                  # every target
 | `make ps` | Show services, state and health |
 | `make logs` | Follow logs (SERVICE=api to narrow) |
 | `make clean` | Remove the stack WITH volumes (index, conversations) and build outputs; asks unless FORCE=1 |
-| `make infra` | Start only the indexer's infrastructure (Qdrant, Ollama + the embedding model) and wait until healthy |
-| `make index` | Index both domains' corpora and the codebase (unchanged documents are skipped) |
+| `make infra` | Start only the indexer's infrastructure (Qdrant, Neo4j, both Ollama instances + the embedding model) and wait until healthy |
+| `make index` | Index both domains' corpora and the codebase, then build the graph (unchanged documents are skipped) |
+| `make graph` | Build the Neo4j graph: billing relationships and the code graph (unchanged nodes are not rewritten) |
 | `make index-portfolio` | Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only |
 | `make index-code` | Index the repository itself (→ maf_code_chunks, served by mcp-code) only; unchanged files are skipped |
 | `make reindex` | Re-embed every document of both domains (--force) |
-| `make drift` | Report stale documents (source newer than index) |
+| `make drift` | Report stale documents: the index and the billing graph against the source |
 | `make rebuild-index` | Re-create the collection with every configured dense vector and re-index (asks unless FORCE=1) |
 | `make migrate` | Fill a provisioned dense vector with its configured model (TO=dense_v3) |
 | `make test` | Run all tests (.NET unit + integration, web) |
-| `make test-dotnet` | .NET tests (integration tests start Qdrant via Testcontainers) |
+| `make test-dotnet` | .NET tests (integration tests start Qdrant and Neo4j via Testcontainers) |
 | `make test-web` | Web tests (Vitest) |
 | `make lint` | Build .NET with warnings as errors; ESLint + Prettier for web |
 | `make lint-dotnet` | .NET build with warnings as errors |
@@ -226,10 +240,22 @@ and stops it being continued; its turns stay for the review queue and evals.
 The repository itself is a corpus (`make index-code`). It is indexed by structure: each type and member with its doc
 comment, sized under embeddinggemma's 2048-token window, and searchable by identifier as well as by meaning. Ask in the
 chat, "how does the code make a tool call idempotent?" or "покажи ми дефиницията на code mcp сървъра". Jev puts the
-question in the codebase domain, the turn loads only the codebase server's `search_codebase`, and the answer cites
+question in the codebase domain, the turn loads the codebase server's `search_codebase` (plus `trace_code_symbol` and
+`change_impact` for who-calls and what-tests-cover questions), and the answer cites
 `path:start-end`. The right pane switches to **Code snippets**, which shows exactly the snippets the answer used. For
 a question that did not search the code, the tab shows related code, labelled as not used. Other MCP clients can call
 `search_codebase` and `ask_codebase` at `http://localhost:7171/code/mcp` with a dev token.
+
+The repository is also a graph (`make graph`, also run by `make index`), built with Roslyn so a call edge is the method
+the compiler binds. "Who calls TenantScopedSearch.QueryAsync?" goes to `trace_code_symbol`, and "what tests cover
+src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs?" goes to `change_impact`, which follows callers four calls deep and
+groups the tests it reaches by file. The billing side of the same graph links firms, households, accounts, billing runs,
+fee schedules and documents: "which households use fee schedule NW-INST-2026-083?" goes to
+`trace_billing_relationships`, which returns the documents by the same id `search_documents` uses. Both graphs are read
+only through one tenant-scoped method that runs a fixed set of Cypher queries, so the model never writes a query.
+In the monitor, each graph tool call has its own `graph` row in the timeline, for example "Neo4j billing_neighbourhood_2 +
+firm_runs · 9 rows · 12 ms". The Retrieval view adds a card with each template's rows and a `neo4j` timing chip, next to
+the searches' `qdrant` chips. It shows structure only, and the call's arguments stay in its `tool.call`.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/code-snippets-dark.png">
@@ -453,7 +479,7 @@ tool result `_meta`, which the model never sees.
 
 ## Inspecting A2A, MCP and Redis
 
-`make` also starts three inspectors, linked from the top of the web UI after "Curriculum". They run only on this
+`make` also starts four inspectors, linked from the top of the web UI after "Curriculum". They run only on this
 machine (published on `127.0.0.1`), and not at all in CI (`CI_MODE=1`).
 
 Each opens ready to use — nothing to type:
@@ -463,6 +489,7 @@ Each opens ready to use — nothing to type:
 | [A2A Inspector](https://github.com/a2aproject/a2a-inspector) | http://localhost:7172 | the assistant's card URL and a fresh partner token (`acme-portal`); press **Connect**. Change the URL to `http://localhost:7171/compliance/.well-known/agent-card.json` and the token switches to one for the compliance agent |
 | [MCP Inspector](https://github.com/modelcontextprotocol/inspector) | http://localhost:7173 | "maf-lab billing", "maf-lab portfolio" and "maf-lab code", each with a dev token for `adam` (ADVISOR, firm-a, set by `LAB_USER_ID`/`LAB_FIRM_ID`/`LAB_ROLE`); switch one on |
 | [Redis Insight](https://redis.io/insight/) | http://localhost:7174 | the `maf-lab` database |
+| [Neo4j Browser](https://neo4j.com/docs/browser/) | http://localhost:7175 | the graph store; connect to `bolt://localhost:7687` as `neo4j` with `NEO4J_PASSWORD` (dev default `maf-lab-dev-graph`) |
 
 The tokens are minted from the dev credentials in `compose/docker-compose.yml` — the A2A page asks for a new one each
 time it opens (`/lab/token`), the MCP catalog is rewritten with a new one every hour — and are never stored outside the
@@ -471,19 +498,24 @@ A2A audience is refused by the other.
 
 The A2A and MCP inspectors share the balancer's network, so `localhost:7171` means the lab inside them too — which is
 why the URL a card advertises works as is, on macOS and Linux alike. Redis Insight has no login and can change or
-delete keys: it is a window onto dev state, not a tool for anything you want to keep. The MCP Inspector keeps the
+delete keys: it is a window onto dev state, not a tool for anything you want to keep. The same goes for Neo4j Browser:
+it runs any Cypher you type, writes included, while the lab itself reads the graph only through its fixed,
+tenant-scoped queries. `make graph` rebuilds whatever you change. The MCP Inspector keeps the
 servers you add only until its container restarts.
 
 ## Local development (without the balancer)
 
 `make dev` bypasses the balancer: web on :5174 (Vite proxies `/api` and `/dev` to :5080), api on :5080, MCP servers on :5090 (billing), :5091 (portfolio) and :5092 (codebase),
-with Qdrant and Ollama from compose (the compose app services are stopped first). The manual equivalent:
+with Qdrant, Neo4j and both Ollama instances from compose (the compose app services are stopped first); query
+embeddings go to :11435 and document embeddings to :11436 (`Models__BatchOllamaEndpoint`). The manual equivalent:
 
 Prerequisites: .NET SDK 10.0.401 (`global.json`), Node 24, Docker, Ollama (host or compose).
 
 ```bash
 docker compose -f compose/docker-compose.yml up -d qdrant     # vector store only
 ollama pull embeddinggemma                                    # (qwen3:4b only for the local chat fallback, see DECISIONS.md)
+                                                              # one host Ollama serves queries and documents alike:
+                                                              # leave Models__BatchOllamaEndpoint unset
 
 dotnet run --project src/Maf.Lab.Indexing                     # index data/ (index | drift | status | rebuild --yes | migrate --to <vector>)
 dotnet run --project src/Maf.Lab.Retrieval                    # billing MCP server on :5090
@@ -503,7 +535,7 @@ under `Models:Embeddings` (one entry per Qdrant named vector).
 ## Tests
 
 ```bash
-make test        # dotnet test --solution maf-lab.sln (Testcontainers starts qdrant/qdrant:v1.19.1) + web Vitest
+make test        # dotnet test --solution maf-lab.sln (Testcontainers starts qdrant/qdrant:v1.19.1 and neo4j:2026.09.0-community) + web Vitest
 make lint        # .NET build with warnings as errors + ESLint/Prettier
 make docs-check  # scripts/docs.py's unit tests, then the docs-vs-code check (Python only)
 ```
@@ -520,8 +552,8 @@ GitHub Actions ([`.github/workflows`](.github/workflows)) — `make ci` runs the
 | **CI** (`ci.yml`) | every push and pull request | `specs` (OpenSpec strict validation and `make docs-check`) · `dotnet` (build with warnings as errors, unit + Testcontainers integration tests) · `web` (lint, Vitest, build) · `e2e` (full stack behind the balancer on :7171, corpus indexed, `make verify`, the A2A conformance probe and model-free test generation: `make ci-e2e`) |
 | **Evals** (`evals.yml`) | manual (*Actions → Evals → Run workflow*, choose a suite) | real embeddings in compose Ollama + chat on Ollama Cloud and intent on Jev (`OLLAMA_API_KEY` and `JEV_MAF_LAB` repository secrets); reports uploaded as an artifact |
 
-The e2e job needs **no model and no secret**, so it also runs for pull requests from forks. `CI_MODE=1` replaces the
-`ollama` service with a deterministic Ollama-compatible stub (`compose/ollama-stub`): hash-based embeddings and a
+The e2e job needs **no model and no secret**, so it also runs for pull requests from forks. `CI_MODE=1` replaces both
+Ollama services (`ollama`, `ollama-batch`) with a deterministic Ollama-compatible stub (`compose/ollama-stub`): hash-based embeddings and a
 scripted, streamed chat answer. Forced retrieval still calls `search_documents` over MCP, so tool calls, SSE, sources,
 tenancy, failover and admin jobs are exercised for real. Try it locally: `make ci-e2e` (indexing takes about 15 s with the stub).
 Locally it runs as its own compose project, `maf-lab-e2e`, with its own volumes: it stops the dev stack first (its
@@ -660,6 +692,6 @@ is — the chain proves what was recorded, not that the recorded person is who t
 
 ## Non-negotiables
 
-Tenant comes from the token only · one tenant-scoped query path · tool results are DTOs · no message content in logs ·
+Tenant comes from the token only · one tenant-scoped query path (and one for the graph, no model-written Cypher) · tool results are DTOs · no message content in logs ·
 version moves update `DECISIONS.md` · `generated:` blocks are never edited by hand (`make docs`). See
 [`CLAUDE.md`](CLAUDE.md).

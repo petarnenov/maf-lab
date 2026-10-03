@@ -20,6 +20,7 @@ describe('parseDiagram', () => {
       'mcp',
       'mcp-code',
       'mcp-portfolio',
+      'neo4j',
       'ollama-embeddings',
       'otel-collector',
       'prometheus',

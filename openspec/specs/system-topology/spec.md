@@ -10,7 +10,7 @@ and keeps that report in step with the drawn diagram that the UI renders it on.
 The system SHALL expose, to any signed-in user, a report of the stack it is running in. The report SHALL contain one
 entry per service the lab is made of: the load balancer, the api, the MCP server of every domain (billing, portfolio and codebase), the compliance
 reviewer, the test-generation agent, the coverage runner, the shared state store, the vector store, the
-model provider used for chat, the model provider used for embeddings, the web app, the telemetry collector, the
+graph store, the model provider used for chat, the model provider used for embeddings, the web app, the telemetry collector, the
 metrics store and the trace store. Each entry SHALL carry a
 stable id, a display name, a health state of `healthy`, `degraded` or `unreachable`, the instances found for it (each with its
 name and its own health), and the time the state was determined. The report SHALL also carry the
@@ -58,6 +58,11 @@ particular, a configured API key SHALL never be reported, only whether one is co
 - **THEN** the test-generation agent and the coverage runner each have an entry with their instances and health, with
   edges from the api to the agent, from the agent to the runner and to the chat model provider, and from the api to
   the runner
+
+#### Scenario: The graph store is part of the stack
+- **WHEN** the topology is requested
+- **THEN** the graph store has an entry with its instance and health, and there are edges to it from the billing MCP
+  server and the codebase MCP server
 
 ### Requirement: Health is measured, not assumed
 Each service's health SHALL be determined by contacting it, not by assuming it is up because the api is. Every probe
@@ -129,3 +134,23 @@ without first asking whether it is still current.
 #### Scenario: The picture is redrawn
 - **WHEN** the diagram file changes and a user opens the topology screen again
 - **THEN** the screen shows the new drawing rather than the one the browser already had
+
+### Requirement: Embedding provider instances by role
+The topology entry for the model provider used for embeddings SHALL list its two instances, named by role
+(`interactive` and `batch`), each with its own health, its endpoint and whether the embedding model is present on it.
+The entry SHALL be `healthy` when both are, `degraded` when only one answers or one lacks the model, and `unreachable`
+when neither answers. The entry stays one service in the report and one node in the drawing.
+
+#### Scenario: Both instances up
+- **WHEN** both embedding instances answer and have the model
+- **THEN** the embeddings entry is `healthy` and lists `interactive` and `batch` as healthy instances
+
+#### Scenario: Batch instance down
+- **WHEN** the batch instance does not answer and the interactive one does
+- **THEN** the embeddings entry is `degraded`, `interactive` is listed healthy, and `batch` is listed with the reason
+  it is not
+
+#### Scenario: Single-instance setup
+- **WHEN** no batch endpoint is configured
+- **THEN** the entry lists the one instance it can speak for and is not reported `degraded` for the missing batch
+  instance

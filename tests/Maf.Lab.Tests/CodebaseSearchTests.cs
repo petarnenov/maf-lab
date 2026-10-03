@@ -3,6 +3,7 @@ using System.Text.Json;
 using Maf.Lab.CodeSearch;
 using Maf.Lab.CodeSearch.Tools;
 using Maf.Lab.Domain.Code;
+using Maf.Lab.Domain.Graph;
 using Maf.Lab.Domain.Retrieval;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Indexing;
@@ -491,7 +492,7 @@ public class CodebaseSearchTests
     }
 
     [Fact]
-    public async Task The_code_server_lists_two_read_only_tools_without_tenant_inputs_and_refuses_anonymous_calls()
+    public async Task The_code_server_lists_four_read_only_tools_without_tenant_inputs_and_refuses_anonymous_calls()
     {
         await using var factory = new WebApplicationFactory<Maf.Lab.CodeSearch.Program>().WithWebHostBuilder(b =>
         {
@@ -521,7 +522,7 @@ public class CodebaseSearchTests
 
         var tools = await client.ListToolsAsync(cancellationToken: Ct);
 
-        Assert.Equal([CodeTools.Ask, CodeTools.Search], tools.Select(t => t.Name).Order(StringComparer.Ordinal));
+        Assert.Equal([CodeTools.Ask, GraphTools.ChangeImpact, CodeTools.Search, GraphTools.TraceCodeSymbol], tools.Select(t => t.Name).Order(StringComparer.Ordinal));
         foreach (var tool in tools.Select(t => t.ProtocolTool))
         {
             Assert.True(tool.Annotations!.ReadOnlyHint);

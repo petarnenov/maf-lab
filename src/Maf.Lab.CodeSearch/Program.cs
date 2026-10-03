@@ -2,6 +2,7 @@ using Maf.Lab.CodeSearch.Tools;
 using Maf.Lab.Hosting;
 using Maf.Lab.Retrieval;
 using Maf.Lab.Retrieval.Auth;
+using Maf.Lab.Retrieval.Graph;
 
 namespace Maf.Lab.CodeSearch;
 
@@ -32,6 +33,8 @@ public partial class Program
 
         builder.Services.AddMafRetrievalCore(builder.Configuration);
         builder.Services.AddDevJwtAuthentication(builder.Configuration);
+        // The code graph (callers, callees, change impact). Like the billing server, it starts without the graph store.
+        builder.Services.AddGraphStore(builder.Configuration);
         builder.Services.Configure<CodeSearchOptions>(builder.Configuration.GetSection(CodeSearchOptions.Section));
         builder.Services.AddSingleton<ICodeRanker, DocumentSearchRanker>();
         builder.Services.AddSingleton<CodeSearchService>();
@@ -39,7 +42,8 @@ public partial class Program
         builder.Services
             .AddMcpServer(o => o.ServerInfo = new() { Name = ServerName, Version = "1.0.0" })
             .WithHttpTransport(o => o.Stateless = true)
-            .WithTools<CodeSearchTools>();
+            .WithTools<CodeSearchTools>()
+            .WithTools<CodeGraphTools>();
 
         var app = builder.Build();
         app.Services.GetRequiredService<Retrieval.Jev.JevCredential>();

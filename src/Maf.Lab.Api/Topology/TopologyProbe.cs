@@ -53,6 +53,8 @@ public sealed class TopologyProbe(
     IOptions<Coverage.TestAgentOptions> testAgent,
     IToolSource tools,
     QdrantClient qdrantClient,
+    Neo4j.Driver.IDriver graphDriver,
+    IOptions<Maf.Lab.Retrieval.Graph.GraphOptions> graphOptions,
     IHttpClientFactory http,
     IMemoryCache cache,
     Maf.Lab.Hosting.SharedStateHealth shared,
@@ -84,6 +86,9 @@ public sealed class TopologyProbe(
         new("mcp-code", "ollama-embeddings", "embed"),
         new("mcp-code", "chat-provider", "ask_codebase"),
         new("mcp-code", "otel-collector", "OTLP"),
+        // The graph store (add-neo4j-graph): billing relationships for the billing server, the code graph for mcp-code.
+        new("mcp", "neo4j", "Bolt"),
+        new("mcp-code", "neo4j", "Bolt"),
         // Where everything the lab emits about itself goes, and where it is kept.
         new("api", "otel-collector", "OTLP"),
         new("mcp", "otel-collector", "OTLP"),
@@ -112,7 +117,7 @@ public sealed class TopologyProbe(
     /// <summary>Node ids the report always contains; the drawn diagram must hold exactly these.</summary>
     public static IReadOnlyList<string> NodeIds { get; } =
     [
-        "lb", "web", "api", "mcp", "mcp-portfolio", "mcp-code", "compliance", "test-agent", "coverage-runner", "qdrant",
+        "lb", "web", "api", "mcp", "mcp-portfolio", "mcp-code", "compliance", "test-agent", "coverage-runner", "qdrant", "neo4j",
         "ollama-embeddings", "chat-provider", "otel-collector", "prometheus", "jaeger", "redis",
     ];
 
@@ -155,13 +160,14 @@ public sealed class TopologyProbe(
         var agentNode = TestAgentAsync(testAgentAddresses, timeout, ct);
         var runnerNode = ReplicasAsync("coverage-runner", "coverage runner", runnerAddresses, timeout, ct);
         var store = QdrantAsync(timeout, ct);
+        var graph = GraphAsync(timeout, ct);
         var embeddings = EmbeddingsAsync(timeout, ct);
         var collector = Http("otel-collector", "otel collector", o.CollectorHealthUrl, timeout, ct);
         var metrics = Http("prometheus", "prometheus", o.PrometheusHealthUrl, timeout, ct);
         var traces = Http("jaeger", "jaeger", o.JaegerHealthUrl, timeout, ct);
         var shared = SharedStateAsync(ct);
 
-        var probed = await Task.WhenAll(lb, web, api, mcp, portfolio, code, compliance, agentNode, runnerNode, store, embeddings, collector,
+        var probed = await Task.WhenAll(lb, web, api, mcp, portfolio, code, compliance, agentNode, runnerNode, store, graph, embeddings, collector,
             metrics, traces, shared);
         var byId = probed.Append(ChatProvider()).ToDictionary(n => n.Id);
         var ordered = NodeIds.Select(id => byId[id]).ToList();
@@ -372,18 +378,71 @@ public sealed class TopologyProbe(
         }
     }
 
+    /// <summary>
+    /// The graph store, asked only whether it answers: the api reads no graph data, and a count would be a query outside
+    /// the one tenant-scoped read path. Its address and database are facts; its credentials never are.
+    /// </summary>
+    private async Task<TopologyNode> GraphAsync(TimeSpan timeout, CancellationToken ct)
+    {
+        var o = graphOptions.Value;
+        var facts = new Dictionary<string, string> { ["role"] = "graph store", ["host"] = o.Authority, ["database"] = o.Database };
+        try
+        {
+            using var cts = Linked(timeout, ct);
+            await graphDriver.VerifyConnectivityAsync().WaitAsync(cts.Token);
+            return new TopologyNode("neo4j", "neo4j", NodeHealth.Healthy, [], facts, null);
+        }
+        catch (Exception ex)
+        {
+            return new TopologyNode("neo4j", "neo4j", NodeHealth.Unreachable, [], facts,
+                ex is Neo4j.Driver.AuthenticationException ? "credentials refused" : Describe(ex, timeout));
+        }
+    }
+
+    /// <summary>
+    /// The embedding provider: one service with an instance per role — <c>interactive</c> (search queries) and, when
+    /// configured, <c>batch</c> (documents). Each is asked for its pulled models; one that answers without the model is
+    /// degraded, and the service is unreachable only when no instance answers.
+    /// </summary>
     private async Task<TopologyNode> EmbeddingsAsync(TimeSpan timeout, CancellationToken ct)
     {
+        const string id = "ollama-embeddings", name = "ollama (embeddings)";
         var wanted = models.Value.Embeddings.Values.Select(e => e.Model).Where(m => !string.IsNullOrWhiteSpace(m)).Distinct().ToList();
         var facts = new Dictionary<string, string>
         {
             ["endpoint"] = models.Value.OllamaEndpoint,
             ["models"] = string.Join(", ", wanted),
         };
+        var roles = new List<(string Role, string Endpoint)> { ("interactive", models.Value.OllamaEndpoint) };
+        if (!string.IsNullOrWhiteSpace(models.Value.BatchOllamaEndpoint))
+        {
+            facts["batchEndpoint"] = models.Value.BatchOllamaEndpoint;
+            roles.Add(("batch", models.Value.BatchOllamaEndpoint));
+        }
+        var probes = await Task.WhenAll(roles.Select(r => EmbeddingInstanceAsync(r.Role, r.Endpoint, wanted, timeout, ct)));
+        var instances = probes.Select(p => p.Instance).ToList();
+        facts["pulled"] = string.Join(", ", probes.Select(p => $"{p.Instance.Name}: {p.Pulled?.ToString() ?? "?"}"));
+
+        var answering = probes.Count(p => p.Pulled is not null);
+        var health = answering == 0 ? NodeHealth.Unreachable
+            : instances.All(i => i.Health == NodeHealth.Healthy) ? NodeHealth.Healthy
+            : NodeHealth.Degraded;
+        var reason = health == NodeHealth.Healthy
+            ? null
+            : roles.Count == 1
+                ? instances[0].Reason
+                : string.Join("; ", instances.Where(i => i.Health != NodeHealth.Healthy).Select(i => $"{i.Name}: {i.Reason}"));
+        return new TopologyNode(id, name, health, instances, facts, reason);
+    }
+
+    /// <summary>One embedding instance: healthy with every wanted model pulled, degraded without one, unreachable silent.</summary>
+    private async Task<(TopologyInstance Instance, int? Pulled)> EmbeddingInstanceAsync(
+        string role, string endpoint, IReadOnlyList<string> wanted, TimeSpan timeout, CancellationToken ct)
+    {
         try
         {
             using var cts = Linked(timeout, ct);
-            using var response = await Client().GetAsync($"{models.Value.OllamaEndpoint.TrimEnd('/')}/api/tags", cts.Token);
+            using var response = await Client().GetAsync($"{endpoint.TrimEnd('/')}/api/tags", cts.Token);
             response.EnsureSuccessStatusCode();
             var pulled = (await JsonSerializer.DeserializeAsync<JsonElement>(await response.Content.ReadAsStreamAsync(cts.Token), cancellationToken: cts.Token))
                 .TryGetProperty("models", out var list) && list.ValueKind == JsonValueKind.Array
@@ -391,16 +450,13 @@ public sealed class TopologyProbe(
                     : [];
             // Ollama reports "embeddinggemma:latest" for "embeddinggemma".
             var missing = wanted.Where(w => !pulled.Any(p => p == w || p.StartsWith(w + ":", StringComparison.Ordinal))).ToList();
-            facts["pulled"] = pulled.Count.ToString();
             return missing.Count > 0
-                ? new TopologyNode("ollama-embeddings", "ollama (embeddings)", NodeHealth.Degraded, [], facts,
-                    $"not pulled: {string.Join(", ", missing)}")
-                : new TopologyNode("ollama-embeddings", "ollama (embeddings)", NodeHealth.Healthy, [], facts, null);
+                ? (new TopologyInstance(role, endpoint, NodeHealth.Degraded, $"not pulled: {string.Join(", ", missing)}"), pulled.Count)
+                : (new TopologyInstance(role, endpoint, NodeHealth.Healthy), pulled.Count);
         }
         catch (Exception ex)
         {
-            return new TopologyNode("ollama-embeddings", "ollama (embeddings)", NodeHealth.Unreachable, [], facts,
-                Describe(ex, timeout));
+            return (new TopologyInstance(role, endpoint, NodeHealth.Unreachable, Describe(ex, timeout)), null);
         }
     }
 

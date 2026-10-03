@@ -1,6 +1,6 @@
 # CI mode (make CI_MODE=1 …): no model downloads, no secrets.
-# The `ollama` service becomes a deterministic Ollama-compatible stub (embeddings + scripted chat); everything else is
-# the real stack. Forced retrieval still calls search_documents over MCP, so tool calls, SSE and tenancy are real.
+# Both Ollama services (`ollama`, `ollama-batch`) become a deterministic Ollama-compatible stub (embeddings + scripted
+# chat); everything else is the real stack. Forced retrieval still calls search_documents over MCP, so tool calls, SSE and tenancy are real.
 x-ci-model-env: &ci-model-env
   Models__ChatEndpoint: http://ollama:11434
   Models__ChatModel: stub
@@ -14,6 +14,19 @@ services:
     image: maf-lab-ollama-stub
     build:
       context: ./ollama-stub
+    cpuset: !reset null
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:11434/api/version"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+
+  ollama-batch:
+    image: maf-lab-ollama-stub
+    build:
+      context: ./ollama-stub
+    # A CI runner has fewer CPUs than the dev sets name; the stub needs no pinning.
+    cpuset: !reset null
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:11434/api/version"]
       interval: 3s

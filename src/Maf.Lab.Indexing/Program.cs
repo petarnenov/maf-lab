@@ -16,6 +16,7 @@ namespace Maf.Lab.Indexing;
 /// <summary>
 /// dotnet run --project src/Maf.Lab.Indexing [-- command] [--tenants firm-a,shared] [--force] [--contextual on|off]
 /// Commands: index (default) | drift | status | migrate --to <vector> [--batch 64] | rebuild --yes | chunks [--doc text] [--match text] [--tokens]
+///           | graph [--only billing|code]
 /// </summary>
 public static class Program
 {
@@ -36,6 +37,8 @@ public static class Program
         // The progress bar owns stderr's last line and ends in the run's outcome; informational logs would break into
         // it and repeat that outcome, so the console shows warnings and errors only.
         builder.Logging.SetMinimumLevel(LogLevel.Warning);
+        // stdout carries only the JSON a command prints (drift, graph, index summaries): logs go to stderr with the bar.
+        builder.Services.Configure<Microsoft.Extensions.Logging.Console.ConsoleLoggerOptions>(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
         using var host = builder.Build();
         var services = host.Services;
         using var cts = new CancellationTokenSource();
@@ -91,9 +94,21 @@ public static class Program
                     }
                     return 0;
                 }
+                case "graph":
+                {
+                    var only = flags.GetValueOrDefault("only");
+                    if (only is not null && !Retrieval.Graph.GraphSources.All.Contains(only))
+                    {
+                        Console.Error.WriteLine($"--only must be one of: {string.Join(", ", Retrieval.Graph.GraphSources.All)}.");
+                        return 2;
+                    }
+                    var summaries = await GraphWithProgressAsync(services, only is null ? Retrieval.Graph.GraphSources.All : [only], cts.Token);
+                    Console.WriteLine(JsonSerializer.Serialize(summaries, Pretty));
+                    return 0;
+                }
                 case "drift":
                 {
-                    var report = await services.GetRequiredService<DriftService>().ComputeAsync(tenants, cts.Token);
+                    var report = await DriftWithProgressAsync(services, tenants, cts.Token);
                     Console.WriteLine(JsonSerializer.Serialize(report, Pretty));
                     return 0;
                 }
@@ -136,7 +151,7 @@ public static class Program
                     return 0;
                 }
                 default:
-                    Console.Error.WriteLine($"Unknown command '{command}'. Use index | drift | status | migrate | rebuild.");
+                    Console.Error.WriteLine($"Unknown command '{command}'. Use index | drift | status | migrate | rebuild | graph.");
                     return 2;
             }
         }
@@ -147,7 +162,8 @@ public static class Program
         }
         catch (Exception ex) when (UnreachableService.Describe(ex,
             services.GetRequiredService<IOptions<Retrieval.Configuration.QdrantOptions>>().Value,
-            services.GetRequiredService<IOptions<Retrieval.Configuration.ModelOptions>>().Value) is { } unreachable)
+            services.GetRequiredService<IOptions<Retrieval.Configuration.ModelOptions>>().Value,
+            services.GetRequiredService<IOptions<Retrieval.Graph.GraphOptions>>().Value) is { } unreachable)
         {
             Console.Error.WriteLine(unreachable);
             return 1;
@@ -179,6 +195,63 @@ public static class Program
             throw;
         }
     }
+
+    /// <summary>
+    /// Builds the graph under a progress bar on stderr (stdout keeps the JSON summary): the stage names the subgraph,
+    /// the count is items read and written of the total. Ends in one line with what was written, unchanged and removed.
+    /// </summary>
+    private static async Task<IReadOnlyList<Graph.GraphBuildSummary>> GraphWithProgressAsync(IServiceProvider services, IReadOnlyCollection<string> sources, CancellationToken ct)
+    {
+        using var bar = new ConsoleProgress($"graph {string.Join("+", sources)}");
+        try
+        {
+            var summaries = await services.GetRequiredService<Graph.GraphBuildService>().RunAsync(sources, new IndexProgressBar(bar), ct);
+            bar.Succeed(string.Join("; ", summaries.Select(s =>
+                $"{s.Source}: {s.NodesWritten + s.EdgesWritten} written, {s.NodesUnchanged + s.EdgesUnchanged} unchanged, " +
+                $"{s.NodesRemoved + s.EdgesRemoved} removed ({s.NodesTotal} nodes, {s.EdgesTotal} edges)")));
+            return summaries;
+        }
+        catch (OperationCanceledException)
+        {
+            bar.Cancel();
+            throw;
+        }
+        catch (Exception ex)
+        {
+            bar.Fail(ex.GetType().Name);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Drift under a progress bar on stderr (stdout keeps the JSON report): reading the corpus, the tenants listed from
+    /// the index, then the graph. Ends in one line with the index's and the graph's drift (add-graph-drift).
+    /// </summary>
+    private static async Task<Domain.Admin.DriftReport> DriftWithProgressAsync(IServiceProvider services, IReadOnlySet<TenantId>? tenants, CancellationToken ct)
+    {
+        using var bar = new ConsoleProgress("drift");
+        try
+        {
+            var report = await services.GetRequiredService<DriftService>().ComputeAsync(tenants, ct, new IndexProgressBar(bar));
+            bar.Succeed(DriftSummary(report));
+            return report;
+        }
+        catch (OperationCanceledException)
+        {
+            bar.Cancel();
+            throw;
+        }
+        catch (Exception ex)
+        {
+            bar.Fail(ex.GetType().Name);
+            throw;
+        }
+    }
+
+    /// <summary>"624 documents: index 0 stale, graph 0 out of sync" — or "graph unavailable" when the graph store could not be read.</summary>
+    internal static string DriftSummary(Domain.Admin.DriftReport report) =>
+        $"{report.TotalDocuments} documents: index {report.StaleDocuments} stale, " +
+        (report.Graph is { Available: true } graph ? $"graph {graph.OutOfSync} out of sync" : "graph unavailable");
 
     private static HashSet<TenantId> AllTenants(IServiceProvider services)
     {

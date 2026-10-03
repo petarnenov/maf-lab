@@ -19,16 +19,19 @@ public class TopologyTests
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private static ApiFactory Api(StubHandler handler, IReadOnlyDictionary<string, string[]>? dns = null,
-        string complianceUrl = "http://compliance", FakeToolSource? tools = null, string testAgentUrl = "")
+        string complianceUrl = "http://compliance", FakeToolSource? tools = null, string testAgentUrl = "",
+        IReadOnlyDictionary<string, string?>? settings = null)
     {
-        var api = new ApiFactory(ApiFactory.ProceduralModel(), tools)
+        var extra = new Dictionary<string, string?>
         {
-            ExtraSettings = new Dictionary<string, string?>
-            {
-                ["Compliance:BaseUrl"] = complianceUrl,
-                ["TestAgent:BaseUrl"] = testAgentUrl,
-            },
+            ["Compliance:BaseUrl"] = complianceUrl,
+            ["TestAgent:BaseUrl"] = testAgentUrl,
         };
+        foreach (var (key, value) in settings ?? new Dictionary<string, string?>())
+        {
+            extra[key] = value;
+        }
+        var api = new ApiFactory(ApiFactory.ProceduralModel(), tools) { ExtraSettings = extra };
         api.ConfigureTestServices = s =>
         {
             s.RemoveAll<IServiceResolver>();
@@ -145,6 +148,25 @@ public class TopologyTests
     }
 
     [Fact]
+    public async Task The_graph_store_is_reported_with_its_edges_and_without_its_password()
+    {
+        using var api = Api(StubHandler.AllHealthy(), settings: new Dictionary<string, string?>
+        {
+            ["Neo4j:Uri"] = "bolt://127.0.0.1:1",
+            ["Neo4j:Password"] = "s3cret-graph",
+        });
+
+        var report = await GetAsync(api);
+
+        var node = Assert.Single(report.Nodes, n => n.Id == "neo4j");
+        Assert.Equal(NodeHealth.Unreachable, node.Health);
+        Assert.Equal(("graph store", "127.0.0.1:1"), (node.Facts["role"], node.Facts["host"]));
+        Assert.Contains(report.Edges, e => e is { From: "mcp", To: "neo4j" });
+        Assert.Contains(report.Edges, e => e is { From: "mcp-code", To: "neo4j" });
+        Assert.DoesNotContain("s3cret-graph", JsonSerializer.Serialize(report, Json));
+    }
+
+    [Fact]
     public async Task Every_service_is_reported_with_its_edges()
     {
         using var api = Api(StubHandler.AllHealthy());
@@ -254,6 +276,48 @@ public class TopologyTests
         Assert.Equal(NodeHealth.Degraded, node.Health);
         Assert.Contains("embeddinggemma", node.Reason);
     }
+
+    [Fact]
+    public async Task The_embeddings_node_lists_the_interactive_and_batch_instances()
+    {
+        using var api = Api(StubHandler.AllHealthy(), settings: BatchEmbeddings);
+
+        var node = (await GetAsync(api)).Nodes.Single(n => n.Id == "ollama-embeddings");
+
+        Assert.Equal(NodeHealth.Healthy, node.Health);
+        Assert.Equal(["interactive", "batch"], node.Instances.Select(i => i.Name));
+        Assert.All(node.Instances, i => Assert.Equal(NodeHealth.Healthy, i.Health));
+        Assert.Equal("http://ollama-batch:11434", node.Facts["batchEndpoint"]);
+    }
+
+    [Fact]
+    public async Task A_silent_batch_instance_degrades_the_embeddings_node_and_says_which()
+    {
+        var handler = StubHandler.AllHealthy();
+        handler.Fail.Add("ollama-batch");
+        using var api = Api(handler, settings: BatchEmbeddings);
+
+        var node = (await GetAsync(api)).Nodes.Single(n => n.Id == "ollama-embeddings");
+
+        Assert.Equal(NodeHealth.Degraded, node.Health);
+        Assert.Equal(NodeHealth.Healthy, node.Instances.Single(i => i.Name == "interactive").Health);
+        Assert.Equal(NodeHealth.Unreachable, node.Instances.Single(i => i.Name == "batch").Health);
+        Assert.StartsWith("batch:", node.Reason);
+    }
+
+    [Fact]
+    public async Task Without_a_batch_endpoint_the_embeddings_node_has_one_instance_and_is_not_degraded_for_it()
+    {
+        using var api = Api(StubHandler.AllHealthy());
+
+        var node = (await GetAsync(api)).Nodes.Single(n => n.Id == "ollama-embeddings");
+
+        Assert.Equal(NodeHealth.Healthy, node.Health);
+        Assert.Equal("interactive", Assert.Single(node.Instances).Name);
+    }
+
+    private static readonly IReadOnlyDictionary<string, string?> BatchEmbeddings =
+        new Dictionary<string, string?> { ["Models:BatchOllamaEndpoint"] = "http://ollama-batch:11434" };
 
     [Fact]
     public async Task The_chat_provider_is_reported_from_configuration_and_never_carries_the_key()

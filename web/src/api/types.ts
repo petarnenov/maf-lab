@@ -234,12 +234,24 @@ export interface StaleDocument {
   indexedUpdatedAt: string;
 }
 
+/** The billing graph against the source (add-graph-drift); reason is "unreachable" when it could not be read. */
+export interface GraphDrift {
+  available: boolean;
+  reason: string | null;
+  outOfSync: number;
+  outOfSyncPercent: number;
+  missingFromGraph: string[];
+  behind: string[];
+  notInCorpus: string[];
+}
+
 export interface DriftReport {
   totalDocuments: number;
   staleDocuments: number;
   stalePercent: number;
   stale: StaleDocument[];
   missingFromIndex: string[];
+  graph?: GraphDrift | null;
 }
 
 export interface ModelVersionCount {

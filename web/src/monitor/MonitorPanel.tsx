@@ -15,6 +15,7 @@ import {
   failedAnswerCheck,
   firstOf,
   formatMs,
+  graphReadCount,
   mcpInstances,
   totalDuration,
   type TurnStartData,
@@ -73,6 +74,7 @@ export function MonitorPanel({
   const mcp = mcpInstances(visible);
   const path = domainPath(visible);
   const answerFailed = failedAnswerCheck(visible);
+  const graphReads = graphReadCount(visible);
 
   return (
     <section
@@ -99,6 +101,15 @@ export function MonitorPanel({
             </span>
             <span className={styles.chip}>{byKind(visible, 'tool.call').length} tool calls</span>
             <span className={styles.chip}>{byKind(visible, 'retrieval').length} searches</span>
+            {graphReads > 0 && (
+              <span
+                className={styles.chip}
+                data-testid="graph-reads"
+                title="Neo4j reads by graph tools"
+              >
+                {graphReads} graph {graphReads === 1 ? 'read' : 'reads'}
+              </span>
+            )}
             {start.apiInstance && <span className={styles.chip}>api: {start.apiInstance}</span>}
             {start.traceUrl && (
               <a className={styles.chip} href={start.traceUrl} target="_blank" rel="noreferrer">

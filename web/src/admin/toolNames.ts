@@ -8,4 +8,5 @@ export const TOOL_NAMES = [
   'get_household_portfolio',
   'get_aum_history',
   'list_my_accounts',
+  'trace_billing_relationships',
 ];

@@ -8,6 +8,7 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Testcontainers.Qdrant" />
+    <PackageReference Include="Testcontainers.Neo4j" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
   </ItemGroup>
   <ItemGroup>
@@ -18,6 +19,7 @@
     <ProjectReference Include="..\..\src\Maf.Lab.Retrieval\Maf.Lab.Retrieval.csproj" />
     <ProjectReference Include="..\..\src\Maf.Lab.Api\Maf.Lab.Api.csproj" />
     <ProjectReference Include="..\..\src\Maf.Lab.Indexing\Maf.Lab.Indexing.csproj" />
+    <ProjectReference Include="..\..\src\Maf.Lab.CodeSearch\Maf.Lab.CodeSearch.csproj" />
     <ProjectReference Include="..\..\src\Maf.Lab.Eval\Maf.Lab.Eval.csproj" />
   </ItemGroup>
   <ItemGroup>

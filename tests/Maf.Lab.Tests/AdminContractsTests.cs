@@ -36,13 +36,14 @@ public class AdminContractsTests
         var staleDoc = new StaleDocument("doc-1", "docs/fee.md", Start, End);
         var report = new DriftReport(2, 1, 50.0, [staleDoc], ["docs/gone.md"]);
 
-        var (total, staleCount, percent, stale, missing) = report;
+        var (total, staleCount, percent, stale, missing, graph) = report;
 
         Assert.Equal(2, total);
         Assert.Equal(1, staleCount);
         Assert.Equal(50.0, percent);
         Assert.Equal([staleDoc], stale);
         Assert.Equal(["docs/gone.md"], missing);
+        Assert.Null(graph);
     }
 
     [Fact]
