@@ -38,7 +38,15 @@ public sealed class BillingGraphTools(IGraphReader graph, IPrincipalAccessor pri
         string entityId,
         [Description("How far to follow links: 1 for direct links only, 2 (default) to include what those link to. At most 2.")]
         int? depth = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        RequestContext<CallToolRequestParams>? context = null)
+    {
+        // Asked for diagnostics: the read path records each read for the turn trace's graph event, structure only.
+        using var reads = GraphReadLog.BeginIf(SearchDocumentsTool.TraceRequested(context));
+        return GraphReadLog.Attach(await TraceCoreAsync(entityId, depth, cancellationToken), reads);
+    }
+
+    private async Task<CallToolResult> TraceCoreAsync(string? entityId, int? depth, CancellationToken cancellationToken)
     {
         var id = entityId?.Trim() ?? "";
         if (id.Length is 0 or > 64)

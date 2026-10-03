@@ -243,6 +243,9 @@ groups the tests it reaches by file. The billing side of the same graph links fi
 fee schedules and documents: "which households use fee schedule NW-INST-2026-083?" goes to
 `trace_billing_relationships`, which returns the documents by the same id `search_documents` uses. Both graphs are read
 only through one tenant-scoped method that runs a fixed set of Cypher queries, so the model never writes a query.
+In the monitor, each graph tool call has its own `graph` row in the timeline, for example "Neo4j billing_neighbourhood_2 +
+firm_runs · 9 rows · 12 ms". The Retrieval view adds a card with each template's rows and a `neo4j` timing chip, next to
+the searches' `qdrant` chips. It shows structure only, and the call's arguments stay in its `tool.call`.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/code-snippets-dark.png">

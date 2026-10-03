@@ -431,3 +431,104 @@ export const fixtureTraceNothingFound: TraceEvent[] = [
     timings: { embedMs: 28, sparseEncodeMs: 1, qdrantMs: 8 },
   }),
 ];
+
+/**
+ * A relationship question answered from the graph (add-graph-trace-event): one `trace_billing_relationships` call and
+ * its two Neo4j reads, then a code-graph call the graph store could not answer.
+ */
+export const fixtureGraphTrace: TraceEvent[] = [
+  ev(0, 'turn.start', 'Turn started', {
+    conversationId: 'c_graph',
+    turnId: 't_graph',
+    principal: { userId: 'adam', firmId: 'firm-a', role: 'ADVISOR' },
+    apiInstance: 'api-replica-1',
+    question: 'Which accounts share a household with A-1042?',
+  }),
+  ev(40, 'tool.call', 'trace_billing_relationships', {
+    callId: 'call_graph_1',
+    tool: 'trace_billing_relationships',
+    domain: 'billing',
+    server: 'maf-lab-retrieval',
+    arguments: { entityId: 'A-1042' },
+  }),
+  ev(
+    41,
+    'tool.result',
+    'trace_billing_relationships returned in 14 ms from mcp-retrieval-2',
+    {
+      callId: 'call_graph_1',
+      tool: 'trace_billing_relationships',
+      domain: 'billing',
+      server: 'maf-lab-retrieval',
+      isError: false,
+      latencyMs: 14,
+      mcpInstance: 'mcp-retrieval-2',
+      result: { structuredContent: { truncated: false } },
+    },
+    14,
+  ),
+  ev(
+    55,
+    'graph',
+    'Neo4j billing_neighbourhood_2 + firm_runs · 9 rows',
+    {
+      callId: 'call_graph_1',
+      tool: 'trace_billing_relationships',
+      instance: 'mcp-retrieval-2',
+      tenantScope: ['firm-a', 'shared'],
+      reads: [
+        {
+          query: 'billing_neighbourhood_2',
+          limit: 50,
+          rows: 7,
+          truncated: false,
+          durationMs: 9.4,
+          outcome: 'ok',
+          errorType: null,
+        },
+        {
+          query: 'firm_runs',
+          limit: 5,
+          rows: 2,
+          truncated: false,
+          durationMs: 3,
+          outcome: 'ok',
+          errorType: null,
+        },
+      ],
+      rows: 9,
+      truncated: false,
+      durationMs: 12.4,
+      outcome: 'ok',
+    },
+    12,
+  ),
+  ev(
+    70,
+    'graph',
+    'Neo4j symbol_candidates · unavailable',
+    {
+      callId: 'call_graph_2',
+      tool: 'trace_code_symbol',
+      instance: 'mcp-code-1',
+      tenantScope: ['firm-a', 'shared'],
+      reads: [
+        {
+          query: 'symbol_candidates',
+          limit: 100,
+          rows: 0,
+          truncated: false,
+          durationMs: 2,
+          outcome: 'unavailable',
+          errorType: 'ServiceUnavailableException',
+        },
+      ],
+      rows: 0,
+      truncated: false,
+      durationMs: 2,
+      outcome: 'unavailable',
+    },
+    2,
+  ),
+  ev(90, 'turn.end', 'Turn ended', { durationMs: 90, toolCalls: 2 }),
+];

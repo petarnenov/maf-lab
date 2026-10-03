@@ -214,4 +214,6 @@ public static class TraceMeta
     public const string Instance = "maf-lab/instance";
     /// <summary>The relevance judge's numbers-only verdict, sent with every judged search whether traced or not.</summary>
     public const string Relevance = "maf-lab/relevance";
+    /// <summary>A graph tool's reads (template, rows, truncation, time, outcome), sent when diagnostics were asked for.</summary>
+    public const string Graph = "maf-lab/graph";
 }

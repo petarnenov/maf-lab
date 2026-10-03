@@ -20,7 +20,7 @@ do, so neither needs a collector.
 | model call spans, `gen_ai.client.operation.duration`, `gen_ai.client.token.usage` | `Microsoft.Extensions.AI` (`OpenTelemetryChatClient`) |
 | agent run spans (`invoke_agent`, `gen_ai.agent.*`) | `Microsoft.Agents.AI` (`OpenTelemetryAgent`) |
 | incoming requests, outgoing HTTP, EF Core | the standard OpenTelemetry instrumentation |
-| `tool.call`, `mcp.tool`, `retrieval.embed`, `retrieval.sparse_encode`, `retrieval.query`, `retrieval.rerank`, `graph.read` (named query, rows, truncated, duration), `graph.write` | this system, because no library writes them |
+| `tool.call`, `mcp.tool`, `retrieval.embed`, `retrieval.sparse_encode`, `retrieval.query`, `retrieval.rerank`, `graph.read` (named query, rows, truncated, duration; the same numbers reach the turn trace's `graph` event, see [trace-events.md](trace-events.md)), `graph.write` | this system, because no library writes them |
 | `maf.turns`, `maf.turn.duration`, `maf.tool.calls`, `maf.retrieval.stage.duration`, `maf.runner.reuse`, `maf.graph.query.duration` (by named query and outcome) | this system's own `Meter` |
 
 `maf.turns` is tagged `outcome` = `started`, `answered`, `failed` or `awaiting_person` — a turn that stopped for

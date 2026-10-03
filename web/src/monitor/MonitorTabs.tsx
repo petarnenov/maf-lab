@@ -12,6 +12,7 @@ import {
   type AuditData,
   type Candidate,
   type EnvelopeData,
+  type GraphData,
   type HistoryData,
   type ModelRequestData,
   type ModelResponseData,
@@ -221,7 +222,9 @@ export function RetrievalTab({ events }: { events: TraceEvent[] }) {
   // A search judged with diagnostics off has a judgment and no retrieval picture; it is still a search Jev saw.
   const diagnosed = new Set(searches.map((e) => dataOf<RetrievalData>(e).callId));
   const judgedOnly = judgments.filter((j) => !diagnosed.has(j.callId));
-  if (searches.length === 0 && judgedOnly.length === 0)
+  // Neo4j reads sit beside the Qdrant searches: both are what the tools read from a store.
+  const graphs = byKind(events, 'graph');
+  if (searches.length === 0 && judgedOnly.length === 0 && graphs.length === 0)
     return <p className={styles.empty}>No retrieval in this turn.</p>;
   return (
     <div>
@@ -340,7 +343,76 @@ export function RetrievalTab({ events }: { events: TraceEvent[] }) {
           </section>
         );
       })}
+      {graphs.map((e) => (
+        <GraphCard key={e.seq} data={dataOf<GraphData>(e)} />
+      ))}
     </div>
+  );
+}
+
+const GRAPH_OUTCOMES: Record<string, string> = {
+  unavailable: 'graph store unavailable',
+  cancelled: 'cancelled',
+  error: 'failed',
+};
+
+/**
+ * One graph tool call's reads of Neo4j: the store's counterpart of a search card, with a `neo4j` timing chip styled
+ * like a search's `qdrant` one. Structure only — the call's arguments are in the MCP view.
+ */
+function GraphCard({ data: d }: { data: GraphData }) {
+  const reads = Array.isArray(d.reads) ? d.reads : [];
+  const failed = d.outcome && d.outcome !== 'ok' ? d.outcome : null;
+  return (
+    <section className={styles.card} aria-label="Graph reads">
+      <h3 className={styles.cardTitle}>
+        {d.tool ?? 'graph tool'}
+        {d.instance && <span className={styles.chip}>mcp: {d.instance}</span>}
+      </h3>
+      <div className={styles.stats}>
+        <span className={styles.chip}>scope: {(d.tenantScope ?? []).join(' + ') || 'n/a'}</span>
+        <span className={styles.chip}>
+          {typeof d.rows === 'number' ? `${d.rows} ${d.rows === 1 ? 'row' : 'rows'}` : 'rows n/a'}
+        </span>
+        {d.truncated && <span className={styles.chip}>truncated</span>}
+        {failed && (
+          <span className={`${styles.chip} ${styles.chipWarn}`} role="status">
+            {GRAPH_OUTCOMES[failed] ?? failed}
+          </span>
+        )}
+      </div>
+      <table className={styles.table} aria-label="Neo4j reads">
+        <thead>
+          <tr>
+            <th>Template</th>
+            <th className={styles.num}>Rows / limit</th>
+            <th>Truncated</th>
+            <th className={styles.num}>Time</th>
+            <th>Outcome</th>
+          </tr>
+        </thead>
+        <tbody>
+          {reads.map((r, i) => (
+            <tr key={`${r.query ?? 'read'}-${i}`}>
+              <td className={styles.mono}>{r.query ?? 'n/a'}</td>
+              <td className={styles.num}>
+                {r.rows ?? 'n/a'} / {r.limit ?? 'n/a'}
+              </td>
+              <td>{r.truncated ? 'yes' : 'no'}</td>
+              <td className={styles.num}>{formatMs(r.durationMs)}</td>
+              <td>
+                {r.outcome ?? 'n/a'}
+                {r.errorType ? ` (${r.errorType})` : ''}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className={styles.sub}>Timings</div>
+      <div className={styles.stats}>
+        <span className={styles.chip}>neo4j {formatMs(d.durationMs)}</span>
+      </div>
+    </section>
   );
 }
 

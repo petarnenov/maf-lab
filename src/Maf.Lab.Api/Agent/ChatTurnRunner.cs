@@ -829,7 +829,7 @@ public sealed partial class ChatTurnRunner(
         JsonSerializer.Serialize(new { tool, summary, sourceCount = sources.Count, sources, isError }, Json);
 
     /// <summary>
-    /// Raw MCP result (diagnostics removed) and, when the server sent them, the retrieval diagnostics. When the guard
+    /// Raw MCP result (diagnostics removed) and, when the server sent them, the graph reads and the retrieval diagnostics. When the guard
     /// withheld anything, the redacted result the model may read — carrying the neutral notice and a count — is recorded
     /// in place of the raw one, so a withheld item's content never enters the trace.
     /// </summary>
@@ -839,14 +839,17 @@ public sealed partial class ChatTurnRunner(
         var raw = TraceMapping.Node(result) as JsonObject;
         JsonNode? diagnostics = null;
         JsonObject? relevance = null;
+        JsonNode? graph = null;
         string? instance = null;
         if (raw?["_meta"] is JsonObject meta)
         {
             diagnostics = meta[TraceMeta.Diagnostics]?.DeepClone();
             relevance = meta[TraceMeta.Relevance]?.DeepClone() as JsonObject;
+            graph = meta[TraceMeta.Graph]?.DeepClone();
             instance = meta[TraceMeta.Instance]?.GetValue<string>();
             meta.Remove(TraceMeta.Diagnostics);
             meta.Remove(TraceMeta.Relevance);
+            meta.Remove(TraceMeta.Graph);
             if (meta.Count == 0)
             {
                 raw.Remove("_meta");
@@ -860,6 +863,11 @@ public sealed partial class ChatTurnRunner(
             ["callId"] = callId, ["tool"] = tool, ["domain"] = domain, ["server"] = server, ["isError"] = isError, ["latencyMs"] = latencyMs,
             ["mcpInstance"] = instance, ["result"] = recorded,
         }, latencyMs);
+        // A graph tool's reads of Neo4j, in the slot a search's retrieval event takes: structure only, never an argument.
+        if (GraphTraceEvent.From(callId, tool, graph) is { } g)
+        {
+            trace.Add(TraceKinds.Graph, g.Title, g.Data, g.DurationMs);
+        }
         if (diagnostics is JsonObject d)
         {
             d["callId"] = callId;
