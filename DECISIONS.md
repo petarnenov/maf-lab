@@ -2810,3 +2810,37 @@ said which account the conversation was about.
   existed for counts and stale removal.
 - **Degrade.** An unreachable Neo4j makes the graph section `unavailable` (reason `unreachable`, exception type logged
   only). The index half and the exit code are unchanged.
+
+## 77. Query and batch embeddings on separate Ollama instances (split-ollama-interactive-batch, 2026-10-03)
+
+- **Why.** One CPU-only Ollama (`OLLAMA_NUM_PARALLEL=1`, 16 threads) served search queries and every batch. Measured on
+  the dev machine (i7-10700K, Docker Desktop, 16 CPUs): a warm query embed takes 44 ms, a ~470-token chunk ~565 ms,
+  and throughput is ~1.7 chunks/s at any batch size (1–64) or client count (1–4) with the CPU at ~1850 %. A search
+  arriving behind a 32-chunk batch waited for it (~20 s).
+- **Isolation, not replicas.** Replicas of the same instance on the same CPUs add no throughput (measured: 2 and 4
+  clients give the same total chunks/s) and do not keep queries out of a batch's queue. Two instances do: `ollama`
+  (host 11435) embeds queries only, `ollama-batch` (host 11436) documents. Routing is by operation in `DenseEncoder`
+  (`EmbedQueryAsync` → interactive, `EmbedDocumentsAsync` → batch), never by caller; `Models:BatchOllamaEndpoint`
+  unset sends both to the one endpoint, as before. Same image, same model, same vectors: nothing is re-indexed.
+- **CPU sets, and the thread count in every request.** `cpuset` `0-3` / `4-15` by default (`OLLAMA_INTERACTIVE_CPUS`,
+  `OLLAMA_BATCH_CPUS`). Ollama 0.34.2 does not derive threads from the cpuset (a spike with `--cpuset-cpus 4-15` still
+  logged `n_threads = 16`) and has no environment variable for it; `options.num_thread` works, but a request with
+  another value — or none — reloads the runner (a cold load) with all CPUs. So every request carries its instance's
+  count (`Models:OllamaNumThread` / `Models:BatchOllamaNumThread`, from `OLLAMA_INTERACTIVE_THREADS=4` /
+  `OLLAMA_BATCH_THREADS=12`), and both embedding paths use OllamaSharp's native `EmbedAsync`, because
+  Microsoft.Extensions.AI cannot pass it. A manual `curl` without `num_thread` reloads the model; `make doctor` checks
+  that the sets fit Docker's CPUs and that the counts match them. Rejected: `cpu_shares` (llama.cpp's threads sync at
+  barriers, so oversubscribed threads stall each other) and Modelfile-derived models with `PARAMETER num_thread` (a
+  second model name in `DenseModelVersions`).
+- **Warm-up moved to `ollama-warm`.** `ollama run` cannot pass `num_thread` (its stdin is embedded as text) and the
+  ollama image has no HTTP client, so `ollama-init` only pulls (once, into the shared volume) and a one-shot
+  `alpine:3.22` (already pinned for `api-data-init`; no new image) POSTs one `/api/embed` per instance with busybox
+  `wget`. The app services wait for it. `OLLAMA_NOPRUNE=1` on both, so neither prunes blobs while the other pulls.
+- **Cost.** Batches get 12 CPUs instead of 16; ~1.2 GiB more RAM for the second loaded model.
+- **Measured after the change (2026-10-03, same machine).** Query embed on the interactive instance, idle: median
+  43 ms, p90 49 ms (before: 44 / 89 ms on one 16-thread instance). During ~86 s of continuous forced portfolio
+  re-indexing on the batch instance: median 74 ms, p90 121 ms, max 431 ms — 1.7× idle, where before a query waited for
+  the whole batch in front of it. The rest of the slowdown is what CPU sets do not separate (hyper-thread siblings, L3,
+  memory bandwidth). Every re-index request reached `ollama-batch` only, neither runner reloaded (one `threadpool init`
+  each), and the same text gives bit-identical vectors on both instances. Forced portfolio re-index: 142 chunks in
+  ~21 s.

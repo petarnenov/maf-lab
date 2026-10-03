@@ -278,6 +278,48 @@ public class TopologyTests
     }
 
     [Fact]
+    public async Task The_embeddings_node_lists_the_interactive_and_batch_instances()
+    {
+        using var api = Api(StubHandler.AllHealthy(), settings: BatchEmbeddings);
+
+        var node = (await GetAsync(api)).Nodes.Single(n => n.Id == "ollama-embeddings");
+
+        Assert.Equal(NodeHealth.Healthy, node.Health);
+        Assert.Equal(["interactive", "batch"], node.Instances.Select(i => i.Name));
+        Assert.All(node.Instances, i => Assert.Equal(NodeHealth.Healthy, i.Health));
+        Assert.Equal("http://ollama-batch:11434", node.Facts["batchEndpoint"]);
+    }
+
+    [Fact]
+    public async Task A_silent_batch_instance_degrades_the_embeddings_node_and_says_which()
+    {
+        var handler = StubHandler.AllHealthy();
+        handler.Fail.Add("ollama-batch");
+        using var api = Api(handler, settings: BatchEmbeddings);
+
+        var node = (await GetAsync(api)).Nodes.Single(n => n.Id == "ollama-embeddings");
+
+        Assert.Equal(NodeHealth.Degraded, node.Health);
+        Assert.Equal(NodeHealth.Healthy, node.Instances.Single(i => i.Name == "interactive").Health);
+        Assert.Equal(NodeHealth.Unreachable, node.Instances.Single(i => i.Name == "batch").Health);
+        Assert.StartsWith("batch:", node.Reason);
+    }
+
+    [Fact]
+    public async Task Without_a_batch_endpoint_the_embeddings_node_has_one_instance_and_is_not_degraded_for_it()
+    {
+        using var api = Api(StubHandler.AllHealthy());
+
+        var node = (await GetAsync(api)).Nodes.Single(n => n.Id == "ollama-embeddings");
+
+        Assert.Equal(NodeHealth.Healthy, node.Health);
+        Assert.Equal("interactive", Assert.Single(node.Instances).Name);
+    }
+
+    private static readonly IReadOnlyDictionary<string, string?> BatchEmbeddings =
+        new Dictionary<string, string?> { ["Models:BatchOllamaEndpoint"] = "http://ollama-batch:11434" };
+
+    [Fact]
     public async Task The_chat_provider_is_reported_from_configuration_and_never_carries_the_key()
     {
         using var api = Api(StubHandler.AllHealthy());

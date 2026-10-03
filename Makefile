@@ -60,9 +60,12 @@ endif
 export DOTNET
 export DOTNET_CLI_TELEMETRY_OPTOUT := 1
 export DOTNET_NOLOGO := 1
-# Host-side CLIs use the compose infrastructure: Qdrant on 6333/6334, embeddings from the compose Ollama on 11435.
+# Host-side CLIs use the compose infrastructure: Qdrant on 6333/6334, query embeddings from the interactive Ollama on
+# 11435 and document embeddings from the batch Ollama on 11436, each with the thread count its CPUs were sized for.
 # The graph store's Bolt port is published on loopback (7687) for these CLIs, with the compose password.
-HOST_ENV := Models__OllamaEndpoint=http://localhost:11435 Neo4j__Uri=bolt://localhost:7687 Neo4j__Password=$${NEO4J_PASSWORD:-maf-lab-dev-graph}
+HOST_ENV := Models__OllamaEndpoint=http://localhost:11435 Models__OllamaNumThread=$${OLLAMA_INTERACTIVE_THREADS:-4} \
+	Models__BatchOllamaEndpoint=http://localhost:11436 Models__BatchOllamaNumThread=$${OLLAMA_BATCH_THREADS:-12} \
+	Neo4j__Uri=bolt://localhost:7687 Neo4j__Password=$${NEO4J_PASSWORD:-maf-lab-dev-graph}
 # The portfolio domain is indexed by the same indexer into its own collection and BM25 vocabulary.
 PORTFOLIO_ENV := Indexing__CorpusRoot=$(ROOT)/data-portfolio Qdrant__Collection=maf_portfolio_chunks Qdrant__MetaCollection=maf_portfolio_meta
 # The codebase is indexed from the repository itself, by structure, into its own collection: chunks sized in embedding
@@ -129,10 +132,11 @@ banner:
 	@echo ""
 
 # ── data ─────────────────────────────────────────────────────────────────────────────────────────────────────────
-infra: require-docker ## Start only the indexer's infrastructure (Qdrant, Neo4j, Ollama + the embedding model) and wait until healthy
-	@# Host-side indexer CLIs need Qdrant (6333/6334), Neo4j (7687) and the compose Ollama (11435); a no-op when the stack is already up.
-	@$(COMPOSE) up -d --wait qdrant neo4j ollama
-	@$(COMPOSE) up --no-log-prefix ollama-init
+infra: require-docker ## Start only the indexer's infrastructure (Qdrant, Neo4j, both Ollama instances + the embedding model) and wait until healthy
+	@# Host-side indexer CLIs need Qdrant (6333/6334), Neo4j (7687) and both compose Ollamas (11435 queries, 11436
+	@# documents); a no-op when the stack is already up.
+	@$(COMPOSE) up -d --wait qdrant neo4j ollama ollama-batch
+	@$(COMPOSE) up --no-log-prefix ollama-init ollama-warm
 
 index-if-empty: require-dotnet
 	@$(HOST_ENV) scripts/index_if_empty.sh

@@ -399,18 +399,50 @@ public sealed class TopologyProbe(
         }
     }
 
+    /// <summary>
+    /// The embedding provider: one service with an instance per role — <c>interactive</c> (search queries) and, when
+    /// configured, <c>batch</c> (documents). Each is asked for its pulled models; one that answers without the model is
+    /// degraded, and the service is unreachable only when no instance answers.
+    /// </summary>
     private async Task<TopologyNode> EmbeddingsAsync(TimeSpan timeout, CancellationToken ct)
     {
+        const string id = "ollama-embeddings", name = "ollama (embeddings)";
         var wanted = models.Value.Embeddings.Values.Select(e => e.Model).Where(m => !string.IsNullOrWhiteSpace(m)).Distinct().ToList();
         var facts = new Dictionary<string, string>
         {
             ["endpoint"] = models.Value.OllamaEndpoint,
             ["models"] = string.Join(", ", wanted),
         };
+        var roles = new List<(string Role, string Endpoint)> { ("interactive", models.Value.OllamaEndpoint) };
+        if (!string.IsNullOrWhiteSpace(models.Value.BatchOllamaEndpoint))
+        {
+            facts["batchEndpoint"] = models.Value.BatchOllamaEndpoint;
+            roles.Add(("batch", models.Value.BatchOllamaEndpoint));
+        }
+        var probes = await Task.WhenAll(roles.Select(r => EmbeddingInstanceAsync(r.Role, r.Endpoint, wanted, timeout, ct)));
+        var instances = probes.Select(p => p.Instance).ToList();
+        facts["pulled"] = string.Join(", ", probes.Select(p => $"{p.Instance.Name}: {p.Pulled?.ToString() ?? "?"}"));
+
+        var answering = probes.Count(p => p.Pulled is not null);
+        var health = answering == 0 ? NodeHealth.Unreachable
+            : instances.All(i => i.Health == NodeHealth.Healthy) ? NodeHealth.Healthy
+            : NodeHealth.Degraded;
+        var reason = health == NodeHealth.Healthy
+            ? null
+            : roles.Count == 1
+                ? instances[0].Reason
+                : string.Join("; ", instances.Where(i => i.Health != NodeHealth.Healthy).Select(i => $"{i.Name}: {i.Reason}"));
+        return new TopologyNode(id, name, health, instances, facts, reason);
+    }
+
+    /// <summary>One embedding instance: healthy with every wanted model pulled, degraded without one, unreachable silent.</summary>
+    private async Task<(TopologyInstance Instance, int? Pulled)> EmbeddingInstanceAsync(
+        string role, string endpoint, IReadOnlyList<string> wanted, TimeSpan timeout, CancellationToken ct)
+    {
         try
         {
             using var cts = Linked(timeout, ct);
-            using var response = await Client().GetAsync($"{models.Value.OllamaEndpoint.TrimEnd('/')}/api/tags", cts.Token);
+            using var response = await Client().GetAsync($"{endpoint.TrimEnd('/')}/api/tags", cts.Token);
             response.EnsureSuccessStatusCode();
             var pulled = (await JsonSerializer.DeserializeAsync<JsonElement>(await response.Content.ReadAsStreamAsync(cts.Token), cancellationToken: cts.Token))
                 .TryGetProperty("models", out var list) && list.ValueKind == JsonValueKind.Array
@@ -418,16 +450,13 @@ public sealed class TopologyProbe(
                     : [];
             // Ollama reports "embeddinggemma:latest" for "embeddinggemma".
             var missing = wanted.Where(w => !pulled.Any(p => p == w || p.StartsWith(w + ":", StringComparison.Ordinal))).ToList();
-            facts["pulled"] = pulled.Count.ToString();
             return missing.Count > 0
-                ? new TopologyNode("ollama-embeddings", "ollama (embeddings)", NodeHealth.Degraded, [], facts,
-                    $"not pulled: {string.Join(", ", missing)}")
-                : new TopologyNode("ollama-embeddings", "ollama (embeddings)", NodeHealth.Healthy, [], facts, null);
+                ? (new TopologyInstance(role, endpoint, NodeHealth.Degraded, $"not pulled: {string.Join(", ", missing)}"), pulled.Count)
+                : (new TopologyInstance(role, endpoint, NodeHealth.Healthy), pulled.Count);
         }
         catch (Exception ex)
         {
-            return new TopologyNode("ollama-embeddings", "ollama (embeddings)", NodeHealth.Unreachable, [], facts,
-                Describe(ex, timeout));
+            return (new TopologyInstance(role, endpoint, NodeHealth.Unreachable, Describe(ex, timeout)), null);
         }
     }
 

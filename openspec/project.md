@@ -25,7 +25,8 @@ production system.
   files, types, methods, calls, read with Roslyn), every node tagged with
   its tenant.
 - Models: one multilingual embedding model on the local Ollama in Docker
-  (embeddinggemma, vector dense_v3), and the chat model on Ollama Cloud
+  (embeddinggemma, vector dense_v3) — two instances, one for search queries
+  and one for document batches, each on its own CPUs — and the chat model on Ollama Cloud
   (gpt-oss:120b). Typed decisions go to TypeSafe Jev (jev-1.13.0). The
   provider is abstracted behind Microsoft.Extensions.AI so it can be
   switched to Azure OpenAI / OpenAI by configuration only.
@@ -42,7 +43,7 @@ production system.
 - Containers: Docker Compose — lb (nginx, the one entry point on 7171),
   api (as the host user), api-data-init, mcp-retrieval, mcp-portfolio,
   mcp-code, compliance, test-agent, coverage-runner, web, copilot-runtime, qdrant,
-  neo4j, ollama, ollama-init, redis, otel-collector, prometheus, jaeger, and
+  neo4j, ollama, ollama-batch, ollama-init, ollama-warm, redis, otel-collector, prometheus, jaeger, and
   the dev-only inspectors a2a-inspector, mcp-inspector, redis-insight and neo4j-browser
   (profile `inspectors`, off in CI). One command (`make`) brings
   everything up.

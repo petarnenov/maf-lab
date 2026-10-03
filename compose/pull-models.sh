@@ -18,8 +18,6 @@ for model in $MODELS; do
     sleep $((attempt * 3))
   done
 done
-# Load each model now, so the first search after a start does not pay the cold load (the server keeps it loaded).
-for model in $MODELS; do
-  ollama run "$model" "warm up" >/dev/null || echo "could not warm $model" >&2
-done
+# Loading is ollama-warm's job: it loads each model into both instances with their thread counts (`ollama run` here
+# would load it with all threads, and the first real request would reload it).
 echo "models ready"

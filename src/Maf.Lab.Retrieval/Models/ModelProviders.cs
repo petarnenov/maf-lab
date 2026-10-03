@@ -22,9 +22,14 @@ public interface IChatClientFactory
 public sealed class ModelProviders(IOptions<ModelOptions> options) : IChatClientFactory
 {
     private readonly ModelOptions _options = options.Value;
-    private readonly Dictionary<string, IEmbeddingGenerator<string, Embedding<float>>> _embedders = new();
+    private readonly Dictionary<(string Vector, EmbeddingRole Role), IEmbeddingGenerator<string, Embedding<float>>> _embedders = new();
     private readonly Lock _gate = new();
+    private readonly Func<HttpMessageHandler>? _embeddingHandler;
     private HttpClient? _chatHttp;
+
+    /// <summary>For tests: embedding requests go through <paramref name="embeddingHandler"/> instead of the network.</summary>
+    internal ModelProviders(IOptions<ModelOptions> options, Func<HttpMessageHandler> embeddingHandler) : this(options) =>
+        _embeddingHandler = embeddingHandler;
 
     public IChatClient CreateChatClient(string? model = null)
     {
@@ -74,25 +79,49 @@ public sealed class ModelProviders(IOptions<ModelOptions> options) : IChatClient
         return chatOptions;
     }
 
-    public IEmbeddingGenerator<string, Embedding<float>> GetEmbedder(string vectorName)
+    /// <summary>
+    /// The embedder for one vector and role. On Ollama the roles are separate instances: queries go to
+    /// <see cref="ModelOptions.OllamaEndpoint"/>, documents to <see cref="ModelOptions.BatchOllamaEndpoint"/> (or the
+    /// same endpoint when that is unset), so a batch never queues in front of a search.
+    /// </summary>
+    public IEmbeddingGenerator<string, Embedding<float>> GetEmbedder(string vectorName, EmbeddingRole role = EmbeddingRole.Query)
     {
         var profile = GetProfile(vectorName);
         lock (_gate)
         {
-            if (!_embedders.TryGetValue(vectorName, out var embedder))
+            if (!_embedders.TryGetValue((vectorName, role), out var embedder))
             {
                 embedder = IsOllama
-                    ? new OllamaApiClient(EmbeddingHttpClient(), profile.Model)
+                    ? new OllamaApiClient(EmbeddingHttpClient(EmbeddingEndpoint(role)), profile.Model)
                     : OpenAIClient().GetEmbeddingClient(profile.Model).AsIEmbeddingGenerator();
-                _embedders[vectorName] = embedder;
+                _embedders[(vectorName, role)] = embedder;
             }
             return embedder;
         }
     }
 
-    private HttpClient EmbeddingHttpClient()
+    /// <summary>The Ollama endpoint that serves a role.</summary>
+    public string EmbeddingEndpoint(EmbeddingRole role) =>
+        role == EmbeddingRole.Documents && !string.IsNullOrWhiteSpace(_options.BatchOllamaEndpoint)
+            ? _options.BatchOllamaEndpoint
+            : _options.OllamaEndpoint;
+
+    /// <summary>
+    /// Ollama request options for a role: the thread count its instance was sized for. Every request to an instance
+    /// must carry the same value — one with another value, or none, makes Ollama reload the model with all CPUs.
+    /// </summary>
+    public OllamaSharp.Models.RequestOptions? EmbeddingRequestOptions(EmbeddingRole role)
     {
-        var http = new HttpClient { BaseAddress = new Uri(_options.OllamaEndpoint) };
+        var threads = role == EmbeddingRole.Documents && !string.IsNullOrWhiteSpace(_options.BatchOllamaEndpoint)
+            ? _options.BatchOllamaNumThread
+            : _options.OllamaNumThread;
+        return threads is { } n ? new OllamaSharp.Models.RequestOptions { NumThread = n } : null;
+    }
+
+    private HttpClient EmbeddingHttpClient(string endpoint)
+    {
+        var http = _embeddingHandler is null ? new HttpClient() : new HttpClient(_embeddingHandler());
+        http.BaseAddress = new Uri(endpoint);
         if (_options.EmbeddingTimeoutSeconds is { } seconds)
         {
             http.Timeout = TimeSpan.FromSeconds(seconds);
@@ -129,32 +158,55 @@ public interface IDenseEncoder
     string ModelVersion(string vectorName);
 }
 
+/// <summary>Which Ollama instance an embedding belongs on: search queries, or documents (indexing and other batches).</summary>
+public enum EmbeddingRole
+{
+    Query,
+    Documents,
+}
+
 public sealed class DenseEncoder(ModelProviders providers) : IDenseEncoder
 {
     public async Task<float[]> EmbedQueryAsync(string vectorName, string text, CancellationToken ct)
     {
         var profile = providers.GetProfile(vectorName);
-        var result = await providers.GetEmbedder(vectorName).GenerateAsync([profile.QueryPrefix + text], cancellationToken: ct);
+        var embedder = providers.GetEmbedder(vectorName, EmbeddingRole.Query);
+        // The native call carries the instance's thread count, which Microsoft.Extensions.AI cannot pass. Queries keep
+        // Ollama's default truncation: a cut query still searches.
+        if (embedder is OllamaSharp.IOllamaApiClient ollama)
+        {
+            var request = new OllamaSharp.Models.EmbedRequest
+            {
+                Model = profile.Model, Input = [profile.QueryPrefix + text], Options = providers.EmbeddingRequestOptions(EmbeddingRole.Query),
+            };
+            return (await ollama.EmbedAsync(request, ct)).Embeddings[0];
+        }
+        var result = await embedder.GenerateAsync([profile.QueryPrefix + text], cancellationToken: ct);
         return result[0].Vector.ToArray();
     }
 
     public async Task<IReadOnlyList<float[]>> EmbedDocumentsAsync(string vectorName, IReadOnlyList<string> texts, CancellationToken ct)
     {
         var profile = providers.GetProfile(vectorName);
-        var embedder = providers.GetEmbedder(vectorName);
+        var embedder = providers.GetEmbedder(vectorName, EmbeddingRole.Documents);
         var inputs = texts.Select(t => profile.DocumentPrefix + t).ToList();
         // Ollama cuts a document past the context window without a word, and the index would then hold a vector for
         // text it never read. With a known window the request asks Ollama to refuse instead, so a chunk the indexer
         // sized wrong fails the run. Microsoft.Extensions.AI has no option for it (OllamaSharp ignores the raw request
-        // factory for embeddings), hence the native call. Queries keep the default: a cut query still searches.
-        if (profile.MaxInputTokens is not null && embedder is OllamaSharp.IOllamaApiClient ollama)
+        // factory for embeddings), nor for the instance's thread count, hence the native call.
+        if (embedder is OllamaSharp.IOllamaApiClient ollama)
         {
+            var request = new OllamaSharp.Models.EmbedRequest
+            {
+                Model = profile.Model, Input = inputs, Options = providers.EmbeddingRequestOptions(EmbeddingRole.Documents),
+                Truncate = profile.MaxInputTokens is null ? null : false,
+            };
             try
             {
-                var response = await ollama.EmbedAsync(new OllamaSharp.Models.EmbedRequest { Model = profile.Model, Input = inputs, Truncate = false }, ct);
+                var response = await ollama.EmbedAsync(request, ct);
                 return response.Embeddings.ToArray();
             }
-            catch (OllamaSharp.Models.Exceptions.OllamaException ex) when (ex.Message.Contains("context length", StringComparison.OrdinalIgnoreCase))
+            catch (OllamaSharp.Models.Exceptions.OllamaException ex) when (profile.MaxInputTokens is not null && ex.Message.Contains("context length", StringComparison.OrdinalIgnoreCase))
             {
                 throw new InputTooLongException(profile.Model, profile.MaxInputTokens.Value, ex);
             }

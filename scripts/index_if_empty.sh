@@ -2,13 +2,17 @@
 # Indexes each domain's corpus only when its Qdrant collection is missing or empty.
 # Then builds the graph when the graph store holds no nodes.
 # Env: QDRANT_URL (http://localhost:6333), Qdrant__Collection (maf_chunks), DOTNET (dotnet),
-#      Models__OllamaEndpoint (http://localhost:11435 — the compose Ollama), NEO4J_PASSWORD (the compose default).
+#      Models__OllamaEndpoint (http://localhost:11435 — the compose Ollama for queries), Models__BatchOllamaEndpoint
+#      (http://localhost:11436 — the one for documents), their thread counts, NEO4J_PASSWORD (the compose default).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 QDRANT_URL="${QDRANT_URL:-http://localhost:6333}"
 COLLECTION="${Qdrant__Collection:-maf_chunks}"
 DOTNET="${DOTNET:-dotnet}"
 export Models__OllamaEndpoint="${Models__OllamaEndpoint:-http://localhost:11435}"
+export Models__OllamaNumThread="${Models__OllamaNumThread:-${OLLAMA_INTERACTIVE_THREADS:-4}}"
+export Models__BatchOllamaEndpoint="${Models__BatchOllamaEndpoint:-http://localhost:11436}"
+export Models__BatchOllamaNumThread="${Models__BatchOllamaNumThread:-${OLLAMA_BATCH_THREADS:-12}}"
 
 # One corpus and one collection per domain: billing (data/ → maf_chunks), portfolio (data-portfolio/ → maf_portfolio_chunks)
 # and the codebase (the repository → maf_code_chunks).
@@ -20,7 +24,7 @@ index_domain() {
     echo "✓ index present ($collection: $points chunks) — skipping indexing"
     return 0
   fi
-  echo "… index $collection is empty — indexing $corpus (embeddings via $Models__OllamaEndpoint)"
+  echo "… index $collection is empty — indexing $corpus (embeddings via $Models__BatchOllamaEndpoint)"
   Indexing__CorpusRoot="$corpus" Qdrant__Collection="$collection" Qdrant__MetaCollection="$meta" \
     "$DOTNET" run --project "$ROOT/src/Maf.Lab.Indexing" -- index
 }
