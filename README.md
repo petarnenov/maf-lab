@@ -54,7 +54,8 @@ flowchart TB
     neo4j[("Neo4j<br/>billing + code graph")]
     sqlite[("SQLite<br/>conversations · turns · audit")]
     redis[("Redis<br/>shared state")]
-    ollama["Ollama<br/>embeddinggemma"]
+    ollama["Ollama · queries<br/>embeddinggemma"]
+    ollamabatch["Ollama · batch<br/>embeddinggemma"]
     cloud["☁️ Ollama Cloud<br/>gpt-oss:120b"]
     jev["TypeSafe Jev<br/>domains · guard · relevance · answer check"]
   end
@@ -76,6 +77,7 @@ flowchart TB
   mcp -- "graph lookups" --> neo4j
   mcp -- "relevance" --> jev
   api --> sqlite & redis & cloud & jev
+  api -- "index runs · embed" --> ollamabatch
   app & mcp -. "OTLP" .-> obs
 
   classDef entry fill:#fff4e5,stroke:#f59e0b,color:#7c2d12
@@ -86,7 +88,7 @@ flowchart TB
   class lb entry
   class web,copilot,api,compliance,testagent,runner,billing,portfolio,code svc
   class qdrant,neo4j,sqlite,redis store
-  class ollama,cloud,jev model
+  class ollama,ollamabatch,cloud,jev model
   class clients,obs ext
   classDef group fill:transparent,stroke:#94a3b8,stroke-dasharray:4 3
   class app,mcp,backing group
@@ -96,8 +98,16 @@ Everything user- and agent-facing goes through **one entry point on port 7171**.
 compliance run two replicas each, mcp-code and copilot-runtime one (`X-Instance` response header shows which one answered).
 test-agent and coverage-runner run one each and have no route of their own: the api reaches them inside the compose
 network. The balancer also serves Jaeger at `/jaeger` and takes the browser's OTLP traces at `/v1/traces`. Besides
-7171, only Qdrant and Ollama are published, Neo4j's Bolt port on `127.0.0.1:7687` for the host-side indexer, plus the
-[inspectors](#inspecting-a2a-mcp-and-redis) on `127.0.0.1` (7172–7175).
+7171, only Qdrant and the two Ollamas are published, Neo4j's Bolt port on `127.0.0.1:7687` for the host-side indexer,
+plus the [inspectors](#inspecting-a2a-mcp-and-redis) on `127.0.0.1` (7172–7175).
+
+The embedding model runs in **two Ollama instances**: `ollama` (11435) embeds search queries only, `ollama-batch`
+(11436) embeds documents — `make index*`, `rebuild-index`, `migrate` and index runs from `/admin/index`. A batch takes
+~20 s on CPU and Ollama serves one request at a time, so on one instance a search would queue behind it. Each instance
+is pinned to its own CPUs (`OLLAMA_INTERACTIVE_CPUS=0-3`, `OLLAMA_BATCH_CPUS=4-15`) and every request names the
+matching thread count (`OLLAMA_INTERACTIVE_THREADS=4`, `OLLAMA_BATCH_THREADS=12`): Ollama does not derive it from the
+container, and a request with another count — or none, e.g. a manual `curl` — reloads the model on all CPUs. Change a
+set and its thread count together; `make doctor` checks them against Docker's CPUs.
 
 The balancer's routes, as `compose/lb/nginx.conf` declares them:
 
@@ -174,7 +184,7 @@ make help                  # every target
 | `make ps` | Show services, state and health |
 | `make logs` | Follow logs (SERVICE=api to narrow) |
 | `make clean` | Remove the stack WITH volumes (index, conversations) and build outputs; asks unless FORCE=1 |
-| `make infra` | Start only the indexer's infrastructure (Qdrant, Neo4j, Ollama + the embedding model) and wait until healthy |
+| `make infra` | Start only the indexer's infrastructure (Qdrant, Neo4j, both Ollama instances + the embedding model) and wait until healthy |
 | `make index` | Index both domains' corpora and the codebase, then build the graph (unchanged documents are skipped) |
 | `make graph` | Build the Neo4j graph: billing relationships and the code graph (unchanged nodes are not rewritten) |
 | `make index-portfolio` | Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only |
@@ -496,13 +506,16 @@ servers you add only until its container restarts.
 ## Local development (without the balancer)
 
 `make dev` bypasses the balancer: web on :5174 (Vite proxies `/api` and `/dev` to :5080), api on :5080, MCP servers on :5090 (billing), :5091 (portfolio) and :5092 (codebase),
-with Qdrant, Neo4j and Ollama from compose (the compose app services are stopped first). The manual equivalent:
+with Qdrant, Neo4j and both Ollama instances from compose (the compose app services are stopped first); query
+embeddings go to :11435 and document embeddings to :11436 (`Models__BatchOllamaEndpoint`). The manual equivalent:
 
 Prerequisites: .NET SDK 10.0.401 (`global.json`), Node 24, Docker, Ollama (host or compose).
 
 ```bash
 docker compose -f compose/docker-compose.yml up -d qdrant     # vector store only
 ollama pull embeddinggemma                                    # (qwen3:4b only for the local chat fallback, see DECISIONS.md)
+                                                              # one host Ollama serves queries and documents alike:
+                                                              # leave Models__BatchOllamaEndpoint unset
 
 dotnet run --project src/Maf.Lab.Indexing                     # index data/ (index | drift | status | rebuild --yes | migrate --to <vector>)
 dotnet run --project src/Maf.Lab.Retrieval                    # billing MCP server on :5090

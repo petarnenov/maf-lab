@@ -3,14 +3,20 @@ name: maf-lab
 # One command brings everything up; the only application entry point is the load balancer on http://localhost:7171
 #   docker compose -f compose/docker-compose.yml up -d --build
 # Scale further with: docker compose -f compose/docker-compose.yml up -d --scale api=3 --scale mcp-retrieval=3
-# Models are pulled by the ollama-init service on first start.
+# Models are pulled by the ollama-init service on first start, and loaded into both Ollama instances by ollama-warm.
 # To reuse models already pulled by a host Ollama: OLLAMA_MODELS_DIR=$HOME/.ollama docker compose ... up
 
 x-app-env: &app-env
   Qdrant__Host: qdrant
   Qdrant__GrpcPort: "6334"
   Models__Provider: ${MODELS_PROVIDER:-ollama}
+  # Two Ollama instances serve the same embedding model: `ollama` embeds search queries only, `ollama-batch` embeds
+  # documents (indexing, migration, admin index runs), so a batch never queues in front of a search. Each runs on its own
+  # CPUs and every request names its thread count: a request without it reloads the runner with all 16 threads.
   Models__OllamaEndpoint: http://ollama:11434
+  Models__OllamaNumThread: ${OLLAMA_INTERACTIVE_THREADS:-4}
+  Models__BatchOllamaEndpoint: http://ollama-batch:11434
+  Models__BatchOllamaNumThread: ${OLLAMA_BATCH_THREADS:-12}
   Models__ChatModel: ${CHAT_MODEL:-gpt-oss:120b}
   # Chat runs on Ollama Cloud; the key is passed through from the host environment, never written to a file.
   Models__ChatEndpoint: ${CHAT_ENDPOINT:-https://ollama.com}
@@ -80,14 +86,37 @@ services:
       retries: 30
       start_period: 20s
 
+  # Interactive: search query embeddings only. Its CPUs are its own (default 0-3 of Docker Desktop's 16), so a batch on
+  # ollama-batch cannot take CPU time from it. OLLAMA_INTERACTIVE_THREADS must match the size of this set.
   ollama:
     image: ollama/ollama:0.34.2
+    cpuset: ${OLLAMA_INTERACTIVE_CPUS:-0-3}
     ports:
       - "11435:11434"
     environment:
       # Keep the embedding model loaded: Ollama's default unloads it after 5 idle minutes, and the next search then
-      # waits ~4-5 s for a cold load (embed is ~0.1 s warm). ollama-init loads it once at start.
+      # waits ~4-5 s for a cold load (embed is ~0.1 s warm). ollama-warm loads it once at start.
       OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:--1}
+      # Both instances share the models volume; only ollama-init pulls, and neither prunes blobs at start.
+      OLLAMA_NOPRUNE: "1"
+    volumes:
+      - ${OLLAMA_MODELS_DIR:-ollama-models}:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # Batch: document embeddings (make index*, rebuild-index, migrate, /admin/index/run). The rest of the CPUs (default
+  # 4-15); OLLAMA_BATCH_THREADS must match the size of this set.
+  ollama-batch:
+    image: ollama/ollama:0.34.2
+    cpuset: ${OLLAMA_BATCH_CPUS:-4-15}
+    ports:
+      - "11436:11434"
+    environment:
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:--1}
+      OLLAMA_NOPRUNE: "1"
     volumes:
       - ${OLLAMA_MODELS_DIR:-ollama-models}:/root/.ollama
     healthcheck:
@@ -101,12 +130,30 @@ services:
     depends_on:
       ollama:
         condition: service_healthy
+      ollama-batch:
+        condition: service_healthy
     environment:
       OLLAMA_HOST: http://ollama:11434
       MODELS: ${OLLAMA_PULL_MODELS:-embeddinggemma}
     volumes:
       - ./pull-models.sh:/pull-models.sh:ro
     entrypoint: ["/bin/sh", "/pull-models.sh"]
+    restart: "no"
+
+  # Loads the embedding model into each instance with that instance's thread count, so neither the first search nor
+  # the first batch pays a cold load. `ollama run` cannot pass num_thread and the ollama image has no HTTP client,
+  # hence busybox wget.
+  ollama-warm:
+    image: alpine:3.22
+    depends_on:
+      ollama-init:
+        condition: service_completed_successfully
+    environment:
+      MODELS: ${OLLAMA_PULL_MODELS:-embeddinggemma}
+      INSTANCES: http://ollama:11434=${OLLAMA_INTERACTIVE_THREADS:-4} http://ollama-batch:11434=${OLLAMA_BATCH_THREADS:-12}
+    volumes:
+      - ./warm-models.sh:/warm-models.sh:ro
+    entrypoint: ["/bin/sh", "/warm-models.sh"]
     restart: "no"
 
   mcp-retrieval:
@@ -129,7 +176,7 @@ services:
         condition: service_healthy
       neo4j:
         condition: service_healthy
-      ollama-init:
+      ollama-warm:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
@@ -153,7 +200,7 @@ services:
     depends_on:
       qdrant:
         condition: service_healthy
-      ollama-init:
+      ollama-warm:
         condition: service_completed_successfully
 
   # The codebase: the repository indexed by structure into its own collection (make index-code), searched and asked
@@ -174,7 +221,7 @@ services:
         condition: service_healthy
       neo4j:
         condition: service_healthy
-      ollama-init:
+      ollama-warm:
         condition: service_completed_successfully
 
   compliance:

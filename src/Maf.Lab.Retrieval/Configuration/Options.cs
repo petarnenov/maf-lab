@@ -20,12 +20,25 @@ public sealed class ModelOptions
 
     /// <summary>"ollama" or "openai" (OpenAI, or Azure OpenAI via its v1 endpoint).</summary>
     public string Provider { get; set; } = "ollama";
+    /// <summary>Local Ollama for embeddings. With <see cref="BatchOllamaEndpoint"/> set, it serves search queries only.</summary>
     public string OllamaEndpoint { get; set; } = "http://localhost:11434";
+    /// <summary>
+    /// A second local Ollama, serving the same embedding model, for document embeddings (indexing, migration, admin
+    /// index runs), so a batch never queues in front of a search. Unset: documents use <see cref="OllamaEndpoint"/>.
+    /// </summary>
+    public string? BatchOllamaEndpoint { get; set; }
+    /// <summary>
+    /// Threads per request on <see cref="OllamaEndpoint"/>, matching the CPUs its container is pinned to. Ollama does
+    /// not derive it from the container, and a request with another value (or none) reloads the model. Unset: not sent.
+    /// </summary>
+    public int? OllamaNumThread { get; set; }
+    /// <summary>Threads per request on <see cref="BatchOllamaEndpoint"/>; see <see cref="OllamaNumThread"/>.</summary>
+    public int? BatchOllamaNumThread { get; set; }
     public string? OpenAIEndpoint { get; set; }
     public string? OpenAIApiKey { get; set; }
     /// <summary>
-    /// Ollama endpoint for chat (agent, judge, rerank, contextual). Default: Ollama Cloud. Embeddings always use
-    /// <see cref="OllamaEndpoint"/> (local), since Ollama Cloud serves no embedding models.
+    /// Ollama endpoint for chat (agent, judge, rerank, contextual). Default: Ollama Cloud. Embeddings always use the
+    /// local <see cref="OllamaEndpoint"/> / <see cref="BatchOllamaEndpoint"/>, since Ollama Cloud serves no embedding models.
     /// </summary>
     public string? ChatEndpoint { get; set; } = "https://ollama.com";
     /// <summary>Environment variable holding the Ollama Cloud API key. The key itself is never stored in config files.</summary>
