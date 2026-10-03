@@ -1,5 +1,8 @@
 # maf-lab
 
+> **Branch `feat/neo4j-graph`: read [HANDOFF.md](HANDOFF.md) before anything else.** It says what is next and why.
+> Remove this line together with HANDOFF.md once its open items are done.
+
 TAMP billing RAG assistant. Read openspec/project.md first — it holds the
 stack, layout, and hard conventions. Active change proposals live under
 openspec/changes/.
