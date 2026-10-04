@@ -8,7 +8,7 @@
 
 ## 2. Run
 
-- [ ] 2.1 Run `make eval-graph-depth` once on the stack and verify it completes, reports the three variants with the Jev-graded scores, and counts no judge failures
+- [x] 2.1 Run `make eval-graph-depth` once on the stack and verify it completes, reports the three variants with the Jev-graded scores, and counts no judge failures
 
 ## 3. Jev review
 

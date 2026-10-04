@@ -3145,4 +3145,29 @@ be re-run then.
   variant (24 × 3), with the same closed atomic Nouls, code-side counting and citation lookup, one request per state,
   pinned model and usage logged, no-key refusal and failure-as-0. It was tested on labelled English and Bulgarian
   inputs through `generation-judge`.
+- **A graph tool's places, and the protocol restarted.**
+  - The first graph-depth run graded 25 of 46 failing answers down for citing places a `trace_code_symbol` or
+    `change_impact` result holds in `matched[]`, `reached[]` or `tests[].tests[]`. `Citations` read places only from
+    `results[]`; it now reads every object with `path`/`startLine`/`endLine` (or `sectionPath`) at any depth of a tool's
+    JSON.
+  - graph-depth end-to-end faithfulness then read 0.903, 0.876 and 0.808 at depths 2, 3 and 4 (it was 0.630, 0.731
+    and 0.720), and no failure was a citation. The deeper the trace, the more claims and the lower the faithfulness.
+  - The fix changes the grade's code, so the §79 protocol restarted for `generation`. Ten runs (`20261004-165604-r1…r10`) were
+    accepted as their mean: faithfulness 0.964, relevance 0.95, completeness 0.662.
+  - Ranges of every 3-run mean and the resulting tolerances:
+
+    | Metric | 3-run means | Tolerance |
+    |---|---|---|
+    | faithfulness | 0.955–0.978 | 0.025 |
+    | completeness | — | 0.05 |
+    | retrievalJudged | — | 0.035 |
+    | sourceRecall | — | 0.05 |
+    | jevGroundedAgreement | — | 0.06 |
+    | jevChecked | — | 0.03 |
+
+  - `generation` thresholds: faithfulness 0.9, relevance 0.9, completeness 0.55, referenceAgreement 0.95,
+    retrievalJudged 0.85.
+  - `generation-judge`: five runs (20261004-172208, 20261004-172302, 20261004-172402, 20261004-172500, 20261004-172602), then accepted from one fresh run, as amendment 2 says.
+    Thresholds: grade.accuracy 0.9, points.pointAccuracy 0.85, sentences.sentenceAccuracy 0.9,
+    sentences.citationDetection 0.85.
 
