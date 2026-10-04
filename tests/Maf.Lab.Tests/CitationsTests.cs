@@ -71,4 +71,24 @@ public class CitationsTests
         // Jev was sent the sentence unmasked: nothing in it was found.
         Assert.Contains("88-95", request.State.AnswerSentences[1]);
     }
+
+    [Fact]
+    public void A_place_in_a_previous_turns_envelope_is_found()
+    {
+        var envelope = ReadItem.FromEnvelope(ToolDataEnvelope.Wrap("search_codebase",
+            "{\"results\":[{\"path\":\"src/Maf.Lab.Api/Agent/Guardrail.cs\",\"startLine\":153,\"endLine\":195,\"snippet\":\"...\"}]}"));
+
+        var place = Assert.Single(Citations.Find("It is withheld whole (src/Maf.Lab.Api/Agent/Guardrail.cs:153-195).", [envelope]));
+
+        Assert.True(place.Found);
+        Assert.False(Assert.Single(Citations.Find("See src/Maf.Lab.Api/Agent/Guardrail.cs:300-310.", [envelope])).Found);
+    }
+
+    [Fact]
+    public void A_whole_item_that_is_not_json_carries_no_place()
+    {
+        var item = ReadItem.Whole("search_codebase", "Codebase search is unavailable right now.", Domains.Codebase);
+
+        Assert.False(Assert.Single(Citations.Find("See src/A.cs:1-9.", [item])).Found);
+    }
 }

@@ -228,6 +228,17 @@ From here:
 `generation-judge` grades fixed answers. Its verdicts did not move across six runs, so it keeps single runs, its
 accepted baseline and its tolerances.
 
+**Second amendment (fixed before measuring again).** Acceptance found two things:
+- A bug: a citation of a place held only in a previous turn's envelope was graded invented (ac-code-en-s-05, wrong in
+  every run). The fix changes the grade's code, so the protocol restarts for both suites.
+- A single Jev verdict flipping on one of 39 labelled answers moved `accuracy` by 0.026, above a 0.02 tolerance that
+  three identical runs could only measure as zero.
+
+From here, for every metric computed over labelled items (`generation-judge`), the tolerance is also never below the
+weight of one item in that metric (1/n, rounded up to the next 0.005), whatever the measured range. Below that, a zero
+range means only that no item happened to flip. `generation-judge` is measured over five runs, then accepted from one.
+`generation` follows the first amendment unchanged: ten runs, accept the mean, tolerances from every 3-run mean.
+
 ## Risks / Trade-offs
 
 - [Jev is English-first. Bulgarian answers may be graded worse] → `generation-judge` reports Bulgarian separately, and

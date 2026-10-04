@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Maf.Lab.Api.Agent.Jev;
 
@@ -25,8 +26,8 @@ public static partial class Citations
     /// </summary>
     public static IReadOnlyList<CitedPlace> Find(string sentence, IReadOnlyList<ReadItem> sources)
     {
-        var code = sources.Select(CodeRange).OfType<(string Path, int Start, int End)>().ToList();
-        var sections = sources.Select(SectionPath).OfType<string>().ToList();
+        var code = sources.Select(CodeRange).OfType<(string Path, int Start, int End)>().Concat(sources.SelectMany(EnvelopeCode)).ToList();
+        var sections = sources.Select(SectionPath).OfType<string>().Concat(sources.SelectMany(EnvelopeSections)).ToList();
         var places = new List<CitedPlace>();
 
         string? path = null;
@@ -86,6 +87,48 @@ public static partial class Citations
         // A document item's key is doc:docId›sectionPath.
         var i = item.Key.IndexOf('›');
         return item.Key.StartsWith("doc:", StringComparison.Ordinal) && i > 0 ? item.Key[(i + 1)..] : null;
+    }
+
+    /// <summary>
+    /// A whole item — a previous turn's data envelope, a search result read whole — carries its places inside its JSON
+    /// (<c>results[].path/startLine/endLine</c>, <c>results[].sectionPath</c>): a follow-up answered from the previous
+    /// turn cites them as exactly as it would cite this turn's.
+    /// </summary>
+    private static IEnumerable<(string Path, int Start, int End)> EnvelopeCode(ReadItem item) =>
+        Results(item).Where(r => r.TryGetProperty("path", out var p) && p.ValueKind == JsonValueKind.String
+                && r.TryGetProperty("startLine", out var s) && s.ValueKind == JsonValueKind.Number
+                && r.TryGetProperty("endLine", out var e) && e.ValueKind == JsonValueKind.Number)
+            .Select(r => (r.GetProperty("path").GetString()!, r.GetProperty("startLine").GetInt32(), r.GetProperty("endLine").GetInt32()));
+
+    private static IEnumerable<string> EnvelopeSections(ReadItem item) =>
+        Results(item).Where(r => r.TryGetProperty("sectionPath", out var s) && s.ValueKind == JsonValueKind.String)
+            .Select(r => r.GetProperty("sectionPath").GetString()!);
+
+    private static List<JsonElement> Results(ReadItem item)
+    {
+        if (!item.Key.StartsWith("text:", StringComparison.Ordinal))
+        {
+            return [];
+        }
+        var start = item.Text.IndexOf('{');
+        var end = item.Text.LastIndexOf('}');
+        if (start < 0 || end <= start)
+        {
+            return [];
+        }
+        try
+        {
+            using var doc = JsonDocument.Parse(item.Text[start..(end + 1)]);
+            return doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("results", out var results)
+                && results.ValueKind == JsonValueKind.Array
+                ? [.. results.EnumerateArray().Where(r => r.ValueKind == JsonValueKind.Object).Select(r => r.Clone())]
+                : [];
+        }
+        catch (JsonException)
+        {
+            // Not JSON (a fixed text, a tool's plain answer): it carries no place to look up.
+            return [];
+        }
     }
 
     /// <summary>A cited path matches a source's when one ends with the other: answers often drop a leading folder.</summary>
