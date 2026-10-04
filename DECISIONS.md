@@ -3172,7 +3172,10 @@ be re-run then.
     sentences.citationDetection 0.85.
 - **Verified.** Three `make eval-generation` runs (each the mean of 3) passed with nothing changed: faithfulness 0.958,
   0.956 and 0.942 against the baseline's 0.964 (20261004-172918, -173913, -174917).
-- **Open: the generation-judge baseline is a single run.** The run accepted under amendment 2 read pointAccuracy 0.873,
-  below the five measured runs (0.901–0.930). That is the single-run tail that amendment 1 removed for `generation`.
-  It is not tuned here; it is left for the user to decide.
+- **Amendment 3 (decided by the user, written before the run): `generation-judge` is accepted as the mean of 5 runs.**
+  The run accepted under amendment 2 read pointAccuracy 0.873, below the five measured runs (0.901–0.930). That is the
+  single-run tail amendment 1 removed for `generation`.
+  - From here, `make eval-accept SUITE=generation-judge REPEAT=5` sets its baseline to the mean of five runs.
+  - Ordinary runs stay single, gated by the tolerances already derived (never below one labelled item); no tolerance or
+    threshold moves.
 
