@@ -71,8 +71,8 @@ workspace.
 - **THEN** the job log shows the key only as masked and no step prints its value
 
 ### Requirement: Local parity and caching
-`make ci` SHALL run the same checks as the push workflow locally, including `make docs-check`. Workflows SHALL cache
-NuGet and npm dependencies keyed on their lock/props files.
+`make ci` SHALL run the same checks as the CI workflow (`ci.yml`) locally, including `make docs-check`. Workflows SHALL
+cache NuGet and npm dependencies keyed on their lock/props files.
 
 #### Scenario: Local CI
 - **WHEN** a developer runs `make ci`
