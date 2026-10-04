@@ -2995,4 +2995,38 @@ said which account the conversation was about.
   - g-02, g-10 and g-code-en-06 retrieve no expected source.
 
   These are the agent's and retrieval's to fix, in their own change.
+- **Verification failed, and the protocol was amended twice before measuring again.**
+  - The single run accepted as the baseline (faithfulness 0.977) sat above the ten measured runs. A verification run
+    (0.903) sat below them; the production check confirmed the agent answered worse in that run (g-14 `not_grounded`
+    0.17, g-17 0.26).
+    - Amendment 1: `generation` is read as the **mean of 3 runs** (`Evals:Repeat`, `--repeat`, `REPEAT=`). The baseline
+      is the mean of ten runs, and each tolerance is the range of every 3-run mean.
+  - Accepting `generation-judge` then exposed a bug. A citation of a place held only in a previous turn's envelope was
+    graded invented (ac-code-en-s-05, wrong in every run); `Citations` now reads places from envelopes too. It also
+    showed one verdict flip, 1 of 39, above a 0.02 tolerance.
+    - Amendment 2: a labelled-set tolerance is never below one item's weight (1/n).
+  - Both amendments are in design.md.
+- **Measured again (2026-10-04, at 41efd77).**
+  - `generation`: ten runs (`20261004-150436-r1…r10`), accepted as their mean (faithfulness 0.952, relevance 0.947, completeness
+    0.649, retrievalJudged 0.907, sourceRecall 0.758). Ranges of every 3-run mean and the resulting tolerances:
+
+    | Metric | 3-run means | Single runs | Tolerance |
+    |---|---|---|---|
+    | faithfulness | 0.936–0.968 | 0.928–0.972 | 0.035 |
+    | completeness | 0.635–0.670 | — | 0.035 |
+    | retrievalJudged | 0.886–0.923 | — | 0.04 |
+    | sourceRecall | — | — | 0.03 |
+    | jevGroundedAgreement | — | — | 0.07 |
+    | relevance, referenceAgreement | — | — | default 0.02 |
+    | judgeUncertain, jevUncertain | — | — | not gated |
+
+  - `generation-judge`: five runs (20261004-152755, 20261004-152835, 20261004-152911, 20261004-152948, 20261004-153024). Grade accuracy is 0.949, check accuracy 0.923, and the
+    grade's verdicts did not move. Tolerances are at least one item (accuracy 1/39 → 0.03; the per-slice ones are
+    wider by their n), and citationPass moved by 0.1.
+  - Thresholds, each the lowest 3-run mean or the lowest run minus its tolerance, rounded down to 0.05:
+    - `generation`: faithfulness 0.9, relevance 0.9, completeness 0.55, referenceAgreement 0.95, retrievalJudged 0.8;
+    - `generation-judge`: grade.accuracy 0.9, points.pointAccuracy 0.85, sentences.sentenceAccuracy 0.85,
+      sentences.citationDetection 0.85.
+  - The baselines are accepted: `generation` from the ten-run mean, `generation-judge` from one fresh run. Both are
+    recorded as a change of judge, not an improvement; earlier `generation` runs (12 cases, rubric) are not comparable.
 
