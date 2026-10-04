@@ -47,6 +47,6 @@
 
 ## 8. Documentation
 
-- [ ] 8.1 Update the README.md evals section: Jev grades `generation` and its metrics, the `generation-judge` suite, the HTML report, and the `generation` tolerance sentence with its re-measured values
-- [ ] 8.2 Extend the Jev line in CLAUDE.md with "and grades answers in the eval". Finish the DECISIONS.md section, and verify that docs/*.md, openspec/project.md and .github/copilot-instructions.md still read true
-- [ ] 8.3 Run `make docs` to regenerate the README commands table from the Makefile help text (never edit inside a `generated:` block by hand), then run `make docs-check` and verify it passes
+- [x] 8.1 Update the README.md evals section: Jev grades `generation` and its metrics, the `generation-judge` suite, the HTML report, and the `generation` tolerance sentence with its re-measured values
+- [x] 8.2 Extend the Jev line in CLAUDE.md with "and grades answers in the eval". Finish the DECISIONS.md section, and verify that docs/*.md, openspec/project.md and .github/copilot-instructions.md still read true
+- [x] 8.3 Run `make docs` to regenerate the README commands table from the Makefile help text (never edit inside a `generated:` block by hand), then run `make docs-check` and verify it passes
