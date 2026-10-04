@@ -91,4 +91,19 @@ public class CitationsTests
 
         Assert.False(Assert.Single(Citations.Find("See src/A.cs:1-9.", [item])).Found);
     }
+
+    [Fact]
+    public void A_place_nested_in_a_graph_tools_result_is_found()
+    {
+        var trace = ReadItem.Whole("trace_code_symbol",
+            "{\"symbol\":\"IGraphReader.ReadAsync\",\"direction\":\"callers\",\"depth\":2,"
+            + "\"matched\":[{\"symbol\":\"IGraphReader.ReadAsync\",\"path\":\"src/Maf.Lab.Retrieval/Graph/IGraphReader.cs\",\"startLine\":8,\"endLine\":9}],"
+            + "\"candidates\":[],\"reached\":[{\"symbol\":\"BillingGraphTools.TraceCoreAsync\",\"path\":\"src/Maf.Lab.Retrieval/Tools/BillingGraphTools.cs\","
+            + "\"startLine\":49,\"endLine\":86,\"hops\":1,\"isTest\":false}],\"truncated\":false,\"note\":null}", Domains.Codebase);
+
+        var places = Citations.Find("It is called by `BillingGraphTools.TraceCoreAsync` (src/Maf.Lab.Retrieval/Tools/BillingGraphTools.cs:49-86), declared at src/Maf.Lab.Retrieval/Graph/IGraphReader.cs:8-9.", [trace]);
+
+        Assert.Equal(2, places.Count);
+        Assert.All(places, p => Assert.True(p.Found));
+    }
 }

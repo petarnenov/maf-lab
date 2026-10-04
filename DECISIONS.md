@@ -3124,3 +3124,55 @@ be re-run then.
   - `RubricJudge` stays only for the `graph-depth` comparison, which was measured with it and is never gated.
     `GenerationSuite.RubricPass` (0.75) is kept for it. Moving graph-depth to the Jev grade is its own change.
 
+## 80. graph-depth is graded by Jev too; the rubric judge is gone (graph-depth-jev-grade, 2026-10-04)
+
+- **Why.** After §79, `RubricJudge` survived only in the `graph-depth` comparison's end-to-end layer, which left two
+  judges on two scales in one harness. The rubric was also the noisier one, and it scored faithfulness against the
+  case's labelled items rather than against what the turn read. So `graph-depth` "faithfulness" meant something other
+  than `generation`'s.
+- **Now.** Each end-to-end answer is graded by `JevGrader` with `GradeInput(question, answer, turn.Read, [])`, the same
+  request as §79, so cited places are checked in code:
+  - `faithfulness` is claim sentences supported by what the turn read;
+  - `relevance` is whether the answer addresses the question;
+  - whether the answer names the labelled items stays `mentionRecall`, matched in code.
+  A case fails at faithfulness < 0.75, relevance < 1 or no graph call, as in `generation`. A failed request is a judge
+  failure, scored 0 and counted apart. The end-to-end layer refuses to run without `JEV_MAF_LAB`; `--structural-only`
+  needs neither key.
+- **Removed:** `RubricJudge`, `GenerationSuite.RubricPass`, `GraphDepthSuite.NeededContext`.
+- **Not comparable.** Graph-depth end-to-end scores before this change are rubric scores. It is a comparison, never
+  gated or in the baseline, so nothing is re-accepted.
+- **Jev review (jev-usage §7).** No new request: this is §79's grade request, unchanged, sent once per case and
+  variant (24 × 3), with the same closed atomic Nouls, code-side counting and citation lookup, one request per state,
+  pinned model and usage logged, no-key refusal and failure-as-0. It was tested on labelled English and Bulgarian
+  inputs through `generation-judge`.
+- **A graph tool's places, and the protocol restarted.**
+  - The first graph-depth run graded 25 of 46 failing answers down for citing places a `trace_code_symbol` or
+    `change_impact` result holds in `matched[]`, `reached[]` or `tests[].tests[]`. `Citations` read places only from
+    `results[]`; it now reads every object with `path`/`startLine`/`endLine` (or `sectionPath`) at any depth of a tool's
+    JSON.
+  - graph-depth end-to-end faithfulness then read 0.903, 0.876 and 0.808 at depths 2, 3 and 4 (it was 0.630, 0.731
+    and 0.720), and no failure was a citation. The deeper the trace, the more claims and the lower the faithfulness.
+  - The fix changes the grade's code, so the §79 protocol restarted for `generation`. Ten runs (`20261004-165604-r1…r10`) were
+    accepted as their mean: faithfulness 0.964, relevance 0.95, completeness 0.662.
+  - Ranges of every 3-run mean and the resulting tolerances:
+
+    | Metric | 3-run means | Tolerance |
+    |---|---|---|
+    | faithfulness | 0.955–0.978 | 0.025 |
+    | completeness | — | 0.05 |
+    | retrievalJudged | — | 0.035 |
+    | sourceRecall | — | 0.05 |
+    | jevGroundedAgreement | — | 0.06 |
+    | jevChecked | — | 0.03 |
+
+  - `generation` thresholds: faithfulness 0.9, relevance 0.9, completeness 0.55, referenceAgreement 0.95,
+    retrievalJudged 0.85.
+  - `generation-judge`: five runs (20261004-172208, 20261004-172302, 20261004-172402, 20261004-172500, 20261004-172602), then accepted from one fresh run, as amendment 2 says.
+    Thresholds: grade.accuracy 0.9, points.pointAccuracy 0.85, sentences.sentenceAccuracy 0.9,
+    sentences.citationDetection 0.85.
+- **Verified.** Three `make eval-generation` runs (each the mean of 3) passed with nothing changed: faithfulness 0.958,
+  0.956 and 0.942 against the baseline's 0.964 (20261004-172918, -173913, -174917).
+- **Open: the generation-judge baseline is a single run.** The run accepted under amendment 2 read pointAccuracy 0.873,
+  below the five measured runs (0.901–0.930). That is the single-run tail that amendment 1 removed for `generation`.
+  It is not tuned here; it is left for the user to decide.
+

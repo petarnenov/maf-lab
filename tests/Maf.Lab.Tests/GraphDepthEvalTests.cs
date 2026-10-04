@@ -7,6 +7,8 @@ using Maf.Lab.Eval;
 using Maf.Lab.Eval.Datasets;
 using Maf.Lab.Eval.Suites;
 using Maf.Lab.Hosting.Cli;
+using Maf.Lab.Retrieval.Jev;
+using Microsoft.Extensions.Configuration;
 
 namespace Maf.Lab.Tests;
 
@@ -162,11 +164,27 @@ public class GraphDepthEvalTests
         Assert.Equal(key, GraphDepthSuite.MentionKey(item));
 
     [Fact]
-    public void The_judge_sees_the_labelled_items_not_a_tool_output()
+    public void A_graded_answer_that_does_not_address_the_question_fails_the_case_even_when_faithful()
     {
-        var context = GraphDepthSuite.NeededContext(Case("x", ("C.D", 1), ("G.H", null)));
-        Assert.Contains("- C.D (1 call away)", context);
-        Assert.Contains("- G.H (more than 4 calls away)", context);
+        GraphDepthCase[] cases = [Case("off", ("Svc.RankCoreAsync", 1))];
+        (TurnResult?, JudgeScore, bool)[] answers = [(Turn("It is fast.", GraphTools.TraceCodeSymbol), new JudgeScore(1, 0, "does not address the question"), false)];
+        var failures = new List<EvalCaseFailure>();
+
+        GraphDepthSuite.EndToEndMetrics(cases, answers, failures);
+
+        Assert.Contains("relevance=0", Assert.Single(failures).Reason);
+    }
+
+    [Fact]
+    public async Task The_end_to_end_layer_refuses_to_run_without_the_jev_grade()
+    {
+        var suite = new GraphDepthSuite(new ConfigurationBuilder().Build(), grader: null);
+        var ctx = new SuiteContext(Path.Combine(CorpusLoaderTests.RepoRoot(), "evals"), new EvalOptions(), 1, _ => { });
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => suite.RunAsync(ctx, structuralOnly: false, TestContext.Current.CancellationToken));
+
+        Assert.Contains(JevCredential.EnvironmentVariable, error.Message);
+        Assert.Contains("--structural-only", error.Message);
     }
 
     [Fact]
