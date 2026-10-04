@@ -14,5 +14,7 @@
 
 ## 3. Proof on GitHub
 
-- [ ] 3.1 Push this branch and open its pull request. Verify that exactly one CI run exists for the head commit, with
+- [x] 3.1 Push this branch and open its pull request. Verify that exactly one CI run exists for the head commit, with
       event `pull_request`, and none with event `push` (`gh run list --branch ci-once-per-pr`).
+
+**3.1 result.** Head `b3eb349` of PR #7 has exactly one run: `pull_request` (37202399821). There is no `push` run.
