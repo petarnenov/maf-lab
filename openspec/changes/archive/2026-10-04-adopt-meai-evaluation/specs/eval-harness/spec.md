@@ -7,7 +7,9 @@ The harness SHALL read datasets from `evals/`: `selection.jsonl` (question,
 expectedTools — empty means no tool), `retrieval.jsonl` (query,
 relevantChunkIds), `generation.jsonl` (question, reference answer, the reference answer's atomic statements as
 reference points, expected source docIds), `generation-judge.jsonl` (question, answer, reference points, and for each
-point whether a reviewer found it stated and whether contradicted), `injection.jsonl` (question, forbidden strings,
+point whether a reviewer found it stated and whether contradicted), `generation-sentences.jsonl` (question, answer, the
+sources it was given, and for each sentence whether a reviewer found it a claim, supported, a citation, or ambiguous),
+`injection.jsonl` (question, forbidden strings,
 forbidden tenant ids), and `confirmation.jsonl` (a proposal and the facts its summary must state).
 
 Every generation case SHALL carry at least one reference point. A point SHALL state one fact, step or condition, so
@@ -50,6 +52,10 @@ a relevance floor does no harm but never that it does its job.
 - **WHEN** the harness loads its datasets
 - **THEN** it does not require the conformance, verdict or recorded-run files to be present
 
+#### Scenario: Sentence labels out of step with the answer
+- **WHEN** the harness loads a `generation-sentences.jsonl` row whose labelled sentences are not exactly the sentences code cuts its answer into
+- **THEN** loading fails and names the row
+
 #### Scenario: A generation case without reference points
 - **WHEN** the harness loads a generation row with no reference points
 - **THEN** loading fails and names the row
@@ -61,7 +67,10 @@ recall@20 and MRR; and injection pass rate.
 The generation suite SHALL grade each answer with Jev, using the shared client and the pinned model, in one request
 per case. Each question SHALL be a closed yes/no judgment about one sentence, one reference point or one source.
 Code SHALL split the answer into sentences, count the answers and compute the metrics; Jev SHALL NOT be asked to
-count, compute or compare numbers or dates. A Noul SHALL count as yes at 0.5 or above. Per case:
+count, compute or compare numbers or dates. A Noul SHALL count as yes at 0.5 or above. A place a sentence cites — a
+`path:start-end` range, or a procedure section and step — SHALL be looked up by code in the sources the answer was given,
+including a previous turn's: a place no source holds SHALL make the sentence an unsupported claim, and a found place
+SHALL be masked before Jev reads the sentence. Per case:
 - `faithfulness` — the share of the answer's claim sentences that its sources support, 1 when no sentence makes a claim;
 - `relevance` — 1 when the answer addresses the question, else 0;
 - `completeness` — the share of the case's reference points the answer states;
@@ -122,6 +131,14 @@ Both SHALL be able to gate the configured production variant.
 - **WHEN** the answer only says that the assistant cannot answer from what it found
 - **THEN** its `faithfulness` is 1, and `completeness` shows what it left out
 
+#### Scenario: An invented citation
+- **WHEN** a sentence cites `src/X.cs:88-95` and no source the answer was given covers those lines
+- **THEN** the sentence is an unsupported claim whatever Jev answers, and the failure reason names the place
+
+#### Scenario: A correct citation
+- **WHEN** a sentence cites "Section 3 → Step 2" and a source's section path names that section and step
+- **THEN** Jev reads the sentence with the place masked and judges only what it says
+
 #### Scenario: A contradicted reference point
 - **WHEN** the answer states a deadline that conflicts with a reference point
 - **THEN** `referenceAgreement` drops for that case and the failure reason names the point
@@ -172,7 +189,9 @@ answering model and without tools:
 - over `evals/answer-check.jsonl`, whether the grade's faithfulness fails exactly on the answers a reviewer found
   unsupported, and its relevance on the answers found off the question;
 - over `evals/generation-judge.jsonl`, whether each reference point is graded stated or contradicted as the reviewer
-  labelled it.
+  labelled it;
+- over `evals/generation-sentences.jsonl`, whether each unambiguous sentence is graded a claim and, if one, supported
+  as the reviewer labelled it — correct and invented citations reported apart from other claims.
 
 It SHALL report accuracy overall and per domain, language and split. Beside its own, it SHALL report the production
 answer check's accuracy on the same `answer-check.jsonl` rows. It SHALL name every case it got wrong with the answers
@@ -199,6 +218,10 @@ English and Bulgarian cases and SHALL carry no firm's client data.
 #### Scenario: The same input twice
 - **WHEN** the suite runs twice over unchanged datasets with the same pinned model
 - **THEN** every case lands on the same side of each judgment in both runs, unless one of its answers sits in the review band, where a probability near the 0.5 cut may move between runs
+
+#### Scenario: Citations reported apart
+- **WHEN** the suite grades the labelled sentences
+- **THEN** the report gives the share of correct citations graded supported and the share of invented ones caught, separately from the other claims
 
 #### Scenario: Beside the production check
 - **WHEN** the suite finishes
