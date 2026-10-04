@@ -1,23 +1,10 @@
 # continuous-integration Specification
 
 ## Purpose
-Runs maf-lab's automated checks on GitHub Actions for every push and pull request, without models or secrets, and
+Runs maf-lab's automated checks on GitHub Actions for every pull request and every push to main, without models or secrets, and
 offers the model-based evals as an on-demand workflow.
 
 ## Requirements
-
-### Requirement: Checks on every push and pull request
-A workflow SHALL run on every push to any branch and on every pull request, with independent jobs for spec
-validation, .NET build and tests, web lint/test/build, and an end-to-end stack test. The workflow run MUST fail if any
-job fails.
-
-#### Scenario: Green main
-- **WHEN** the current main branch is pushed
-- **THEN** the specs, dotnet, web and e2e jobs all succeed
-
-#### Scenario: Broken test fails the run
-- **WHEN** a commit makes a .NET or web test fail
-- **THEN** the corresponding job and the workflow run fail
 
 ### Requirement: .NET job
 The .NET job SHALL use the SDK version pinned in `global.json`, build the solution with warnings as errors, and run
@@ -84,15 +71,40 @@ workspace.
 - **THEN** the job log shows the key only as masked and no step prints its value
 
 ### Requirement: Local parity and caching
-`make ci` SHALL run the same checks as the push workflow locally, including `make docs-check`. Workflows SHALL cache
-NuGet and npm dependencies keyed on their lock/props files.
+`make ci` SHALL run the same checks as the CI workflow (`ci.yml`) locally, including `make docs-check`. Workflows SHALL
+cache NuGet and npm dependencies keyed on their lock/props files.
 
 #### Scenario: Local CI
 - **WHEN** a developer runs `make ci`
 - **THEN** spec validation, the documentation check, .NET tests, web checks and the model-free e2e run in sequence and the exit code reflects the result
 
-### Requirement: Documentation check on every push
-The push workflow SHALL run `make docs-check` in the specs job, on every push and pull request. The workflow run MUST
+### Requirement: Checks on every pull request and on main
+A workflow SHALL run on every pull request, on every push to `main`, and when started by hand for any branch, with independent jobs for spec
+validation, .NET build and tests, web lint/test/build, and an end-to-end stack test. The workflow run MUST fail if any
+job fails.
+
+A pull request's run SHALL test the branch merged with `main`. A push to a branch other than `main` SHALL NOT start
+the workflow by itself, so a branch with an open pull request is checked once per commit, not twice.
+
+#### Scenario: Green main
+- **WHEN** the current main branch is pushed
+- **THEN** the specs, dotnet, web and e2e jobs all succeed
+
+#### Scenario: Broken test fails the run
+- **WHEN** a commit makes a .NET or web test fail
+- **THEN** the corresponding job and the workflow run fail
+
+#### Scenario: One run per pull request commit
+- **WHEN** a commit is pushed to a branch that has an open pull request
+- **THEN** exactly one workflow run checks that commit, the pull request's
+
+#### Scenario: A branch without a pull request
+- **WHEN** a commit is pushed to a branch with no pull request
+- **THEN** no workflow run starts until a pull request is opened or a run is started by hand
+
+### Requirement: Documentation check on every pull request and on main
+The CI workflow SHALL run `make docs-check` in the specs job, on every run: every pull request, every push to `main`,
+and every run started by hand. The workflow run MUST
 fail when the check fails. The check MUST NOT need secrets, models, Docker or the .NET SDK.
 
 #### Scenario: Doc left behind fails the run

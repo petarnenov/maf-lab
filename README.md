@@ -204,7 +204,7 @@ make help                  # every target
 | `make specs` | Validate all OpenSpec specs and changes (strict) |
 | `make docs` | Rewrite the generated blocks in README, project.md, config.yaml and the Copilot instructions |
 | `make docs-check` | Check the docs against the code (generated blocks, routes, make targets, models, links); changes nothing |
-| `make ci` | Run locally what GitHub Actions runs on every push |
+| `make ci` | Run locally what GitHub Actions runs on every pull request |
 | `make ci-e2e` | Model-free end-to-end: stack with the Ollama stub, index, verify, A2A conformance, test generation (CI mode) |
 | `make testgen-e2e` | Model-free test generation end to end: refresh, run, verify, accept (used by ci-e2e, against its clone) |
 | `make coverage` | Refresh the coverage snapshot at main (both toolchains, through the running stack) |
@@ -553,7 +553,7 @@ GitHub Actions ([`.github/workflows`](.github/workflows)) — `make ci` runs the
 
 | Workflow | Trigger | What runs |
 |---|---|---|
-| **CI** (`ci.yml`) | every push and pull request | `specs` (OpenSpec strict validation and `make docs-check`) · `dotnet` (build with warnings as errors, unit + Testcontainers integration tests) · `web` (lint, Vitest, build) · `e2e` (full stack behind the balancer on :7171, corpus indexed, `make verify`, the A2A conformance probe and model-free test generation: `make ci-e2e`) |
+| **CI** (`ci.yml`) | every pull request, every push to `main`, and on demand | `specs` (OpenSpec strict validation and `make docs-check`) · `dotnet` (build with warnings as errors, unit + Testcontainers integration tests) · `web` (lint, Vitest, build) · `e2e` (full stack behind the balancer on :7171, corpus indexed, `make verify`, the A2A conformance probe and model-free test generation: `make ci-e2e`) |
 | **Evals** (`evals.yml`) | manual (*Actions → Evals → Run workflow*, choose a suite) | real embeddings in compose Ollama + chat on Ollama Cloud and intent on Jev (`OLLAMA_API_KEY` and `JEV_MAF_LAB` repository secrets); reports uploaded as an artifact |
 
 The e2e job needs **no model and no secret**, so it also runs for pull requests from forks. `CI_MODE=1` replaces both
