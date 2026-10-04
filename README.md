@@ -107,7 +107,10 @@ The embedding model runs in **two Ollama instances**: `ollama` (11435) embeds se
 is pinned to its own CPUs (`OLLAMA_INTERACTIVE_CPUS=0-3`, `OLLAMA_BATCH_CPUS=4-15`) and every request names the
 matching thread count (`OLLAMA_INTERACTIVE_THREADS=4`, `OLLAMA_BATCH_THREADS=12`): Ollama does not derive it from the
 container, and a request with another count — or none, e.g. a manual `curl` — reloads the model on all CPUs. Change a
-set and its thread count together; `make doctor` checks them against Docker's CPUs.
+set and its thread count together; `make doctor` checks them against Docker's CPUs. To set them once per machine, put
+them in the git-ignored `compose/.env` (plain `KEY=value`, no quotes): compose and make both read it, and the
+environment or the make command line still wins. Secrets stay in the environment — make skips `JEV_MAF_LAB` and any
+`*_KEY`, `*_TOKEN`, `*_SECRET` or `*_PASSWORD` in that file.
 
 The balancer's routes, as `compose/lb/nginx.conf` declares them:
 
