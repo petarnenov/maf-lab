@@ -217,3 +217,32 @@ SHALL be stored with the eval reports, outside version control, and SHALL never 
 #### Scenario: Nothing reaches the logs
 - **WHEN** a generation run grades a case
 - **THEN** the logs carry the request's model, token usage, latency and counts, and never a sentence, a point or a source's text
+
+### Requirement: A suite that drives the live agent is read as the mean of several runs
+Configuration SHALL be able to set, per suite, how many times one invocation runs it, and the command line SHALL be
+able to override that for one invocation. When a suite runs more than once:
+- each run SHALL write its own report;
+- the metrics the gate compares, the thresholds check and the baseline accepts SHALL be each metric's mean over the
+  runs, a metric some runs lack being averaged over the runs that report it;
+- the combined report SHALL name its runs and keep every run's failures, each marked with its run.
+
+The `generation` suite SHALL run three times by default, because the agent answers differently on every run and a
+single run in the tail of that spread reads as a regression, or, accepted as the baseline, makes later runs read as
+regressions.
+
+#### Scenario: One bad run among three
+- **WHEN** the generation suite runs three times and one run's faithfulness is well below the other two
+- **THEN** the gate compares the mean of the three runs, and that run's failing cases are listed marked with its run
+
+#### Scenario: A mean below the threshold
+- **WHEN** one of three runs clears a threshold and the mean of the three does not
+- **THEN** the suite fails
+
+#### Scenario: Accepting from several runs
+- **WHEN** the baseline is accepted from an invocation that ran the suite ten times
+- **THEN** the baseline holds each metric's mean over the ten runs, and each run's report is kept
+
+#### Scenario: A single run
+- **WHEN** a suite is configured to run once
+- **THEN** its report and gate behave exactly as before
+

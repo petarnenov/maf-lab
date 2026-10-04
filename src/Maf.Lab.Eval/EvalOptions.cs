@@ -37,6 +37,12 @@ public sealed class EvalOptions
     /// </summary>
     public List<MetricTolerance> RegressionTolerances { get; set; } = [];
 
+    /// <summary>
+    /// suite → how many times a run executes it, its metrics read as the mean (adopt-meai-evaluation). For a suite that
+    /// drives the live agent, whose answers vary from run to run; <c>--repeat N</c> overrides it for one run.
+    /// </summary>
+    public Dictionary<string, int> Repeat { get; set; } = new();
+
     /// <summary>The Jev grade of generated answers (adopt-meai-evaluation).</summary>
     public JudgeOptions Judge { get; set; } = new();
 

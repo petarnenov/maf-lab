@@ -227,7 +227,7 @@ verify: ## Verify the running stack through the load balancer (37 checks), then 
 	MODEL_FREE=$(CI_MODE) node copilot-runtime/conformance.mjs $(BASE_URL)
 
 eval: require-dotnet ## Run evals (SUITE=all|selection|retrieval|generation|injection|confirmation|intent|domain|presentation|guardrail|answer-check|generation-judge) against the stack's MCP servers
-	Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval -- --suite $(SUITE)
+	Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval -- --suite $(SUITE)$(if $(REPEAT), --repeat $(REPEAT))
 
 EVAL_HOST = Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval --
 EVAL = $(EVAL_HOST) --suite
@@ -241,8 +241,8 @@ screenshots: require-npm ## Re-take the README screenshots from the running stac
 	@cd tools/screenshots && npx playwright install chromium >/dev/null
 	cd tools/screenshots && BASE_URL=$(BASE_URL) SHOTS=$(SHOTS) node capture.mjs
 
-eval-accept: require-dotnet ## Run the evals and accept their metrics as the new baseline (commit the result)
-	$(EVAL) $(SUITE) --accept-baseline
+eval-accept: require-dotnet ## Run the evals and accept their metrics as the new baseline (REPEAT=N: mean of N runs; commit the result)
+	$(EVAL) $(SUITE) --accept-baseline$(if $(REPEAT), --repeat $(REPEAT))
 
 eval-selection: require-dotnet ## Eval: tool selection (recall/precision)
 	$(EVAL) selection
@@ -250,8 +250,8 @@ eval-selection: require-dotnet ## Eval: tool selection (recall/precision)
 eval-retrieval: require-dotnet ## Eval: retrieval (recall@5/@20, MRR per mode)
 	$(EVAL) retrieval
 
-eval-generation: require-dotnet ## Eval: answers graded by Jev (faithfulness, relevance, completeness vs reference points)
-	$(EVAL) generation
+eval-generation: require-dotnet ## Eval: answers graded by Jev, mean of 3 runs (REPEAT=N to change)
+	$(EVAL) generation$(if $(REPEAT), --repeat $(REPEAT))
 
 eval-injection: require-dotnet ## Eval: prompt-injection pass rate
 	$(EVAL) injection

@@ -19,7 +19,7 @@ namespace Maf.Lab.Eval;
 
 /// <summary>
 /// dotnet run --project src/Maf.Lab.Eval -- --suite selection|retrieval|generation|injection|confirmation|intent|guardrail|domain|presentation|answer-check|generation-judge|all
-///   [--rerank [--reranker llm,jev]] [--contextual] [--limit N] [--import-feedback [--api-db "Data Source=..."]]
+///   [--rerank [--reranker llm,jev]] [--contextual] [--limit N] [--repeat N] [--import-feedback [--api-db "Data Source=..."]]
 /// dotnet run --project src/Maf.Lab.Eval -- --ask "question" [--firm firm-a] [--trace-json path]   (one turn, its trace printed)
 /// Run on demand, and always after changing prompts, tool descriptions, the model, the tool set or chunking.
 /// Exit code 1 when any suite is below its configured thresholds.
@@ -88,17 +88,44 @@ public static class Program
                 ["systemPrompt"] = configuration["Agent:SystemPrompt"] ?? Maf.Lab.Api.Agent.SystemPrompt.DefaultVersion,
                 ["retrievalMode"] = retrieval.Mode,
             };
-            IReadOnlyList<EvalVariantResult> variants = name switch
+            var repeat = flags.TryGetValue("repeat", out var r) ? int.Parse(r) : options.Repeat.GetValueOrDefault(name, 1);
+            var runs = new List<IReadOnlyList<EvalVariantResult>>();
+            var runIds = new List<string>();
+            for (var run = 1; run <= Math.Max(1, repeat); run++)
+            {
+                var thisRun = repeat > 1 ? $"{stamp}-{name}-r{run}" : $"{stamp}-{name}";
+                if (repeat > 1)
+                {
+                    Console.WriteLine($"   run {run}/{repeat}");
+                }
+                var one = await RunSuiteAsync(name, thisRun);
+                runs.Add(one);
+                if (repeat > 1)
+                {
+                    // Each run keeps its own report, ungated: the mean is what is compared and accepted.
+                    runIds.Add(thisRun);
+                    var single = new EvalReport(thisRun, name, started, DateTimeOffset.UtcNow, settings, one, one.All(v => v.Passed), []);
+                    Console.WriteLine($"   run {run}/{repeat} → {await ReportWriter.WriteAsync(root, single, ct)}");
+                }
+            }
+            if (repeat > 1)
+            {
+                settings["repeat"] = repeat.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                settings["runs"] = string.Join(",", runIds);
+            }
+            var variants = RepeatedRuns.Mean(runs);
+
+            async Task<IReadOnlyList<EvalVariantResult>> RunSuiteAsync(string name, string runId) => name switch
             {
                 "selection" => await new SelectionSuite(host).RunAsync(ctx, ct),
                 "retrieval" => await RunRetrievalAsync(host, configuration, options, retrieval, ctx, flags, settings, ct),
-                "generation" => await RunGenerationAsync(host, options, root, $"{stamp}-{name}", ctx, settings, ct),
+                "generation" => await RunGenerationAsync(host, options, root, runId, ctx, settings, ct),
                 "injection" => await new InjectionSuite(host).RunAsync(ctx, ct),
                 "confirmation" => await new ConfirmationSuite(host).RunAsync(ctx, ct),
                 "intent" => await new IntentSuite(host).RunAsync(ctx, ct),
                 "guardrail" => await new GuardrailSuite(host.Services).RunAsync(ctx, ct),
                 "answer-check" => await new AnswerCheckSuite(host.Services).RunAsync(ctx, ct),
-                "generation-judge" => await RunGenerationJudgeAsync(host, options, root, $"{stamp}-{name}", ctx, settings, ct),
+                "generation-judge" => await RunGenerationJudgeAsync(host, options, root, runId, ctx, settings, ct),
                 "domain" => await new DomainSuite(host).RunAsync(ctx, ct),
                 "presentation" => await new PresentationSuite(host, host.Services.GetRequiredService<IChatClientFactory>()).RunAsync(ctx, ct),
                 _ => throw new ArgumentException($"Unknown suite '{name}'."),
@@ -154,10 +181,15 @@ public static class Program
         var suite = new GenerationSuite(host, GradeReport.Configure(root, runId, new JevGenerationEvaluator(grader)));
         var variants = await suite.RunAsync(ctx, ct);
         settings["judgeModel"] = grader.Model;
-        settings["judgeInputTokens"] = suite.InputTokens.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        AddTokens(settings, suite.InputTokens);
         Console.WriteLine($"   report → {await GradeReport.WriteHtmlAsync(root, runId, GenerationSuite.ScenarioPrefix, ct)}");
         return variants;
     }
+
+    /// <summary>Input tokens the grade was charged for, summed over a repeated suite's runs.</summary>
+    private static void AddTokens(Dictionary<string, string> settings, int tokens) =>
+        settings["judgeInputTokens"] = ((settings.TryGetValue("judgeInputTokens", out var t) ? int.Parse(t, System.Globalization.CultureInfo.InvariantCulture) : 0) + tokens)
+            .ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     /// <summary>The generation grade measured on labelled answers, without the agent; refused without the key.</summary>
     private static async Task<IReadOnlyList<EvalVariantResult>> RunGenerationJudgeAsync(EvalAgentHost host, EvalOptions options, string root,
@@ -170,7 +202,7 @@ public static class Program
             GradeReport.Configure(root, runId, new JevGenerationEvaluator(grader)));
         var variants = await suite.RunAsync(ctx, ct);
         settings["judgeModel"] = grader.Model;
-        settings["judgeInputTokens"] = suite.InputTokens.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        AddTokens(settings, suite.InputTokens);
         Console.WriteLine($"   report → {await GradeReport.WriteHtmlAsync(root, runId, GenerationJudgeSuite.ScenarioPrefix, ct)}");
         return variants;
     }

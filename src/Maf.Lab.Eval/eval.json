@@ -70,6 +70,9 @@
         "benignPass:content:holdout": 0.95
       }
     },
+    "Repeat": {
+      "generation": 3
+    },
     "ContextualCollection": "maf_chunks_ctx",
     "RegressionTolerance": 0.02,
     "RegressionTolerances": [

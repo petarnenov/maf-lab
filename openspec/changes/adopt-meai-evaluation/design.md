@@ -209,6 +209,25 @@ the eval-harness spec forbids. That attempt is discarded. The protocol below is 
    changed. A verification failure is recorded as such in DECISIONS.md and the tolerance is **not** moved within this
    change; the finding goes back to the user.
 
+**Amendment after the first verification failed (fixed before measuring again).** One `generation` run is too noisy
+a unit. The run accepted as the baseline (0.977) was above the ten measured runs' maximum, and a verification run
+(0.903) was below their minimum, with the production check confirming that the agent answered worse in that run.
+From here:
+
+1. The unit for `generation` is the **mean of 3 runs** (`Evals:Repeat:generation` = 3; `--repeat N` / `REPEAT=N`).
+   Every run keeps its own report; the mean is what the gate compares and what the baseline holds.
+2. **Measure and accept together:** `make eval-accept SUITE=generation REPEAT=10`. The baseline is the mean of ten
+   runs, not one run that may sit in a tail.
+3. **Derive, mechanically, from those ten runs' reports:** for each metric, take the mean of every 3 of the 10 runs
+   (all 120 combinations). The tolerance is the range of those means, rounded up to the next 0.005 and never below
+   0.02. The threshold is the lowest 3-run mean minus the tolerance, rounded down to 0.05. Diagnostics stay ungated.
+4. Commit the tolerances, thresholds and the baseline before any verification.
+5. **Verify:** three `make eval-generation` runs (each a mean of 3) must pass, with nothing changed. A failure is
+   recorded and goes back to the user; nothing is moved.
+
+`generation-judge` grades fixed answers. Its verdicts did not move across six runs, so it keeps single runs, its
+accepted baseline and its tolerances.
+
 ## Risks / Trade-offs
 
 - [Jev is English-first. Bulgarian answers may be graded worse] → `generation-judge` reports Bulgarian separately, and
