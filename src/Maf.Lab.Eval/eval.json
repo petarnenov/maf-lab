@@ -122,6 +122,24 @@
         "Tolerance": 0.15,
         "Metric": "structuralRecall:bg-latn",
         "Measured": "structuralRecall:bg-latn 0.571-0.714 over the same 4 runs (range 0.143): one of 7 rows."
+      },
+      {
+        "Suite": "generation",
+        "Tolerance": 0.105,
+        "Metric": "faithfulness",
+        "Measured": "0.8958-1.0000 over 5 consecutive runs on 30a65e9 (measure-generation-tolerance, 2026-10-04) (range 0.1042); an LLM judge scoring prose, one of twelve answers at 0.5 moves the mean by 0.042. Wider than the 0.083 seen earlier the same day."
+      },
+      {
+        "Suite": "generation",
+        "Tolerance": 0.17,
+        "Metric": "jevGroundedAgreement",
+        "Measured": "0.8333-1.0000 over 5 consecutive runs on 30a65e9 (measure-generation-tolerance, 2026-10-04) (range 0.1667): it follows faithfulness, two of twelve cases."
+      },
+      {
+        "Suite": "generation",
+        "Tolerance": 0.17,
+        "Metric": "jevUncertain",
+        "Measured": "0.0833-0.2500 over 5 consecutive runs on 30a65e9 (measure-generation-tolerance, 2026-10-04) (range 0.1667). Lower is better here; the gate has no direction, so this tolerance also keeps an improvement from failing it."
       }
     ]
   }
