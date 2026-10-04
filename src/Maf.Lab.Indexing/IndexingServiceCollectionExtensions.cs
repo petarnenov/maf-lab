@@ -24,6 +24,7 @@ public static class IndexingServiceCollectionExtensions
         services.TryAddSingleton<MigrationService>();
         services.AddGraphStore(configuration);
         services.TryAddSingleton<Graph.GraphBuildService>();
+        services.TryAddSingleton<Graph.RetrievalCopyService>();
         return services;
     }
 }

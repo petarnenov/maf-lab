@@ -29,6 +29,12 @@ public sealed record SearchSettings(string Mode, string Fusion, string DenseVect
 public sealed record SearchOutcome(SearchDocumentsResult Result, IReadOnlyList<ScoredChunk> Chunks,
     System.Text.Json.Nodes.JsonObject? Relevance = null);
 
+/// <param name="chunkSearch">
+/// Measurement only (neo4j-retrieval-spike): another chunk search to use instead of <paramref name="search"/>, passed by
+/// the eval and never registered. Each call site names <paramref name="search"/> directly when it is null, so the code
+/// graph keeps the production path to <see cref="TenantScopedSearch.QueryAsync"/> — a call through the interface alone
+/// would hide it.
+/// </param>
 public sealed partial class DocumentSearchService(
     TenantScopedSearch search,
     IDenseEncoder dense,
@@ -38,7 +44,8 @@ public sealed partial class DocumentSearchService(
     IQueryTranslator translator,
     IOptions<RetrievalOptions> options,
     IOptions<ModelOptions> models,
-    ILogger<DocumentSearchService> logger)
+    ILogger<DocumentSearchService> logger,
+    IChunkSearch? chunkSearch = null)
 {
     public const int MaxResultsCap = 10;
     private readonly RetrievalOptions _options = options.Value;
@@ -129,7 +136,7 @@ public sealed partial class DocumentSearchService(
         };
         clock.Restart();
         var candidates = await LabTelemetry.InSpanAsync("retrieval.query",
-            () => search.QueryAsync(principal, request, ct),
+            () => chunkSearch is null ? search.QueryAsync(principal, request, ct) : chunkSearch.QueryAsync(principal, request, ct),
             ("retrieval.mode", settings.Mode), ("retrieval.fusion", settings.Fusion));
         var qdrantMs = clock.ElapsedMilliseconds;
 
@@ -228,12 +235,12 @@ public sealed partial class DocumentSearchService(
                 if (denseVector is not null)
                 {
                     diagnostics.Dense = SearchDiagnostics.Candidates(
-                        await search.QueryAsync(principal, unfiltered with { Mode = RetrievalModes.Dense }, ct), settings.DenseFloor);
+                        await (chunkSearch is null ? search.QueryAsync(principal, unfiltered with { Mode = RetrievalModes.Dense }, ct) : chunkSearch.QueryAsync(principal, unfiltered with { Mode = RetrievalModes.Dense }, ct)), settings.DenseFloor);
                 }
                 if (sparseVector is { IsEmpty: false })
                 {
                     diagnostics.Sparse = SearchDiagnostics.Candidates(
-                        await search.QueryAsync(principal, unfiltered with { Mode = RetrievalModes.Sparse }, ct), settings.SparseFloor);
+                        await (chunkSearch is null ? search.QueryAsync(principal, unfiltered with { Mode = RetrievalModes.Sparse }, ct) : chunkSearch.QueryAsync(principal, unfiltered with { Mode = RetrievalModes.Sparse }, ct)), settings.SparseFloor);
                 }
                 branchMs = clock.ElapsedMilliseconds;
             }
@@ -242,13 +249,13 @@ public sealed partial class DocumentSearchService(
                 // `candidates` already cleared the floor, so re-query without it or the near misses are invisible.
                 diagnostics.Dense = settings.DenseFloor is null
                     ? SearchDiagnostics.Candidates(candidates)
-                    : SearchDiagnostics.Candidates(await search.QueryAsync(principal, request with { DenseFloor = null }, ct), settings.DenseFloor);
+                    : SearchDiagnostics.Candidates(await (chunkSearch is null ? search.QueryAsync(principal, request with { DenseFloor = null }, ct) : chunkSearch.QueryAsync(principal, request with { DenseFloor = null }, ct)), settings.DenseFloor);
             }
             else if (settings.Mode == RetrievalModes.Sparse)
             {
                 diagnostics.Sparse = settings.SparseFloor is null
                     ? SearchDiagnostics.Candidates(candidates)
-                    : SearchDiagnostics.Candidates(await search.QueryAsync(principal, request with { SparseFloor = null }, ct), settings.SparseFloor);
+                    : SearchDiagnostics.Candidates(await (chunkSearch is null ? search.QueryAsync(principal, request with { SparseFloor = null }, ct) : chunkSearch.QueryAsync(principal, request with { SparseFloor = null }, ct)), settings.SparseFloor);
             }
             diagnostics.Timings["embedMs"] = embedMs;
             diagnostics.Timings["sparseEncodeMs"] = sparseMs;

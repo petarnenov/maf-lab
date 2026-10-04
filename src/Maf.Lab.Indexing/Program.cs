@@ -106,6 +106,13 @@ public static class Program
                     Console.WriteLine(JsonSerializer.Serialize(summaries, Pretty));
                     return 0;
                 }
+                case "neo4j-chunks":
+                {
+                    // neo4j-retrieval-spike: the collection named by Qdrant:Collection, copied as it is into Neo4j.
+                    var summary = await RetrievalCopyWithProgressAsync(services, cts.Token);
+                    Console.WriteLine(JsonSerializer.Serialize(summary, Pretty));
+                    return summary.Rejected > 0 ? 1 : 0;
+                }
                 case "drift":
                 {
                     var report = await DriftWithProgressAsync(services, tenants, cts.Token);
@@ -210,6 +217,32 @@ public static class Program
                 $"{s.Source}: {s.NodesWritten + s.EdgesWritten} written, {s.NodesUnchanged + s.EdgesUnchanged} unchanged, " +
                 $"{s.NodesRemoved + s.EdgesRemoved} removed ({s.NodesTotal} nodes, {s.EdgesTotal} edges)")));
             return summaries;
+        }
+        catch (OperationCanceledException)
+        {
+            bar.Cancel();
+            throw;
+        }
+        catch (Exception ex)
+        {
+            bar.Fail(ex.GetType().Name);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// The retrieval spike's copy under a progress bar on stderr (stdout keeps the JSON summary): reading the points, then
+    /// writing chunks, terms and their weights. Ends in one line with what was copied and how long it took.
+    /// </summary>
+    private static async Task<Graph.RetrievalCopySummary> RetrievalCopyWithProgressAsync(IServiceProvider services, CancellationToken ct)
+    {
+        using var bar = new ConsoleProgress("neo4j-chunks");
+        try
+        {
+            var s = await services.GetRequiredService<Graph.RetrievalCopyService>().RunAsync(new IndexProgressBar(bar), ct);
+            bar.Succeed($"{s.Collection}: {s.Chunks} chunks, {s.Terms} terms, {s.Edges} weights; {s.Written} written, {s.Unchanged} unchanged, " +
+                $"{s.RemovedNodes + s.RemovedEdges} removed, {s.Rejected} rejected in {s.Seconds}s");
+            return s;
         }
         catch (OperationCanceledException)
         {
