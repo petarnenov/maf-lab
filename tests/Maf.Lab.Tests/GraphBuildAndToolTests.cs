@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Maf.Lab.CodeSearch;
 using Maf.Lab.CodeSearch.Tools;
 using Maf.Lab.Domain.Graph;
 using Maf.Lab.Domain.Tenancy;
@@ -8,6 +9,7 @@ using Maf.Lab.Retrieval.Auth;
 using Maf.Lab.Retrieval.Graph;
 using Maf.Lab.Retrieval.Tools;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
 using Neo4j.Driver;
 
@@ -232,8 +234,9 @@ public class GraphBuildAndToolTests
     private static BillingGraphTools BillingTools(FakeGraph graph) =>
         new(graph, new FixedPrincipalAccessor(FirmA), NullLogger<BillingGraphTools>.Instance);
 
-    private static CodeGraphTools CodeTools(FakeGraph graph) =>
-        new(graph, new FixedPrincipalAccessor(FirmA), NullLogger<CodeGraphTools>.Instance);
+    private static CodeGraphTools CodeTools(FakeGraph graph, int? pin = null) =>
+        new(graph, new FixedPrincipalAccessor(FirmA), NullLogger<CodeGraphTools>.Instance,
+            Options.Create(new CodeSearchOptions { GraphDepthPin = pin }));
 
     [Fact]
     public async Task An_account_trace_returns_its_neighbourhood_and_its_firms_latest_runs()
@@ -361,7 +364,9 @@ public class GraphBuildAndToolTests
         Assert.Equal(2, trace.Matched.Count);
         Assert.Equal("DocumentSearchService.RankCoreAsync", Assert.Single(trace.Reached).Symbol);
         var query = Assert.IsType<CallTrace>(graph.Reads[1].Query);
-        Assert.Equal((TraceDirection.Callers, 2, 2), (query.Direction, query.Depth, query.MethodKeys.Count));
+        // No depth given: the tool's own default (set-code-trace-depth).
+        Assert.Equal((TraceDirection.Callers, CodeGraphTools.DefaultTraceDepth, 2), (query.Direction, query.Depth, query.MethodKeys.Count));
+        Assert.Equal(4, trace.Depth);
     }
 
     [Fact]
@@ -428,6 +433,117 @@ public class GraphBuildAndToolTests
         var tests = Assert.Single(impact.Tests);
         Assert.Equal(("tests/T.cs", 2), (tests.Path, tests.Tests.Count));
         Assert.Equal(CodeGraphTools.ImpactDepth, Assert.IsType<CallTrace>(graph.Reads[1].Query).Depth);
+    }
+
+    private static FakeGraph OneCallerGraph() => new()
+    {
+        Answer = q => q switch
+        {
+            SymbolCandidates => (IReadOnlyList<SymbolCandidate>)[Candidate("Ns.TenantScopedSearch", "TenantScopedSearch.QueryAsync", "M:1")],
+            FileMethods => new FileMethodsRows(true, [Candidate("", "TenantScopedSearch.QueryAsync", "M:q")], false),
+            CallTrace => new CallTraceRows([new CodeTraceHit("DocumentSearchService.RankCoreAsync", "src/d.cs", 1, 9, 1, false)], false),
+            _ => throw new InvalidOperationException(),
+        },
+    };
+
+    [Fact]
+    public async Task Unpinned_a_trace_deeper_than_4_is_refused_before_any_read()
+    {
+        var graph = new FakeGraph();
+        Assert.Contains("depth must be between 1 and 4", ErrorText(await CodeTools(graph).TraceAsync("TenantScopedSearch.QueryAsync", depth: 5, cancellationToken: Ct)));
+        Assert.Empty(graph.Reads);
+    }
+
+    [Fact]
+    public async Task A_shallower_trace_is_followed_on_request()
+    {
+        var graph = OneCallerGraph();
+
+        var trace = Structured<CodeTrace>(await CodeTools(graph).TraceAsync("TenantScopedSearch.QueryAsync", depth: 2, cancellationToken: Ct));
+
+        Assert.Equal(2, trace.Depth);
+        Assert.Equal(2, Assert.IsType<CallTrace>(graph.Reads[1].Query).Depth);
+    }
+
+    [Fact]
+    public async Task A_pinned_trace_follows_the_pin_whatever_depth_the_caller_passed()
+    {
+        var graph = OneCallerGraph();
+
+        var trace = Structured<CodeTrace>(await CodeTools(graph, pin: 2).TraceAsync("TenantScopedSearch.QueryAsync", depth: 4, cancellationToken: Ct));
+
+        Assert.Equal(2, trace.Depth);
+        Assert.Equal(2, Assert.IsType<CallTrace>(graph.Reads[1].Query).Depth);
+    }
+
+    [Theory]
+    [InlineData(null, CodeGraphTools.ImpactDepth)]
+    [InlineData(2, 2)]
+    public async Task Change_impact_follows_callers_to_the_pin_or_its_own_depth(int? pin, int expected)
+    {
+        var graph = OneCallerGraph();
+        await CodeTools(graph, pin).ImpactAsync("src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs", Ct);
+        Assert.Equal(expected, Assert.IsType<CallTrace>(graph.Reads[1].Query).Depth);
+    }
+
+    [Fact]
+    public void The_published_trace_description_names_its_depth_and_a_pinned_one_differs_only_in_it()
+    {
+        // The tool's own text (set-code-trace-depth): a pinned server changes the depth phrase and nothing else.
+        const string published =
+            "Traces the maf-lab code graph from a C# method or type: its callers (who calls it) or its callees (what it calls), " +
+            "through up to 4 calls, each with file path and line range. Built from the compiler's view of the code, so a call " +
+            "means the method that is actually invoked, not one with a similar name.\n" +
+            "Use when: the user asks who calls something, what depends on a method, or what a method ends up calling, e.g. " +
+            "'who calls TenantScopedSearch.QueryAsync'.\n" +
+            "Do not use for: what code says or how it works — use search_codebase for the code itself and ask_codebase for an " +
+            "explanation. For what a change to a file affects, use change_impact.\n" +
+            "Pass 'Type.Member' (e.g. 'TenantScopedSearch.QueryAsync'), a type name, or a member name; an ambiguous name returns " +
+            "the candidates to choose from.";
+        Assert.Equal(published, CodeGraphTools.TraceDescription);
+
+        for (var pin = 1; pin <= CallTrace.MaxDepth; pin++)
+        {
+            var phrase = pin == 1 ? "up to 1 call" : $"up to {pin} calls";
+            Assert.Equal(published.Replace("up to 4 calls", phrase), CodeGraphTools.PinnedTraceDescription(pin));
+        }
+    }
+
+    [Fact]
+    public void The_depth_texts_name_the_depth_constants()
+    {
+        // Consts and attributes cannot interpolate an int, so the texts are literals held to the numbers here.
+        Assert.Equal(CodeGraphTools.TraceDepthPhrase, $"up to {CodeGraphTools.MaxTraceDepth} calls");
+        Assert.Equal(CodeGraphTools.DepthParameterDescription,
+            $"How many calls to follow, 1-{CodeGraphTools.MaxTraceDepth} (default {CodeGraphTools.DefaultTraceDepth}).");
+        Assert.InRange(CodeGraphTools.MaxTraceDepth, 1, CallTrace.MaxDepth);
+    }
+
+    [Fact]
+    public void Change_impact_names_no_number_of_calls_so_it_holds_at_any_depth()
+    {
+        Assert.DoesNotMatch(@"\d+\s+calls?\b", CodeGraphTools.ImpactDescription);
+        var parameters = typeof(CodeGraphTools).GetMethod(nameof(CodeGraphTools.ImpactAsync))!.GetParameters()
+            .Select(p => p.GetCustomAttributes(typeof(System.ComponentModel.DescriptionAttribute), false).Cast<System.ComponentModel.DescriptionAttribute>().FirstOrDefault()?.Description)
+            .OfType<string>();
+        Assert.All(parameters, d => Assert.DoesNotMatch(@"\d+\s+calls?\b", d));
+    }
+
+    [Fact]
+    public void No_deployed_configuration_pins_the_graph_depth()
+    {
+        // The pin is for the graph-depth eval's own in-process server; a deployed one must trace as published.
+        var root = CorpusLoaderTests.RepoRoot();
+        var deployed = Directory.EnumerateFiles(Path.Combine(root, "compose"), "*", SearchOption.AllDirectories)
+            .Concat(Directory.EnumerateFiles(Path.Combine(root, "src"), "*.json", SearchOption.AllDirectories)
+                .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")
+                    && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")))
+            .Concat(new[] { "Makefile", ".env", ".env.example" }.Select(f => Path.Combine(root, f)).Where(File.Exists))
+            .ToList();
+
+        Assert.Contains(deployed, f => f.EndsWith("docker-compose.yml", StringComparison.Ordinal));
+        Assert.All(deployed, f => Assert.False(File.ReadAllText(f).Contains(nameof(CodeSearchOptions.GraphDepthPin), StringComparison.Ordinal),
+            $"{Path.GetRelativePath(root, f)} sets {nameof(CodeSearchOptions.GraphDepthPin)}"));
     }
 
     [Fact]

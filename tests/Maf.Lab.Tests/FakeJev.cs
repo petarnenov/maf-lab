@@ -81,6 +81,12 @@ public sealed partial class FakeJev : HttpMessageHandler
     /// <summary>The run status a question asks about. Default: <see cref="RunStatus"/>.</summary>
     public Func<string, string>? RunStatusOf { get; set; }
 
+    /// <summary>The code-route Choice's answer (<c>code_need</c>, route-structural-code-questions). Default: text, which routes nothing.</summary>
+    public Func<string, string>? CodeNeed { get; set; }
+
+    /// <summary>The confidence of the code-route answer; defaults to <see cref="Confidence"/>.</summary>
+    public double? CodeNeedConfidence { get; set; }
+
     /// <summary>The question ids and types each request carried, in order.</summary>
     public ConcurrentQueue<IReadOnlyDictionary<string, string>> Questions { get; } = new();
 
@@ -139,6 +145,19 @@ public sealed partial class FakeJev : HttpMessageHandler
                     choice = runStatus,
                     confidence = 1.0,
                     probabilities = new[] { "pending", "running", "completed", "failed", "none" }.ToDictionary(o => o, o => o == runStatus ? 1.0 : 0.0),
+                };
+            }
+            else if (id == "code_need")
+            {
+                var need = CodeNeed?.Invoke(question) ?? "text";
+                var confidence = CodeNeedConfidence ?? Confidence;
+                answers[id] = new
+                {
+                    type = "choice",
+                    choice = need,
+                    confidence,
+                    probabilities = new[] { "callers", "callees", "impact", "text", "none" }
+                        .ToDictionary(o => o, o => o == need ? confidence : Math.Round((1 - confidence) / 4, 4)),
                 };
             }
             else if (id.StartsWith("tool_", StringComparison.Ordinal))
