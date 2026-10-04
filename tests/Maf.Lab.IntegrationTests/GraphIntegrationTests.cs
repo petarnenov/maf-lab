@@ -75,6 +75,34 @@ public sealed class GraphIntegrationTests(Neo4jFixture neo4j) : IDisposable
         Assert.Null((await graph.ReadAsync(FirmA, new BillingNeighbourhood("NO-SUCH-ID", 2), Ct)).Start);
     }
 
+    [Fact]
+    public async Task A_trace_past_the_node_limit_keeps_the_nearest_methods_and_says_it_was_cut()
+    {
+        // set-code-trace-depth: the limit stays at 100 with a default depth of 4, so a wide fan-out is cut, nearest first.
+        await using var services = neo4j.Services();
+        await neo4j.ResetAsync(services);
+        var maintenance = services.GetRequiredService<TenantScopedGraphMaintenance>();
+        await maintenance.EnsureSchemaAsync(Ct);
+        GraphNode Method(string key) => new(GraphLabels.Method, TenantId.Shared, key, new Dictionary<string, object?>
+        {
+            ["display"] = key, ["name"] = key, ["path"] = "src/Wide.cs", ["start_line"] = 1, ["end_line"] = 2, ["is_test"] = false,
+        });
+        var direct = Enumerable.Range(0, CallTrace.DefaultLimit + 1).Select(i => $"Wide.Callee{i:000}").ToList();
+        await maintenance.WriteNodesAsync(GraphSources.Code, "r1", [Method("Wide.Root"), .. direct.Select(Method), Method("Wide.AaDeeper")], Ct);
+        await maintenance.WriteEdgesAsync(GraphSources.Code, "r1",
+        [
+            .. direct.Select(d => new GraphEdge(GraphLabels.Method, TenantId.Shared, "Wide.Root", GraphRelations.Calls, GraphLabels.Method, TenantId.Shared, d)),
+            new GraphEdge(GraphLabels.Method, TenantId.Shared, direct[0], GraphRelations.Calls, GraphLabels.Method, TenantId.Shared, "Wide.AaDeeper"),
+        ], Ct);
+
+        var trace = await services.GetRequiredService<IGraphReader>().ReadAsync(FirmA, new CallTrace(["Wide.Root"], TraceDirection.Callees, 2), Ct);
+
+        Assert.Equal(CallTrace.DefaultLimit, trace.Hits.Count);
+        Assert.True(trace.Truncated);
+        Assert.All(trace.Hits, h => Assert.Equal(1, h.Hops));
+        Assert.DoesNotContain(trace.Hits, h => h.Symbol == "Wide.AaDeeper");
+    }
+
     private (GraphBuildService Service, ServiceProvider Provider) BillingBuild(string accountsJson)
     {
         var seed = Path.Combine(_work, "seed");

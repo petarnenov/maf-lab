@@ -364,7 +364,9 @@ public class GraphBuildAndToolTests
         Assert.Equal(2, trace.Matched.Count);
         Assert.Equal("DocumentSearchService.RankCoreAsync", Assert.Single(trace.Reached).Symbol);
         var query = Assert.IsType<CallTrace>(graph.Reads[1].Query);
-        Assert.Equal((TraceDirection.Callers, 2, 2), (query.Direction, query.Depth, query.MethodKeys.Count));
+        // No depth given: the tool's own default (set-code-trace-depth).
+        Assert.Equal((TraceDirection.Callers, CodeGraphTools.DefaultTraceDepth, 2), (query.Direction, query.Depth, query.MethodKeys.Count));
+        Assert.Equal(4, trace.Depth);
     }
 
     [Fact]
@@ -445,11 +447,22 @@ public class GraphBuildAndToolTests
     };
 
     [Fact]
-    public async Task Unpinned_a_trace_deeper_than_3_is_refused_before_any_read()
+    public async Task Unpinned_a_trace_deeper_than_4_is_refused_before_any_read()
     {
         var graph = new FakeGraph();
-        Assert.Contains("depth must be between 1 and 3", ErrorText(await CodeTools(graph).TraceAsync("TenantScopedSearch.QueryAsync", depth: 4, cancellationToken: Ct)));
+        Assert.Contains("depth must be between 1 and 4", ErrorText(await CodeTools(graph).TraceAsync("TenantScopedSearch.QueryAsync", depth: 5, cancellationToken: Ct)));
         Assert.Empty(graph.Reads);
+    }
+
+    [Fact]
+    public async Task A_shallower_trace_is_followed_on_request()
+    {
+        var graph = OneCallerGraph();
+
+        var trace = Structured<CodeTrace>(await CodeTools(graph).TraceAsync("TenantScopedSearch.QueryAsync", depth: 2, cancellationToken: Ct));
+
+        Assert.Equal(2, trace.Depth);
+        Assert.Equal(2, Assert.IsType<CallTrace>(graph.Reads[1].Query).Depth);
     }
 
     [Fact]
@@ -457,10 +470,10 @@ public class GraphBuildAndToolTests
     {
         var graph = OneCallerGraph();
 
-        var trace = Structured<CodeTrace>(await CodeTools(graph, pin: 4).TraceAsync("TenantScopedSearch.QueryAsync", depth: 2, cancellationToken: Ct));
+        var trace = Structured<CodeTrace>(await CodeTools(graph, pin: 2).TraceAsync("TenantScopedSearch.QueryAsync", depth: 4, cancellationToken: Ct));
 
-        Assert.Equal(4, trace.Depth);
-        Assert.Equal(4, Assert.IsType<CallTrace>(graph.Reads[1].Query).Depth);
+        Assert.Equal(2, trace.Depth);
+        Assert.Equal(2, Assert.IsType<CallTrace>(graph.Reads[1].Query).Depth);
     }
 
     [Theory]
@@ -474,12 +487,12 @@ public class GraphBuildAndToolTests
     }
 
     [Fact]
-    public void The_published_trace_description_is_unchanged_and_a_pinned_one_differs_only_in_its_depth()
+    public void The_published_trace_description_names_its_depth_and_a_pinned_one_differs_only_in_it()
     {
-        // The text as published before add-graph-depth-eval: an unpinned server must not change a word of it.
+        // The tool's own text (set-code-trace-depth): a pinned server changes the depth phrase and nothing else.
         const string published =
             "Traces the maf-lab code graph from a C# method or type: its callers (who calls it) or its callees (what it calls), " +
-            "through up to 3 calls, each with file path and line range. Built from the compiler's view of the code, so a call " +
+            "through up to 4 calls, each with file path and line range. Built from the compiler's view of the code, so a call " +
             "means the method that is actually invoked, not one with a similar name.\n" +
             "Use when: the user asks who calls something, what depends on a method, or what a method ends up calling, e.g. " +
             "'who calls TenantScopedSearch.QueryAsync'.\n" +
@@ -492,8 +505,18 @@ public class GraphBuildAndToolTests
         for (var pin = 1; pin <= CallTrace.MaxDepth; pin++)
         {
             var phrase = pin == 1 ? "up to 1 call" : $"up to {pin} calls";
-            Assert.Equal(published.Replace("up to 3 calls", phrase), CodeGraphTools.PinnedTraceDescription(pin));
+            Assert.Equal(published.Replace("up to 4 calls", phrase), CodeGraphTools.PinnedTraceDescription(pin));
         }
+    }
+
+    [Fact]
+    public void The_depth_texts_name_the_depth_constants()
+    {
+        // Consts and attributes cannot interpolate an int, so the texts are literals held to the numbers here.
+        Assert.Equal(CodeGraphTools.TraceDepthPhrase, $"up to {CodeGraphTools.MaxTraceDepth} calls");
+        Assert.Equal(CodeGraphTools.DepthParameterDescription,
+            $"How many calls to follow, 1-{CodeGraphTools.MaxTraceDepth} (default {CodeGraphTools.DefaultTraceDepth}).");
+        Assert.InRange(CodeGraphTools.MaxTraceDepth, 1, CallTrace.MaxDepth);
     }
 
     [Fact]

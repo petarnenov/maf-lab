@@ -30,7 +30,13 @@ public enum CallDirection
 public sealed partial class CodeGraphTools(IGraphReader graph, IPrincipalAccessor principals, ILogger<CodeGraphTools> logger,
     IOptions<CodeSearchOptions> options)
 {
-    public const int MaxTraceDepth = 3;
+    /// <summary>
+    /// How far a trace may follow calls, and how far it follows when the caller gives no depth: 4 by measurement
+    /// (set-code-trace-depth). graph-depth compared 2, 3 and 4 on the same questions over two runs, and 4 answered best,
+    /// most of all where a question needs four calls; its cost is about twice the tokens of 2.
+    /// </summary>
+    public const int MaxTraceDepth = 4;
+    public const int DefaultTraceDepth = 4;
     /// <summary>How far change_impact follows callers: deep enough for a test that reaches the code through two helpers.</summary>
     public const int ImpactDepth = CallTrace.MaxDepth;
 
@@ -38,7 +44,11 @@ public sealed partial class CodeGraphTools(IGraphReader graph, IPrincipalAccesso
     private const string TraceDescriptionHead =
         "Traces the maf-lab code graph from a C# method or type: its callers (who calls it) or its callees (what it calls), " +
         "through ";
-    private const string TraceDepthPhrase = "up to 3 calls";
+    /// <summary>Names <see cref="MaxTraceDepth"/>; a const cannot interpolate it, so a test holds the two together.</summary>
+    internal const string TraceDepthPhrase = "up to 4 calls";
+
+    /// <summary>The depth parameter's text: names <see cref="MaxTraceDepth"/> and <see cref="DefaultTraceDepth"/>, held to them by a test.</summary>
+    internal const string DepthParameterDescription = "How many calls to follow, 1-4 (default 4).";
     private const string TraceDescriptionTail =
         ", each with file path and line range. Built from the compiler's view of the code, so a call " +
         "means the method that is actually invoked, not one with a similar name.\n" +
@@ -96,7 +106,7 @@ public sealed partial class CodeGraphTools(IGraphReader graph, IPrincipalAccesso
         string symbol,
         [Description("'callers' (default) for who calls it, 'callees' for what it calls.")]
         CallDirection? direction = null,
-        [Description("How many calls to follow, 1-3 (default 2).")]
+        [Description(DepthParameterDescription)]
         int? depth = null,
         CancellationToken cancellationToken = default,
         RequestContext<CallToolRequestParams>? context = null)
@@ -115,7 +125,7 @@ public sealed partial class CodeGraphTools(IGraphReader graph, IPrincipalAccesso
         }
         // A pinned server decides the depth itself; the argument is no longer offered, and is ignored if sent.
         var pin = options.Value.GraphDepthPin;
-        var hops = pin ?? depth ?? 2;
+        var hops = pin ?? depth ?? DefaultTraceDepth;
         if (pin is null && hops is < 1 or > MaxTraceDepth)
         {
             return ToolErrors.Error($"depth must be between 1 and {MaxTraceDepth}.");

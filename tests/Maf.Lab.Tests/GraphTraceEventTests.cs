@@ -229,7 +229,7 @@ public class GraphTraceEventTests
         var trace = await tools.TraceAsync("TenantScopedSearch.QueryAsync", cancellationToken: Ct, context: Traced());
         var impact = await tools.ImpactAsync("src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs", Ct, Traced());
 
-        Assert.Equal(["symbol_candidates", "callers_2"], Queries(trace));
+        Assert.Equal(["symbol_candidates", "callers_4"], Queries(trace));
         Assert.Equal(["file_methods", "callers_4"], Queries(impact));
         foreach (var meta in new[] { trace.Meta!.ToJsonString(), impact.Meta!.ToJsonString() })
         {

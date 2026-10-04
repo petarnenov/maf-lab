@@ -530,7 +530,10 @@ public class CodebaseSearchTests
         var trace = tools.Single(t => t.Name == GraphTools.TraceCodeSymbol);
         var impact = tools.Single(t => t.Name == GraphTools.ChangeImpact);
         Assert.Equal(CodeGraphTools.TraceDescription, trace.Description);
+        Assert.Contains("up to 4 calls", trace.Description);
         Assert.Equal(["depth", "direction", "symbol"], Parameters(trace));
+        Assert.Equal(CodeGraphTools.DepthParameterDescription,
+            trace.ProtocolTool.InputSchema.GetProperty("properties").GetProperty("depth").GetProperty("description").GetString());
         Assert.Equal(["symbol"], trace.ProtocolTool.InputSchema.TryGetProperty("required", out var required)
             ? [.. required.EnumerateArray().Select(r => r.GetString()!)] : new List<string>());
         Assert.Equal(CodeGraphTools.ImpactDescription, impact.Description);
@@ -540,13 +543,13 @@ public class CodebaseSearchTests
     [Fact]
     public async Task A_pinned_code_server_says_how_far_it_traces_and_offers_no_depth()
     {
-        await using var factory = CodeServer(depthPin: "4");
+        await using var factory = CodeServer(depthPin: "2");
         var tools = await ListToolsAsync(factory);
 
         var trace = tools.Single(t => t.Name == GraphTools.TraceCodeSymbol);
-        Assert.Equal(CodeGraphTools.PinnedTraceDescription(4), trace.Description);
-        Assert.Contains("up to 4 calls", trace.Description);
-        Assert.DoesNotContain("up to 3", trace.Description);
+        Assert.Equal(CodeGraphTools.PinnedTraceDescription(2), trace.Description);
+        Assert.Contains("up to 2 calls", trace.Description);
+        Assert.DoesNotContain("up to 4", trace.Description);
         Assert.Equal(["direction", "symbol"], Parameters(trace));
         // change_impact names no depth, so the pin leaves it exactly as published.
         Assert.Equal(CodeGraphTools.ImpactDescription, tools.Single(t => t.Name == GraphTools.ChangeImpact).Description);
