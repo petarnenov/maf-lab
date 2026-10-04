@@ -605,7 +605,7 @@ archiving a change asks for a read-only pass over these documents against the ch
 ## Evals — when you must run them
 
 ```bash
-make eval                     # all suites against the running stack's MCP
+make eval                     # all gated suites against the running stack's MCP (graph-depth runs only when named)
 make eval-selection           # or eval-retrieval / -generation / -injection / -confirmation / -intent / -guardrail / -answer-check / -presentation / -graph-depth / -a2a
 dotnet run --project src/Maf.Lab.Eval -- --suite retrieval --rerank   # extra flags: use the CLI directly
 dotnet run --project src/Maf.Lab.Eval -- --import-feedback --suite retrieval
