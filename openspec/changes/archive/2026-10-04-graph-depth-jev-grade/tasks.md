@@ -12,8 +12,8 @@
 
 ## 3. Jev review
 
-- [ ] 3.1 Run the Jev review checklist (docs/rules/jev-usage.md §7): the request is the existing grade request, unchanged (§79), now also used per graph-depth case; tested on labelled English and Bulgarian inputs through `generation-judge`. Record it in DECISIONS.md
+- [x] 3.1 Run the Jev review checklist (docs/rules/jev-usage.md §7): the request is the existing grade request, unchanged (§79), now also used per graph-depth case; tested on labelled English and Bulgarian inputs through `generation-judge`. Record it in DECISIONS.md
 
 ## 4. Documentation
 
-- [ ] 4.1 Update the graph-depth paragraph in README.md ("rubric scores" → the Jev grade), add a DECISIONS.md section, run `make docs` (never edit a `generated:` block by hand), then `make docs-check`
+- [x] 4.1 Update the graph-depth paragraph in README.md ("rubric scores" → the Jev grade), add a DECISIONS.md section, run `make docs` (never edit a `generated:` block by hand), then `make docs-check`

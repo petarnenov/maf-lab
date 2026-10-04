@@ -661,12 +661,16 @@ The structural layer calls the graph tools directly, with no model. It SHALL rep
 - tool latency at p50 and p95.
 
 The end-to-end layer asks the agent each case's question. It SHALL report per variant:
-- faithfulness and relevance from the fixed rubric judge, scored against the case's needed items;
+- faithfulness and relevance from the Jev grade the generation suite uses: faithfulness over the answer's claim
+  sentences against what the turn read, cited places checked in code, and relevance as whether the answer addresses the
+  question;
 - the mean share of needed items the answer names;
 - the share of turns that called a graph tool at all.
 
 A turn that called no graph tool SHALL still be scored, and SHALL be counted in the tool-call share, so a variant cannot
-look better by being ignored. Judge failures SHALL be counted and reported apart from the scores.
+look better by being ignored. Judge failures SHALL be counted and reported apart from the scores. A case SHALL fail the end-to-end layer when its
+faithfulness is below 0.75, its relevance is not 1, or it called no graph tool. The end-to-end layer SHALL refuse to run
+without the Jev key; the structural layer SHALL need neither the chat model nor the Jev key.
 
 Because the pinned depth can only matter in a turn that called a graph tool, the end-to-end layer SHALL also report,
 beside the all-turn scores:
@@ -716,6 +720,14 @@ The suite SHALL be able to run the structural layer alone, with no chat model an
 #### Scenario: No common case
 - **WHEN** no case called a graph tool in every variant
 - **THEN** the common-case scores are absent, the common-case count is 0, and the run still passes
+
+#### Scenario: An answer graded by Jev
+- **WHEN** the end-to-end layer grades an answer that names a caller no source the turn read holds
+- **THEN** that sentence counts as unsupported, the case's faithfulness drops, and the reason quotes the sentence
+
+#### Scenario: No Jev key for the end-to-end layer
+- **WHEN** the suite runs both layers without the Jev key
+- **THEN** it refuses to run and names the missing variable; with the structural-only option it runs
 
 ### Requirement: Comparison suites do not gate
 A suite whose purpose is to compare settings, starting with `graph-depth`, SHALL be reported in the same JSON and
