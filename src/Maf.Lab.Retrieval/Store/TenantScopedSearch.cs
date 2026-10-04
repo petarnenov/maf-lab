@@ -33,6 +33,14 @@ public sealed record SearchRequest
 /// </summary>
 public sealed class TenantScopedSearch(QdrantClient client, IOptions<QdrantOptions> options)
 {
+    /// <summary>
+    /// How many points beyond the limit are fetched so that <see cref="Settle"/>, not the store, decides which tied points
+    /// fill the last positions (stabilize-tied-search-order). RRF ties come in small groups — the dense-only and
+    /// sparse-only candidates at the same rank, a candidate at ranks (i, j) and one at (j, i) — so ten is ample; a tie
+    /// group larger than this at the limit would still be cut by the store.
+    /// </summary>
+    internal const int TieMargin = 10;
+
     private readonly string _collection = options.Value.Collection;
 
     public async Task<IReadOnlyList<ScoredChunk>> QueryAsync(Principal principal, SearchRequest request, CancellationToken ct)
@@ -40,6 +48,8 @@ public sealed class TenantScopedSearch(QdrantClient client, IOptions<QdrantOptio
         ArgumentNullException.ThrowIfNull(principal);
         var filter = TenantFilter.For(principal, request.SourceTypes);
         var prefetchLimit = (ulong)Math.Max(request.PrefetchLimit, request.Limit * 5);
+        // The outer limit does not change any score (fusion reads the branches), so over-fetching only widens the cut.
+        var fetch = (ulong)(request.Limit + TieMargin);
 
         var denseQuery = request.Dense is { Length: > 0 } dense ? Query(dense) : null;
         var sparseQuery = request.Sparse is { IsEmpty: false } sparse ? Query(sparse) : null;
@@ -48,19 +58,32 @@ public sealed class TenantScopedSearch(QdrantClient client, IOptions<QdrantOptio
         {
             RetrievalModes.Dense when denseQuery is not null =>
                 await client.QueryAsync(_collection, query: denseQuery, usingVector: request.DenseVector, filter: filter,
-                    limit: (ulong)request.Limit, scoreThreshold: request.DenseFloor, payloadSelector: true, cancellationToken: ct),
+                    limit: fetch, scoreThreshold: request.DenseFloor, payloadSelector: true, cancellationToken: ct),
             RetrievalModes.Sparse when sparseQuery is not null =>
                 await client.QueryAsync(_collection, query: sparseQuery, usingVector: ChunkSchema.SparseVector, filter: filter,
-                    limit: (ulong)request.Limit, scoreThreshold: request.SparseFloor, payloadSelector: true, cancellationToken: ct),
-            RetrievalModes.Hybrid => await HybridAsync(denseQuery, sparseQuery, request, filter, prefetchLimit, ct),
+                    limit: fetch, scoreThreshold: request.SparseFloor, payloadSelector: true, cancellationToken: ct),
+            RetrievalModes.Hybrid => await HybridAsync(denseQuery, sparseQuery, request, filter, prefetchLimit, fetch, ct),
             _ => [],
         };
 
-        return points.Select(p => new ScoredChunk(PayloadMapper.FromPayload(p.Payload), p.Score)).ToList();
+        return Settle(points.Select(p => new ScoredChunk(PayloadMapper.FromPayload(p.Payload), p.Score)), request.Limit);
     }
 
+    /// <summary>
+    /// The one order a search returns: score descending, then chunk id ascending (ordinal), trimmed to
+    /// <paramref name="limit"/>. The store orders equal scores however its segments happen to merge, and an RRF score
+    /// depends on ranks only, so ties are routine; without this the same search could return a different order, or a
+    /// different last result, from one call to the next (hybrid-retrieval, deterministic result order).
+    /// </summary>
+    internal static IReadOnlyList<ScoredChunk> Settle(IEnumerable<ScoredChunk> results, int limit) =>
+        results
+            .OrderByDescending(r => r.Score)
+            .ThenBy(r => r.Chunk.ChunkId, StringComparer.Ordinal)
+            .Take(limit)
+            .ToList();
+
     private async Task<IReadOnlyList<ScoredPoint>> HybridAsync(
-        Query? denseQuery, Query? sparseQuery, SearchRequest request, Filter filter, ulong prefetchLimit, CancellationToken ct)
+        Query? denseQuery, Query? sparseQuery, SearchRequest request, Filter filter, ulong prefetchLimit, ulong fetch, CancellationToken ct)
     {
         var plan = HybridPlan(denseQuery, sparseQuery, request, filter, prefetchLimit);
         if (plan.Prefetch.Count == 0)
@@ -68,7 +91,7 @@ public sealed class TenantScopedSearch(QdrantClient client, IOptions<QdrantOptio
             return [];
         }
         return await client.QueryAsync(_collection, query: plan.Fusion, prefetch: plan.Prefetch, filter: filter,
-            limit: (ulong)request.Limit, scoreThreshold: plan.FusedFloor, payloadSelector: true, cancellationToken: ct);
+            limit: fetch, scoreThreshold: plan.FusedFloor, payloadSelector: true, cancellationToken: ct);
     }
 
     /// <summary>
