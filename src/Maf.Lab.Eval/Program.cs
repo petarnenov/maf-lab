@@ -17,6 +17,7 @@ namespace Maf.Lab.Eval;
 /// dotnet run --project src/Maf.Lab.Eval -- --suite selection|retrieval|generation|injection|confirmation|intent|guardrail|domain|presentation|answer-check|code-route|all
 ///   [--rerank [--reranker llm,jev]] [--contextual] [--limit N] [--import-feedback [--api-db "Data Source=..."]]
 /// dotnet run --project src/Maf.Lab.Eval -- --suite graph-depth [--structural-only] [--limit N]   (a comparison: reported, never gated)
+/// dotnet run --project src/Maf.Lab.Eval -- --suite retrieval-backends [--limit N]   (the Neo4j spike against Qdrant; a comparison)
 /// dotnet run --project src/Maf.Lab.Eval -- --ask "question" [--firm firm-a] [--trace-json path]   (one turn, its trace printed)
 /// Run on demand, and always after changing prompts, tool descriptions, the model, the tool set or chunking.
 /// Exit code 1 when any suite is below its configured thresholds.
@@ -32,7 +33,7 @@ public static class Program
     /// Suites that compare settings side by side (add-graph-depth-eval): no thresholds, no baseline comparison, never
     /// accepted into the baseline. Several of their metrics are better lower, which the baseline gate cannot express.
     /// </summary>
-    public static readonly IReadOnlySet<string> ComparisonSuites = new HashSet<string>(StringComparer.Ordinal) { GraphDepthSuite.Name };
+    public static readonly IReadOnlySet<string> ComparisonSuites = new HashSet<string>(StringComparer.Ordinal) { GraphDepthSuite.Name, RetrievalBackendsSuite.Name };
 
     public static string[] SuitesOf(string suite) => suite == "all" ? AllSuites : suite.Split(',');
 
@@ -121,6 +122,7 @@ public static class Program
                 "domain" => await new DomainSuite(host).RunAsync(ctx, ct),
                 "presentation" => await new PresentationSuite(host, host.Services.GetRequiredService<IChatClientFactory>()).RunAsync(ctx, ct),
                 CodeRouteSuite.Name => await new CodeRouteSuite(host).RunAsync(ctx, ct),
+                RetrievalBackendsSuite.Name => await RunRetrievalBackendsAsync(host, configuration, ctx, settings, ct),
                 GraphDepthSuite.Name => await RunGraphDepthAsync(host, configuration, ctx, flags, settings, ct),
                 _ => throw new ArgumentException($"Unknown suite '{name}'."),
             };
@@ -164,6 +166,22 @@ public static class Program
             Console.WriteLine($"Baseline accepted → {path}");
         }
         return allPassed ? 0 : 1;
+    }
+
+    private static async Task<IReadOnlyList<EvalVariantResult>> RunRetrievalBackendsAsync(EvalAgentHost host, IConfiguration configuration,
+        SuiteContext ctx, Dictionary<string, string> settings, CancellationToken ct)
+    {
+        // The portfolio collection's services, as the retrieval suite builds them; both domains' copies are checked first.
+        var portfolioConfig = new ConfigurationBuilder().AddConfiguration(configuration).AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Qdrant:Collection"] = Maf.Lab.Domain.Portfolio.PortfolioCollections.Chunks,
+            ["Qdrant:MetaCollection"] = Maf.Lab.Domain.Portfolio.PortfolioCollections.Meta,
+        }).Build();
+        await using var portfolio = new ServiceCollection().AddLogging().AddMafIndexing(portfolioConfig).BuildServiceProvider();
+        settings["backends"] = "qdrant,neo4j";
+        settings["neo4jSearch"] = "eval-only GraphChunkSearch over chunks copied by make neo4j-chunks";
+        return await new RetrievalBackendsSuite().RunAsync(ctx,
+            [new BackendDomain("billing", host.Services), new BackendDomain("portfolio", portfolio)], ct);
     }
 
     private static async Task<IReadOnlyList<EvalVariantResult>> RunGraphDepthAsync(EvalAgentHost host, IConfiguration configuration, SuiteContext ctx,

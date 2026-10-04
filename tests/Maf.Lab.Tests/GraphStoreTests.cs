@@ -33,6 +33,8 @@ public class GraphStoreTests
     [InlineData("MATCH p = (a:Account)-[*1..2]-(b) WHERE a.tenant_id IN $readable AND b.tenant_id IN $readable RETURN b", "p")]
     [InlineData("MATCH (a:Account)-[*1..2]-(b) WHERE a.tenant_id IN $readable AND b.tenant_id IN $readable RETURN b", "variable-length")]
     [InlineData("MATCH (a:Account)--(:Firm) WHERE a.tenant_id IN $readable RETURN a", "anonymous")]
+    // A Cypher 25 vector SEARCH (neo4j-retrieval-spike) whose filter forgot the tenant: the node is caught like any other.
+    [InlineData("CYPHER 25 MATCH (c:RetrievalChunk) SEARCH c IN (VECTOR INDEX retrieval_chunk_dense FOR $vector WHERE c.collection = $collection LIMIT $limit) SCORE AS score RETURN c, $readable", "node c is not restricted")]
     public void The_guard_check_catches_an_unguarded_template(string cypher, string expected)
     {
         var violations = CypherGuard.Violations(cypher);

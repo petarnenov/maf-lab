@@ -2844,3 +2844,63 @@ said which account the conversation was about.
   memory bandwidth). Every re-index request reached `ollama-batch` only, neither runner reloaded (one `threadpool init`
   each), and the same text gives bit-identical vectors on both instances. Forced portfolio re-index: 142 chunks in
   ~21 s.
+
+## 78. Neo4j alone could replace Qdrant; it does not, for now (neo4j-retrieval-spike, 2026-10-04)
+
+The question was whether maf-lab could keep Neo4j alone and drop Qdrant. It was measured, not argued: an eval-only Neo4j
+implementation of the tenant-scoped chunk search (`GraphChunkSearch`, behind the new `IChunkSearch`) ran over the
+billing and portfolio chunks copied from Qdrant (`make neo4j-chunks`: same payloads, same `dense_v3` vectors, same BM25
+term ids and weights), against Qdrant, with the same encoders and production search settings.
+
+**How Neo4j was made to do Qdrant's job.**
+- **Dense branch.** A vector index with `tenant_id`, `collection` and `source_type` declared as filter properties,
+  queried with Cypher 25 `SEARCH … WHERE c.tenant_id IN $readable` (GA since 2026.02, Community included; `IN` since
+  2026.06). The tenant is applied inside the index.
+- **Lexical branch.** Our own BM25 kept as an inverted index in the graph, `(:Term)-[:OCCURS_IN {w}]->(:RetrievalChunk)`,
+  with the tenant in the `MATCH`. Neo4j's full-text indexes were not used: they score with their own BM25, and `SEARCH`
+  cannot filter them inside the index.
+- **Fusion in code.** Qdrant's RRF (k = 2, zero-based ranks) and DBSF (3σ, sample deviation, unclipped) are
+  reimplemented in code. Integration tests show that fusing Qdrant's own two branches in code gives Qdrant's fused
+  result, and that the dense and sparse scores of a chunk are the same on both stores (Neo4j's cosine converted back
+  from `(1 + cos) / 2`).
+- **Small tenant.** firm-c gets its full 10 results beside the ten-times-larger firm-b in every mode, and no other
+  firm's chunk is ever a candidate (Neo4j Testcontainers).
+
+**Measured (two runs, reports `20261004-130549` and `20261004-130830-retrieval-backends`).** Each cell is run 1 / run 2.
+
+| | Qdrant billing | Neo4j billing | Qdrant portfolio | Neo4j portfolio |
+|---|---|---|---|---|
+| recall@5 | 0.792 / 0.785 | 0.785 / 0.779 | 0.679 / 0.679 | 0.714 / 0.714 |
+| recall@20 | 0.879 / 0.872 | 0.872 / 0.865 | 0.929 / 0.929 | 0.929 / 0.929 |
+| MRR | 0.778 / 0.771 | 0.787 / 0.773 | 0.751 / 0.747 | 0.752 / 0.756 |
+| off-domain silence | 1 / 1 | 1 / 1 | 1 / 1 | 1 / 1 |
+| overlap@5 with Qdrant | — | 0.939 / 0.944 | — | 0.900 / 0.843 |
+| store latency p50 | 3.5 / 3.2 ms | 14.3 / 13.7 ms | 2.8 / 2.5 ms | 10.0 / 10.0 ms |
+| store latency p95 | 8.0 / 6.4 ms | 56.6 / 36.6 ms | 16.3 / 5.2 ms | 195.8 (cold) / 32.1 ms |
+
+- **Quality is a tie.** Every difference is within the run-to-run spread that both stores share: Bulgarian queries are
+  translated by a live model, so the same store moves between runs. 84–94% of Neo4j's top five are Qdrant's.
+- **Neo4j is 4× slower at p50 and 5–6× at p95.** It is still tens of milliseconds, against a turn that takes seconds.
+- **Copy cost.** Copying took 8 s for billing (3330 chunks, 4474 terms, 110 674 weights) and 1 s for portfolio (142
+  chunks). Storage: the two collections take 35 MB in Qdrant. The Neo4j database grew from about 12 MB (the graphs) to
+  74 MB, so the copy took about 60 MB, roughly 2×.
+
+**Decision: keep Qdrant; Neo4j alone is viable but not worth it now.** Nothing in the numbers rules Neo4j out:
+retrieval quality, tenant isolation and the small-tenant guarantee all hold. What it would cost:
+- **We would own a search engine.** BM25 would live as an inverted index in the graph, kept in step by our own code,
+  where Qdrant stores sparse vectors natively.
+- **Qdrant features would be reimplemented.** Server-side fusion becomes code.
+- **Latency and storage.** 4–6× latency and about 2× storage.
+- **The specs change.** `hybrid-retrieval` ("fuse them in the vector store") and the project's stated purpose of
+  exercising a vector store would have to change.
+
+The gain is one service fewer, plus a graph expansion that could run in the same query as the search.
+
+**Revisit when** one of these holds:
+- a feature needs graph and vector in one query, for example expanding a found chunk to its neighbours or entities in
+  the same read;
+- running Qdrant becomes an operational burden;
+- Neo4j adds in-index filtering to full-text indexes, or native sparse vectors.
+
+The spike's code (the copy, `GraphChunkSearch`, the `retrieval-backends` suite) stays, eval-only, so the comparison can
+be re-run then.

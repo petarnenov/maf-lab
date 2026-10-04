@@ -187,6 +187,7 @@ make help                  # every target
 | `make infra` | Start only the indexer's infrastructure (Qdrant, Neo4j, both Ollama instances + the embedding model) and wait until healthy |
 | `make index` | Index both domains' corpora and the codebase, then build the graph (unchanged documents are skipped) |
 | `make graph` | Build the Neo4j graph: billing relationships and the code graph (unchanged nodes are not rewritten) |
+| `make neo4j-chunks` | Spike: copy the billing and portfolio chunks from Qdrant into Neo4j for eval-retrieval-backends |
 | `make index-portfolio` | Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only |
 | `make index-code` | Index the repository itself (→ maf_code_chunks, served by mcp-code) only; unchanged files are skipped |
 | `make reindex` | Re-embed every document of both domains (--force) |
@@ -222,6 +223,7 @@ make help                  # every target
 | `make eval-presentation` | Eval: do portfolio answers build on their data cards instead of restating them? |
 | `make eval-answer-check` | Eval: Jev's answer check alone — are labelled unsupported answers flagged and supported ones not? (needs JEV_MAF_LAB) |
 | `make eval-code-route` | Eval: Jev's code-route answer alone — would each code question start with the right graph call or the search? (needs JEV_MAF_LAB) |
+| `make eval-retrieval-backends` | Spike comparison: retrieval cases on Qdrant and on Neo4j side by side, never gated (run make neo4j-chunks first) |
 | `make eval-graph-depth` | Comparison: code graph traces at depth 2, 3 and 4, side by side, never gated (STRUCTURAL=1 for no model) |
 | `make eval-a2a` | Conformance: an outside client drives the agents through evals/a2a-conformance.jsonl |
 | `make dev` | Run mcp/api/web locally without Docker (infra stays in compose); Ctrl-C stops |
@@ -607,7 +609,7 @@ archiving a change asks for a read-only pass over these documents against the ch
 
 ```bash
 make eval                     # all gated suites against the running stack's MCP (graph-depth runs only when named)
-make eval-selection           # or eval-retrieval / -generation / -injection / -confirmation / -intent / -guardrail / -answer-check / -code-route / -presentation / -graph-depth / -a2a
+make eval-selection           # or eval-retrieval / -generation / -injection / -confirmation / -intent / -guardrail / -answer-check / -code-route / -presentation / -graph-depth / -retrieval-backends / -a2a
 dotnet run --project src/Maf.Lab.Eval -- --suite retrieval --rerank   # extra flags: use the CLI directly
 dotnet run --project src/Maf.Lab.Eval -- --import-feedback --suite retrieval
 ```
@@ -624,6 +626,9 @@ Evals run **on demand**, not on every commit. They are **required** before mergi
   `guardrail`, `answer-check`; both call Jev alone, with no chat model and no tool
 - the **code graph** (the builder in `src/Maf.Lab.Indexing/Graph`, or a trace or impact depth in `CodeGraphTools`) →
   `graph-depth`
+- a question about the **vector store itself** (Qdrant versus Neo4j) → `make neo4j-chunks`, then `retrieval-backends`, a
+  comparison like `graph-depth`: the retrieval cases on Qdrant and on an eval-only Neo4j search over the same copied
+  chunks, side by side, never gated (neo4j-retrieval-spike)
 - the **code-route question** (`CodeToolRouter`, `Jev:RouteCodeTools`, `Jev:MinCodeRouteConfidence`) → `code-route`, which
   asks Jev alone whether each code question would start with the right graph call or the search, and `intent`
 

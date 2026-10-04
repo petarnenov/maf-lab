@@ -82,7 +82,7 @@ INDEXER_SRC  := $(shell find src/Maf.Lab.Indexing src/Maf.Lab.Retrieval src/Maf.
 INDEXER      := $(DOTNET) $(INDEXER_DLL)
 
 .PHONY: all help up down restart ps logs clean infra index index-portfolio index-code graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
-        coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-answer-check eval-code-route eval-graph-depth eval-a2a dev doctor banner index-if-empty \
+        coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-answer-check eval-code-route eval-graph-depth eval-retrieval-backends eval-a2a neo4j-chunks dev doctor banner index-if-empty \
         specs docs docs-check lint-dotnet lint-web build-web ci ci-e2e setup \
         require-docker require-dotnet require-npm require-python
 
@@ -154,6 +154,11 @@ index: require-dotnet infra $(INDEXER_DLL) ## Index both domains' corpora and th
 
 graph: require-dotnet infra $(INDEXER_DLL) ## Build the Neo4j graph: billing relationships and the code graph (unchanged nodes are not rewritten)
 	$(HOST_ENV) $(INDEXER) graph
+
+neo4j-chunks: require-dotnet infra $(INDEXER_DLL) ## Spike: copy the billing and portfolio chunks from Qdrant into Neo4j for eval-retrieval-backends
+	$(HOST_ENV) $(INDEXER) neo4j-chunks
+	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) neo4j-chunks
+	@printf 'store size: neo4j %s · qdrant %s\n' "$$($(COMPOSE) exec -T neo4j du -sh /data/databases/neo4j 2>/dev/null | cut -f1)" "$$($(COMPOSE) exec -T qdrant du -shc /qdrant/storage/collections/maf_chunks /qdrant/storage/collections/maf_portfolio_chunks 2>/dev/null | tail -1 | cut -f1)"
 
 index-portfolio: require-dotnet infra $(INDEXER_DLL) ## Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only
 	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) index
@@ -273,6 +278,9 @@ eval-answer-check: require-dotnet ## Eval: Jev's answer check alone — are labe
 
 eval-code-route: require-dotnet ## Eval: Jev's code-route answer alone — would each code question start with the right graph call or the search? (needs JEV_MAF_LAB)
 	$(EVAL) code-route
+
+eval-retrieval-backends: require-dotnet ## Spike comparison: retrieval cases on Qdrant and on Neo4j side by side, never gated (run make neo4j-chunks first)
+	$(EVAL) retrieval-backends
 
 eval-graph-depth: require-dotnet ## Comparison: code graph traces at depth 2, 3 and 4, side by side, never gated (STRUCTURAL=1 for no model)
 	$(EVAL) graph-depth $(if $(STRUCTURAL),--structural-only)

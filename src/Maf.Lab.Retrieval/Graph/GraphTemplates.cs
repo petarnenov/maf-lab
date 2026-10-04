@@ -91,6 +91,47 @@ public static class GraphTemplates
         LIMIT $limit
         """;
 
+    // ---- Retrieval spike (neo4j-retrieval-spike): eval-only chunk search over chunks copied from Qdrant ----------------------
+
+    /// <summary>The chunk fields a search returns: everything but the vector, so a result is a chunk as Qdrant returns it.</summary>
+    private const string ChunkProjection =
+        "c { .tenant_id, .doc_id, .chunk_id, .source_type, .source_path, .section_path, .symbol, .updated_at, .model_version, " +
+        ".text, .context, .content_hash, .start_line, .end_line } AS chunk";
+
+    /// <summary>
+    /// Nearest chunks by the dense vector, with the tenant applied inside the vector index (Cypher 25 SEARCH … WHERE) so a
+    /// small tenant is not shortchanged by a large one. The score is Neo4j's normalised cosine, (1 + cos) / 2.
+    /// </summary>
+    private const string RetrievalDenseShape = """
+        CYPHER 25
+        MATCH (c:RetrievalChunk)
+          SEARCH c IN (VECTOR INDEX retrieval_chunk_dense FOR $vector
+            WHERE c.collection = $collection AND c.tenant_id IN $readable{types}
+            LIMIT $limit) SCORE AS score
+        RETURN {projection}, score
+        ORDER BY score DESC, c.key
+        """;
+
+    public static readonly string RetrievalDense = RetrievalDenseShape.Replace("{types}", "").Replace("{projection}", ChunkProjection);
+    public static readonly string RetrievalDenseTyped = RetrievalDenseShape.Replace("{types}", " AND c.source_type IN $types").Replace("{projection}", ChunkProjection);
+
+    /// <summary>
+    /// Chunks by BM25, from our own inverted index: the query's terms and weights against each chunk's, summed — the same
+    /// dot product Qdrant computes on the sparse vector. The tenant is part of the match, so it is exact.
+    /// </summary>
+    private const string RetrievalSparseShape = """
+        UNWIND $terms AS term
+        MATCH (t:Term {key: term.key})-[r:OCCURS_IN]->(c:RetrievalChunk)
+        WHERE t.tenant_id IN $readable AND c.tenant_id IN $readable AND c.collection = $collection{types}
+        WITH c, sum(r.w * term.w) AS score
+        RETURN {projection}, score
+        ORDER BY score DESC, c.key
+        LIMIT $limit
+        """;
+
+    public static readonly string RetrievalSparse = RetrievalSparseShape.Replace("{types}", "").Replace("{projection}", ChunkProjection);
+    public static readonly string RetrievalSparseTyped = RetrievalSparseShape.Replace("{types}", " AND c.source_type IN $types").Replace("{projection}", ChunkProjection);
+
     /// <summary>Every template, by name: what the guard test checks.</summary>
     public static IEnumerable<(string Name, string Cypher)> All()
     {
@@ -104,5 +145,9 @@ public static class GraphTemplates
             yield return ($"callees_{d}", Callees[d - 1]);
         }
         yield return ("file_methods", FileMethods);
+        yield return ("retrieval_dense", RetrievalDense);
+        yield return ("retrieval_dense_typed", RetrievalDenseTyped);
+        yield return ("retrieval_sparse", RetrievalSparse);
+        yield return ("retrieval_sparse_typed", RetrievalSparseTyped);
     }
 }
