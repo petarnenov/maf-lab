@@ -32,9 +32,13 @@
 
 ## 6. Switch
 
-- [ ] 6.1 Remove `RubricJudge`, its `Parse` test, and the `rubric:*` and `judgeAgreement:*` metrics. Verify with `make test` and `make lint`
-- [ ] 6.2 Re-measure the `generation` tolerances from the five runs. Replace the 0.035 judge-noise override in `Evals:RegressionTolerances` with what was measured, recording the source. Add thresholds for `completeness`, `referenceAgreement`, `retrievalJudged` and `generation-judge`'s accuracies at levels the runs clear. Verify that a fresh `make eval-generation` passes the gate except for metrics reported as new
-- [ ] 6.3 Accept the baselines explicitly with `make eval-accept SUITE=generation` and `make eval-accept SUITE=generation-judge`, and commit `evals/baseline.json`. Note in DECISIONS.md that this is a change of judge, not an improvement, and that earlier `generation` runs are not comparable
+- [x] 6.1 Remove `RubricJudge`, its `Parse` test, and the `rubric:*` and `judgeAgreement:*` metrics. Verify with `make test` and `make lint`
+- [x] 6.2 Revert the citation exclusions (the `claim_i` criterion and the citation regex): a citation is a claim the system prompt requires to be exact. Verified by `git revert` and `make test`
+- [x] 6.3 Add `generation-sentences.jsonl` (16 recorded answers, 4 with invented citations; each sentence labelled claim / supported / citation, aligned with the code's cut) and a `sentences` variant to `generation-judge` (citationPass, citationDetection, supportedPass, unsupportedDetection, claimAccuracy). Verified by the loader alignment test and a live run
+- [x] 6.4 Check cited places in code (`Citations`: `path:start-end` from the system prompt, `Section N … Step M` from the corpus); an unfound place makes its sentence an unsupported claim, a found one is masked before Jev reads the sentence. Verified by `CitationsTests` and a live run (citationDetection 0.571 → 1, citationPass 0.833 → 0.933)
+- [x] 6.5 Grow `generation.jsonl` from 12 to 36 cases (billing and codebase, English and Bulgarian), each reference answer drawn from named corpus files. Verify by the loader tests and a review of the new rows
+- [ ] 6.6 Run the tolerance protocol in design.md (fixed before measuring): ten `generation` and three `generation-judge` runs, tolerances and thresholds derived mechanically and committed before verification
+- [ ] 6.7 Accept both baselines from one fresh run, then verify three fresh runs pass the gate with nothing changed; a failure is recorded, never tuned away. Note in DECISIONS.md that this is a change of judge, not an improvement
 
 ## 7. Jev review
 

@@ -179,16 +179,35 @@ grounding agreement is the useful one for tuning `MinGrounded`.
      five runs.
 4. **If the gate holds:**
    - Delete `RubricJudge`, the `rubric:*` and `judgeAgreement:*` metrics.
-   - Set tolerances from the five runs' ranges, now the agent's variation only, with each override recording what it
-     was measured from.
-   - Add thresholds for `completeness`, `referenceAgreement`, `retrievalJudged` and for `generation-judge` at levels the
-     runs clear.
+   - Set tolerances and thresholds by the protocol below, never from the comparison runs.
    - Accept both baselines explicitly (`make eval-accept SUITE=generation`, `…SUITE=generation-judge`) and record the
      acceptance as a change of judge, not an improvement.
 5. **If the gate fails:** stop. Keep `RubricJudge`, record the numbers in DECISIONS.md, and revise this change with the
    user. Likely revisions: the splitter, a criterion's wording, or the 0.5 cut.
 
 Rollback after the switch is a revert of the switch commit plus the earlier baseline from git history.
+
+### Tolerance protocol (fixed before measuring)
+
+The first attempt moved the `faithfulness` tolerance after each run (0.04 → 0.055 → 0.075) until a run passed, which
+the eval-harness spec forbids. That attempt is discarded. The protocol below is written before its numbers exist:
+
+1. **Freeze the inputs.** The datasets (`generation.jsonl` at 36 cases, `generation-judge.jsonl`,
+   `generation-sentences.jsonl`), the grade's code and criteria, the agent's prompt and models do not change between the
+   measurement and the verification. Any change to them restarts the protocol.
+2. **Measure.** Ten `make eval-generation` runs and three `make eval SUITE=generation-judge` runs, back to back, on the
+   running stack. Nothing is tuned between them.
+3. **Derive, mechanically.** For every metric the gate compares:
+   - tolerance = the measured min–max range, rounded up to the next 0.005, and never below the default 0.02;
+   - each override records "min–max over N runs (date, §78)";
+   - a metric that is a diagnostic where lower is better (`judgeUncertain`, `jevUncertain`, `band`) is not gated
+     (tolerance 1, saying why).
+   Thresholds are set at the measured minimum minus that tolerance, rounded down to 0.05.
+4. **Write it down first.** The tolerances, thresholds and the ten runs' numbers are committed before any verification
+   run.
+5. **Verify.** Accept the baseline from one fresh run, then three more fresh runs must pass the gate with nothing
+   changed. A verification failure is recorded as such in DECISIONS.md and the tolerance is **not** moved within this
+   change; the finding goes back to the user.
 
 ## Risks / Trade-offs
 
