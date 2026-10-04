@@ -30,12 +30,7 @@ public sealed class AnswerCheckSuite(IServiceProvider services)
         var reasons = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var (c, i) in cases.Select((c, i) => (c, i)))
         {
-            var result = await check.CheckAsync(c.Question, c.Answer, [.. c.Sources.SelectMany(Current)], ct,
-                string.IsNullOrEmpty(c.PreviousQuestion) ? null : c.PreviousQuestion, [.. c.PreviousSources.Select(Previous)]);
-            var signals = result.Signals.ToHashSet();
-            var outcome = new Metrics.AnswerCheckOutcome(c.Unsupported, c.OffTopic, result.Checked,
-                signals.Contains(Maf.Lab.Domain.Feedback.TurnSignal.AnswerNotGrounded), signals.Contains(Maf.Lab.Domain.Feedback.TurnSignal.AnswerNotRelevant),
-                result.Verdict == AnswerVerdict.Uncertain, c.Domain, c.Language, c.Split);
+            var (result, outcome) = await CheckAsync(check, c, ct);
             outcomes.Add(outcome);
             if (!result.Checked)
             {
@@ -56,6 +51,18 @@ public sealed class AnswerCheckSuite(IServiceProvider services)
         ctx.Progress($"answer-check: {band} in the band, {outcomes.Count(o => !o.Checked)} unchecked"
             + (reasons.Count == 0 ? "" : $" ({string.Join(", ", reasons.OrderBy(u => u.Key, StringComparer.Ordinal).Select(u => $"{u.Key}: {u.Value}"))})"));
         return [SuiteContext.Variant("jev", Metrics.AnswerCheck(outcomes), ctx.ThresholdsFor("answer-check"), cases.Count, failures)];
+    }
+
+    /// <summary>One labelled answer through the production check, and what it made of the labels.</summary>
+    internal static async Task<(AnswerCheck Result, Metrics.AnswerCheckOutcome Outcome)> CheckAsync(JevAnswerCheck check, AnswerCheckCase c,
+        CancellationToken ct)
+    {
+        var result = await check.CheckAsync(c.Question, c.Answer, [.. c.Sources.SelectMany(Current)], ct,
+            string.IsNullOrEmpty(c.PreviousQuestion) ? null : c.PreviousQuestion, [.. c.PreviousSources.Select(Previous)]);
+        var signals = result.Signals.ToHashSet();
+        return (result, new Metrics.AnswerCheckOutcome(c.Unsupported, c.OffTopic, result.Checked,
+            signals.Contains(Maf.Lab.Domain.Feedback.TurnSignal.AnswerNotGrounded), signals.Contains(Maf.Lab.Domain.Feedback.TurnSignal.AnswerNotRelevant),
+            result.Verdict == AnswerVerdict.Uncertain, c.Domain, c.Language, c.Split));
     }
 
     /// <summary>A source as the turn runner reads it: a search item by its place, any other result whole.</summary>

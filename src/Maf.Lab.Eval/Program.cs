@@ -1,3 +1,4 @@
+using Maf.Lab.Api.Agent.Jev;
 using Maf.Lab.Api.Feedback;
 using Maf.Lab.Domain.Evals;
 using Maf.Lab.Eval.Hosting;
@@ -17,7 +18,7 @@ using Microsoft.Extensions.Options;
 namespace Maf.Lab.Eval;
 
 /// <summary>
-/// dotnet run --project src/Maf.Lab.Eval -- --suite selection|retrieval|generation|injection|confirmation|intent|guardrail|domain|presentation|answer-check|all
+/// dotnet run --project src/Maf.Lab.Eval -- --suite selection|retrieval|generation|injection|confirmation|intent|guardrail|domain|presentation|answer-check|generation-judge|all
 ///   [--rerank [--reranker llm,jev]] [--contextual] [--limit N] [--import-feedback [--api-db "Data Source=..."]]
 /// dotnet run --project src/Maf.Lab.Eval -- --ask "question" [--firm firm-a] [--trace-json path]   (one turn, its trace printed)
 /// Run on demand, and always after changing prompts, tool descriptions, the model, the tool set or chunking.
@@ -57,7 +58,7 @@ public static class Program
 
         var suite = flags.GetValueOrDefault("suite") ?? "all";
         var suites = suite == "all"
-            ? new[] { "selection", "retrieval", "generation", "injection", "confirmation", "intent", "guardrail", "domain", "presentation", "answer-check" }
+            ? new[] { "selection", "retrieval", "generation", "injection", "confirmation", "intent", "guardrail", "domain", "presentation", "answer-check", "generation-judge" }
             : suite.Split(',');
         var ctx = new SuiteContext(root, options, flags.TryGetValue("limit", out var l) ? int.Parse(l) : null, m => Console.WriteLine($"  {m}"),
             configuration["Retrieval:CorpusLanguage"] ?? "en");
@@ -97,6 +98,7 @@ public static class Program
                 "intent" => await new IntentSuite(host).RunAsync(ctx, ct),
                 "guardrail" => await new GuardrailSuite(host.Services).RunAsync(ctx, ct),
                 "answer-check" => await new AnswerCheckSuite(host.Services).RunAsync(ctx, ct),
+                "generation-judge" => await RunGenerationJudgeAsync(host, options, root, $"{stamp}-{name}", ctx, settings, ct),
                 "domain" => await new DomainSuite(host).RunAsync(ctx, ct),
                 "presentation" => await new PresentationSuite(host, host.Services.GetRequiredService<IChatClientFactory>()).RunAsync(ctx, ct),
                 _ => throw new ArgumentException($"Unknown suite '{name}'."),
@@ -155,6 +157,22 @@ public static class Program
         settings["judgeModel"] = grader.Model;
         settings["judgeInputTokens"] = suite.InputTokens.ToString(System.Globalization.CultureInfo.InvariantCulture);
         Console.WriteLine($"   report → {await GradeReport.WriteHtmlAsync(root, runId, GenerationSuite.ScenarioPrefix, ct)}");
+        return variants;
+    }
+
+    /// <summary>The generation grade measured on labelled answers, without the agent; refused without the key.</summary>
+    private static async Task<IReadOnlyList<EvalVariantResult>> RunGenerationJudgeAsync(EvalAgentHost host, EvalOptions options, string root,
+        string runId, SuiteContext ctx, Dictionary<string, string> settings, CancellationToken ct)
+    {
+        var sp = host.Services;
+        var grader = new JevGrader(sp.GetRequiredService<JevClient>(), options.Judge, sp.GetRequiredService<ILogger<JevGrader>>());
+        GenerationSuite.RequireKey(grader);
+        var suite = new GenerationJudgeSuite(sp.GetRequiredService<JevAnswerCheck>(),
+            GradeReport.Configure(root, runId, new JevGenerationEvaluator(grader)));
+        var variants = await suite.RunAsync(ctx, ct);
+        settings["judgeModel"] = grader.Model;
+        settings["judgeInputTokens"] = suite.InputTokens.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        Console.WriteLine($"   report → {await GradeReport.WriteHtmlAsync(root, runId, GenerationJudgeSuite.ScenarioPrefix, ct)}");
         return variants;
     }
 

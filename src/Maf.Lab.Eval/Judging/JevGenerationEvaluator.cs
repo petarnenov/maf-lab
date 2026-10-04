@@ -10,7 +10,8 @@ namespace Maf.Lab.Eval.Judging;
 /// leaves its outcome here too, so the suite reads the typed grade (the sentences and points behind each number)
 /// without parsing it back out of the metrics.
 /// </summary>
-public sealed class JevGradeContext(IReadOnlyList<Api.Agent.Jev.ReadItem> read, IReadOnlyList<string> referencePoints)
+public sealed class JevGradeContext(IReadOnlyList<Api.Agent.Jev.ReadItem> read, IReadOnlyList<string> referencePoints,
+    string previousQuestion = "", IReadOnlyList<Api.Agent.Jev.ReadItem>? previousRead = null)
     : EvaluationContext(ContextName, $"{read.Count} source(s), {referencePoints.Count} reference point(s)")
 {
     public const string ContextName = "Jev grade input";
@@ -18,6 +19,10 @@ public sealed class JevGradeContext(IReadOnlyList<Api.Agent.Jev.ReadItem> read, 
     public IReadOnlyList<Api.Agent.Jev.ReadItem> Read { get; } = read;
 
     public IReadOnlyList<string> ReferencePoints { get; } = referencePoints;
+
+    public string PreviousQuestion { get; } = previousQuestion;
+
+    public IReadOnlyList<Api.Agent.Jev.ReadItem> PreviousRead { get; } = previousRead ?? [];
 
     public GradeOutcome? Outcome { get; internal set; }
 }
@@ -49,7 +54,8 @@ public sealed class JevGenerationEvaluator(JevGrader grader) : IEvaluator
         var context = additionalContext?.OfType<JevGradeContext>().FirstOrDefault()
             ?? throw new ArgumentException($"The Jev grade needs a {nameof(JevGradeContext)}.", nameof(additionalContext));
         var question = messages.LastOrDefault(m => m.Role == ChatRole.User)?.Text ?? "";
-        var outcome = await grader.GradeAsync(new GradeInput(question, modelResponse.Text, context.Read, context.ReferencePoints), cancellationToken);
+        var outcome = await grader.GradeAsync(new GradeInput(question, modelResponse.Text, context.Read, context.ReferencePoints,
+            context.PreviousQuestion, context.PreviousRead), cancellationToken);
         context.Outcome = outcome;
         return ToResult(outcome);
     }

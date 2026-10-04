@@ -56,7 +56,7 @@ public class JevGradeTests
         var json = JsonNode.Parse(JsonSerializer.Serialize(new JevRequest("jev-1.13.0", request.State, request.Questions), JevRequest.Json))!;
 
         var state = json["state"]!.AsObject();
-        Assert.Equal(["user_question", "answer_sentences", "sources", "reference_points"], state.Select(p => p.Key));
+        Assert.Equal(["user_question", "previous_question", "answer_sentences", "sources", "reference_points"], state.Select(p => p.Key));
         foreach (var (id, q) in json["questions"]!.AsObject())
         {
             Assert.Equal("noul", q!["type"]!.GetValue<string>());
