@@ -206,7 +206,7 @@ docs-check: require-python ## Check the docs against the code (generated blocks,
 	@python3 -m unittest discover -s scripts/tests -q
 	python3 scripts/docs.py check
 
-ci: specs docs-check lint-dotnet test-dotnet lint-web test-web build-web ci-e2e ## Run locally what GitHub Actions runs on every push
+ci: specs docs-check lint-dotnet test-dotnet lint-web test-web build-web ci-e2e ## Run locally what GitHub Actions runs on every pull request
 
 ci-e2e: require-docker require-dotnet ## Model-free end-to-end: stack with the Ollama stub, index, verify, A2A conformance, test generation (CI mode)
 	@# Test generation merges into main: it runs on a fresh clone of the committed HEAD, never on this checkout's main.

@@ -1,10 +1,14 @@
-# Runs on every push and pull request. Needs no secrets and no model downloads: the e2e job uses the Ollama-compatible
+# Runs once per pull request commit (on the merge with main), on every push to main, and on demand for any branch
+# (ci-once-per-pr): a push to a branch with an open pull request no longer runs everything twice. Needs no secrets and
+# no model downloads: the e2e job uses the Ollama-compatible
 # stub (compose/docker-compose.ci.yml), so it also works for pull requests from forks. `make ci` runs the same locally.
 name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
