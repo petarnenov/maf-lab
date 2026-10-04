@@ -82,7 +82,7 @@ INDEXER_SRC  := $(shell find src/Maf.Lab.Indexing src/Maf.Lab.Retrieval src/Maf.
 INDEXER      := $(DOTNET) $(INDEXER_DLL)
 
 .PHONY: all help up down restart ps logs clean infra index index-portfolio index-code graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
-        coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-answer-check eval-a2a dev doctor banner index-if-empty \
+        coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-answer-check eval-code-route eval-graph-depth eval-retrieval-backends eval-a2a neo4j-chunks dev doctor banner index-if-empty \
         specs docs docs-check lint-dotnet lint-web build-web ci ci-e2e setup \
         require-docker require-dotnet require-npm require-python
 
@@ -155,6 +155,11 @@ index: require-dotnet infra $(INDEXER_DLL) ## Index both domains' corpora and th
 graph: require-dotnet infra $(INDEXER_DLL) ## Build the Neo4j graph: billing relationships and the code graph (unchanged nodes are not rewritten)
 	$(HOST_ENV) $(INDEXER) graph
 
+neo4j-chunks: require-dotnet infra $(INDEXER_DLL) ## Spike: copy the billing and portfolio chunks from Qdrant into Neo4j for eval-retrieval-backends
+	$(HOST_ENV) $(INDEXER) neo4j-chunks
+	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) neo4j-chunks
+	@printf 'store size: neo4j %s · qdrant %s\n' "$$($(COMPOSE) exec -T neo4j du -sh /data/databases/neo4j 2>/dev/null | cut -f1)" "$$($(COMPOSE) exec -T qdrant du -shc /qdrant/storage/collections/maf_chunks /qdrant/storage/collections/maf_portfolio_chunks 2>/dev/null | tail -1 | cut -f1)"
+
 index-portfolio: require-dotnet infra $(INDEXER_DLL) ## Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only
 	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) index
 
@@ -206,7 +211,7 @@ docs-check: require-python ## Check the docs against the code (generated blocks,
 	@python3 -m unittest discover -s scripts/tests -q
 	python3 scripts/docs.py check
 
-ci: specs docs-check lint-dotnet test-dotnet lint-web test-web build-web ci-e2e ## Run locally what GitHub Actions runs on every push
+ci: specs docs-check lint-dotnet test-dotnet lint-web test-web build-web ci-e2e ## Run locally what GitHub Actions runs on every pull request
 
 ci-e2e: require-docker require-dotnet ## Model-free end-to-end: stack with the Ollama stub, index, verify, A2A conformance, test generation (CI mode)
 	@# Test generation merges into main: it runs on a fresh clone of the committed HEAD, never on this checkout's main.
@@ -226,7 +231,7 @@ verify: ## Verify the running stack through the load balancer (37 checks), then 
 	@[ -d copilot-runtime/node_modules ] || (cd copilot-runtime && $(NPM) ci --no-audit --no-fund >/dev/null)
 	MODEL_FREE=$(CI_MODE) node copilot-runtime/conformance.mjs $(BASE_URL)
 
-eval: require-dotnet ## Run evals (SUITE=all|selection|retrieval|generation|injection|confirmation|intent|domain|presentation|guardrail|answer-check|generation-judge) against the stack's MCP servers
+eval: require-dotnet ## Run evals (SUITE=all|selection|retrieval|generation|injection|confirmation|intent|domain|presentation|guardrail|answer-check|code-route|graph-depth|generation-judge) against the stack's MCP servers
 	Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval -- --suite $(SUITE)$(if $(REPEAT), --repeat $(REPEAT))
 
 EVAL_HOST = Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval --
@@ -270,6 +275,15 @@ eval-presentation: require-dotnet ## Eval: do portfolio answers build on their d
 
 eval-answer-check: require-dotnet ## Eval: Jev's answer check alone — are labelled unsupported answers flagged and supported ones not? (needs JEV_MAF_LAB)
 	$(EVAL) answer-check
+
+eval-code-route: require-dotnet ## Eval: Jev's code-route answer alone — would each code question start with the right graph call or the search? (needs JEV_MAF_LAB)
+	$(EVAL) code-route
+
+eval-retrieval-backends: require-dotnet ## Spike comparison: retrieval cases on Qdrant and on Neo4j side by side, never gated (run make neo4j-chunks first)
+	$(EVAL) retrieval-backends
+
+eval-graph-depth: require-dotnet ## Comparison: code graph traces at depth 2, 3 and 4, side by side, never gated (STRUCTURAL=1 for no model)
+	$(EVAL) graph-depth $(if $(STRUCTURAL),--structural-only)
 
 eval-a2a: require-dotnet ## Conformance: an outside client drives the agents through evals/a2a-conformance.jsonl
 	@# Not $(EVAL): this one is deliberately not run by the harness, which links against the service. See DECISIONS.md.

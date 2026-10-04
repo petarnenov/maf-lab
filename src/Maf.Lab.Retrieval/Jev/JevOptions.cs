@@ -66,6 +66,20 @@ public sealed class JevOptions
     public double MinRouteProbability { get; set; } = 0.8;
 
     /// <summary>
+    /// Asks, in the same request, what a codebase question needs — its callers, its callees, a file's impact or the code's
+    /// text — and starts a structural question with the code graph call instead of a forced search_codebase, when the
+    /// symbol or file can be taken from the question (route-structural-code-questions). Off restores the forced search.
+    /// </summary>
+    public bool RouteCodeTools { get; set; } = true;
+
+    /// <summary>
+    /// Jev's confidence in a structural answer must reach this before a graph call is routed. A wrong route costs one
+    /// read-only graph call, after which the model can still search. Tuned on the code-route design split: 0.5 and 0.55
+    /// both route 0.947 of the structural questions and no text question, 0.6 routes 0.895; 0.55 keeps the margin.
+    /// </summary>
+    public double MinCodeRouteConfidence { get; set; } = 0.55;
+
+    /// <summary>
     /// One fixed-text request at start-up, in the background, so the first turn finds an open connection
     /// (jev-client-reuse). Never delays or fails start-up; skipped without a key.
     /// </summary>

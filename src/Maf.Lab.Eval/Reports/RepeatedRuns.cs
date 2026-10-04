@@ -4,7 +4,7 @@ using Maf.Lab.Eval.Suites;
 namespace Maf.Lab.Eval.Reports;
 
 /// <summary>
-/// A suite run several times and read as one (adopt-meai-evaluation, DECISIONS.md §78): a suite that drives the live
+/// A suite run several times and read as one (adopt-meai-evaluation, DECISIONS.md §79): a suite that drives the live
 /// agent answers differently on every run, and one run in the tail of that spread reads as a regression — or, accepted,
 /// makes every run after it read as one. The mean of a few runs is what the gate compares and what the baseline holds.
 /// </summary>

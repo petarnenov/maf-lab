@@ -68,6 +68,11 @@
         "benignPass": 0.98,
         "benignPass:prompt:holdout": 0.95,
         "benignPass:content:holdout": 0.95
+      },
+      "code-route": {
+        "accuracy": 0.85,
+        "structuralRecall": 0.8,
+        "textKept": 0.95
       }
     },
     "Repeat": {
@@ -89,550 +94,586 @@
         "Measured": "0.9218-0.9422 over 5 consecutive runs (range 0.0204), from the same translation variance reaching further down the ranking."
       },
       {
+        "Suite": "code-route",
+        "Tolerance": 0.025,
+        "Metric": "accuracy",
+        "Measured": "accuracy 0.917-0.933 over 3 consecutive runs at MinCodeRouteConfidence 0.55 (route-structural-code-questions); Jev's raw choice moves on one row, while what code routes (structuralRecall, textKept) does not move at all."
+      },
+      {
+        "Suite": "code-route",
+        "Tolerance": 0.03,
+        "Metric": "accuracy:design",
+        "Measured": "accuracy:design 0.93-0.954 over the same 3 runs (range 0.024)."
+      },
+      {
+        "Suite": "code-route",
+        "Tolerance": 0.07,
+        "Metric": "accuracy:bg-latn",
+        "Measured": "accuracy:bg-latn 0.8-0.867 over the same 3 runs (range 0.067): one of 15 Latin-script Bulgarian rows flips."
+      },
+      {
+        "Suite": "code-route",
+        "Tolerance": 0.04,
+        "Metric": "structuralRecall",
+        "Measured": "structuralRecall 0.857-0.893 over 4 runs at floor 0.55 (range 0.036): one Latin-script Bulgarian row moves across the floor."
+      },
+      {
+        "Suite": "code-route",
+        "Tolerance": 0.06,
+        "Metric": "structuralRecall:design",
+        "Measured": "structuralRecall:design 0.895-0.947 over the same 4 runs (range 0.053), the same row."
+      },
+      {
+        "Suite": "code-route",
+        "Tolerance": 0.15,
+        "Metric": "structuralRecall:bg-latn",
+        "Measured": "structuralRecall:bg-latn 0.571-0.714 over the same 4 runs (range 0.143): one of 7 rows."
+      },
+      {
         "Suite": "generation",
         "Tolerance": 0.035,
         "Metric": "completeness",
-        "Measured": "3-run means 0.6349-0.6697 (single runs 0.6343-0.6708) over 10 runs (2026-10-04, §78)"
+        "Measured": "3-run means 0.6349-0.6697 (single runs 0.6343-0.6708) over 10 runs (2026-10-04, §79)"
       },
       {
         "Suite": "generation",
         "Tolerance": 0.035,
         "Metric": "faithfulness",
-        "Measured": "3-run means 0.9362-0.9683 (single runs 0.9278-0.9723) over 10 runs (2026-10-04, §78)"
+        "Measured": "3-run means 0.9362-0.9683 (single runs 0.9278-0.9723) over 10 runs (2026-10-04, §79)"
       },
       {
         "Suite": "generation",
         "Tolerance": 0.07,
         "Metric": "jevGroundedAgreement",
-        "Measured": "3-run means 0.9216-0.9902 (single runs 0.9118-1.0000) over 10 runs (2026-10-04, §78)"
+        "Measured": "3-run means 0.9216-0.9902 (single runs 0.9118-1.0000) over 10 runs (2026-10-04, §79)"
       },
       {
         "Suite": "generation",
         "Tolerance": 1.0,
         "Metric": "jevUncertain",
-        "Measured": "3-run means 0.0487-0.1373 (single runs 0.0286-0.1471) over 10 runs (2026-10-04, §78). A diagnostic where lower is better; not gated."
+        "Measured": "3-run means 0.0487-0.1373 (single runs 0.0286-0.1471) over 10 runs (2026-10-04, §79). A diagnostic where lower is better; not gated."
       },
       {
         "Suite": "generation",
         "Tolerance": 1.0,
         "Metric": "judgeUncertain",
-        "Measured": "3-run means 0.1526-0.1779 (single runs 0.1442-0.1904) over 10 runs (2026-10-04, §78). A diagnostic where lower is better; not gated."
+        "Measured": "3-run means 0.1526-0.1779 (single runs 0.1442-0.1904) over 10 runs (2026-10-04, §79). A diagnostic where lower is better; not gated."
       },
       {
         "Suite": "generation",
         "Tolerance": 0.04,
         "Metric": "retrievalJudged",
-        "Measured": "3-run means 0.8860-0.9231 (single runs 0.8750-0.9278) over 10 runs (2026-10-04, §78)"
+        "Measured": "3-run means 0.8860-0.9231 (single runs 0.8750-0.9278) over 10 runs (2026-10-04, §79)"
       },
       {
         "Suite": "generation",
         "Tolerance": 0.03,
         "Metric": "sourceRecall",
-        "Measured": "3-run means 0.7500-0.7778 (single runs 0.7500-0.7778) over 10 runs (2026-10-04, §78)"
+        "Measured": "3-run means 0.7500-0.7778 (single runs 0.7500-0.7778) over 10 runs (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.03,
         "Metric": "accuracy",
-        "Measured": "0.9487-0.9487 over 5 runs on identical input; one item = 1/39 (2026-10-04, §78)"
+        "Measured": "0.9487-0.9487 over 5 runs on identical input; one item = 1/39 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.095,
         "Metric": "accuracy:bg",
-        "Measured": "0.9091-0.9091 over 5 runs on identical input; one item = 1/11 (2026-10-04, §78)"
+        "Measured": "0.9091-0.9091 over 5 runs on identical input; one item = 1/11 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.1,
         "Metric": "accuracy:bg-latn",
-        "Measured": "0.9000-0.9000 over 5 runs on identical input; one item = 1/10 (2026-10-04, §78)"
+        "Measured": "0.9000-0.9000 over 5 runs on identical input; one item = 1/10 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.085,
         "Metric": "accuracy:billing",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/12 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/12 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.04,
         "Metric": "accuracy:codebase",
-        "Measured": "0.9259-0.9259 over 5 runs on identical input; one item = 1/27 (2026-10-04, §78)"
+        "Measured": "0.9259-0.9259 over 5 runs on identical input; one item = 1/27 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.05,
         "Metric": "accuracy:design",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/20 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/20 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.06,
         "Metric": "accuracy:en",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/18 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/18 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.055,
         "Metric": "accuracy:holdout",
-        "Measured": "0.8947-0.8947 over 5 runs on identical input; one item = 1/19 (2026-10-04, §78)"
+        "Measured": "0.8947-0.8947 over 5 runs on identical input; one item = 1/19 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 1.0,
         "Metric": "band",
-        "Measured": "0.4872-0.5897 over 5 runs (2026-10-04, §78). A diagnostic where lower is better; not gated."
+        "Measured": "0.4872-0.5897 over 5 runs (2026-10-04, §79). A diagnostic where lower is better; not gated."
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.03,
         "Metric": "checked",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/39 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/39 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.145,
         "Metric": "citationDetection",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/7 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/7 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.25,
         "Metric": "citationDetection:bg",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/4 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/4 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.25,
         "Metric": "citationDetection:billing",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/4 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/4 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.335,
         "Metric": "citationDetection:codebase",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/3 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/3 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.25,
         "Metric": "citationDetection:design",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/4 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/4 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.335,
         "Metric": "citationDetection:en",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/3 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/3 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.335,
         "Metric": "citationDetection:holdout",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/3 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/3 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.1,
         "Metric": "citationPass",
-        "Measured": "0.8333-0.9333 over 5 runs on identical input; one item = 1/30 (2026-10-04, §78)"
+        "Measured": "0.8333-0.9333 over 5 runs on identical input; one item = 1/30 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.135,
         "Metric": "citationPass:bg",
-        "Measured": "0.8667-1.0000 over 5 runs on identical input; one item = 1/15 (2026-10-04, §78)"
+        "Measured": "0.8667-1.0000 over 5 runs on identical input; one item = 1/15 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.1,
         "Metric": "citationPass:billing",
-        "Measured": "0.8500-0.9500 over 5 runs on identical input; one item = 1/20 (2026-10-04, §78)"
+        "Measured": "0.8500-0.9500 over 5 runs on identical input; one item = 1/20 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.1,
         "Metric": "citationPass:codebase",
-        "Measured": "0.8000-0.9000 over 5 runs on identical input; one item = 1/10 (2026-10-04, §78)"
+        "Measured": "0.8000-0.9000 over 5 runs on identical input; one item = 1/10 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.12,
         "Metric": "citationPass:design",
-        "Measured": "0.8000-0.9200 over 5 runs on identical input; one item = 1/25 (2026-10-04, §78)"
+        "Measured": "0.8000-0.9200 over 5 runs on identical input; one item = 1/25 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.135,
         "Metric": "citationPass:en",
-        "Measured": "0.7333-0.8667 over 5 runs on identical input; one item = 1/15 (2026-10-04, §78)"
+        "Measured": "0.7333-0.8667 over 5 runs on identical input; one item = 1/15 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.2,
         "Metric": "citationPass:holdout",
-        "Measured": "0.8000-1.0000 over 5 runs on identical input; one item = 1/5 (2026-10-04, §78)"
+        "Measured": "0.8000-1.0000 over 5 runs on identical input; one item = 1/5 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.03,
         "Metric": "contradictedAccuracy:bg",
-        "Measured": "0.9459-0.9730 over 5 runs on identical input; one item = 1/37 (2026-10-04, §78)"
+        "Measured": "0.9459-0.9730 over 5 runs on identical input; one item = 1/37 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.035,
         "Metric": "contradictedAccuracy:billing",
-        "Measured": "0.9355-0.9677 over 5 runs on identical input; one item = 1/31 (2026-10-04, §78)"
+        "Measured": "0.9355-0.9677 over 5 runs on identical input; one item = 1/31 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.025,
         "Metric": "contradictedAccuracy:codebase",
-        "Measured": "0.9250-0.9500 over 5 runs on identical input; one item = 1/40 (2026-10-04, §78)"
+        "Measured": "0.9250-0.9500 over 5 runs on identical input; one item = 1/40 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.03,
         "Metric": "contradictedAccuracy:en",
-        "Measured": "0.9118-0.9412 over 5 runs on identical input; one item = 1/34 (2026-10-04, §78)"
+        "Measured": "0.9118-0.9412 over 5 runs on identical input; one item = 1/34 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.06,
         "Metric": "contradictedAccuracy:holdout",
-        "Measured": "0.8824-0.9412 over 5 runs on identical input; one item = 1/17 (2026-10-04, §78)"
+        "Measured": "0.8824-0.9412 over 5 runs on identical input; one item = 1/17 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.06,
         "Metric": "groundedDetection",
-        "Measured": "0.9412-0.9412 over 5 runs on identical input; one item = 1/17 (2026-10-04, §78)"
+        "Measured": "0.9412-0.9412 over 5 runs on identical input; one item = 1/17 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.2,
         "Metric": "groundedDetection:bg",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/5 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/5 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.2,
         "Metric": "groundedDetection:bg-latn",
-        "Measured": "0.8000-0.8000 over 5 runs on identical input; one item = 1/5 (2026-10-04, §78)"
+        "Measured": "0.8000-0.8000 over 5 runs on identical input; one item = 1/5 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.2,
         "Metric": "groundedDetection:billing",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/5 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/5 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.085,
         "Metric": "groundedDetection:codebase",
-        "Measured": "0.9167-0.9167 over 5 runs on identical input; one item = 1/12 (2026-10-04, §78)"
+        "Measured": "0.9167-0.9167 over 5 runs on identical input; one item = 1/12 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.115,
         "Metric": "groundedDetection:design",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/9 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/9 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.145,
         "Metric": "groundedDetection:en",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/7 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/7 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.125,
         "Metric": "groundedDetection:holdout",
-        "Measured": "0.8750-0.8750 over 5 runs on identical input; one item = 1/8 (2026-10-04, §78)"
+        "Measured": "0.8750-0.8750 over 5 runs on identical input; one item = 1/8 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.05,
         "Metric": "groundedPass",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/22 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/22 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.17,
         "Metric": "groundedPass:bg",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/6 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/6 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.2,
         "Metric": "groundedPass:bg-latn",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/5 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/5 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.145,
         "Metric": "groundedPass:billing",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/7 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/7 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.07,
         "Metric": "groundedPass:codebase",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/15 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/15 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.095,
         "Metric": "groundedPass:design",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/11 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/11 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.095,
         "Metric": "groundedPass:en",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/11 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/11 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.095,
         "Metric": "groundedPass:holdout",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/11 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/11 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.03,
         "Metric": "pointAccuracy:bg",
-        "Measured": "0.9189-0.9459 over 5 runs on identical input; one item = 1/37 (2026-10-04, §78)"
+        "Measured": "0.9189-0.9459 over 5 runs on identical input; one item = 1/37 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.035,
         "Metric": "pointAccuracy:billing",
-        "Measured": "0.9032-0.9355 over 5 runs on identical input; one item = 1/31 (2026-10-04, §78)"
+        "Measured": "0.9032-0.9355 over 5 runs on identical input; one item = 1/31 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.025,
         "Metric": "pointAccuracy:codebase",
-        "Measured": "0.9000-0.9250 over 5 runs on identical input; one item = 1/40 (2026-10-04, §78)"
+        "Measured": "0.9000-0.9250 over 5 runs on identical input; one item = 1/40 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.03,
         "Metric": "pointAccuracy:en",
-        "Measured": "0.8824-0.9118 over 5 runs on identical input; one item = 1/34 (2026-10-04, §78)"
+        "Measured": "0.8824-0.9118 over 5 runs on identical input; one item = 1/34 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.06,
         "Metric": "pointAccuracy:holdout",
-        "Measured": "0.8235-0.8824 over 5 runs on identical input; one item = 1/17 (2026-10-04, §78)"
+        "Measured": "0.8235-0.8824 over 5 runs on identical input; one item = 1/17 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.335,
         "Metric": "relevantDetection",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/3 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/3 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 1.0,
         "Metric": "relevantDetection:bg",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/1 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/1 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 1.0,
         "Metric": "relevantDetection:billing",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/1 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/1 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.5,
         "Metric": "relevantDetection:codebase",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/2 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/2 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 1.0,
         "Metric": "relevantDetection:design",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/1 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/1 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.5,
         "Metric": "relevantDetection:en",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/2 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/2 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.5,
         "Metric": "relevantDetection:holdout",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/2 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/2 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.03,
         "Metric": "relevantPass",
-        "Measured": "0.9722-0.9722 over 5 runs on identical input; one item = 1/36 (2026-10-04, §78)"
+        "Measured": "0.9722-0.9722 over 5 runs on identical input; one item = 1/36 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.1,
         "Metric": "relevantPass:bg",
-        "Measured": "0.9000-0.9000 over 5 runs on identical input; one item = 1/10 (2026-10-04, §78)"
+        "Measured": "0.9000-0.9000 over 5 runs on identical input; one item = 1/10 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.1,
         "Metric": "relevantPass:bg-latn",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/10 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/10 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.095,
         "Metric": "relevantPass:billing",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/11 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/11 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.04,
         "Metric": "relevantPass:codebase",
-        "Measured": "0.9600-0.9600 over 5 runs on identical input; one item = 1/25 (2026-10-04, §78)"
+        "Measured": "0.9600-0.9600 over 5 runs on identical input; one item = 1/25 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.055,
         "Metric": "relevantPass:design",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/19 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/19 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.065,
         "Metric": "relevantPass:en",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/16 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/16 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.06,
         "Metric": "relevantPass:holdout",
-        "Measured": "0.9412-0.9412 over 5 runs on identical input; one item = 1/17 (2026-10-04, §78)"
+        "Measured": "0.9412-0.9412 over 5 runs on identical input; one item = 1/17 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.03,
         "Metric": "sentenceAccuracy:bg",
-        "Measured": "0.8933-0.9200 over 5 runs on identical input; one item = 1/75 (2026-10-04, §78)"
+        "Measured": "0.8933-0.9200 over 5 runs on identical input; one item = 1/75 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.03,
         "Metric": "sentenceAccuracy:design",
-        "Measured": "0.9091-0.9351 over 5 runs on identical input; one item = 1/77 (2026-10-04, §78)"
+        "Measured": "0.9091-0.9351 over 5 runs on identical input; one item = 1/77 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.03,
         "Metric": "statedAccuracy:bg",
-        "Measured": "0.9730-0.9730 over 5 runs on identical input; one item = 1/37 (2026-10-04, §78)"
+        "Measured": "0.9730-0.9730 over 5 runs on identical input; one item = 1/37 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.035,
         "Metric": "statedAccuracy:billing",
-        "Measured": "0.9677-0.9677 over 5 runs on identical input; one item = 1/31 (2026-10-04, §78)"
+        "Measured": "0.9677-0.9677 over 5 runs on identical input; one item = 1/31 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.025,
         "Metric": "statedAccuracy:codebase",
-        "Measured": "0.9750-0.9750 over 5 runs on identical input; one item = 1/40 (2026-10-04, §78)"
+        "Measured": "0.9750-0.9750 over 5 runs on identical input; one item = 1/40 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.03,
         "Metric": "statedAccuracy:en",
-        "Measured": "0.9706-0.9706 over 5 runs on identical input; one item = 1/34 (2026-10-04, §78)"
+        "Measured": "0.9706-0.9706 over 5 runs on identical input; one item = 1/34 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.06,
         "Metric": "statedAccuracy:holdout",
-        "Measured": "0.9412-0.9412 over 5 runs on identical input; one item = 1/17 (2026-10-04, §78)"
+        "Measured": "0.9412-0.9412 over 5 runs on identical input; one item = 1/17 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.025,
         "Metric": "supportedPass:billing",
-        "Measured": "0.9756-0.9756 over 5 runs on identical input; one item = 1/41 (2026-10-04, §78)"
+        "Measured": "0.9756-0.9756 over 5 runs on identical input; one item = 1/41 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.025,
         "Metric": "supportedPass:codebase",
-        "Measured": "0.9767-0.9767 over 5 runs on identical input; one item = 1/43 (2026-10-04, §78)"
+        "Measured": "0.9767-0.9767 over 5 runs on identical input; one item = 1/43 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.025,
         "Metric": "supportedPass:design",
-        "Measured": "0.9750-0.9750 over 5 runs on identical input; one item = 1/40 (2026-10-04, §78)"
+        "Measured": "0.9750-0.9750 over 5 runs on identical input; one item = 1/40 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.03,
         "Metric": "supportedPass:en",
-        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/34 (2026-10-04, §78)"
+        "Measured": "1.0000-1.0000 over 5 runs on identical input; one item = 1/34 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.025,
         "Metric": "supportedPass:holdout",
-        "Measured": "0.9773-0.9773 over 5 runs on identical input; one item = 1/44 (2026-10-04, §78)"
+        "Measured": "0.9773-0.9773 over 5 runs on identical input; one item = 1/44 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.125,
         "Metric": "unsupportedDetection",
-        "Measured": "0.5000-0.6250 over 5 runs on identical input; one item = 1/8 (2026-10-04, §78)"
+        "Measured": "0.5000-0.6250 over 5 runs on identical input; one item = 1/8 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.5,
         "Metric": "unsupportedDetection:bg",
-        "Measured": "0.0000-0.0000 over 5 runs on identical input; one item = 1/2 (2026-10-04, §78)"
+        "Measured": "0.0000-0.0000 over 5 runs on identical input; one item = 1/2 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.25,
         "Metric": "unsupportedDetection:billing",
-        "Measured": "0.2500-0.5000 over 5 runs on identical input; one item = 1/4 (2026-10-04, §78)"
+        "Measured": "0.2500-0.5000 over 5 runs on identical input; one item = 1/4 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.25,
         "Metric": "unsupportedDetection:codebase",
-        "Measured": "0.7500-0.7500 over 5 runs on identical input; one item = 1/4 (2026-10-04, §78)"
+        "Measured": "0.7500-0.7500 over 5 runs on identical input; one item = 1/4 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.25,
         "Metric": "unsupportedDetection:design",
-        "Measured": "0.5000-0.7500 over 5 runs on identical input; one item = 1/4 (2026-10-04, §78)"
+        "Measured": "0.5000-0.7500 over 5 runs on identical input; one item = 1/4 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.17,
         "Metric": "unsupportedDetection:en",
-        "Measured": "0.6667-0.8333 over 5 runs on identical input; one item = 1/6 (2026-10-04, §78)"
+        "Measured": "0.6667-0.8333 over 5 runs on identical input; one item = 1/6 (2026-10-04, §79)"
       },
       {
         "Suite": "generation-judge",
         "Tolerance": 0.25,
         "Metric": "unsupportedDetection:holdout",
-        "Measured": "0.5000-0.5000 over 5 runs on identical input; one item = 1/4 (2026-10-04, §78)"
+        "Measured": "0.5000-0.5000 over 5 runs on identical input; one item = 1/4 (2026-10-04, §79)"
       }
     ]
   }

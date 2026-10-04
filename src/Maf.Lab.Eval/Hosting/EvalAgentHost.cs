@@ -43,7 +43,12 @@ public sealed class EvalAgentHost : IAsyncDisposable
 
     public ServiceProvider Services { get; }
 
-    public static async Task<EvalAgentHost> StartAsync(IConfiguration configuration, CancellationToken ct, Action<IServiceCollection>? overrides = null)
+    /// <param name="codeSettings">
+    /// Settings for an in-process codebase server, which is then always started here, whatever Evals:CodeMcpEndpoint
+    /// says: the graph-depth suite's pin (add-graph-depth-eval) only exists on a server it starts itself.
+    /// </param>
+    public static async Task<EvalAgentHost> StartAsync(IConfiguration configuration, CancellationToken ct, Action<IServiceCollection>? overrides = null,
+        IReadOnlyDictionary<string, string?>? codeSettings = null)
     {
         var options = configuration.GetSection(EvalOptions.Section).Get<EvalOptions>() ?? new EvalOptions();
         WebApplication? retrieval = null;
@@ -78,17 +83,10 @@ public sealed class EvalAgentHost : IAsyncDisposable
 
         // The codebase's server, the third domain (add-codebase-domain), the same way.
         WebApplication? code = null;
-        var codeEndpoint = options.CodeMcpEndpoint;
+        var codeEndpoint = codeSettings is null ? options.CodeMcpEndpoint : "";
         if (string.IsNullOrWhiteSpace(codeEndpoint))
         {
-            code = Maf.Lab.CodeSearch.Program.BuildApp([], b =>
-            {
-                b.Configuration.AddConfiguration(configuration);
-                b.Configuration["Urls"] = "http://127.0.0.1:0";
-                b.Logging.SetMinimumLevel(LogLevel.Warning);
-            });
-            await code.StartAsync(ct);
-            codeEndpoint = code.Urls.First().TrimEnd('/') + "/mcp";
+            (code, codeEndpoint) = await StartCodeServerAsync(configuration, codeSettings, ct);
         }
 
         var workDir = Directory.CreateTempSubdirectory("maf-eval-").FullName;
@@ -136,6 +134,32 @@ public sealed class EvalAgentHost : IAsyncDisposable
             await DatabaseInitializer.InitializeAsync(db, ct);
         }
         return new EvalAgentHost(provider, retrieval, portfolio, code, workDir, options.KeepWorkDir);
+    }
+
+    /// <summary>The codebase MCP server in-process on a loopback port, with <paramref name="settings"/> over the configuration.</summary>
+    public static async Task<(WebApplication App, string Endpoint)> StartCodeServerAsync(IConfiguration configuration,
+        IReadOnlyDictionary<string, string?>? settings, CancellationToken ct)
+    {
+        var code = Maf.Lab.CodeSearch.Program.BuildApp([], b =>
+        {
+            b.Configuration.AddConfiguration(configuration);
+            if (settings is not null)
+            {
+                b.Configuration.AddInMemoryCollection(settings);
+            }
+            b.Configuration["Urls"] = "http://127.0.0.1:0";
+            b.Logging.SetMinimumLevel(LogLevel.Warning);
+        });
+        await code.StartAsync(ct);
+        return (code, code.Urls.First().TrimEnd('/') + "/mcp");
+    }
+
+    /// <summary>A bearer token for the eval principal of <paramref name="firmId"/>: the servers derive the tenant from it.</summary>
+    public static string EvalToken(IConfiguration configuration, string firmId)
+    {
+        var principal = EvalPrincipal(firmId);
+        var auth = configuration.GetSection(AuthOptions.Section).Get<AuthOptions>() ?? new AuthOptions();
+        return DevJwt.Issue(auth, principal.UserId, principal.FirmId, principal.Role, []).Token;
     }
 
     public static Principal EvalPrincipal(string firmId) => new($"eval-{firmId}", TenantId.Firm(firmId), Role.ADVISOR, []);

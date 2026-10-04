@@ -49,6 +49,12 @@ public sealed class FakeToolSource : IToolSource
     /// <summary>Also offer the codebase server's search (add-codebase-domain).</summary>
     public bool WithCodebase { get; set; }
 
+    /// <summary>With <see cref="WithCodebase"/>: the codebase server also offers trace_code_symbol and change_impact.</summary>
+    public bool WithCodeGraph { get; set; }
+
+    /// <summary>The arguments each graph call was made with, in order: what a routed call carried.</summary>
+    public List<IReadOnlyDictionary<string, string?>> GraphArguments { get; } = [];
+
     public string CodebasePayloadJson { get; set; } = """
         {"results":[
           {"path":"src/Maf.Lab.Api/Agent/ToolSource.cs","startLine":17,"endLine":27,"symbol":"ConfirmedCall","section":"src/Maf.Lab.Api/Agent/ToolSource.cs > ConfirmedCall","kind":"code","language":"csharp","score":0.9,"snippet":"/// <param name=\"idempotencyKey\">The caller's own key.</param>\npublic delegate Task<CallToolResult> ConfirmedCall(string tool, string? idempotencyKey);"}
@@ -140,6 +146,23 @@ public sealed class FakeToolSource : IToolSource
                 return Mcp(CodebasePayloadJson);
             }, Maf.Lab.Domain.Code.CodeTools.Search, "Searches the maf-lab repository."));
             origins[Maf.Lab.Domain.Code.CodeTools.Search] = new ToolOrigin("codebase", "maf-lab-code");
+            if (WithCodeGraph)
+            {
+                offered.Add(AIFunctionFactory.Create((string symbol, string? direction = null, int? depth = null) =>
+                {
+                    Invocations.Add(Maf.Lab.Domain.Graph.GraphTools.TraceCodeSymbol);
+                    GraphArguments.Add(new Dictionary<string, string?> { ["symbol"] = symbol, ["direction"] = direction });
+                    return Mcp("""{"symbol":"S","direction":"callers","depth":2,"matched":[],"candidates":[],"reached":[],"truncated":false}""");
+                }, Maf.Lab.Domain.Graph.GraphTools.TraceCodeSymbol, "Traces callers or callees."));
+                offered.Add(AIFunctionFactory.Create((string path) =>
+                {
+                    Invocations.Add(Maf.Lab.Domain.Graph.GraphTools.ChangeImpact);
+                    GraphArguments.Add(new Dictionary<string, string?> { ["path"] = path });
+                    return Mcp("""{"path":"P","declared":[],"reachedFrom":[],"tests":[],"truncated":false}""");
+                }, Maf.Lab.Domain.Graph.GraphTools.ChangeImpact, "What a change to a file affects."));
+                origins[Maf.Lab.Domain.Graph.GraphTools.TraceCodeSymbol] = new ToolOrigin("codebase", "maf-lab-code");
+                origins[Maf.Lab.Domain.Graph.GraphTools.ChangeImpact] = new ToolOrigin("codebase", "maf-lab-code");
+            }
         }
         if (!WithPortfolio)
         {

@@ -27,11 +27,21 @@ public sealed record SearchRequest
 }
 
 /// <summary>
+/// A tenant-scoped chunk search, for measurement (neo4j-retrieval-spike): the eval times <see cref="TenantScopedSearch"/>
+/// through it and passes the spike's <c>GraphChunkSearch</c> in its place. No service registers it; the document search
+/// calls <see cref="TenantScopedSearch"/> directly.
+/// </summary>
+public interface IChunkSearch
+{
+    Task<IReadOnlyList<ScoredChunk>> QueryAsync(Principal principal, SearchRequest request, CancellationToken ct);
+}
+
+/// <summary>
 /// THE query path. Every read of chunk content for a caller goes through <see cref="QueryAsync"/>,
 /// which takes a <see cref="Principal"/> and scopes every prefetch branch and the outer query to the
 /// principal's firm plus the shared corpus. There is deliberately no tenant parameter.
 /// </summary>
-public sealed class TenantScopedSearch(QdrantClient client, IOptions<QdrantOptions> options)
+public sealed class TenantScopedSearch(QdrantClient client, IOptions<QdrantOptions> options) : IChunkSearch
 {
     private readonly string _collection = options.Value.Collection;
 

@@ -45,7 +45,7 @@
 These are on the same release train as the pinned `Microsoft.Extensions.AI` 10.10.0. The grade is an `IEvaluator`
 that returns `NumericMetric`s with diagnostics. It needs no `ChatConfiguration`, because Jev is not an `IChatClient`.
 `.Reporting`'s `DiskBasedReportingConfiguration` stores each run's `ScenarioRunResult`s under `evals/reports/meai/`.
-Response caching is off: there are no chat calls to cache. Measured: Jev gives the same verdicts on identical input, with probabilities moving 0.01–0.05 between runs (DECISIONS §78).
+Response caching is off: there are no chat calls to cache. Measured: Jev gives the same verdicts on identical input, with probabilities moving 0.01–0.05 between runs (DECISIONS §79).
 *Rejected:*
 - `.Quality` (Groundedness, Relevance, Completeness, Retrieval): LLM prompts with 1–5 grades bring back the noise,
   the latency and the broad judgments this change removes.
@@ -199,7 +199,7 @@ the eval-harness spec forbids. That attempt is discarded. The protocol below is 
    running stack. Nothing is tuned between them.
 3. **Derive, mechanically.** For every metric the gate compares:
    - tolerance = the measured min–max range, rounded up to the next 0.005, and never below the default 0.02;
-   - each override records "min–max over N runs (date, §78)";
+   - each override records "min–max over N runs (date, §79)";
    - a metric that is a diagnostic where lower is better (`judgeUncertain`, `jevUncertain`, `band`) is not gated
      (tolerance 1, saying why).
    Thresholds are set at the measured minimum minus that tolerance, rounded down to 0.05.

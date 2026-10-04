@@ -17,7 +17,9 @@ public sealed record GraphNode(string Label, TenantId Tenant, string Key, IReadO
 }
 
 /// <summary>A directed relationship between two nodes identified by label, tenant and key.</summary>
-public sealed record GraphEdge(string FromLabel, TenantId FromTenant, string FromKey, string Type, string ToLabel, TenantId ToTenant, string ToKey);
+/// <param name="Properties">The relationship's own properties, e.g. a BM25 weight; none for most edges.</param>
+public sealed record GraphEdge(string FromLabel, TenantId FromTenant, string FromKey, string Type, string ToLabel, TenantId ToTenant, string ToKey,
+    IReadOnlyDictionary<string, object?>? Properties = null);
 
 public sealed record GraphWriteCounts(int Written, int Unchanged, int Rejected)
 {
@@ -66,6 +68,15 @@ public sealed class TenantScopedGraphMaintenance(IDriver driver, IOptions<GraphO
         {
             await RunAsync($"CREATE INDEX {label.ToLowerInvariant()}_run IF NOT EXISTS FOR (n:{label}) ON (n.source, n.run_id)", null, ct);
         }
+        // The retrieval subgraph (neo4j-retrieval-spike): a term is looked up by key alone, and the dense index declares the
+        // properties a SEARCH may filter on inside the index — the tenant above all, so a small tenant is not shortchanged.
+        await RunAsync($"CREATE INDEX term_key IF NOT EXISTS FOR (n:{GraphLabels.Term}) ON (n.key)", null, ct);
+        await RunAsync($$$"""
+            CREATE VECTOR INDEX {{{RetrievalGraph.DenseIndex}}} IF NOT EXISTS
+            FOR (c:{{{GraphLabels.RetrievalChunk}}}) ON c.{{{RetrievalGraph.DenseProperty}}}
+            WITH [c.tenant_id, c.{{{RetrievalGraph.CollectionProperty}}}, c.source_type]
+            OPTIONS {indexConfig: {`vector.dimensions`: {{{RetrievalGraph.DenseDimensions}}}, `vector.similarity_function`: 'cosine'}}
+            """, null, ct);
     }
 
     public async Task<GraphWriteCounts> WriteNodesAsync(string source, string runId, IReadOnlyList<GraphNode> nodes, CancellationToken ct)
@@ -116,14 +127,15 @@ public sealed class TenantScopedGraphMaintenance(IDriver driver, IOptions<GraphO
                 var rows = batch.Select(e => new Dictionary<string, object?>
                 {
                     ["ft"] = e.FromTenant.Value, ["fk"] = e.FromKey, ["tt"] = e.ToTenant.Value, ["tk"] = e.ToKey,
+                    ["props"] = e.Properties?.ToDictionary(p => p.Key, p => p.Value) ?? new Dictionary<string, object?>(),
                 }).ToList();
                 var records = await RunAsync($$"""
                     UNWIND $rows AS row
                     MATCH (a:{{from}} {tenant_id: row.ft, key: row.fk})
                     MATCH (b:{{to}} {tenant_id: row.tt, key: row.tk})
                     MERGE (a)-[r:{{type}}]->(b)
-                    WITH r, r.run_id IS NOT NULL AS existed
-                    SET r.source = $source, r.run_id = $run
+                    WITH r, row, r.run_id IS NOT NULL AS existed
+                    SET r += row.props, r.source = $source, r.run_id = $run
                     RETURN count(r) AS total, sum(CASE WHEN existed THEN 1 ELSE 0 END) AS unchanged
                     """, new() { ["rows"] = rows, ["source"] = source, ["run"] = runId }, ct);
                 var total = records[0]["total"].As<int>();
@@ -180,6 +192,17 @@ public sealed class TenantScopedGraphMaintenance(IDriver driver, IOptions<GraphO
             .Select(x => new GraphDocument(x.Tenant, x.Row["key"].As<string>(), x.Row["hash"].As<string?>()))];
     }
 
+    /// <summary>
+    /// How many chunks of a Qdrant collection the retrieval spike's copy holds (neo4j-retrieval-spike): what the comparison
+    /// checks against the collection's own count before it scores anything. A maintenance read; no tool reaches it.
+    /// </summary>
+    public async Task<long> CountRetrievalChunksAsync(string collection, CancellationToken ct)
+    {
+        var rows = await RunAsync($"MATCH (c:{GraphLabels.RetrievalChunk}) WHERE c.{RetrievalGraph.CollectionProperty} = $collection RETURN count(c) AS c",
+            new() { ["collection"] = collection }, ct, read: true);
+        return rows[0]["c"].As<long>();
+    }
+
     public Task VerifyConnectivityAsync() => driver.VerifyConnectivityAsync();
 
     private async Task<IReadOnlyList<IRecord>> RunAsync(string cypher, Dictionary<string, object?>? parameters, CancellationToken ct, bool read = false)
@@ -203,7 +226,7 @@ public sealed class TenantScopedGraphMaintenance(IDriver driver, IOptions<GraphO
 
     private static void RequireSource(string source)
     {
-        if (!GraphSources.All.Contains(source))
+        if (!GraphSources.Writable.Contains(source))
         {
             throw new ArgumentException($"'{source}' is not a graph source.", nameof(source));
         }

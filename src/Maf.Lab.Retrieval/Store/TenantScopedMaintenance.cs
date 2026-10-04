@@ -145,6 +145,35 @@ public sealed class TenantScopedMaintenance(QdrantClient client, IOptions<Qdrant
         await client.SetPayloadAsync(_collection, versions, scoped, wait: true, cancellationToken: ct);
     }
 
+    /// <summary>
+    /// Every point of the collection with its payload, its <paramref name="denseVector"/> and its BM25 sparse vector: what
+    /// the Neo4j retrieval spike copies (neo4j-retrieval-spike). A maintenance read for the indexer only; no tool reaches it.
+    /// </summary>
+    public async IAsyncEnumerable<ChunkVectors> ListChunkVectorsAsync(string denseVector,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        await foreach (var point in ScrollAsync(new Filter(), withVectors: true, ct))
+        {
+            var named = point.Vectors?.Vectors?.Vectors;
+            float[]? dense = null;
+            SparseVectorData? sparse = null;
+            if (named is not null && named.TryGetValue(denseVector, out var d))
+            {
+                dense = d.Dense is { } dv ? [.. dv.Data] : null;
+            }
+            if (named is not null && named.TryGetValue(ChunkSchema.SparseVector, out var sv))
+            {
+                sparse = sv.Sparse is { } sp ? new SparseVectorData([.. sp.Indices], [.. sp.Values]) : null;
+            }
+            yield return new ChunkVectors(PayloadMapper.FromPayload(point.Payload), dense, sparse);
+        }
+    }
+
+    /// <summary>How many points the collection holds: what the spike's copy is checked against.</summary>
+    public async Task<long> CountAsync(CancellationToken ct) => (long)await client.CountAsync(_collection, exact: true, cancellationToken: ct);
+
+    public string Collection => _collection;
+
     private async IAsyncEnumerable<RetrievedPoint> ScrollAsync(Filter filter, bool withVectors, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         PointId? offset = null;
@@ -187,3 +216,6 @@ public sealed class TenantScopedMaintenance(QdrantClient client, IOptions<Qdrant
         return point;
     }
 }
+
+/// <summary>A chunk with the vectors it was indexed with; either vector may be missing on an old point.</summary>
+public sealed record ChunkVectors(ChunkRecord Chunk, float[]? Dense, SparseVectorData? Sparse);

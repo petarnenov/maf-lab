@@ -491,25 +491,21 @@ public class CodebaseSearchTests
         Assert.Empty(chat.Requests);
     }
 
-    [Fact]
-    public async Task The_code_server_lists_four_read_only_tools_without_tenant_inputs_and_refuses_anonymous_calls()
-    {
-        await using var factory = new WebApplicationFactory<Maf.Lab.CodeSearch.Program>().WithWebHostBuilder(b =>
+    private static WebApplicationFactory<Maf.Lab.CodeSearch.Program> CodeServer(string? depthPin = null) =>
+        new WebApplicationFactory<Maf.Lab.CodeSearch.Program>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Development");
             b.UseSetting("Qdrant:GrpcPort", "1");
             b.UseSetting(JevCredential.EnvironmentVariable, FakeJev.TestKey);
+            if (depthPin is not null)
+            {
+                b.UseSetting(CodeSearchOptions.Section + ":" + nameof(CodeSearchOptions.GraphDepthPin), depthPin);
+            }
             b.ConfigureLogging(l => l.SetMinimumLevel(LogLevel.Warning));
         });
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
-        {
-            Content = new StringContent("""{"jsonrpc":"2.0","id":1,"method":"tools/list"}""", System.Text.Encoding.UTF8, "application/json"),
-        };
-        request.Headers.Accept.ParseAdd("application/json");
-        request.Headers.Accept.ParseAdd("text/event-stream");
-        var anonymous = await factory.CreateClient().SendAsync(request, Ct);
-        Assert.Equal(System.Net.HttpStatusCode.Unauthorized, anonymous.StatusCode);
 
+    private static async Task<IList<McpClientTool>> ListToolsAsync(WebApplicationFactory<Maf.Lab.CodeSearch.Program> factory)
+    {
         var (token, _) = DevJwt.Issue(new AuthOptions(), "u-a", TenantId.Firm("firm-a"), Role.ADVISOR, []);
         var http = factory.CreateDefaultClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -519,8 +515,80 @@ public class CodebaseSearchTests
             TransportMode = HttpTransportMode.StreamableHttp,
         }, http, NullLoggerFactory.Instance, ownsHttpClient: true);
         await using var client = await McpClient.CreateAsync(transport, cancellationToken: Ct);
+        return await client.ListToolsAsync(cancellationToken: Ct);
+    }
 
-        var tools = await client.ListToolsAsync(cancellationToken: Ct);
+    private static List<string> Parameters(McpClientTool tool) =>
+        [.. tool.ProtocolTool.InputSchema.GetProperty("properties").EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal)];
+
+    [Fact]
+    public async Task An_unpinned_code_server_publishes_the_graph_tools_as_before()
+    {
+        await using var factory = CodeServer();
+        var tools = await ListToolsAsync(factory);
+
+        var trace = tools.Single(t => t.Name == GraphTools.TraceCodeSymbol);
+        var impact = tools.Single(t => t.Name == GraphTools.ChangeImpact);
+        Assert.Equal(CodeGraphTools.TraceDescription, trace.Description);
+        Assert.Contains("up to 4 calls", trace.Description);
+        Assert.Equal(["depth", "direction", "symbol"], Parameters(trace));
+        Assert.Equal(CodeGraphTools.DepthParameterDescription,
+            trace.ProtocolTool.InputSchema.GetProperty("properties").GetProperty("depth").GetProperty("description").GetString());
+        Assert.Equal(["symbol"], trace.ProtocolTool.InputSchema.TryGetProperty("required", out var required)
+            ? [.. required.EnumerateArray().Select(r => r.GetString()!)] : new List<string>());
+        Assert.Equal(CodeGraphTools.ImpactDescription, impact.Description);
+        Assert.Equal(["path"], Parameters(impact));
+    }
+
+    [Fact]
+    public async Task A_pinned_code_server_says_how_far_it_traces_and_offers_no_depth()
+    {
+        await using var factory = CodeServer(depthPin: "2");
+        var tools = await ListToolsAsync(factory);
+
+        var trace = tools.Single(t => t.Name == GraphTools.TraceCodeSymbol);
+        Assert.Equal(CodeGraphTools.PinnedTraceDescription(2), trace.Description);
+        Assert.Contains("up to 2 calls", trace.Description);
+        Assert.DoesNotContain("up to 4", trace.Description);
+        Assert.Equal(["direction", "symbol"], Parameters(trace));
+        // change_impact names no depth, so the pin leaves it exactly as published.
+        Assert.Equal(CodeGraphTools.ImpactDescription, tools.Single(t => t.Name == GraphTools.ChangeImpact).Description);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("5")]
+    public void A_depth_pin_outside_1_to_4_stops_the_code_server(string pin)
+    {
+        using var factory = CodeServer(depthPin: pin);
+        var error = Assert.Throws<Microsoft.Extensions.Options.OptionsValidationException>(() => factory.CreateClient());
+        Assert.Contains("CodeSearch:GraphDepthPin must be between 1 and 4", error.Message);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("1")]
+    [InlineData("4")]
+    public async Task A_code_server_starts_unpinned_or_pinned_within_1_to_4(string? pin)
+    {
+        await using var factory = CodeServer(depthPin: pin);
+        Assert.Contains(await ListToolsAsync(factory), t => t.Name == GraphTools.TraceCodeSymbol);
+    }
+
+    [Fact]
+    public async Task The_code_server_lists_four_read_only_tools_without_tenant_inputs_and_refuses_anonymous_calls()
+    {
+        await using var factory = CodeServer();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
+        {
+            Content = new StringContent("""{"jsonrpc":"2.0","id":1,"method":"tools/list"}""", System.Text.Encoding.UTF8, "application/json"),
+        };
+        request.Headers.Accept.ParseAdd("application/json");
+        request.Headers.Accept.ParseAdd("text/event-stream");
+        var anonymous = await factory.CreateClient().SendAsync(request, Ct);
+        Assert.Equal(System.Net.HttpStatusCode.Unauthorized, anonymous.StatusCode);
+
+        var tools = await ListToolsAsync(factory);
 
         Assert.Equal([CodeTools.Ask, GraphTools.ChangeImpact, CodeTools.Search, GraphTools.TraceCodeSymbol], tools.Select(t => t.Name).Order(StringComparer.Ordinal));
         foreach (var tool in tools.Select(t => t.ProtocolTool))

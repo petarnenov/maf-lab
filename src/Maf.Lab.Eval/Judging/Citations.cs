@@ -8,7 +8,7 @@ namespace Maf.Lab.Eval.Judging;
 public sealed record CitedPlace(string Text, int Index, bool Found);
 
 /// <summary>
-/// Checks the places an answer cites against what the turn read, in code (adopt-meai-evaluation, DECISIONS.md §78).
+/// Checks the places an answer cites against what the turn read, in code (adopt-meai-evaluation, DECISIONS.md §79).
 /// Whether "Section 3 → Step 2" or <c>src/X.cs:121-140</c> is a place a source holds is a lookup of numbers, which
 /// jev-usage §5 gives to code: asked of Jev, correct citations scored 0.46–0.49 and invented ones 0.58–0.60. The
 /// formats are the ones the answers are told to use and the corpus is written in — the system prompt's

@@ -24,7 +24,9 @@ public enum Intent
 /// issue on the model's behalf, and <paramref name="RouteReason"/> why there is none. <paramref name="Domains"/> is Jev's
 /// verdict on which domains the question belongs to — null when Jev gave no usable domain answer.
 /// <paramref name="OutsideDomains"/> is true when Jev put the question in no domain and did not read it as small talk; it
-/// is never true on a missing answer, so a failed classification never refuses a question.
+/// is never true on a missing answer, so a failed classification never refuses a question. With code routing on,
+/// <paramref name="CodeRouting"/> is Jev's answer on what a codebase question needs, <paramref name="CodeRoute"/> the graph
+/// call to start the turn with, and <paramref name="CodeRouteReason"/> why there is none.
 /// </summary>
 public readonly record struct IntentDecision(
     Intent Intent,
@@ -40,7 +42,10 @@ public readonly record struct IntentDecision(
     Jev.ToolRoute? Route = null,
     string? RouteReason = null,
     DomainVerdict? Domains = null,
-    bool OutsideDomains = false);
+    bool OutsideDomains = false,
+    Jev.CodeRouteAnswer? CodeRouting = null,
+    Jev.ToolRoute? CodeRoute = null,
+    string? CodeRouteReason = null);
 
 /// <summary>
 /// Which domains a question belongs to, as Jev answered: each domain's probability, the floor a domain must reach to be

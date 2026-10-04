@@ -19,12 +19,18 @@ public sealed record JudgeScore(double Faithfulness, double Relevance, string Re
 /// source a yes/no, code counting — through a Microsoft.Extensions.AI.Evaluation evaluator whose results are kept and
 /// rendered as an HTML report. Beside the grade, whether the expected sources were cited, and Jev's own answer check
 /// read from the turn without a request of its own (add-jev-answer-check), with how often the two agree. The grade
-/// replaced a one-request LLM rubric after a side-by-side comparison (DECISIONS.md §78).
+/// replaced a one-request LLM rubric after a side-by-side comparison (DECISIONS.md §79).
 /// </summary>
 public sealed class GenerationSuite(EvalAgentHost host, ReportingConfiguration reporting)
 {
     /// <summary>A case passes at this faithfulness, with relevance 1.</summary>
     public const double PassMark = JevGenerationEvaluator.PassMark;
+
+    /// <summary>
+    /// The LLM rubric's pass mark, at the same 0.75. The generation suite no longer uses the rubric (DECISIONS.md §79);
+    /// the graph-depth comparison still does, and reads its answers at this mark.
+    /// </summary>
+    public const double RubricPass = 0.75;
 
     public const string ScenarioPrefix = "generation.";
 
