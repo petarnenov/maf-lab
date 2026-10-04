@@ -478,8 +478,9 @@ public sealed partial class ChatTurnRunner(
 
     /// <summary>
     /// A question whose primary domain is the codebase searches it whatever its intent but small talk
-    /// (add-codebase-domain): the codebase has no read tools, so "show me the definition of X" — data, or no intent at
-    /// all — has nothing to answer from without its search.
+    /// (add-codebase-domain): "show me the definition of X" — data, or no intent at all — has nothing to answer from
+    /// without its search. A structural question routed to the code graph starts with that call instead
+    /// (route-structural-code-questions); the turn drops this search for it.
     /// </summary>
     internal static IReadOnlyList<string> CodebaseSearch(IntentDecision decision, ToolSet tools)
     {
