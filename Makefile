@@ -21,6 +21,17 @@ COMPOSE       := docker compose -p $(COMPOSE_PROJECT) -f $(COMPOSE_FILE)
 # address the same set of services.
 export COMPOSE_PROFILES := inspectors
 endif
+# compose/.env (git-ignored, machine-local) is read by compose itself; make reads it too, so the host-side CLIs see the
+# same values (e.g. OLLAMA_*_THREADS). As with compose, the environment and the command line win over the file.
+# Values are taken literally: no quotes, no `export` prefix. Secrets come only from the environment, so make skips
+# JEV_MAF_LAB and any *_KEY, *_TOKEN, *_SECRET or *_PASSWORD line in the file (compose still reads them for itself).
+COMPOSE_ENV_FILE := $(ROOT)/compose/.env
+COMPOSE_ENV_SECRET := ^(JEV_MAF_LAB|[A-Za-z0-9_]*_(KEY|TOKEN|SECRET|PASSWORD))=
+ifneq ($(wildcard $(COMPOSE_ENV_FILE)),)
+COMPOSE_ENV_LINES := $(shell grep -vE '$(COMPOSE_ENV_SECRET)' $(COMPOSE_ENV_FILE) | sed -nE 's/ /__SP__/g; s/^([A-Za-z_][A-Za-z0-9_]*)=/\1?=/p')
+$(foreach line,$(COMPOSE_ENV_LINES),$(eval $(subst __SP__, ,$(line))))
+export $(shell grep -vE '$(COMPOSE_ENV_SECRET)' $(COMPOSE_ENV_FILE) | sed -nE 's/^([A-Za-z_][A-Za-z0-9_]*)=.*/\1/p')
+endif
 
 # ── configuration (override on the command line or in the environment) ─────────────────────────────────────────────
 BASE_URL      ?= http://localhost:7171
