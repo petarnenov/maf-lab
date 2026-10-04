@@ -340,7 +340,7 @@ public class AnswerCheckEvalTests
         var metrics = GenerationSuite.JevMetrics(
         [
             Case("pass", 0.9, 0.9, 1, 1),
-            // Uncertain raised no signal: it agrees with a rubric pass.
+            // Uncertain raised no signal: it agrees with a grade pass.
             Case("uncertain", 0.9, 0.4, 1, 1),
             Case("not_grounded", 0.9, 0.1, 0.5, 1),
             Case("unchecked", null, null, 1, 1),

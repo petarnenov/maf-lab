@@ -347,25 +347,6 @@ public class JevGradeTests
         Assert.Equal(1, result.Get<NumericMetric>("faithfulness").Value);
     }
 
-    // ── the side-by-side comparison (5.1) ─────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void Judge_agreement_counts_cases_on_the_same_side_of_the_pass_mark()
-    {
-        var (faithfulness, relevance) = GenerationSuite.JudgeAgreement(
-        [
-            (new(1, 1, ""), new(1, 1, "")),
-            // The rubric fails faithfulness (0.5), the grade passes it (0.8): a disagreement.
-            (new(0.5, 0.75, ""), new(0.8, 1, "")),
-            // Relevance: the rubric passes at 0.75, the grade says no.
-            (new(1, 0.75, ""), new(0.75, 0, "")),
-            (new(0.25, 0.25, ""), new(0.5, 0, "")),
-        ], 4);
-
-        Assert.Equal(0.75, faithfulness);
-        Assert.Equal(0.75, relevance);
-    }
-
     private sealed class ListLogger : ILogger<JevGrader>
     {
         public List<string> Lines { get; } = [];

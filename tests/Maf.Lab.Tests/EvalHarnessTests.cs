@@ -235,15 +235,7 @@ public class EvalHarnessTests
     }
 
     [Fact]
-    public void Judge_parses_scores_even_inside_code_fences()
-    {
-        var score = RubricJudge.Parse("```json\n{\"faithfulness\": 5, \"relevance\": 3, \"reason\": \"ok\"}\n```");
-        Assert.Equal(1.0, score.Faithfulness);
-        Assert.Equal(0.5, score.Relevance);
-    }
-
-    [Fact]
-    public void The_generation_suite_names_jevs_verdict_beside_the_rubric()
+    public void The_generation_suite_names_jevs_verdict_beside_the_grade()
     {
         Assert.Equal("jev=none", GenerationSuite.Describe(null));
         Assert.Equal("jev=pass(r=0.93 g=0.88)", GenerationSuite.Describe(

@@ -18,12 +18,12 @@ public sealed record JudgeScore(double Faithfulness, double Relevance, string Re
 /// End-to-end answers graded by Jev (adopt-meai-evaluation): one request per case, per sentence, reference point and
 /// source a yes/no, code counting — through a Microsoft.Extensions.AI.Evaluation evaluator whose results are kept and
 /// rendered as an HTML report. Beside the grade, whether the expected sources were cited, and Jev's own answer check
-/// read from the turn without a request of its own (add-jev-answer-check), with how often the two agree. Until the
-/// judges are compared (design, Migration Plan), the old rubric judge scores the same turn as <c>rubric:*</c>.
+/// read from the turn without a request of its own (add-jev-answer-check), with how often the two agree. The grade
+/// replaced a one-request LLM rubric after a side-by-side comparison (DECISIONS.md §78).
 /// </summary>
-public sealed class GenerationSuite(EvalAgentHost host, RubricJudge rubric, ReportingConfiguration reporting)
+public sealed class GenerationSuite(EvalAgentHost host, ReportingConfiguration reporting)
 {
-    /// <summary>A case passes at this faithfulness, with relevance 1; the rubric is read at the same mark.</summary>
+    /// <summary>A case passes at this faithfulness, with relevance 1.</summary>
     public const double PassMark = JevGenerationEvaluator.PassMark;
 
     public const string ScenarioPrefix = "generation.";
@@ -47,13 +47,12 @@ public sealed class GenerationSuite(EvalAgentHost host, RubricJudge rubric, Repo
             }
             var outcome = context.Outcome!;
             InputTokens += outcome.InputTokens;
-            var old = await RubricAsync(c, turn, ct);
             // A codebase source's DocId is its path, so repository paths are expected sources like document ids.
             var docs = turn.Sources.Select(s => s.DocId).ToHashSet();
             var sourceRecall = c.ExpectedDocIds.Count == 0 ? 1 : (double)c.ExpectedDocIds.Count(docs.Contains) / c.ExpectedDocIds.Count;
             var g = outcome.Grade;
             var score = new JudgeScore(g?.Faithfulness ?? 0, g?.Relevance ?? 0, g?.Reason() ?? $"judge failed: {outcome.Failure}");
-            graded.Add(new Graded(turn, outcome, score, old, sourceRecall));
+            graded.Add(new Graded(turn, outcome, score, sourceRecall));
 
             var jev = Describe(turn.AnswerCheck);
             var line = g is null
@@ -62,31 +61,18 @@ public sealed class GenerationSuite(EvalAgentHost host, RubricJudge rubric, Repo
             if (g is null || score.Faithfulness < PassMark || score.Relevance < 1 || sourceRecall < 1)
             {
                 failures.Add(new EvalCaseFailure(c.Id,
-                    $"{line} src={sourceRecall:0.##} rubric f={old.Faithfulness:0.##} r={old.Relevance:0.##} {jev}: {score.Reason}"));
+                    $"{line} src={sourceRecall:0.##} {jev}: {score.Reason}"));
             }
-            ctx.Progress($"generation {i + 1}/{cases.Count} {c.Id}: {line} src={sourceRecall:0.##} rubric f={old.Faithfulness:0.##} r={old.Relevance:0.##} {jev}");
+            ctx.Progress($"generation {i + 1}/{cases.Count} {c.Id}: {line} src={sourceRecall:0.##} {jev}");
         }
         return [SuiteContext.Variant("agent", Metrics(graded, cases.Count), ctx.ThresholdsFor("generation"), cases.Count, failures)];
     }
 
-    private async Task<JudgeScore> RubricAsync(GenerationCase c, TurnResult turn, CancellationToken ct)
-    {
-        var context = string.Join("\n---\n", turn.Sources.Select(s => $"[{s.DocId} :: {s.SectionPath}]\n{s.Snippet}"));
-        try
-        {
-            return await rubric.ScoreAsync(c.Question, c.ReferenceAnswer, context.Length == 0 ? "(no documents retrieved)" : context, turn.Answer, ct);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return new JudgeScore(0, 0, $"judge failed: {ex.GetType().Name}");
-        }
-    }
-
-    private sealed record Graded(TurnResult Turn, GradeOutcome Outcome, JudgeScore Score, JudgeScore Rubric, double SourceRecall);
+    private sealed record Graded(TurnResult Turn, GradeOutcome Outcome, JudgeScore Score, double SourceRecall);
 
     /// <summary>
     /// Means over the cases; a failed grade counts 0 on every judged metric. <c>judgeUncertain</c> is over the graded
-    /// cases. <c>rubric:*</c> and <c>judgeAgreement:*</c> exist only while both judges run.
+    /// cases.
     /// </summary>
     private static Dictionary<string, double> Metrics(List<Graded> graded, int total)
     {
@@ -102,30 +88,12 @@ public sealed class GenerationSuite(EvalAgentHost host, RubricJudge rubric, Repo
             [JevGenerationEvaluator.RetrievalJudged] = Mean(x => x.Outcome.Grade?.RetrievalJudged ?? 0),
             [JevGenerationEvaluator.JudgeUncertain] = ok.Count == 0 ? 0 : ok.Average(x => x.Outcome.Grade!.Uncertain),
             ["sourceRecall"] = Mean(x => x.SourceRecall),
-            ["rubric:faithfulness"] = Mean(x => x.Rubric.Faithfulness),
-            ["rubric:relevance"] = Mean(x => x.Rubric.Relevance),
         };
-        var (faithful, relevant) = JudgeAgreement([.. graded.Select(x => (x.Rubric, x.Score))], total);
-        metrics["judgeAgreement:faithfulness"] = faithful;
-        metrics["judgeAgreement:relevance"] = relevant;
         foreach (var (key, value) in JevMetrics([.. graded.Select(x => (x.Turn, x.Score))], total))
         {
             metrics[key] = value;
         }
         return metrics;
-    }
-
-    /// <summary>
-    /// The share of cases where the rubric and the Jev grade land on the same side of the pass mark: faithfulness at
-    /// <see cref="PassMark"/> for both, relevance at the mark for the rubric and at 1 for the grade (it is yes or no).
-    /// For the side-by-side comparison only; never accepted into the baseline.
-    /// </summary>
-    public static (double Faithfulness, double Relevance) JudgeAgreement(IReadOnlyList<(JudgeScore Rubric, JudgeScore Grade)> cases, int total)
-    {
-        var n = Math.Max(1, total);
-        return (
-            cases.Count(c => (c.Rubric.Faithfulness >= PassMark) == (c.Grade.Faithfulness >= PassMark)) / (double)n,
-            cases.Count(c => (c.Rubric.Relevance >= PassMark) == (c.Grade.Relevance >= 1)) / (double)n);
     }
 
     /// <summary>The suite refuses to run without the key rather than report a judge that graded nothing.</summary>

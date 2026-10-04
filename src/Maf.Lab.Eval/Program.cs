@@ -151,8 +151,7 @@ public static class Program
         var sp = host.Services;
         var grader = new JevGrader(sp.GetRequiredService<JevClient>(), options.Judge, sp.GetRequiredService<ILogger<JevGrader>>());
         GenerationSuite.RequireKey(grader);
-        var suite = new GenerationSuite(host, new RubricJudge(sp.GetRequiredService<IChatClientFactory>()),
-            GradeReport.Configure(root, runId, new JevGenerationEvaluator(grader)));
+        var suite = new GenerationSuite(host, GradeReport.Configure(root, runId, new JevGenerationEvaluator(grader)));
         var variants = await suite.RunAsync(ctx, ct);
         settings["judgeModel"] = grader.Model;
         settings["judgeInputTokens"] = suite.InputTokens.ToString(System.Globalization.CultureInfo.InvariantCulture);
