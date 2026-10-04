@@ -11,13 +11,16 @@ namespace Maf.Lab.Eval.Judging;
 /// <param name="ReferenceAgreement">1 minus the share of reference points contradicted; null when the case has none.</param>
 /// <param name="RetrievalJudged">Sources on the question's subject over sources sent; 1 when none was read.</param>
 /// <param name="Uncertain">The share of the case's answers in the review band.</param>
-/// <param name="Unsupported">The claim sentences graded unsupported, in order.</param>
+/// <param name="Unsupported">The claim sentences graded unsupported, in order, as the answer wrote them.</param>
 /// <param name="Missed">The reference points graded not stated.</param>
 /// <param name="Contradicted">The reference points graded contradicted.</param>
 /// <param name="OffSubject">How many sources were graded off the subject.</param>
 /// <param name="Stated">Per reference point, whether it was graded stated (for the labelled suite).</param>
 /// <param name="PointContradicted">Per reference point, whether it was graded contradicted.</param>
 /// <param name="Answers">Every probability by question id: the record behind the numbers.</param>
+/// <param name="NotFound">Cited places no source holds, in order: each makes its sentence an unsupported claim.</param>
+/// <param name="SentenceClaims">Per sentence, whether the grade reads it as a claim.</param>
+/// <param name="SentenceSupported">Per sentence, whether the grade reads it as supported (false for a non-claim).</param>
 public sealed record JevGrade(
     double Faithfulness,
     double Relevance,
@@ -31,7 +34,10 @@ public sealed record JevGrade(
     int OffSubject,
     IReadOnlyList<bool> Stated,
     IReadOnlyList<bool> PointContradicted,
-    IReadOnlyDictionary<string, double> Answers)
+    IReadOnlyDictionary<string, double> Answers,
+    IReadOnlyList<string> NotFound,
+    IReadOnlyList<bool> SentenceClaims,
+    IReadOnlyList<bool> SentenceSupported)
 {
     /// <summary>Where Jev finds yes likelier than no (§4.5). A read-only eval: the lowest-risk class.</summary>
     public const double Yes = 0.5;
@@ -49,12 +55,15 @@ public sealed record JevGrade(
         double P(string id) => answers.TryGetValue(id, out var p) ? p : 0;
         bool IsYes(string id) => P(id) >= Yes;
 
-        var sentences = request.State.AnswerSentences;
+        var sentences = request.Sentences;
         var points = request.State.ReferencePoints;
         var sources = request.State.Sources;
 
-        var claims = Enumerable.Range(0, sentences.Count).Where(i => IsYes(JevGradeRequest.ClaimId(i))).ToList();
-        var unsupported = claims.Where(i => !IsYes(JevGradeRequest.SupportedId(i))).Select(i => sentences[i]).ToList();
+        // A cited place no source holds is decided by code, whatever Jev answered: the sentence claims a place, and the
+        // place is not there.
+        bool Invented(int i) => request.Cited[i].Any(p => !p.Found);
+        var claims = Enumerable.Range(0, sentences.Count).Where(i => Invented(i) || IsYes(JevGradeRequest.ClaimId(i))).ToList();
+        var unsupported = claims.Where(i => Invented(i) || !IsYes(JevGradeRequest.SupportedId(i))).Select(i => sentences[i]).ToList();
         var faithfulness = claims.Count == 0 ? 1 : (double)(claims.Count - unsupported.Count) / claims.Count;
 
         var stated = Enumerable.Range(0, points.Count).Select(j => IsYes(JevGradeRequest.StatedId(j))).ToList();
@@ -73,13 +82,20 @@ public sealed record JevGrade(
             [.. points.Where((_, j) => !stated[j])],
             [.. points.Where((_, j) => contradicted[j])],
             offSubject, stated, contradicted,
-            asked.ToDictionary(id => id, P));
+            asked.ToDictionary(id => id, P),
+            [.. request.Cited.SelectMany(c => c).Where(p => !p.Found).Select(p => p.Text)],
+            [.. Enumerable.Range(0, sentences.Count).Select(claims.Contains)],
+            [.. Enumerable.Range(0, sentences.Count).Select(i => claims.Contains(i) && !Invented(i) && IsYes(JevGradeRequest.SupportedId(i)))]);
     }
 
     /// <summary>The failure line's grade half: what failed and why, in the words of the answer and the points.</summary>
     public string Reason()
     {
         var parts = new List<string>();
+        if (NotFound.Count > 0)
+        {
+            parts.Add($"cited but in no source: {string.Join(" | ", NotFound)}");
+        }
         if (Unsupported.Count > 0)
         {
             parts.Add($"unsupported: {string.Join(" | ", Unsupported.Select(Clip))}");

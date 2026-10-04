@@ -21,8 +21,12 @@ internal sealed record JevGradeState(
     [property: JsonPropertyName("sources")] IReadOnlyList<string> Sources,
     [property: JsonPropertyName("reference_points")] IReadOnlyList<string> ReferencePoints);
 
-/// <summary>One built request: its state and questions, and what code needs to read the answers back.</summary>
-internal sealed record JevGradeRequest(JevGradeState State, IReadOnlyDictionary<string, object> Questions, bool Codebase, bool Truncated)
+/// <summary>
+/// One built request: its state and questions, and what code needs to read the answers back — the sentences as the
+/// answer wrote them, and per sentence the places it cites, checked in code (<see cref="Citations"/>).
+/// </summary>
+internal sealed record JevGradeRequest(JevGradeState State, IReadOnlyDictionary<string, object> Questions, bool Codebase, bool Truncated,
+    IReadOnlyList<string> Sentences, IReadOnlyList<IReadOnlyList<CitedPlace>> Cited)
 {
     public const string RelevantId = "answer_relevant";
 
@@ -128,6 +132,11 @@ internal sealed record JevGradeRequest(JevGradeState State, IReadOnlyDictionary<
             chars += item.Text.Length;
         }
         var truncated = sentences.Count < all.Count || sources.Count < items.Count;
+        // The places a sentence cites are looked up in code against everything the answer was given; Jev reads the
+        // sentence with each found place masked, so it judges what the sentence says, not a line number.
+        var sent = items.Take(sources.Count).ToList();
+        var cited = sentences.Select(x => Citations.Find(x, sent)).ToList();
+        var masked = sentences.Select((x, i) => Citations.Mask(x, cited[i])).ToList();
         var codebase = selection.Codebase;
         var context = codebase ? CodeContext : BillingContext;
         JevCriteriaNoul Noul(string question, string yes, string no) =>
@@ -153,7 +162,7 @@ internal sealed record JevGradeRequest(JevGradeState State, IReadOnlyDictionary<
         {
             questions[OnSubjectId(k)] = Noul($"Is `sources[{k}]` about the subject `user_question` asks about?", OnSubjectYes, OnSubjectNo);
         }
-        return new JevGradeRequest(new JevGradeState(input.Question, input.PreviousQuestion, sentences, sources, input.ReferencePoints),
-            questions, codebase, truncated);
+        return new JevGradeRequest(new JevGradeState(input.Question, input.PreviousQuestion, masked, sources, input.ReferencePoints),
+            questions, codebase, truncated, sentences, cited);
     }
 }

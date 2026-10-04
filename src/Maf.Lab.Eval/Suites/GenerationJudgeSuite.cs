@@ -116,8 +116,9 @@ public sealed class GenerationJudgeSuite(JevAnswerCheck check, ReportingConfigur
                 }
                 double? claimP = g?.Answers.GetValueOrDefault(JevGradeRequest.ClaimId(i));
                 double? supportedP = g?.Answers.GetValueOrDefault(JevGradeRequest.SupportedId(i));
-                var claim = claimP >= JevGrade.Yes;
-                var supported = supportedP >= JevGrade.Yes;
+                // Read as the grade reads it, citation check included.
+                var claim = g?.SentenceClaims[i] ?? false;
+                var supported = g?.SentenceSupported[i] ?? false;
                 var o = new SentenceOutcome(g is not null, label.Claim, claim, label.Supported, supported, label.Citation, c.Domain, c.Language, c.Split);
                 sentences.Add(o);
                 if (g is not null && !o.Correct)
