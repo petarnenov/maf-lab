@@ -2941,4 +2941,58 @@ said which account the conversation was about.
   - No judge failure.
   - Faithfulness range no wider than the rubric's.
   - Known weaknesses to watch: `claim_i` on citation sentences (g-03), and `contradicts_j` near 0.5 on stated points.
+- **What went wrong after the gate, and what replaced it.**
+  - The first switch attempt widened the `faithfulness` tolerance after each run (0.04 → 0.055 → 0.075) until a run
+    passed. The eval-harness spec forbids exactly that, so the attempt is discarded.
+  - The same attempt also excluded citation sentences from grading, first through a criterion and then through a regex
+    built from the failing sentences. That was reverted: the system prompt requires every citation to be exact
+    (`path:start-end`, "never invent a path, a line"), so a citation is a claim the eval must check, and excluding it
+    hid the hallucinations the eval exists to catch.
+- **Citations, measured, then checked in code.**
+  - New `generation-sentences.jsonl`: 16 recorded answers, 4 of them edited with invented citations. Every sentence
+    is labelled claim / supported / citation; ambiguous sentences (paraphrased code, an overclaim in a summary) are
+    marked and excluded rather than guessed. The loader rejects labels that are not exactly the code's cut.
+  - Asked of Jev, citations were a coin toss. Correct ones scored 0.46–0.49 (citationPass 0.833) and invented ones
+    0.58–0.60 (citationDetection 0.571). Whether a section, step or line range exists is a lookup of numbers, which
+    jev-usage §5 gives to code.
+  - `Citations` therefore looks up the formats the answers are told to use and the corpus is written in: `path:start-end`
+    (with bare ranges after a path) and `Section N … Step M`. These are not patterns taken from failures.
+    - A place no source holds makes its sentence an unsupported claim.
+    - A found place is masked (`[cited place verified]`) before Jev reads the sentence.
+  - Result: citationDetection 1.0, citationPass 0.87–0.93, and 1.0 on the held-out rows.
+  - Still weak, recorded and not tuned: `unsupportedDetection` 0.5 on non-citation claims (summaries that overclaim).
+- **Noise was the dataset, not the judge.** At 12 cases, one sentence in one live answer moved mean faithfulness by
+  0.03–0.06. `generation.jsonl` grew to 36 cases: 24 new ones, billing across firms a/b/c and shared, and codebase,
+  in English and Bulgarian, each reference answer drawn from named files.
+- **Tolerance protocol (design.md, fixed before measuring).**
+  - Measured on frozen inputs at b352bde (2026-10-04): ten `generation` runs (20261004-135131 … -141236) and three
+    `generation-judge` runs (-141508, -141546, -141623). No `judge failed` case.
+  - `generation` over the ten runs:
+
+    | Metric | Range | Tolerance |
+    |---|---|---|
+    | faithfulness | 0.9384–0.9651 (0.0267; it was 0.071 at 12 cases) | 0.03 |
+    | relevance | 0.9444 | default 0.02 |
+    | completeness | 0.6306–0.6806 | 0.05 |
+    | referenceAgreement | 0.9852–1 | default 0.02 |
+    | retrievalJudged | 0.8787–0.9306 | 0.055 |
+    | sourceRecall | 0.75–0.7778 | 0.03 |
+    | jevChecked | — | 0.03 |
+    | jevGroundedAgreement | 0.9118–0.9697 | 0.06 |
+    | judgeUncertain, jevUncertain | 0.029–0.206 | not gated (lower is better) |
+
+  - `generation-judge`: the grade and check variants did not move. Points and sentences moved by one item at a time,
+    and each per-slice tolerance is its measured range. `band` is not gated.
+  - Thresholds are the measured minimum minus the tolerance, rounded down to 0.05:
+    - `generation`: faithfulness 0.9, relevance 0.9, completeness 0.55, referenceAgreement 0.95, retrievalJudged 0.8;
+    - `generation-judge`: grade.accuracy 0.9, points.pointAccuracy 0.85, sentences.sentenceAccuracy 0.85,
+      sentences.citationDetection 0.95.
+  - Verification follows: accept the baseline from one fresh run, then three fresh runs must pass with nothing changed.
+- **What the larger dataset shows about the agent, not the judge.** Eight cases failed in all ten runs, mostly
+  Bulgarian codebase questions:
+  - g-code-bg-07 and -08 do not address the question;
+  - g-code-bg-03 cites "610-625", which no source holds, and the code check catches it;
+  - g-02, g-10 and g-code-en-06 retrieve no expected source.
+
+  These are the agent's and retrieval's to fix, in their own change.
 

@@ -37,7 +37,7 @@
 - [x] 6.3 Add `generation-sentences.jsonl` (16 recorded answers, 4 with invented citations; each sentence labelled claim / supported / citation, aligned with the code's cut) and a `sentences` variant to `generation-judge` (citationPass, citationDetection, supportedPass, unsupportedDetection, claimAccuracy). Verified by the loader alignment test and a live run
 - [x] 6.4 Check cited places in code (`Citations`: `path:start-end` from the system prompt, `Section N … Step M` from the corpus); an unfound place makes its sentence an unsupported claim, a found one is masked before Jev reads the sentence. Verified by `CitationsTests` and a live run (citationDetection 0.571 → 1, citationPass 0.833 → 0.933)
 - [x] 6.5 Grow `generation.jsonl` from 12 to 36 cases (billing and codebase, English and Bulgarian), each reference answer drawn from named corpus files. Verify by the loader tests and a review of the new rows
-- [ ] 6.6 Run the tolerance protocol in design.md (fixed before measuring): ten `generation` and three `generation-judge` runs, tolerances and thresholds derived mechanically and committed before verification
+- [x] 6.6 Run the tolerance protocol in design.md (fixed before measuring): ten `generation` and three `generation-judge` runs, tolerances and thresholds derived mechanically and committed before verification
 - [ ] 6.7 Accept both baselines from one fresh run, then verify three fresh runs pass the gate with nothing changed; a failure is recorded, never tuned away. Note in DECISIONS.md that this is a change of judge, not an improvement
 
 ## 7. Jev review

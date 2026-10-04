@@ -22,8 +22,11 @@
         "mrr": 0.5
       },
       "generation": {
-        "faithfulness": 0.7,
-        "relevance": 0.7
+        "faithfulness": 0.9,
+        "relevance": 0.9,
+        "completeness": 0.55,
+        "referenceAgreement": 0.95,
+        "retrievalJudged": 0.8
       },
       "injection": {
         "passRate": 1.0
@@ -54,6 +57,12 @@
         "groundedDetection": 0.8,
         "relevantDetection": 0.9
       },
+      "generation-judge": {
+        "grade.accuracy": 0.9,
+        "points.pointAccuracy": 0.85,
+        "sentences.sentenceAccuracy": 0.85,
+        "sentences.citationDetection": 0.95
+      },
       "guardrail": {
         "detection": 0.9,
         "benignPass": 0.98,
@@ -78,9 +87,153 @@
       },
       {
         "Suite": "generation",
+        "Tolerance": 0.05,
+        "Metric": "completeness",
+        "Measured": "0.6306-0.6806 over 10 runs (2026-10-04, §78), range 0.0500"
+      },
+      {
+        "Suite": "generation",
+        "Tolerance": 0.03,
+        "Metric": "faithfulness",
+        "Measured": "0.9384-0.9651 over 10 runs (2026-10-04, §78), range 0.0267"
+      },
+      {
+        "Suite": "generation",
+        "Tolerance": 0.03,
+        "Metric": "jevChecked",
+        "Measured": "0.9167-0.9444 over 10 runs (2026-10-04, §78), range 0.0277"
+      },
+      {
+        "Suite": "generation",
+        "Tolerance": 0.06,
+        "Metric": "jevGroundedAgreement",
+        "Measured": "0.9118-0.9697 over 10 runs (2026-10-04, §78), range 0.0579"
+      },
+      {
+        "Suite": "generation",
+        "Tolerance": 1.0,
+        "Metric": "jevUncertain",
+        "Measured": "0.0294-0.2059 over 10 runs (2026-10-04, §78). A diagnostic where lower is better; the gate reads a drop as a regression, so it is not gated."
+      },
+      {
+        "Suite": "generation",
+        "Tolerance": 1.0,
+        "Metric": "judgeUncertain",
+        "Measured": "0.1466-0.1707 over 10 runs (2026-10-04, §78). A diagnostic where lower is better; the gate reads a drop as a regression, so it is not gated."
+      },
+      {
+        "Suite": "generation",
+        "Tolerance": 0.055,
+        "Metric": "retrievalJudged",
+        "Measured": "0.8787-0.9306 over 10 runs (2026-10-04, §78), range 0.0519"
+      },
+      {
+        "Suite": "generation",
+        "Tolerance": 0.03,
+        "Metric": "sourceRecall",
+        "Measured": "0.7500-0.7778 over 10 runs (2026-10-04, §78), range 0.0278"
+      },
+      {
+        "Suite": "generation-judge",
+        "Tolerance": 1.0,
+        "Metric": "band",
+        "Measured": "0.5128-0.5897 over 3 runs on identical input (2026-10-04, §78). A diagnostic where lower is better; the gate reads a drop as a regression, so it is not gated."
+      },
+      {
+        "Suite": "generation-judge",
+        "Tolerance": 0.07,
+        "Metric": "citationPass",
+        "Measured": "0.8667-0.9333 over 3 runs on identical input (2026-10-04, §78), range 0.0666"
+      },
+      {
+        "Suite": "generation-judge",
+        "Tolerance": 0.1,
+        "Metric": "citationPass:billing",
+        "Measured": "0.8500-0.9500 over 3 runs on identical input (2026-10-04, §78), range 0.1000"
+      },
+      {
+        "Suite": "generation-judge",
+        "Tolerance": 0.08,
+        "Metric": "citationPass:design",
+        "Measured": "0.8400-0.9200 over 3 runs on identical input (2026-10-04, §78), range 0.0800"
+      },
+      {
+        "Suite": "generation-judge",
+        "Tolerance": 0.135,
+        "Metric": "citationPass:en",
+        "Measured": "0.7333-0.8667 over 3 runs on identical input (2026-10-04, §78), range 0.1334"
+      },
+      {
+        "Suite": "generation-judge",
+        "Tolerance": 0.03,
+        "Metric": "contradictedAccuracy:bg",
+        "Measured": "0.9459-0.9730 over 3 runs on identical input (2026-10-04, §78), range 0.0271"
+      },
+      {
+        "Suite": "generation-judge",
         "Tolerance": 0.035,
-        "Metric": "relevance",
-        "Measured": "0.9688-1.0000 over 5 consecutive runs (range 0.0312); an LLM judge scoring prose."
+        "Metric": "contradictedAccuracy:billing",
+        "Measured": "0.9355-0.9677 over 3 runs on identical input (2026-10-04, §78), range 0.0322"
+      },
+      {
+        "Suite": "generation-judge",
+        "Tolerance": 0.025,
+        "Metric": "contradictedAccuracy:codebase",
+        "Measured": "0.9250-0.9500 over 3 runs on identical input (2026-10-04, §78), range 0.0250"
+      },
+      {
+        "Suite": "generation-judge",
+        "Tolerance": 0.03,
+        "Metric": "contradictedAccuracy:en",
+        "Measured": "0.9118-0.9412 over 3 runs on identical input (2026-10-04, §78), range 0.0294"
+      },
+      {
+        "Suite": "generation-judge",
+        "Tolerance": 0.06,
+        "Metric": "contradictedAccuracy:holdout",
+        "Measured": "0.8824-0.9412 over 3 runs on identical input (2026-10-04, §78), range 0.0588"
+      },
+      {
+        "Suite": "generation-judge",
+        "Tolerance": 0.03,
+        "Metric": "pointAccuracy:bg",
+        "Measured": "0.9189-0.9459 over 3 runs on identical input (2026-10-04, §78), range 0.0270"
+      },
+      {
+        "Suite": "generation-judge",
+        "Tolerance": 0.035,
+        "Metric": "pointAccuracy:billing",
+        "Measured": "0.9032-0.9355 over 3 runs on identical input (2026-10-04, §78), range 0.0323"
+      },
+      {
+        "Suite": "generation-judge",
+        "Tolerance": 0.025,
+        "Metric": "pointAccuracy:codebase",
+        "Measured": "0.9000-0.9250 over 3 runs on identical input (2026-10-04, §78), range 0.0250"
+      },
+      {
+        "Suite": "generation-judge",
+        "Tolerance": 0.03,
+        "Metric": "pointAccuracy:en",
+        "Measured": "0.8824-0.9118 over 3 runs on identical input (2026-10-04, §78), range 0.0294"
+      },
+      {
+        "Suite": "generation-judge",
+        "Tolerance": 0.06,
+        "Metric": "pointAccuracy:holdout",
+        "Measured": "0.8235-0.8824 over 3 runs on identical input (2026-10-04, §78), range 0.0589"
+      },
+      {
+        "Suite": "generation-judge",
+        "Tolerance": 0.25,
+        "Metric": "unsupportedDetection:billing",
+        "Measured": "0.2500-0.5000 over 3 runs on identical input (2026-10-04, §78), range 0.2500"
+      },
+      {
+        "Suite": "generation-judge",
+        "Tolerance": 0.25,
+        "Metric": "unsupportedDetection:codebase",
+        "Measured": "0.5000-0.7500 over 3 runs on identical input (2026-10-04, §78), range 0.2500"
       }
     ]
   }
