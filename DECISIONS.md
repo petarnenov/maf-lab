@@ -3178,4 +3178,6 @@ be re-run then.
   - From here, `make eval-accept SUITE=generation-judge REPEAT=5` sets its baseline to the mean of five runs.
   - Ordinary runs stay single, gated by the tolerances already derived (never below one labelled item); no tolerance or
     threshold moves.
+  - Accepted (20261004-180311, r1…r5): grade accuracy 0.9487, pointAccuracy 0.9211,
+    sentenceAccuracy 0.9226, citationDetection 1.
 
