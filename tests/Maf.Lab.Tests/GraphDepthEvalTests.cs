@@ -233,4 +233,55 @@ public class GraphDepthEvalTests
         Assert.Empty(Program.CompareWithBaseline(baseline, GraphDepthSuite.Name, [Variant(0.1)], new EvalOptions()));
         Assert.NotEmpty(Program.CompareWithBaseline(baseline with { }, "selection", [Variant(0.1)], new EvalOptions()));
     }
+
+    private static (TurnResult?, JudgeScore, bool) Answer(string answer, double faithfulness, bool graph) =>
+        (Turn(answer, graph ? [GraphTools.TraceCodeSymbol] : ["search_codebase"]), new JudgeScore(faithfulness, faithfulness, "r"), false);
+
+    [Fact]
+    public void Graph_turn_scores_cover_each_variants_own_graph_turns_and_the_cases_common_to_all()
+    {
+        GraphDepthCase[] cases = [Case("a", ("X.Alpha", 1)), Case("b", ("Y.Beta", 3)), Case("c", ("Z.Gamma", 2))];
+        var answers = new Dictionary<string, IReadOnlyList<(TurnResult?, JudgeScore, bool)>>
+        {
+            // "a" calls the graph everywhere; "b" misses it in depth-3; "c" never does.
+            ["depth-2"] = [Answer("alpha", 1, true), Answer("beta", 0.5, true), Answer("-", 0, false)],
+            ["depth-3"] = [Answer("alpha", 0.5, true), Answer("-", 0, false), Answer("-", 0, false)],
+            ["depth-4"] = [Answer("-", 1, true), Answer("beta", 1, true), Answer("gamma", 1, false)],
+        };
+
+        var r = GraphDepthSuite.GraphTurnMetrics(cases, answers);
+
+        Assert.Equal(1, r.CommonCases);
+        Assert.Equal(2, r.Metrics["depth-2"]["graphTurns"]);
+        Assert.Equal(0.75, r.Metrics["depth-2"]["faithfulness:graph"]);
+        Assert.Equal(1.0, r.Metrics["depth-2"]["mentionRecall:graph"]);
+        Assert.Equal(1.0, r.Metrics["depth-2"]["faithfulness:common"]);
+        Assert.Equal(0.5, r.Metrics["depth-3"]["faithfulness:common"]);
+        Assert.Equal(0.0, r.Metrics["depth-4"]["mentionRecall:common"]);
+        Assert.Equal(1.0, r.Metrics["depth-2"]["mentionRecall:common@needs1"]);
+        Assert.False(r.Metrics["depth-2"].ContainsKey("mentionRecall:common@needs3"));
+        Assert.Contains(("b", "depth-3"), r.NotCommon);
+        Assert.Equal(3, r.NotCommon.Count(n => n.CaseId == "c"));
+        // graphTurns reconciles with graphToolCalled.
+        Assert.Equal(GraphDepthSuite.EndToEndMetrics(cases, answers["depth-2"], [])["graphToolCalled"] * cases.Length, r.Metrics["depth-2"]["graphTurns"], 6);
+    }
+
+    [Fact]
+    public void With_no_common_case_the_common_scores_are_absent_not_zero()
+    {
+        GraphDepthCase[] cases = [Case("a", ("X.Alpha", 1))];
+        var answers = new Dictionary<string, IReadOnlyList<(TurnResult?, JudgeScore, bool)>>
+        {
+            ["depth-2"] = [Answer("alpha", 1, true)],
+            ["depth-3"] = [Answer("alpha", 1, false)],
+        };
+
+        var r = GraphDepthSuite.GraphTurnMetrics(cases, answers);
+
+        Assert.Equal(0, r.CommonCases);
+        Assert.Equal(0, r.Metrics["depth-3"]["commonCases"]);
+        Assert.DoesNotContain(r.Metrics["depth-2"].Keys, k => k.EndsWith(":common", StringComparison.Ordinal) || k.Contains(":common@", StringComparison.Ordinal));
+        Assert.False(r.Metrics["depth-3"].ContainsKey("faithfulness:graph"));
+    }
 }
+

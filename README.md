@@ -633,7 +633,10 @@ reports two layers side by side:
 - **structural**, with no model: recall, also split by the depth a case needs, nodes, tokens, truncation and latency;
 - **end-to-end**: rubric scores, and whether the answer names what it needed.
 
-It has no thresholds, is never compared with or accepted into the baseline, and `all` does not run it.
+Beside the all-turn end-to-end scores it reports each variant's scores over its own turns that called a graph tool
+(`:graph`, with `graphTurns`), and over the cases that called the graph in every variant (`:common`, with
+`commonCases`). Read a depth's effect from the `:common` scores, where the three depths answered the same questions
+with the graph. It has no thresholds, is never compared with or accepted into the baseline, and `all` does not run it.
 `make eval-graph-depth STRUCTURAL=1` runs the structural layer alone, with no chat model or Jev key. End-to-end numbers
 vary between runs, so compare two runs before reading a difference as a result.
 

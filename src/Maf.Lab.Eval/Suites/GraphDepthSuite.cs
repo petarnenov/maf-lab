@@ -49,7 +49,8 @@ public sealed class GraphDepthSuite(IConfiguration configuration, RubricJudge? j
         var bar = new GraphDepthProgress(console, cases.Count, Variants.Count, structuralOnly ? 1 : 2);
         try
         {
-            var results = new List<EvalVariantResult>();
+            var perVariant = new List<(GraphDepthVariant Variant, Dictionary<string, double> Metrics, List<EvalCaseFailure> Failures)>();
+            var answersByVariant = new Dictionary<string, IReadOnlyList<(TurnResult? Turn, JudgeScore Score, bool JudgeFailed)>>();
             foreach (var variant in Variants)
             {
                 var failures = new List<EvalCaseFailure>();
@@ -59,6 +60,7 @@ public sealed class GraphDepthSuite(IConfiguration configuration, RubricJudge? j
                 if (!structuralOnly)
                 {
                     var answers = await EndToEndAsync(variant, cases, bar, ct);
+                    answersByVariant[variant.Name] = answers;
                     foreach (var (key, value) in EndToEndMetrics(cases, answers, failures))
                     {
                         metrics[key] = value;
@@ -71,11 +73,27 @@ public sealed class GraphDepthSuite(IConfiguration configuration, RubricJudge? j
                         ctx.Progress($"{Name} {variant.Name}: {metrics["judgeFailures"]:0} judge failure(s), scored 0 and named in the report");
                     }
                 }
-                // No thresholds: a comparison suite reports side by side and never gates.
-                results.Add(SuiteContext.Variant(variant.Name, metrics, new Dictionary<string, double>(), cases.Count, failures));
+                perVariant.Add((variant, metrics, failures));
+            }
+            if (!structuralOnly)
+            {
+                // Only once every variant has answered: the common cases are those that called the graph in all of them.
+                var graphTurns = GraphTurnMetrics(cases, answersByVariant);
+                foreach (var (variant, metrics, failures) in perVariant)
+                {
+                    foreach (var (key, value) in graphTurns.Metrics[variant.Name])
+                    {
+                        metrics[key] = value;
+                    }
+                    failures.AddRange(graphTurns.NotCommon.Select(n => new EvalCaseFailure(n.CaseId, $"not common: graph not called in {n.Variant}")));
+                }
+                ctx.Progress($"{Name}: {graphTurns.CommonCases} of {cases.Count} case(s) called the graph in every variant — " +
+                    string.Join(" ", perVariant.Select(v => $"{v.Variant.Name} mentionRecall:common=" +
+                        (v.Metrics.TryGetValue("mentionRecall:common", out var m) ? m.ToString("0.###") : "-"))));
             }
             bar.Succeed();
-            return results;
+            // No thresholds: a comparison suite reports side by side and never gates.
+            return [.. perVariant.Select(v => SuiteContext.Variant(v.Variant.Name, v.Metrics, new Dictionary<string, double>(), cases.Count, v.Failures))];
         }
         catch (OperationCanceledException)
         {
@@ -289,9 +307,7 @@ public sealed class GraphDepthSuite(IConfiguration configuration, RubricJudge? j
         double faithfulness = 0, relevance = 0, mentions = 0, called = 0, judgeFailures = 0;
         foreach (var (c, (turn, score, judgeFailed)) in cases.Zip(answers))
         {
-            var answer = turn?.Answer ?? "";
-            var named = c.Needed.Count(x => answer.Contains(MentionKey(x.Item), StringComparison.OrdinalIgnoreCase));
-            var caseMentions = (double)named / c.Needed.Count;
+            var caseMentions = Mentions(c, turn);
             var usedGraph = turn?.ToolCalls.Any(t => t.ToolName is GraphTools.TraceCodeSymbol or GraphTools.ChangeImpact) == true;
             faithfulness += score.Faithfulness;
             relevance += score.Relevance;
@@ -313,6 +329,65 @@ public sealed class GraphDepthSuite(IConfiguration configuration, RubricJudge? j
             ["judgeFailures"] = judgeFailures,
         };
     }
+
+    /// <summary>Per-variant metrics over the turns that called the graph, the common cases, and why a case is not common.</summary>
+    public sealed record GraphTurnResult(IReadOnlyDictionary<string, Dictionary<string, double>> Metrics, int CommonCases,
+        IReadOnlyList<(string CaseId, string Variant)> NotCommon);
+
+    /// <summary>
+    /// The end-to-end scores where depth can matter (graph-depth-e2e-on-graph-turns): for each variant over its own turns
+    /// that called a code graph tool (<c>:graph</c>, with <c>graphTurns</c>), and over the common cases — those whose
+    /// turns called one in every variant — so the depths are compared on the same questions (<c>:common</c>, with
+    /// <c>commonCases</c>, and mention recall by required depth). A score over an empty set is absent, never 0.
+    /// </summary>
+    public static GraphTurnResult GraphTurnMetrics(IReadOnlyList<GraphDepthCase> cases,
+        IReadOnlyDictionary<string, IReadOnlyList<(TurnResult? Turn, JudgeScore Score, bool JudgeFailed)>> answersByVariant)
+    {
+        static bool CalledGraph(TurnResult? t) => t?.ToolCalls.Any(c => c.ToolName is GraphTools.TraceCodeSymbol or GraphTools.ChangeImpact) == true;
+        var notCommon = new List<(string CaseId, string Variant)>();
+        var common = new HashSet<int>();
+        for (var i = 0; i < cases.Count; i++)
+        {
+            var missing = answersByVariant.Where(v => !CalledGraph(v.Value[i].Turn)).Select(v => v.Key).ToList();
+            if (missing.Count == 0)
+            {
+                common.Add(i);
+            }
+            notCommon.AddRange(missing.Select(v => (cases[i].Id, v)));
+        }
+        var metrics = new Dictionary<string, Dictionary<string, double>>();
+        foreach (var (variant, answers) in answersByVariant)
+        {
+            var m = new Dictionary<string, double>();
+            var graph = Enumerable.Range(0, cases.Count).Where(i => CalledGraph(answers[i].Turn)).ToList();
+            m["graphTurns"] = graph.Count;
+            Scores(m, ":graph", graph, cases, answers);
+            m["commonCases"] = common.Count;
+            Scores(m, ":common", [.. common.Order()], cases, answers);
+            foreach (var depth in common.Select(i => cases[i].RequiredDepth).Distinct().Order())
+            {
+                var atDepth = common.Where(i => cases[i].RequiredDepth == depth).ToList();
+                m[$"mentionRecall:common@needs{depth}"] = atDepth.Average(i => Mentions(cases[i], answers[i].Turn));
+            }
+            metrics[variant] = m;
+        }
+        return new GraphTurnResult(metrics, common.Count, notCommon);
+    }
+
+    private static void Scores(Dictionary<string, double> m, string suffix, IReadOnlyList<int> rows, IReadOnlyList<GraphDepthCase> cases,
+        IReadOnlyList<(TurnResult? Turn, JudgeScore Score, bool JudgeFailed)> answers)
+    {
+        if (rows.Count == 0)
+        {
+            return;
+        }
+        m[$"faithfulness{suffix}"] = rows.Average(i => answers[i].Score.Faithfulness);
+        m[$"relevance{suffix}"] = rows.Average(i => answers[i].Score.Relevance);
+        m[$"mentionRecall{suffix}"] = rows.Average(i => Mentions(cases[i], answers[i].Turn));
+    }
+
+    private static double Mentions(GraphDepthCase c, TurnResult? turn) =>
+        (double)c.Needed.Count(x => (turn?.Answer ?? "").Contains(MentionKey(x.Item), StringComparison.OrdinalIgnoreCase)) / c.Needed.Count;
 
     /// <summary>The member of 'Type.Member' (a constructor's display is 'Type.Type'), or a test file's name without extension.</summary>
     public static string MentionKey(string item) =>
