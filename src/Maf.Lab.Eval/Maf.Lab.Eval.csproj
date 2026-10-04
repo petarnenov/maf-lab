@@ -8,6 +8,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="Microsoft.Extensions.AI.Evaluation" />
+    <PackageReference Include="Microsoft.Extensions.AI.Evaluation.Reporting" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />

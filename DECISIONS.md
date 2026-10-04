@@ -50,6 +50,7 @@ model is served, not its size.
 |---|---|
 | Microsoft.Agents.AI | 1.22.0 |
 | Microsoft.Extensions.AI / .Abstractions / .OpenAI | 10.10.0 |
+| Microsoft.Extensions.AI.Evaluation / .Reporting (§78, eval harness only) | 10.10.0 |
 | OllamaSharp | 5.4.30 |
 | ModelContextProtocol / ModelContextProtocol.AspNetCore | 2.2.0 |
 | Qdrant.Client | 1.19.0 |
@@ -2844,3 +2845,26 @@ said which account the conversation was about.
   memory bandwidth). Every re-index request reached `ollama-batch` only, neither runner reloaded (one `threadpool init`
   each), and the same text gives bit-identical vectors on both instances. Forced portfolio re-index: 142 chunks in
   ~21 s.
+
+## 78. Jev grades the generation eval; Microsoft.Extensions.AI.Evaluation reports it (adopt-meai-evaluation, 2026-10-04)
+
+- **Why.** The `generation` suite graded answers with `RubricJudge`, a one-request `gpt-oss:120b` prompt returning two
+  1–5 grades. It was written on day 3 for a first baseline and never weighed against anything. It is noisy (`relevance`
+  carries a 0.035 tolerance for judge noise alone), slow, and broad: one number per answer cannot say which claim is
+  unsupported. On g-04 it missed what Jev's answer check caught (§42).
+- **Jev decides, code counts.** Grading an answer is a set of closed, atomic judgments: whether a sentence makes a
+  claim, whether a claim is supported, whether the answer states a reference point or contradicts it, whether a
+  source is on the question's subject (docs/rules/jev-usage.md §2 C/F/G). The answer is split into sentences by code,
+  all questions about one case go in one Jev request, and every share is computed in code.
+- **Microsoft.Extensions.AI.Evaluation and .Reporting 10.10.0, as the harness only.** The same release train as the
+  pinned `Microsoft.Extensions.AI` 10.10.0. The Jev grade is an `IEvaluator`; `.Reporting` stores each run's results and
+  renders the HTML report.
+  - Checked at 10.10.0: `HtmlReportWriter` (`…Reporting.Formats.Html`) is public and called in-process, so the
+    `.Console` tool (`dotnet aieval`) is not needed. `DiskBasedReportingConfiguration.Create` takes no
+    `ChatConfiguration` when no evaluator is AI-based. Response caching is off: there is no chat call to cache, and Jev
+    answers identical input identically.
+  - Rejected: `.Quality` (Groundedness, Relevance, Completeness, Retrieval). These are LLM prompts with 1–5 grades and
+    would bring back the noise, latency and broad judgments this change removes. Also rejected: Ragas and DeepEval,
+    which add a Python runtime for the same LLM-judge approach. `.NLP` (preview) and `.Safety` (Azure AI Foundry) are
+    out of scope.
+
