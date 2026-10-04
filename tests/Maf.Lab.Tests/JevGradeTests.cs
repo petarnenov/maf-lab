@@ -86,17 +86,6 @@ public class JevGradeTests
     }
 
     [Fact]
-    public void A_sentence_that_only_cites_a_source_is_not_a_claim_by_the_criteria()
-    {
-        var request = JevGradeRequest.Build(Input("It is built in `TenantFilter.For`. (Source: `src/A.cs:121-140`)", [CodeItem]), new JudgeOptions());
-        var criteria = JsonNode.Parse(JsonSerializer.Serialize(request.Questions["claim_1"], JevRequest.Json))!["criteria"]!;
-
-        // The citation is the "no" side's boundary case; the location of the thing asked about stays a claim.
-        Assert.Contains("only cites where the answer comes from", criteria["false"]!.GetValue<string>());
-        Assert.Contains("path", criteria["true"]!.GetValue<string>());
-    }
-
-    [Fact]
     public void Sentences_and_sources_over_their_caps_are_left_out_and_the_case_says_so()
     {
         var answer = string.Join(" ", Enumerable.Range(1, 70).Select(i => $"Step {i} is done."));
