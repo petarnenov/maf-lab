@@ -503,6 +503,17 @@ The end-to-end layer asks the agent each case's question. It SHALL report per va
 A turn that called no graph tool SHALL still be scored, and SHALL be counted in the tool-call share, so a variant cannot
 look better by being ignored. Judge failures SHALL be counted and reported apart from the scores.
 
+Because the pinned depth can only matter in a turn that called a graph tool, the end-to-end layer SHALL also report,
+beside the all-turn scores:
+- each variant's faithfulness, relevance and mention recall over only its own turns that called a code graph tool, with
+  the number of such turns;
+- the same three scores over only the common cases: those whose turns called a code graph tool in every variant of the
+  run, with the number of such cases, so the variants are compared on the same questions;
+- mention recall over the common cases, split by the depth each case needs.
+
+A score over an empty set SHALL be absent rather than zero. The report SHALL carry each case's graph-call outcome per
+variant.
+
 The suite SHALL be able to run the structural layer alone, with no chat model and no Jev key.
 
 #### Scenario: Three variants side by side
@@ -528,6 +539,18 @@ The suite SHALL be able to run the structural layer alone, with no chat model an
 #### Scenario: The model skips the graph
 - **WHEN** the agent answers a case without calling a graph tool
 - **THEN** the case is still judged, and the variant's tool-call share is lower
+
+#### Scenario: Scores over the graph turns
+- **WHEN** a variant's agent called a graph tool in 18 of 24 turns
+- **THEN** that variant reports its scores over those 18 turns beside the all-turn scores, and reports 18 as its graph-turn count
+
+#### Scenario: The common cases
+- **WHEN** 15 cases called a graph tool in all three variants
+- **THEN** every variant reports its scores over those 15 cases, and 15 as the common-case count
+
+#### Scenario: No common case
+- **WHEN** no case called a graph tool in every variant
+- **THEN** the common-case scores are absent, the common-case count is 0, and the run still passes
 
 ### Requirement: Comparison suites do not gate
 A suite whose purpose is to compare settings, starting with `graph-depth`, SHALL be reported in the same JSON and
