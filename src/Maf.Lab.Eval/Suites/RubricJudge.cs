@@ -5,8 +5,6 @@ using Microsoft.Extensions.AI;
 
 namespace Maf.Lab.Eval.Suites;
 
-public sealed record JudgeScore(double Faithfulness, double Relevance, string Reason);
-
 /// <summary>LLM-as-judge with a fixed rubric; scores are 1–5 normalised to 0–1. Temperature 0.</summary>
 public sealed partial class RubricJudge(IChatClientFactory models)
 {

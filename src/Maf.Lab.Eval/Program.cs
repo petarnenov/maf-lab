@@ -1,14 +1,17 @@
 using Maf.Lab.Api.Feedback;
 using Maf.Lab.Domain.Evals;
 using Maf.Lab.Eval.Hosting;
+using Maf.Lab.Eval.Judging;
 using Maf.Lab.Eval.Reports;
 using Maf.Lab.Eval.Suites;
 using Maf.Lab.Indexing;
 using Maf.Lab.Retrieval.Configuration;
+using Maf.Lab.Retrieval.Jev;
 using Maf.Lab.Retrieval.Models;
 using Maf.Lab.Retrieval.Search;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Maf.Lab.Eval;
@@ -88,7 +91,7 @@ public static class Program
             {
                 "selection" => await new SelectionSuite(host).RunAsync(ctx, ct),
                 "retrieval" => await RunRetrievalAsync(host, configuration, options, retrieval, ctx, flags, settings, ct),
-                "generation" => await new GenerationSuite(host, new RubricJudge(host.Services.GetRequiredService<IChatClientFactory>())).RunAsync(ctx, ct),
+                "generation" => await RunGenerationAsync(host, options, root, $"{stamp}-{name}", ctx, settings, ct),
                 "injection" => await new InjectionSuite(host).RunAsync(ctx, ct),
                 "confirmation" => await new ConfirmationSuite(host).RunAsync(ctx, ct),
                 "intent" => await new IntentSuite(host).RunAsync(ctx, ct),
@@ -134,6 +137,25 @@ public static class Program
             Console.WriteLine($"Baseline accepted → {path}");
         }
         return allPassed ? 0 : 1;
+    }
+
+    /// <summary>
+    /// The generation suite graded by Jev (adopt-meai-evaluation): refused without the key, each case kept in the result
+    /// store, the run's HTML report written beside its JSON and Markdown ones.
+    /// </summary>
+    private static async Task<IReadOnlyList<EvalVariantResult>> RunGenerationAsync(EvalAgentHost host, EvalOptions options, string root,
+        string runId, SuiteContext ctx, Dictionary<string, string> settings, CancellationToken ct)
+    {
+        var sp = host.Services;
+        var grader = new JevGrader(sp.GetRequiredService<JevClient>(), options.Judge, sp.GetRequiredService<ILogger<JevGrader>>());
+        GenerationSuite.RequireKey(grader);
+        var suite = new GenerationSuite(host, new RubricJudge(sp.GetRequiredService<IChatClientFactory>()),
+            GradeReport.Configure(root, runId, new JevGenerationEvaluator(grader)));
+        var variants = await suite.RunAsync(ctx, ct);
+        settings["judgeModel"] = grader.Model;
+        settings["judgeInputTokens"] = suite.InputTokens.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        Console.WriteLine($"   report → {await GradeReport.WriteHtmlAsync(root, runId, GenerationSuite.ScenarioPrefix, ct)}");
+        return variants;
     }
 
     private static async Task<IReadOnlyList<EvalVariantResult>> RunRetrievalAsync(EvalAgentHost host, IConfiguration configuration, EvalOptions options,
