@@ -16,7 +16,10 @@ namespace Maf.Lab.Eval.Suites;
 /// read side by side;</item>
 /// <item><c>check</c>: the production answer check on the same rows;</item>
 /// <item><c>points</c>: over <c>generation-judge.jsonl</c>, whether each reference point is graded stated and
-/// contradicted as the reviewer labelled it.</item>
+/// contradicted as the reviewer labelled it;</item>
+/// <item><c>sentences</c>: over <c>generation-sentences.jsonl</c>, whether each sentence is graded a claim and, if one,
+/// supported, as the reviewer labelled it — with citations (correct and invented) counted on their own, since the
+/// system prompt requires every cited place to be exact.</item>
 /// </list>
 /// Each rate is also given per domain, language and split.
 /// </summary>
@@ -30,7 +33,8 @@ public sealed class GenerationJudgeSuite(JevAnswerCheck check, ReportingConfigur
     {
         var labelled = ctx.Take(DatasetLoader.AnswerCheck(ctx.DatasetRoot)).ToList();
         var pointCases = ctx.Take(DatasetLoader.GenerationJudge(ctx.DatasetRoot)).ToList();
-        var total = labelled.Count + pointCases.Count;
+        var sentenceCases = ctx.Take(DatasetLoader.GenerationSentences(ctx.DatasetRoot)).ToList();
+        var total = labelled.Count + pointCases.Count + sentenceCases.Count;
         var done = 0;
 
         var gradeOutcomes = new List<Metrics.AnswerCheckOutcome>();
@@ -96,12 +100,51 @@ public sealed class GenerationJudgeSuite(JevAnswerCheck check, ReportingConfigur
             ctx.Progress($"generation-judge {++done}/{total} {c.Id}: points {status}");
         }
 
+        var sentences = new List<SentenceOutcome>();
+        var sentenceFailures = new List<EvalCaseFailure>();
+        foreach (var c in sentenceCases)
+        {
+            var outcome = await GradeAsync(c.Id, c.Question, c.Answer, new JevGradeContext([.. c.Sources.SelectMany(AnswerCheckSuite.Current)], []), ct);
+            var g = outcome.Grade;
+            var wrong = new List<string>();
+            for (var i = 0; i < c.Sentences.Count; i++)
+            {
+                var label = c.Sentences[i];
+                if (label.Ambiguous)
+                {
+                    continue;
+                }
+                double? claimP = g?.Answers.GetValueOrDefault(JevGradeRequest.ClaimId(i));
+                double? supportedP = g?.Answers.GetValueOrDefault(JevGradeRequest.SupportedId(i));
+                var claim = claimP >= JevGrade.Yes;
+                var supported = supportedP >= JevGrade.Yes;
+                var o = new SentenceOutcome(g is not null, label.Claim, claim, label.Supported, supported, label.Citation, c.Domain, c.Language, c.Split);
+                sentences.Add(o);
+                if (g is not null && !o.Correct)
+                {
+                    wrong.Add($"[{i}] expected {(label.Claim ? (label.Supported == true ? "supported" : "unsupported") : "no claim")}"
+                        + $"{(label.Citation ? " citation" : "")}, got claim={claimP:0.##} supported={supportedP:0.##}");
+                }
+            }
+            if (g is null)
+            {
+                sentenceFailures.Add(new EvalCaseFailure(c.Id, $"judge failed: {outcome.Failure}"));
+            }
+            else if (wrong.Count > 0)
+            {
+                sentenceFailures.Add(new EvalCaseFailure(c.Id, $"[{c.Domain} {c.Language} {c.Split}] {string.Join("; ", wrong)}"));
+            }
+            var status = g is null ? $"judge failed: {outcome.Failure}" : wrong.Count == 0 ? "ok" : $"WRONG {wrong.Count}/{c.Sentences.Count(l => !l.Ambiguous)}";
+            ctx.Progress($"generation-judge {++done}/{total} {c.Id}: sentences {status}");
+        }
+
         var thresholds = ctx.ThresholdsFor("generation-judge");
         return
         [
             SuiteContext.Variant("grade", Metrics.AnswerCheck(gradeOutcomes), Prefixed(thresholds, "grade."), labelled.Count, gradeFailures),
             SuiteContext.Variant("check", Metrics.AnswerCheck(checkOutcomes), Prefixed(thresholds, "check."), labelled.Count, checkFailures),
             SuiteContext.Variant("points", PointMetrics(points), Prefixed(thresholds, "points."), pointCases.Count, pointFailures),
+            SuiteContext.Variant("sentences", SentenceMetrics(sentences), Prefixed(thresholds, "sentences."), sentenceCases.Count, sentenceFailures),
         ];
     }
 
@@ -142,6 +185,66 @@ public sealed class GenerationJudgeSuite(JevAnswerCheck check, ReportingConfigur
         foreach (var key in new Func<PointOutcome, string>[] { p => p.Domain, p => p.Language, p => p.Split })
         {
             foreach (var group in points.GroupBy(key).OrderBy(g => g.Key, StringComparer.Ordinal))
+            {
+                Rates($":{group.Key}", group.ToList());
+            }
+        }
+        return metrics;
+    }
+
+    /// <summary>One labelled sentence and what the grade made of it. A sentence that is no claim is right when graded none.</summary>
+    public readonly record struct SentenceOutcome(bool Graded, bool Claim, bool GradedClaim, bool? Supported, bool GradedSupported, bool Citation,
+        string Domain, string Language, string Split)
+    {
+        /// <summary>A claim is right when graded a claim with the labelled support; a non-claim, when graded none.</summary>
+        public bool Correct => Graded && (Claim ? GradedClaim && GradedSupported == Supported : !GradedClaim);
+    }
+
+    /// <summary>
+    /// <c>sentenceAccuracy</c>: sentences graded as labelled. Over the labelled claims, <c>supportedPass</c> (supported
+    /// claims graded supported) and <c>unsupportedDetection</c> (unsupported claims caught) apart, so a grade that flags
+    /// everything cannot hide behind one that flags nothing; the same for citations: <c>citationPass</c> (a correct
+    /// citation graded supported) and <c>citationDetection</c> (an invented one caught). A claim graded as no claim is not
+    /// checked for support, so it counts as passed when supported and missed when not — the grade's own reading.
+    /// <c>claimAccuracy</c>: claims and non-claims told apart. Per domain, language and split.
+    /// </summary>
+    public static Dictionary<string, double> SentenceMetrics(IReadOnlyList<SentenceOutcome> sentences)
+    {
+        var metrics = new Dictionary<string, double>();
+        static double Share(IEnumerable<bool> hits)
+        {
+            var list = hits.ToList();
+            return list.Count == 0 ? 1 : (double)list.Count(h => h) / list.Count;
+        }
+        // A sentence graded as no claim is never asked about support: for faithfulness it is as good as supported.
+        static bool Passes(SentenceOutcome o) => o.Graded && (!o.GradedClaim || o.GradedSupported);
+        void Rates(string suffix, IReadOnlyCollection<SentenceOutcome> group)
+        {
+            metrics[$"sentenceAccuracy{suffix}"] = Share(group.Select(o => o.Correct));
+            metrics[$"claimAccuracy{suffix}"] = Share(group.Select(o => o.Graded && o.GradedClaim == o.Claim));
+            var claims = group.Where(o => o.Claim && !o.Citation).ToList();
+            if (claims.Any(o => o.Supported == true))
+            {
+                metrics[$"supportedPass{suffix}"] = Share(claims.Where(o => o.Supported == true).Select(Passes));
+            }
+            if (claims.Any(o => o.Supported == false))
+            {
+                metrics[$"unsupportedDetection{suffix}"] = Share(claims.Where(o => o.Supported == false).Select(o => !Passes(o)));
+            }
+            var citations = group.Where(o => o.Citation).ToList();
+            if (citations.Any(o => o.Supported == true))
+            {
+                metrics[$"citationPass{suffix}"] = Share(citations.Where(o => o.Supported == true).Select(Passes));
+            }
+            if (citations.Any(o => o.Supported == false))
+            {
+                metrics[$"citationDetection{suffix}"] = Share(citations.Where(o => o.Supported == false).Select(o => !Passes(o)));
+            }
+        }
+        Rates("", [.. sentences]);
+        foreach (var key in new Func<SentenceOutcome, string>[] { o => o.Domain, o => o.Language, o => o.Split })
+        {
+            foreach (var group in sentences.GroupBy(key).OrderBy(g => g.Key, StringComparer.Ordinal))
             {
                 Rates($":{group.Key}", group.ToList());
             }

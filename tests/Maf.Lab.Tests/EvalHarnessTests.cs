@@ -27,6 +27,7 @@ public class EvalHarnessTests
         Assert.NotEmpty(DatasetLoader.Retrieval(EvalsRoot));
         Assert.NotEmpty(DatasetLoader.Generation(EvalsRoot));
         Assert.NotEmpty(DatasetLoader.GenerationJudge(EvalsRoot));
+        Assert.NotEmpty(DatasetLoader.GenerationSentences(EvalsRoot));
         Assert.NotEmpty(DatasetLoader.Injection(EvalsRoot));
         Assert.NotEmpty(DatasetLoader.Confirmation(EvalsRoot));
         Assert.NotEmpty(DatasetLoader.Intent(EvalsRoot));
@@ -147,6 +148,35 @@ public class EvalHarnessTests
             Assert.Contains(cases, c => c.Domain == domain && c.Stated.Any(x => !x));
         }
         Assert.Contains(cases, c => c.Split == "holdout");
+    }
+
+    [Fact]
+    public void The_sentence_dataset_holds_correct_and_invented_citations_in_both_languages_and_domains()
+    {
+        var cases = DatasetLoader.GenerationSentences(EvalsRoot);
+        var labels = cases.SelectMany(c => c.Sentences.Select(l => (c.Domain, c.Language, Label: l))).Where(x => !x.Label.Ambiguous).ToList();
+
+        foreach (var domain in new[] { "billing", "codebase" })
+        {
+            foreach (var language in new[] { "en", "bg" })
+            {
+                Assert.Contains(labels, x => x.Domain == domain && x.Language == language && x.Label.Citation && x.Label.Supported == true);
+                Assert.Contains(labels, x => x.Domain == domain && x.Language == language && x.Label.Citation && x.Label.Supported == false);
+            }
+        }
+        Assert.Contains(labels, x => !x.Label.Citation && x.Label.Supported == false);
+        Assert.Contains(labels, x => !x.Label.Claim);
+    }
+
+    [Fact]
+    public void A_sentence_row_whose_labels_are_not_the_cut_sentences_fails()
+    {
+        var dir = Directory.CreateTempSubdirectory("maf-evals-").FullName;
+        File.WriteAllText(Path.Combine(dir, "generation-sentences.jsonl"),
+            "{\"id\":\"gs-x\",\"question\":\"q\",\"answer\":\"One. Two.\",\"sources\":[],\"sentences\":[{\"text\":\"One. Two.\",\"claim\":true,\"supported\":true}],\"domain\":\"billing\",\"language\":\"en\",\"split\":\"design\"}\n");
+        var ex = Assert.Throws<InvalidDataException>(() => DatasetLoader.GenerationSentences(dir));
+        Assert.Contains("generation-sentences.jsonl:1", ex.Message);
+        Assert.Contains("2 sentences", ex.Message);
     }
 
     [Fact]

@@ -67,6 +67,17 @@ public sealed record AnswerCheckCase(string Id, string Question, string Previous
 public sealed record GenerationJudgeCase(string Id, string Question, string Answer, IReadOnlyList<string> ReferencePoints,
     IReadOnlyList<bool> Stated, IReadOnlyList<bool> Contradicted, string Domain, string Language, string Split, string? Source);
 
+/// <summary>
+/// One sentence of a recorded answer as a reviewer labelled it: whether it makes a claim, whether its sources support
+/// that claim (null when it makes none, or when <paramref name="Ambiguous"/>), and whether it is a citation of a source
+/// — a claim the system prompt requires to be exact (adopt-meai-evaluation).
+/// </summary>
+public sealed record SentenceLabel(string Text, bool Claim, bool? Supported, bool Citation, bool Ambiguous);
+
+/// <summary>A recorded answer with the sources it was given and a label per sentence, in the order code cuts them.</summary>
+public sealed record GenerationSentenceCase(string Id, string Question, string Answer, IReadOnlyList<AnswerCheckSource> Sources,
+    IReadOnlyList<SentenceLabel> Sentences, string Domain, string Language, string Split, string? Source);
+
 public sealed record InjectionCase(string Id, string Question, IReadOnlyList<string> ForbiddenStrings, IReadOnlyList<string> ForbiddenTenantIds, string FirmId, string? Source);
 
 /// <summary>Loads and validates the JSONL datasets. Invalid rows fail loudly with file and line.</summary>
@@ -263,6 +274,44 @@ public static class DatasetLoader
         }
         return new GenerationJudgeCase(Str(e, "id", where), Str(e, "question", where), Str(e, "answer", where), points, stated,
             contradicted, domain, language, split, Opt(e, "source"));
+    });
+
+    /// <summary>
+    /// Sentence labels are only as good as their alignment: the labelled texts must be exactly the sentences code cuts
+    /// the answer into, or a label would grade a neighbour.
+    /// </summary>
+    public static IReadOnlyList<GenerationSentenceCase> GenerationSentences(string root) => Load(root, "generation-sentences.jsonl", (e, where) =>
+    {
+        if (!e.TryGetProperty("sentences", out var list) || list.ValueKind != JsonValueKind.Array || list.GetArrayLength() == 0)
+        {
+            throw new InvalidDataException($"{where}: 'sentences' must be a non-empty array.");
+        }
+        var labels = list.EnumerateArray().Select(x =>
+        {
+            var claim = x.TryGetProperty("claim", out var c) && c.ValueKind == JsonValueKind.True;
+            bool? supported = x.TryGetProperty("supported", out var sp) && sp.ValueKind is JsonValueKind.True or JsonValueKind.False ? sp.GetBoolean() : null;
+            var ambiguous = x.TryGetProperty("ambiguous", out var a) && a.ValueKind == JsonValueKind.True;
+            if (claim && supported is null && !ambiguous)
+            {
+                throw new InvalidDataException($"{where}: a claim needs 'supported' unless it is marked ambiguous.");
+            }
+            return new SentenceLabel(Str(x, "text", where), claim, supported, x.TryGetProperty("citation", out var ci) && ci.ValueKind == JsonValueKind.True, ambiguous);
+        }).ToList();
+        var answer = Str(e, "answer", where);
+        var cut = Judging.AnswerSentences.Split(Api.Agent.Jev.AnswerText.Normalise(answer));
+        if (!cut.SequenceEqual(labels.Select(l => l.Text)))
+        {
+            throw new InvalidDataException($"{where}: the labelled sentences are not the {cut.Count} sentences code cuts the answer into.");
+        }
+        var domain = Str(e, "domain", where);
+        var language = Str(e, "language", where);
+        var split = Str(e, "split", where);
+        if (!AnswerCheckDomains.Contains(domain) || !IntentLanguages.Contains(language) || split is not ("design" or "holdout"))
+        {
+            throw new InvalidDataException($"{where}: unknown domain, language or split.");
+        }
+        return new GenerationSentenceCase(Str(e, "id", where), Str(e, "question", where), answer, Sources(e, "sources", where), labels,
+            domain, language, split, Opt(e, "source"));
     });
 
     private static IReadOnlyList<bool> Bools(JsonElement e, string name, string where)

@@ -219,12 +219,28 @@ public class AnswerCheckEvalTests
                 stated = new[] { true, false }, contradicted = new[] { false, false }, domain = "billing", language = "bg", split = "design",
             }),
         ]);
+        File.WriteAllLines(Path.Combine(dir, "generation-sentences.jsonl"),
+        [
+            JsonSerializer.Serialize(new
+            {
+                id = "gs-1", question = "how is the window cut?", answer = "It is cut around the match. (See `lab/A.cs:9-12`.)",
+                sources = new[] { new { tool = "search_codebase", item = new { path = "lab/A.cs", startLine = 9, endLine = 12, symbol = "Window", snippet = "Window(...)" } } },
+                sentences = new object[]
+                {
+                    new { text = "It is cut around the match.", claim = true, supported = true, citation = false },
+                    new { text = "(See `lab/A.cs:9-12`.)", claim = true, supported = true, citation = true },
+                },
+                domain = "codebase", language = "en", split = "design",
+            }),
+        ]);
         var jev = new FakeJev
         {
             // The check misses the invented sentence; the grade catches it, and wrongly says the second point is stated.
             AnswerCheck = (_, _, _) => 0.95,
+            // …and grades the correct citation unsupported.
             Grade = (id, state) => id.StartsWith("supported_", StringComparison.Ordinal)
-                && state["answer_sentences"]![int.Parse(id["supported_".Length..])]!.GetValue<string>().Contains("INVENTED") ? 0.1
+                && state["answer_sentences"]![int.Parse(id["supported_".Length..])]!.GetValue<string>() is var t
+                && (t.Contains("INVENTED") || t.StartsWith("(See", StringComparison.Ordinal)) ? 0.1
                 : id == "stated_1" ? 0.9 : null,
         };
         await using var services = JevServices(jev);
@@ -238,6 +254,7 @@ public class AnswerCheckEvalTests
         var grade = variants.Single(v => v.Name == "grade");
         var check = variants.Single(v => v.Name == "check");
         var points = variants.Single(v => v.Name == "points");
+        var sentences = variants.Single(v => v.Name == "sentences");
         Assert.Equal(1, grade.Metrics["accuracy"]);
         Assert.Equal(0.5, check.Metrics["accuracy"]);
         Assert.Equal(["bad"], check.Failures.Select(f => f.CaseId));
@@ -245,15 +262,40 @@ public class AnswerCheckEvalTests
         Assert.Equal(0.5, points.Metrics["pointAccuracy:bg"]);
         Assert.Equal(1, points.Metrics["contradictedAccuracy"]);
         Assert.Contains("point 1 expected not stated/not contradicted, got stated=0.9", Assert.Single(points.Failures).Reason);
-        Assert.Equal(3, progress.Count);
-        Assert.StartsWith("generation-judge 1/3 bad: grade ok", progress[0]);
-        Assert.StartsWith("generation-judge 3/3 gj-1: points WRONG 1/2", progress[2]);
+        Assert.Equal(0, sentences.Metrics["citationPass"]);
+        Assert.Equal(1, sentences.Metrics["supportedPass"]);
+        Assert.Equal(0.5, sentences.Metrics["sentenceAccuracy"]);
+        Assert.Contains("[1] expected supported citation, got claim=0.95 supported=0.1", Assert.Single(sentences.Failures).Reason);
+        Assert.Equal(4, progress.Count);
+        Assert.StartsWith("generation-judge 1/4 bad: grade ok", progress[0]);
+        Assert.StartsWith("generation-judge 3/4 gj-1: points WRONG 1/2", progress[2]);
+        Assert.StartsWith("generation-judge 4/4 gs-1: sentences WRONG 1/2", progress[3]);
         Assert.True(suite.InputTokens > 0);
         // Each graded case is kept for the report; no chat model was asked.
         Assert.True(Directory.Exists(GradeReport.StorePath(dir)));
         Assert.Null(services.GetService<IChatClientFactory>());
         var html = await GradeReport.WriteHtmlAsync(dir, "test-run", GenerationJudgeSuite.ScenarioPrefix, Ct);
         Assert.Contains("generation-judge.gj-1", await File.ReadAllTextAsync(html, Ct));
+    }
+
+    [Fact]
+    public void Sentence_metrics_read_a_sentence_graded_no_claim_as_passed_and_keep_citations_apart()
+    {
+        var metrics = GenerationJudgeSuite.SentenceMetrics(
+        [
+            new(true, true, true, true, true, false, "billing", "en", "design"),
+            // Graded as no claim: passes for faithfulness, but the claim/no-claim reading is wrong.
+            new(true, true, false, true, false, true, "billing", "en", "design"),
+            new(true, true, true, false, true, true, "billing", "en", "design"),
+            new(true, false, false, null, false, false, "billing", "en", "design"),
+        ]);
+
+        Assert.Equal(1, metrics["supportedPass"]);
+        Assert.Equal(1, metrics["citationPass"]);
+        Assert.Equal(0, metrics["citationDetection"]);
+        Assert.Equal(0.75, metrics["claimAccuracy"]);
+        Assert.Equal(0.5, metrics["sentenceAccuracy"]);
+        Assert.False(metrics.ContainsKey("unsupportedDetection"));
     }
 
     [Fact]
