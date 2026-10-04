@@ -6,6 +6,8 @@ using Maf.Lab.Api.Agent;
 using Maf.Lab.Eval;
 using Maf.Lab.Eval.Judging;
 using Maf.Lab.Retrieval.Jev;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI.Evaluation;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -289,6 +291,59 @@ public class JevGradeTests
         {
             Assert.DoesNotContain(text, line);
         }
+    }
+
+    // ── the evaluator (3.5) ───────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task The_evaluator_reports_one_metric_each_with_the_sentences_as_diagnostics_and_leaves_the_outcome()
+    {
+        var (grader, _, _) = Grader(new FakeJev { Grade = (id, _) => id switch { "supported_3" => 0.1, "stated_1" => 0.1, _ => null } });
+        var evaluator = new JevGenerationEvaluator(grader);
+        var context = new JevGradeContext([FeeDoc, OtherDoc], ["Assign the agreed schedule.", "Re-run the run."]);
+
+        var result = await evaluator.EvaluateAsync([new ChatMessage(ChatRole.User, "What do I do when a fee schedule is missing?")],
+            new ChatResponse(new ChatMessage(ChatRole.Assistant, Answer)), additionalContext: [context], cancellationToken: Ct);
+
+        Assert.Equal(evaluator.EvaluationMetricNames.Order(), result.Metrics.Keys.Order());
+        var faithfulness = result.Get<NumericMetric>(JevGenerationEvaluator.Faithfulness);
+        Assert.Equal(0.75, faithfulness.Value);
+        Assert.True(faithfulness.Interpretation!.Failed is false);
+        Assert.Contains(faithfulness.Diagnostics!, d => d.Message == "unsupported: Then pay the fee twice.");
+        Assert.Contains("\"supported_3\":0.1", faithfulness.Metadata!["answers"]);
+        var completeness = result.Get<NumericMetric>(JevGenerationEvaluator.Completeness);
+        Assert.Equal(0.5, completeness.Value);
+        Assert.True(completeness.Interpretation!.Failed);
+        Assert.Equal("400", completeness.Metadata!["inputTokens"]);
+        Assert.Equal(0.75, context.Outcome!.Grade!.Faithfulness);
+    }
+
+    [Fact]
+    public void A_failed_grade_scores_zero_on_every_judged_metric_and_says_why()
+    {
+        var result = JevGenerationEvaluator.ToResult(new GradeOutcome(null, "timed out after 10s", "jev-1.13.0", 10_000, 15, 0, false, false));
+
+        foreach (var name in new[] { "faithfulness", "relevance", "completeness", "referenceAgreement", "retrievalJudged" })
+        {
+            var metric = result.Get<NumericMetric>(name);
+            Assert.Equal(0, metric.Value);
+            Assert.True(metric.Interpretation!.Failed);
+            Assert.Equal("judge failed: timed out after 10s", metric.Reason);
+        }
+        Assert.False(result.Metrics.ContainsKey("judgeUncertain"));
+    }
+
+    [Fact]
+    public void A_case_without_reference_points_reports_no_completeness()
+    {
+        var request = JevGradeRequest.Build(Input(points: []), new JudgeOptions());
+        var grade = JevGrade.From(request, request.Questions.Keys.ToDictionary(id => id, Default));
+
+        var result = JevGenerationEvaluator.ToResult(new GradeOutcome(grade, null, "jev-1.13.0", 300, request.Questions.Count, 400, false, false));
+
+        Assert.False(result.Metrics.ContainsKey("completeness"));
+        Assert.False(result.Metrics.ContainsKey("referenceAgreement"));
+        Assert.Equal(1, result.Get<NumericMetric>("faithfulness").Value);
     }
 
     private sealed class ListLogger : ILogger<JevGrader>
