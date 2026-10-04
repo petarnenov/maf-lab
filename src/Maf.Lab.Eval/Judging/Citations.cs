@@ -90,21 +90,23 @@ public static partial class Citations
     }
 
     /// <summary>
-    /// A whole item — a previous turn's data envelope, a search result read whole — carries its places inside its JSON
-    /// (<c>results[].path/startLine/endLine</c>, <c>results[].sectionPath</c>): a follow-up answered from the previous
-    /// turn cites them as exactly as it would cite this turn's.
+    /// A whole item — a graph tool's result, a previous turn's data envelope, a search read whole — carries its places
+    /// inside its JSON, at any depth: <c>results[]</c> of a search, <c>matched[]</c> / <c>reached[]</c> of a code trace,
+    /// <c>tests[].tests[]</c> of a change impact. Every object with <c>path</c>, <c>startLine</c> and <c>endLine</c> is a
+    /// code place, every <c>sectionPath</c> a document place — whatever tool shaped it.
     /// </summary>
     private static IEnumerable<(string Path, int Start, int End)> EnvelopeCode(ReadItem item) =>
-        Results(item).Where(r => r.TryGetProperty("path", out var p) && p.ValueKind == JsonValueKind.String
+        Objects(item).Where(r => r.TryGetProperty("path", out var p) && p.ValueKind == JsonValueKind.String
                 && r.TryGetProperty("startLine", out var s) && s.ValueKind == JsonValueKind.Number
                 && r.TryGetProperty("endLine", out var e) && e.ValueKind == JsonValueKind.Number)
             .Select(r => (r.GetProperty("path").GetString()!, r.GetProperty("startLine").GetInt32(), r.GetProperty("endLine").GetInt32()));
 
     private static IEnumerable<string> EnvelopeSections(ReadItem item) =>
-        Results(item).Where(r => r.TryGetProperty("sectionPath", out var s) && s.ValueKind == JsonValueKind.String)
+        Objects(item).Where(r => r.TryGetProperty("sectionPath", out var s) && s.ValueKind == JsonValueKind.String)
             .Select(r => r.GetProperty("sectionPath").GetString()!);
 
-    private static List<JsonElement> Results(ReadItem item)
+    /// <summary>Every JSON object in a whole item, at any depth; none when the item is not JSON.</summary>
+    private static List<JsonElement> Objects(ReadItem item)
     {
         if (!item.Key.StartsWith("text:", StringComparison.Ordinal))
         {
@@ -119,15 +121,34 @@ public static partial class Citations
         try
         {
             using var doc = JsonDocument.Parse(item.Text[start..(end + 1)]);
-            return doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("results", out var results)
-                && results.ValueKind == JsonValueKind.Array
-                ? [.. results.EnumerateArray().Where(r => r.ValueKind == JsonValueKind.Object).Select(r => r.Clone())]
-                : [];
+            var objects = new List<JsonElement>();
+            Walk(doc.RootElement, objects);
+            return objects;
         }
         catch (JsonException)
         {
             // Not JSON (a fixed text, a tool's plain answer): it carries no place to look up.
             return [];
+        }
+    }
+
+    private static void Walk(JsonElement e, List<JsonElement> objects)
+    {
+        switch (e.ValueKind)
+        {
+            case JsonValueKind.Object:
+                objects.Add(e.Clone());
+                foreach (var p in e.EnumerateObject())
+                {
+                    Walk(p.Value, objects);
+                }
+                break;
+            case JsonValueKind.Array:
+                foreach (var x in e.EnumerateArray())
+                {
+                    Walk(x, objects);
+                }
+                break;
         }
     }
 

@@ -3124,3 +3124,25 @@ be re-run then.
   - `RubricJudge` stays only for the `graph-depth` comparison, which was measured with it and is never gated.
     `GenerationSuite.RubricPass` (0.75) is kept for it. Moving graph-depth to the Jev grade is its own change.
 
+## 80. graph-depth is graded by Jev too; the rubric judge is gone (graph-depth-jev-grade, 2026-10-04)
+
+- **Why.** After §79, `RubricJudge` survived only in the `graph-depth` comparison's end-to-end layer, which left two
+  judges on two scales in one harness. The rubric was also the noisier one, and it scored faithfulness against the
+  case's labelled items rather than against what the turn read. So `graph-depth` "faithfulness" meant something other
+  than `generation`'s.
+- **Now.** Each end-to-end answer is graded by `JevGrader` with `GradeInput(question, answer, turn.Read, [])`, the same
+  request as §79, so cited places are checked in code:
+  - `faithfulness` is claim sentences supported by what the turn read;
+  - `relevance` is whether the answer addresses the question;
+  - whether the answer names the labelled items stays `mentionRecall`, matched in code.
+  A case fails at faithfulness < 0.75, relevance < 1 or no graph call, as in `generation`. A failed request is a judge
+  failure, scored 0 and counted apart. The end-to-end layer refuses to run without `JEV_MAF_LAB`; `--structural-only`
+  needs neither key.
+- **Removed:** `RubricJudge`, `GenerationSuite.RubricPass`, `GraphDepthSuite.NeededContext`.
+- **Not comparable.** Graph-depth end-to-end scores before this change are rubric scores. It is a comparison, never
+  gated or in the baseline, so nothing is re-accepted.
+- **Jev review (jev-usage §7).** No new request: this is §79's grade request, unchanged, sent once per case and
+  variant (24 × 3), with the same closed atomic Nouls, code-side counting and citation lookup, one request per state,
+  pinned model and usage logged, no-key refusal and failure-as-0. It was tested on labelled English and Bulgarian
+  inputs through `generation-judge`.
+
