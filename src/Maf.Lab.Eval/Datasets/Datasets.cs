@@ -60,6 +60,13 @@ public sealed record AnswerCheckSource(string Tool, JsonElement? Item, string? T
 public sealed record AnswerCheckCase(string Id, string Question, string PreviousQuestion, string Answer, IReadOnlyList<AnswerCheckSource> Sources,
     IReadOnlyList<AnswerCheckSource> PreviousSources, bool Unsupported, bool OffTopic, string Domain, string Language, string Split, string? Source);
 
+/// <summary>
+/// An answer graded against its reference points without the agent (adopt-meai-evaluation): for each point, whether a
+/// reviewer found it stated and whether contradicted.
+/// </summary>
+public sealed record GenerationJudgeCase(string Id, string Question, string Answer, IReadOnlyList<string> ReferencePoints,
+    IReadOnlyList<bool> Stated, IReadOnlyList<bool> Contradicted, string Domain, string Language, string Split, string? Source);
+
 public sealed record InjectionCase(string Id, string Question, IReadOnlyList<string> ForbiddenStrings, IReadOnlyList<string> ForbiddenTenantIds, string FirmId, string? Source);
 
 /// <summary>Loads and validates the JSONL datasets. Invalid rows fail loudly with file and line.</summary>
@@ -237,6 +244,36 @@ public static class DatasetLoader
             Sources(e, "sources", where), Sources(e, "previousSources", where), e.GetProperty("unsupported").GetBoolean(),
             e.GetProperty("offTopic").GetBoolean(), domain, language, split, Opt(e, "source"));
     });
+
+    public static IReadOnlyList<GenerationJudgeCase> GenerationJudge(string root) => Load(root, "generation-judge.jsonl", (e, where) =>
+    {
+        var points = Strings(e, "referencePoints", where);
+        var stated = Bools(e, "stated", where);
+        var contradicted = Bools(e, "contradicted", where);
+        if (stated.Count != points.Count || contradicted.Count != points.Count)
+        {
+            throw new InvalidDataException($"{where}: 'stated' and 'contradicted' must have one label per reference point.");
+        }
+        var domain = Str(e, "domain", where);
+        var language = Str(e, "language", where);
+        var split = Str(e, "split", where);
+        if (!AnswerCheckDomains.Contains(domain) || !IntentLanguages.Contains(language) || split is not ("design" or "holdout"))
+        {
+            throw new InvalidDataException($"{where}: unknown domain, language or split.");
+        }
+        return new GenerationJudgeCase(Str(e, "id", where), Str(e, "question", where), Str(e, "answer", where), points, stated,
+            contradicted, domain, language, split, Opt(e, "source"));
+    });
+
+    private static IReadOnlyList<bool> Bools(JsonElement e, string name, string where)
+    {
+        if (!e.TryGetProperty(name, out var v) || v.ValueKind != JsonValueKind.Array)
+        {
+            throw new InvalidDataException($"{where}: '{name}' must be an array.");
+        }
+        return v.EnumerateArray().Select(x => x.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? x.GetBoolean() : throw new InvalidDataException($"{where}: '{name}' must contain true or false.")).ToList();
+    }
 
     private static IReadOnlyList<AnswerCheckSource> Sources(JsonElement e, string name, string where)
     {

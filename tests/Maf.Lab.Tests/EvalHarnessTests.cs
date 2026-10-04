@@ -26,6 +26,7 @@ public class EvalHarnessTests
         Assert.NotEmpty(DatasetLoader.Selection(EvalsRoot));
         Assert.NotEmpty(DatasetLoader.Retrieval(EvalsRoot));
         Assert.NotEmpty(DatasetLoader.Generation(EvalsRoot));
+        Assert.NotEmpty(DatasetLoader.GenerationJudge(EvalsRoot));
         Assert.NotEmpty(DatasetLoader.Injection(EvalsRoot));
         Assert.NotEmpty(DatasetLoader.Confirmation(EvalsRoot));
         Assert.NotEmpty(DatasetLoader.Intent(EvalsRoot));
@@ -128,6 +129,34 @@ public class EvalHarnessTests
 
         Assert.All(cases, c => Assert.NotEmpty(c.ReferencePoints));
         Assert.All(cases.SelectMany(c => c.ReferencePoints), p => Assert.False(string.IsNullOrWhiteSpace(p)));
+    }
+
+    [Fact]
+    public void Generation_judge_dataset_holds_both_languages_and_both_domains_with_misses_and_contradictions()
+    {
+        var cases = DatasetLoader.GenerationJudge(EvalsRoot);
+
+        Assert.Equal(16, cases.Count);
+        foreach (var domain in new[] { "billing", "codebase" })
+        {
+            foreach (var language in new[] { "en", "bg" })
+            {
+                Assert.Equal(4, cases.Count(c => c.Domain == domain && c.Language == language));
+            }
+            Assert.Contains(cases, c => c.Domain == domain && c.Contradicted.Any(x => x));
+            Assert.Contains(cases, c => c.Domain == domain && c.Stated.Any(x => !x));
+        }
+        Assert.Contains(cases, c => c.Split == "holdout");
+    }
+
+    [Fact]
+    public void A_generation_judge_row_needs_one_label_per_point()
+    {
+        var dir = Directory.CreateTempSubdirectory("maf-evals-").FullName;
+        File.WriteAllText(Path.Combine(dir, "generation-judge.jsonl"),
+            "{\"id\":\"gj-x\",\"question\":\"q\",\"answer\":\"a\",\"referencePoints\":[\"p1\",\"p2\"],\"stated\":[true],\"contradicted\":[false,false],\"domain\":\"billing\",\"language\":\"en\",\"split\":\"design\"}\n");
+        var ex = Assert.Throws<InvalidDataException>(() => DatasetLoader.GenerationJudge(dir));
+        Assert.Contains("generation-judge.jsonl:1", ex.Message);
     }
 
     [Fact]
