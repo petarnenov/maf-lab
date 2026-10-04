@@ -25,7 +25,12 @@ public sealed record JevNoulQuestion(object Instructions)
     public string Type => "noul";
 }
 
-public sealed record JevResponse(string? Model, Dictionary<string, JevAnswer>? Answers);
+public sealed record JevResponse(string? Model, Dictionary<string, JevAnswer>? Answers, JevUsage? Usage = null);
+
+/// <summary>What a request was charged for (jev-usage §4.6: log it per call). Numbers only.</summary>
+public sealed record JevUsage(
+    [property: System.Text.Json.Serialization.JsonPropertyName("input_tokens")] int? InputTokens,
+    [property: System.Text.Json.Serialization.JsonPropertyName("output_tokens")] int? OutputTokens);
 
 /// <summary>A Choice answer carries choice, probabilities and confidence; a Noul answer carries noul.</summary>
 public sealed record JevAnswer(string? Type, string? Choice, Dictionary<string, double>? Probabilities, double? Confidence,

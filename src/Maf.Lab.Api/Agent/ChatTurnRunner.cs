@@ -33,6 +33,12 @@ public sealed record TurnResult(string ConversationId, string TurnId, Intent Int
     /// <summary>Jev's check of the answer; null for a turn that ran none (refused, waiting for a person, failed, empty).</summary>
     public Jev.AnswerCheck? AnswerCheck { get; init; }
 
+    /// <summary>
+    /// What the model read this turn, after the content guard — the items the answer check chooses its sources from. The
+    /// eval grades an answer against the same items (adopt-meai-evaluation).
+    /// </summary>
+    public IReadOnlyList<Jev.ReadItem> Read { get; init; } = [];
+
     /// <summary>The data cards the turn showed, in the order they were sent (add-activity-cards).</summary>
     public IReadOnlyList<TurnCard> Cards { get; init; } = [];
 }
@@ -401,6 +407,7 @@ public sealed partial class ChatTurnRunner(
             ProposalQuestion = state.Interrupt?.Message,
             Cards = state.Cards,
             AnswerCheck = check,
+            Read = state.Read,
         };
     }
 
