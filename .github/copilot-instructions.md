@@ -45,7 +45,7 @@ MCP note: workspace MCP server config lives in `.mcp.json` (Playwright server vi
 - **Routing model:** the table below, generated from `compose/lb/nginx.conf`.
 - **API service (`src/Maf.Lab.Api`):** ASP.NET Core host for chat SSE, history, feedback, admin/compliance surfaces, A2A protocol, and topology/trace endpoints. Persists app state in SQLite.
 - **Retrieval service (`src/Maf.Lab.Retrieval`):** MCP server exposing `search_documents` + billing-related tools over `/mcp`; retrieval runs against Qdrant (dense+sparse hybrid).
-- **Indexing and eval CLIs:** `src/Maf.Lab.Indexing` builds/updates the Qdrant corpus index; `src/Maf.Lab.Eval` runs the selection/retrieval/generation/injection/confirmation/intent/guardrail/domain/presentation/answer-check suites against the running stack.
+- **Indexing and eval CLIs:** `src/Maf.Lab.Indexing` builds/updates the Qdrant corpus index; `src/Maf.Lab.Eval` runs the selection/retrieval/generation/injection/confirmation/intent/guardrail/domain/presentation/answer-check suites against the running stack, and the graph-depth comparison (never gated) when named.
 - **Web app (`web/`):** Vite + React + TypeScript; in local non-balancer dev it proxies `/api` and `/dev` to the API process.
 
 <!-- generated:lb-routes — edit compose/lb/nginx.conf, then run make docs -->

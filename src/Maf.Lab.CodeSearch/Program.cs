@@ -3,6 +3,8 @@ using Maf.Lab.Hosting;
 using Maf.Lab.Retrieval;
 using Maf.Lab.Retrieval.Auth;
 using Maf.Lab.Retrieval.Graph;
+using Microsoft.Extensions.Options;
+using ModelContextProtocol.Server;
 
 namespace Maf.Lab.CodeSearch;
 
@@ -35,7 +37,11 @@ public partial class Program
         builder.Services.AddDevJwtAuthentication(builder.Configuration);
         // The code graph (callers, callees, change impact). Like the billing server, it starts without the graph store.
         builder.Services.AddGraphStore(builder.Configuration);
-        builder.Services.Configure<CodeSearchOptions>(builder.Configuration.GetSection(CodeSearchOptions.Section));
+        // An out-of-range depth pin stops the server instead of being clamped (add-graph-depth-eval).
+        builder.Services.AddOptions<CodeSearchOptions>()
+            .Bind(builder.Configuration.GetSection(CodeSearchOptions.Section))
+            .Validate(o => CodeSearchOptions.IsValidPin(o.GraphDepthPin), CodeSearchOptions.PinRangeMessage)
+            .ValidateOnStart();
         builder.Services.AddSingleton<ICodeRanker, DocumentSearchRanker>();
         builder.Services.AddSingleton<CodeSearchService>();
         builder.Services.AddHostedService<BootstrapService>();
@@ -44,6 +50,14 @@ public partial class Program
             .WithHttpTransport(o => o.Stateless = true)
             .WithTools<CodeSearchTools>()
             .WithTools<CodeGraphTools>();
+        // A pinned server must say what it does: the trace reaches through the pin, and the model no longer picks a depth.
+        builder.Services.AddOptions<McpServerOptions>().PostConfigure<IOptions<CodeSearchOptions>>((o, code) =>
+        {
+            if (code.Value.GraphDepthPin is { } depth)
+            {
+                CodeGraphTools.PublishPin(o, depth);
+            }
+        });
 
         var app = builder.Build();
         app.Services.GetRequiredService<Retrieval.Jev.JevCredential>();
@@ -68,4 +82,13 @@ public sealed class CodeSearchOptions
     public int AnswerSnippets { get; set; } = 8;
     /// <summary>Candidates ranked before a path filter is applied, so a narrow path still finds its matches.</summary>
     public int PathFilterCandidates { get; set; } = 60;
+    /// <summary>
+    /// Measurement only (the graph-depth eval): fixes the depth of trace_code_symbol and change_impact, 1 to
+    /// <see cref="CallTrace.MaxDepth"/>. Unset in every deployed configuration; then the tools behave as published.
+    /// </summary>
+    public int? GraphDepthPin { get; set; }
+
+    public static readonly string PinRangeMessage = $"{Section}:{nameof(GraphDepthPin)} must be between 1 and {CallTrace.MaxDepth}, or unset.";
+
+    public static bool IsValidPin(int? pin) => pin is null or (>= 1 and <= CallTrace.MaxDepth);
 }

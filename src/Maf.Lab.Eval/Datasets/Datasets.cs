@@ -58,6 +58,24 @@ public sealed record AnswerCheckSource(string Tool, JsonElement? Item, string? T
 public sealed record AnswerCheckCase(string Id, string Question, string PreviousQuestion, string Answer, IReadOnlyList<AnswerCheckSource> Sources,
     IReadOnlyList<AnswerCheckSource> PreviousSources, bool Unsupported, bool OffTopic, string Domain, string Language, string Split, string? Source);
 
+/// <summary>One thing a graph-depth case's answer needs, and the number of calls at which the graph first reaches it.</summary>
+/// <param name="Item">A method symbol (<c>Type.Member</c>) for a trace; a test file path for an impact.</param>
+/// <param name="Hops">Calls from the case's symbol or file to the item; null when it lies beyond the deepest variant.</param>
+public sealed record GraphDepthNeed(string Item, int? Hops);
+
+/// <summary>
+/// A labelled code-graph question for the graph-depth comparison (add-graph-depth-eval): a trace of a symbol in one
+/// direction, or the impact of a file, with what an answer needs. Labels come from reading the code, not from a trace.
+/// </summary>
+/// <param name="Kind">"trace" or "impact".</param>
+/// <param name="Reference">The labelled facts the rubric judge holds the answer to.</param>
+public sealed record GraphDepthCase(string Id, string Kind, string? Symbol, string? Direction, string? Path, string Question,
+    string Language, IReadOnlyList<GraphDepthNeed> Needed, string Reference, string FirmId)
+{
+    /// <summary>The calls the case needs to be answered in full: its deepest reachable item.</summary>
+    public int RequiredDepth => Needed.Max(n => n.Hops ?? 0);
+}
+
 public sealed record InjectionCase(string Id, string Question, IReadOnlyList<string> ForbiddenStrings, IReadOnlyList<string> ForbiddenTenantIds, string FirmId, string? Source);
 
 /// <summary>Loads and validates the JSONL datasets. Invalid rows fail loudly with file and line.</summary>
@@ -65,7 +83,7 @@ public static class DatasetLoader
 {
     public static readonly string[] Files =
         ["selection.jsonl", "retrieval.jsonl", "generation.jsonl", "injection.jsonl", "confirmation.jsonl", "intent.jsonl", "guardrail.jsonl",
-            "domain.jsonl", "presentation.jsonl", "answer-check.jsonl"];
+            "domain.jsonl", "presentation.jsonl", "answer-check.jsonl", "graph-depth.jsonl"];
     public static readonly string[] Tools =
         ["search_documents", "get_billing_run_status", "search_billing_runs", Maf.Lab.Domain.Billing.FeeAdjustmentTool.Name,
             Maf.Lab.Domain.Portfolio.PortfolioTools.Search, Maf.Lab.Domain.Portfolio.PortfolioTools.GetPortfolio,
@@ -267,6 +285,60 @@ public static class DatasetLoader
             return new AnswerCheckSource(tool, item, text);
         })];
     }
+
+    /// <summary>
+    /// Code-graph cases for the graph-depth comparison. A case lists at least one needed item — without one, every depth
+    /// would score a perfect recall — and each item's hops are 1 to <see cref="Maf.Lab.Retrieval.Graph.CallTrace.MaxDepth"/>
+    /// or null for an item no variant reaches, so a missing caller is reported rather than dropped.
+    /// </summary>
+    public static IReadOnlyList<GraphDepthCase> GraphDepth(string root) => Load(root, "graph-depth.jsonl", (e, where) =>
+    {
+        var kind = Str(e, "kind", where);
+        var language = Str(e, "language", where);
+        if (kind is not ("trace" or "impact") || !IntentLanguages.Contains(language))
+        {
+            throw new InvalidDataException($"{where}: kind must be trace or impact, and language one of {string.Join(", ", IntentLanguages)}.");
+        }
+        string? symbol = null, direction = null, path = null;
+        if (kind == "trace")
+        {
+            symbol = Str(e, "symbol", where);
+            direction = Str(e, "direction", where);
+            if (direction is not ("callers" or "callees"))
+            {
+                throw new InvalidDataException($"{where}: direction must be callers or callees.");
+            }
+        }
+        else
+        {
+            path = Str(e, "path", where);
+        }
+        if (!e.TryGetProperty("needed", out var needed) || needed.ValueKind != JsonValueKind.Array || needed.GetArrayLength() == 0)
+        {
+            throw new InvalidDataException($"{where}: 'needed' must list at least one item an answer needs.");
+        }
+        var items = needed.EnumerateArray().Select(n =>
+        {
+            if (n.ValueKind != JsonValueKind.Object)
+            {
+                throw new InvalidDataException($"{where}: every entry of 'needed' must be an object.");
+            }
+            int? hops = n.TryGetProperty("hops", out var h) && h.ValueKind == JsonValueKind.Number ? h.GetInt32()
+                : n.TryGetProperty("hops", out h) && h.ValueKind == JsonValueKind.Null ? null
+                : throw new InvalidDataException($"{where}: every needed item has 'hops', a number or null (beyond reach).");
+            if (hops is < 1 or > Maf.Lab.Retrieval.Graph.CallTrace.MaxDepth)
+            {
+                throw new InvalidDataException($"{where}: 'hops' must be 1 to {Maf.Lab.Retrieval.Graph.CallTrace.MaxDepth}, or null.");
+            }
+            return new GraphDepthNeed(Str(n, "item", where), hops);
+        }).ToList();
+        if (items.All(i => i.Hops is null))
+        {
+            throw new InvalidDataException($"{where}: at least one needed item must be reachable, or the case measures nothing.");
+        }
+        return new GraphDepthCase(Str(e, "id", where), kind, symbol, direction, path, Str(e, "question", where), language, items,
+            Str(e, "reference", where), Firm(e, where));
+    });
 
     public static IReadOnlyList<InjectionCase> Injection(string root) => Load(root, "injection.jsonl", (e, where) =>
         new InjectionCase(Str(e, "id", where), Str(e, "question", where), Strings(e, "forbiddenStrings", where),

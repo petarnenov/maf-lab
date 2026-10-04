@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Tracing;
+using Maf.Lab.CodeSearch;
 using Maf.Lab.CodeSearch.Tools;
 using Maf.Lab.Domain.Graph;
 using Maf.Lab.Domain.Tenancy;
@@ -180,7 +181,8 @@ public class GraphTraceEventTests
 
     private static BillingGraphTools Billing(IGraphReader graph) => new(graph, new FixedPrincipalAccessor(FirmA), NullLogger<BillingGraphTools>.Instance);
 
-    private static CodeGraphTools Code(IGraphReader graph) => new(graph, new FixedPrincipalAccessor(FirmA), NullLogger<CodeGraphTools>.Instance);
+    private static CodeGraphTools Code(IGraphReader graph) => new(graph, new FixedPrincipalAccessor(FirmA), NullLogger<CodeGraphTools>.Instance,
+        Options.Create(new CodeSearchOptions()));
 
     private static List<string> Queries(CallToolResult result) =>
         [.. result.Meta![GraphReadLog.MetaKey]!["reads"]!.AsArray().Select(r => r!["query"]!.GetValue<string>())];

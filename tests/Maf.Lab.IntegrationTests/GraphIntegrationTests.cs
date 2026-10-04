@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Maf.Lab.CodeSearch;
 using Maf.Lab.CodeSearch.Tools;
 using Maf.Lab.Domain.Graph;
 using Maf.Lab.Domain.Tenancy;
@@ -8,6 +9,7 @@ using Maf.Lab.Retrieval.Graph;
 using Maf.Lab.Retrieval.Tools;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
 using Role = Maf.Lab.Domain.Tenancy.Role;
 
@@ -167,7 +169,8 @@ public sealed class GraphIntegrationTests(Neo4jFixture neo4j) : IDisposable
         var summary = Assert.Single(await provider.GetRequiredService<GraphBuildService>().RunAsync([GraphSources.Code], null, Ct));
         Assert.True(summary.NodesTotal > 1000);
 
-        var tools = new CodeGraphTools(provider.GetRequiredService<IGraphReader>(), new FixedPrincipalAccessor(FirmA), NullLogger<CodeGraphTools>.Instance);
+        var tools = new CodeGraphTools(provider.GetRequiredService<IGraphReader>(), new FixedPrincipalAccessor(FirmA), NullLogger<CodeGraphTools>.Instance,
+            Options.Create(new CodeSearchOptions()));
 
         var trace = Structured<CodeTrace>(await tools.TraceAsync("TenantScopedSearch.QueryAsync", CallDirection.callers, 1, Ct));
         Assert.Contains(trace.Reached, h => h.Symbol.StartsWith("DocumentSearchService.", StringComparison.Ordinal) && h.Path == "src/Maf.Lab.Retrieval/Search/DocumentSearchService.cs");

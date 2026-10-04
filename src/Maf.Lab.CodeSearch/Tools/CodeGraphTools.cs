@@ -1,4 +1,6 @@
 using System.ComponentModel;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Maf.Lab.Domain.Code;
@@ -7,6 +9,7 @@ using Maf.Lab.Hosting;
 using Maf.Lab.Retrieval.Auth;
 using Maf.Lab.Retrieval.Graph;
 using Maf.Lab.Retrieval.Tools;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -24,15 +27,20 @@ public enum CallDirection
 /// file. The code graph is shared like the codebase corpus; the tenant still comes from the principal.
 /// </summary>
 [McpServerToolType]
-public sealed partial class CodeGraphTools(IGraphReader graph, IPrincipalAccessor principals, ILogger<CodeGraphTools> logger)
+public sealed partial class CodeGraphTools(IGraphReader graph, IPrincipalAccessor principals, ILogger<CodeGraphTools> logger,
+    IOptions<CodeSearchOptions> options)
 {
     public const int MaxTraceDepth = 3;
     /// <summary>How far change_impact follows callers: deep enough for a test that reaches the code through two helpers.</summary>
     public const int ImpactDepth = CallTrace.MaxDepth;
 
-    public const string TraceDescription =
+    // One text, one varying phrase: a pinned server (add-graph-depth-eval) differs from the published one only in its depth.
+    private const string TraceDescriptionHead =
         "Traces the maf-lab code graph from a C# method or type: its callers (who calls it) or its callees (what it calls), " +
-        "through up to 3 calls, each with file path and line range. Built from the compiler's view of the code, so a call " +
+        "through ";
+    private const string TraceDepthPhrase = "up to 3 calls";
+    private const string TraceDescriptionTail =
+        ", each with file path and line range. Built from the compiler's view of the code, so a call " +
         "means the method that is actually invoked, not one with a similar name.\n" +
         "Use when: the user asks who calls something, what depends on a method, or what a method ends up calling, e.g. " +
         "'who calls TenantScopedSearch.QueryAsync'.\n" +
@@ -40,6 +48,35 @@ public sealed partial class CodeGraphTools(IGraphReader graph, IPrincipalAccesso
         "explanation. For what a change to a file affects, use change_impact.\n" +
         "Pass 'Type.Member' (e.g. 'TenantScopedSearch.QueryAsync'), a type name, or a member name; an ambiguous name returns " +
         "the candidates to choose from.";
+
+    public const string TraceDescription = TraceDescriptionHead + TraceDepthPhrase + TraceDescriptionTail;
+
+    /// <summary>What a server pinned at <paramref name="depth"/> publishes: a trace at depth N reaches every method within 1..N calls.</summary>
+    public static string PinnedTraceDescription(int depth) =>
+        TraceDescriptionHead + $"up to {depth} call{(depth == 1 ? "" : "s")}" + TraceDescriptionTail;
+
+    /// <summary>
+    /// Makes a pinned server's trace_code_symbol say what it does: the pinned depth in its description, and no depth
+    /// argument in its schema, since the caller can no longer choose one. change_impact names no depth and is left alone.
+    /// </summary>
+    public static void PublishPin(McpServerOptions options, int depth)
+    {
+        var trace = options.ToolCollection?.FirstOrDefault(t => t.ProtocolTool.Name == GraphTools.TraceCodeSymbol)
+            ?? throw new InvalidOperationException($"{GraphTools.TraceCodeSymbol} is not registered, so its pin cannot be published.");
+        trace.ProtocolTool.Description = PinnedTraceDescription(depth);
+        trace.ProtocolTool.InputSchema = WithoutProperty(trace.ProtocolTool.InputSchema, "depth");
+    }
+
+    private static JsonElement WithoutProperty(JsonElement schema, string name)
+    {
+        var node = JsonNode.Parse(schema.GetRawText())!.AsObject();
+        (node["properties"] as JsonObject)?.Remove(name);
+        if (node["required"] is JsonArray required && required.FirstOrDefault(r => r?.GetValue<string>() == name) is { } entry)
+        {
+            required.Remove(entry);
+        }
+        return JsonSerializer.SerializeToElement(node);
+    }
 
     public const string ImpactDescription =
         "Shows what a change to one C# file of the maf-lab repository can affect, from the code graph: the methods the file " +
@@ -76,8 +113,10 @@ public sealed partial class CodeGraphTools(IGraphReader graph, IPrincipalAccesso
         {
             return ToolErrors.Error("symbol is required: pass 'Type.Member', a type name or a member name.");
         }
-        var hops = depth ?? 2;
-        if (hops is < 1 or > MaxTraceDepth)
+        // A pinned server decides the depth itself; the argument is no longer offered, and is ignored if sent.
+        var pin = options.Value.GraphDepthPin;
+        var hops = pin ?? depth ?? 2;
+        if (pin is null && hops is < 1 or > MaxTraceDepth)
         {
             return ToolErrors.Error($"depth must be between 1 and {MaxTraceDepth}.");
         }
@@ -150,7 +189,7 @@ public sealed partial class CodeGraphTools(IGraphReader graph, IPrincipalAccesso
                 return SearchDocumentsTool.Structured(new ChangeImpact(file, [], [], [], declared.Truncated));
             }
             var trace = await graph.ReadAsync(principal,
-                new CallTrace([.. declared.Methods.Select(m => m.Key)], TraceDirection.Callers, ImpactDepth, limit: 300), cancellationToken);
+                new CallTrace([.. declared.Methods.Select(m => m.Key)], TraceDirection.Callers, options.Value.GraphDepthPin ?? ImpactDepth, limit: 300), cancellationToken);
             var tests = trace.Hits.Where(h => h.IsTest)
                 .GroupBy(h => h.Path)
                 .OrderBy(g => g.Key, StringComparer.Ordinal)

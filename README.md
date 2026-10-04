@@ -208,7 +208,7 @@ make help                  # every target
 | `make testgen-e2e` | Model-free test generation end to end: refresh, run, verify, accept (used by ci-e2e, against its clone) |
 | `make coverage` | Refresh the coverage snapshot at main (both toolchains, through the running stack) |
 | `make verify` | Verify the running stack through the load balancer (37 checks), then AG-UI conformance of every agent (8 checks) |
-| `make eval` | Run evals (SUITE=all\|selection\|retrieval\|generation\|injection\|confirmation\|intent\|domain\|presentation\|guardrail\|answer-check) against the stack's MCP servers |
+| `make eval` | Run evals (SUITE=all\|selection\|retrieval\|generation\|injection\|confirmation\|intent\|domain\|presentation\|guardrail\|answer-check\|graph-depth) against the stack's MCP servers |
 | `make ask` | Ask one question through the agent and print its trace (Q="…" FIRM=firm-a), e.g. a cross-domain one |
 | `make screenshots` | Re-take the README screenshots from the running stack into docs/screenshots (SHOTS=chat,topology for a subset) |
 | `make eval-accept` | Run the evals and accept their metrics as the new baseline (commit the result) |
@@ -221,6 +221,7 @@ make help                  # every target
 | `make eval-guardrail` | Eval: content guard alone — are malicious prompts/tool results flagged and benign ones not? (needs JEV_MAF_LAB) |
 | `make eval-presentation` | Eval: do portfolio answers build on their data cards instead of restating them? |
 | `make eval-answer-check` | Eval: Jev's answer check alone — are labelled unsupported answers flagged and supported ones not? (needs JEV_MAF_LAB) |
+| `make eval-graph-depth` | Comparison: code graph traces at depth 2, 3 and 4, side by side, never gated (STRUCTURAL=1 for no model) |
 | `make eval-a2a` | Conformance: an outside client drives the agents through evals/a2a-conformance.jsonl |
 | `make dev` | Run mcp/api/web locally without Docker (infra stays in compose); Ctrl-C stops |
 | `make doctor` | Check prerequisites (Docker, .NET SDK, Node/npm, make, OLLAMA_API_KEY, JEV_MAF_LAB, MAF_LAB_REPO, GITHUB_ISSUES_TOKEN) |
@@ -605,7 +606,7 @@ archiving a change asks for a read-only pass over these documents against the ch
 
 ```bash
 make eval                     # all suites against the running stack's MCP
-make eval-selection           # or eval-retrieval / -generation / -injection / -confirmation / -intent / -guardrail / -answer-check / -presentation / -a2a
+make eval-selection           # or eval-retrieval / -generation / -injection / -confirmation / -intent / -guardrail / -answer-check / -presentation / -graph-depth / -a2a
 dotnet run --project src/Maf.Lab.Eval -- --suite retrieval --rerank   # extra flags: use the CLI directly
 dotnet run --project src/Maf.Lab.Eval -- --import-feedback --suite retrieval
 ```
@@ -620,6 +621,18 @@ Evals run **on demand**, not on every commit. They are **required** before mergi
 - **query normalisation** (`Retrieval:NormalizeQueryLanguage`, `Retrieval:CorpusLanguage`, the translation model) → `retrieval`
 - a **Jev screening or check** (the guard's batteries or `Guard:*`, the answer check's questions or `Jev:AnswerCheck:*`) →
   `guardrail`, `answer-check`; both call Jev alone, with no chat model and no tool
+- the **code graph** (the builder in `src/Maf.Lab.Indexing/Graph`, or a trace or impact depth in `CodeGraphTools`) →
+  `graph-depth`
+
+`graph-depth` is a **comparison**, not a gate. It runs the same labelled code-graph cases with the graph tools pinned to
+2, 3 and 4 calls, on a codebase server it starts itself (`CodeSearch:GraphDepthPin`, never set in a deployment). It
+reports two layers side by side:
+- **structural**, with no model: recall, also split by the depth a case needs, nodes, tokens, truncation and latency;
+- **end-to-end**: rubric scores, and whether the answer names what it needed.
+
+It has no thresholds, is never compared with or accepted into the baseline, and `all` does not run it.
+`make eval-graph-depth STRUCTURAL=1` runs the structural layer alone, with no chat model or Jev key. End-to-end numbers
+vary between runs, so compare two runs before reading a difference as a result.
 
 ### Not getting worse
 

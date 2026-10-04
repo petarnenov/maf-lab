@@ -16,12 +16,37 @@ namespace Maf.Lab.Eval;
 /// <summary>
 /// dotnet run --project src/Maf.Lab.Eval -- --suite selection|retrieval|generation|injection|confirmation|intent|guardrail|domain|presentation|answer-check|all
 ///   [--rerank [--reranker llm,jev]] [--contextual] [--limit N] [--import-feedback [--api-db "Data Source=..."]]
+/// dotnet run --project src/Maf.Lab.Eval -- --suite graph-depth [--structural-only] [--limit N]   (a comparison: reported, never gated)
 /// dotnet run --project src/Maf.Lab.Eval -- --ask "question" [--firm firm-a] [--trace-json path]   (one turn, its trace printed)
 /// Run on demand, and always after changing prompts, tool descriptions, the model, the tool set or chunking.
 /// Exit code 1 when any suite is below its configured thresholds.
 /// </summary>
 public static class Program
 {
+    /// <summary>All the suites `all` runs. A comparison suite is not among them: it runs only when named.</summary>
+    public static readonly string[] AllSuites =
+        ["selection", "retrieval", "generation", "injection", "confirmation", "intent", "guardrail", "domain", "presentation", "answer-check"];
+
+    /// <summary>
+    /// Suites that compare settings side by side (add-graph-depth-eval): no thresholds, no baseline comparison, never
+    /// accepted into the baseline. Several of their metrics are better lower, which the baseline gate cannot express.
+    /// </summary>
+    public static readonly IReadOnlySet<string> ComparisonSuites = new HashSet<string>(StringComparer.Ordinal) { GraphDepthSuite.Name };
+
+    public static string[] SuitesOf(string suite) => suite == "all" ? AllSuites : suite.Split(',');
+
+    /// <summary>The run against the accepted baseline; nothing for a comparison suite, which is never gated.</summary>
+    public static IReadOnlyList<MetricComparison> CompareWithBaseline(EvalBaseline baseline, string suite, IReadOnlyList<EvalVariantResult> variants,
+        EvalOptions options) =>
+        ComparisonSuites.Contains(suite)
+            ? []
+            : RegressionGate.Compare(baseline.Suites.GetValueOrDefault(suite), variants, metric => options.ToleranceFor(suite, metric));
+
+    /// <summary>The baseline with this run accepted, null when it is below its thresholds; unchanged for a comparison suite.</summary>
+    public static EvalBaseline? AcceptInto(EvalBaseline accepted, string suite, IReadOnlyList<EvalVariantResult> variants, string runId,
+        DateTimeOffset at) =>
+        ComparisonSuites.Contains(suite) ? accepted : BaselineStore.Accept(accepted, suite, variants, runId, at);
+
     public static async Task<int> Main(string[] args)
     {
         var flags = ParseFlags(args);
@@ -53,9 +78,7 @@ public static class Program
         }
 
         var suite = flags.GetValueOrDefault("suite") ?? "all";
-        var suites = suite == "all"
-            ? new[] { "selection", "retrieval", "generation", "injection", "confirmation", "intent", "guardrail", "domain", "presentation", "answer-check" }
-            : suite.Split(',');
+        var suites = SuitesOf(suite);
         var ctx = new SuiteContext(root, options, flags.TryGetValue("limit", out var l) ? int.Parse(l) : null, m => Console.WriteLine($"  {m}"),
             configuration["Retrieval:CorpusLanguage"] ?? "en");
         var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss");
@@ -96,9 +119,10 @@ public static class Program
                 "answer-check" => await new AnswerCheckSuite(host.Services).RunAsync(ctx, ct),
                 "domain" => await new DomainSuite(host).RunAsync(ctx, ct),
                 "presentation" => await new PresentationSuite(host, host.Services.GetRequiredService<IChatClientFactory>()).RunAsync(ctx, ct),
+                GraphDepthSuite.Name => await RunGraphDepthAsync(host, configuration, ctx, flags, settings, ct),
                 _ => throw new ArgumentException($"Unknown suite '{name}'."),
             };
-            var comparisons = RegressionGate.Compare(baseline.Suites.GetValueOrDefault(name), variants, metric => options.ToleranceFor(name, metric));
+            var comparisons = CompareWithBaseline(baseline, name, variants, options);
             var regressed = RegressionGate.HasRegression(comparisons);
             var runId = $"{stamp}-{name}";
             var report = new EvalReport(runId, name, started, DateTimeOffset.UtcNow, settings, variants,
@@ -114,9 +138,13 @@ public static class Program
             {
                 Console.WriteLine($"   {line}");
             }
+            if (ComparisonSuites.Contains(name))
+            {
+                Console.WriteLine($"   {name} is a comparison: reported side by side, not gated and never part of the baseline");
+            }
             if (accepting)
             {
-                var next = BaselineStore.Accept(accepted, name, variants, runId, DateTimeOffset.UtcNow);
+                var next = AcceptInto(accepted, name, variants, runId, DateTimeOffset.UtcNow);
                 if (next is null)
                 {
                     Console.WriteLine($"   ✗ not accepted: {name} is below its thresholds");
@@ -134,6 +162,18 @@ public static class Program
             Console.WriteLine($"Baseline accepted → {path}");
         }
         return allPassed ? 0 : 1;
+    }
+
+    private static async Task<IReadOnlyList<EvalVariantResult>> RunGraphDepthAsync(EvalAgentHost host, IConfiguration configuration, SuiteContext ctx,
+        Dictionary<string, string> flags, Dictionary<string, string> settings, CancellationToken ct)
+    {
+        var structuralOnly = flags.ContainsKey("structural-only");
+        // Every variant runs on a codebase server the suite starts itself, pinned to its depth; the stack's is unpinned.
+        settings["codeServer"] = "in-process, pinned per variant";
+        settings["depths"] = string.Join(",", GraphDepthSuite.Variants.Select(v => v.Depth));
+        settings["layers"] = structuralOnly ? "structural" : "structural,end-to-end";
+        var judge = structuralOnly ? null : new RubricJudge(host.Services.GetRequiredService<IChatClientFactory>());
+        return await new GraphDepthSuite(configuration, judge).RunAsync(ctx, structuralOnly, ct);
     }
 
     private static async Task<IReadOnlyList<EvalVariantResult>> RunRetrievalAsync(EvalAgentHost host, IConfiguration configuration, EvalOptions options,
