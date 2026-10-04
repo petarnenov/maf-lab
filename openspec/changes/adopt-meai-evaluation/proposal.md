@@ -11,7 +11,7 @@ asks `gpt-oss:120b` for two 1–5 grades in "JSON mode". Several problems follow
 
 Grading an answer is a set of closed, atomic judgments: is this sentence a claim, is it supported, does the answer
 state this reference point, is this source on the question. That is exactly what Jev is for (docs/rules/jev-usage.md
-§2 C/F/G). Jev's answers are calibrated, deterministic for the same input (§42: "the runs were identical"), and come
+§2 C/F/G). Jev's answers are calibrated, give the same verdicts on the same input (§42: "the runs were identical"), and come
 in one request per case whatever the number of questions. Code does the counting.
 
 `Microsoft.Extensions.AI.Evaluation`, the evaluation library of the `Microsoft.Extensions.AI` 10.10.0 already in use,

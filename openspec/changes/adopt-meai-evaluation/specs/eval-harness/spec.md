@@ -198,7 +198,7 @@ English and Bulgarian cases and SHALL carry no firm's client data.
 
 #### Scenario: The same input twice
 - **WHEN** the suite runs twice over unchanged datasets with the same pinned model
-- **THEN** both runs report the same scores for every case
+- **THEN** every case lands on the same side of each judgment in both runs, unless one of its answers sits in the review band, where a probability near the 0.5 cut may move between runs
 
 #### Scenario: Beside the production check
 - **WHEN** the suite finishes

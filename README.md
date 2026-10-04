@@ -620,6 +620,39 @@ Evals run **on demand**, not on every commit. They are **required** before mergi
 - **query normalisation** (`Retrieval:NormalizeQueryLanguage`, `Retrieval:CorpusLanguage`, the translation model) → `retrieval`
 - a **Jev screening or check** (the guard's batteries or `Guard:*`, the answer check's questions or `Jev:AnswerCheck:*`) →
   `guardrail`, `answer-check`; both call Jev alone, with no chat model and no tool
+- the **generation grade** (`src/Maf.Lab.Eval/Judging/*`, `Evals:Judge:*`) → `generation-judge` first (labelled answers,
+  no agent), then `generation`
+
+### How `generation` is graded
+
+Jev grades every answer, in **one request per case**. Code cuts the answer into sentences, and every question is a
+yes/no about one item:
+- per sentence: does it state a fact, and is that fact supported by what the turn read;
+- per reference point (`referencePoints` in `generation.jsonl`): does the answer state it, and does it contradict it;
+- per source: is it on the question's subject;
+- once: does the answer address the question.
+
+Code counts the yeses (a Noul is yes at 0.5) into these metrics:
+- `faithfulness`: supported claim sentences over claim sentences;
+- `relevance`;
+- `completeness`: points stated;
+- `referenceAgreement`: 1 − points contradicted;
+- `retrievalJudged`: sources on the subject;
+- `judgeUncertain`: answers in the 0.2–0.8 band, a diagnostic.
+
+A failed case names the unsupported sentences and the missed or contradicted points. Without `JEV_MAF_LAB` the suite
+refuses to run rather than report a grade of nothing.
+
+The grade is an evaluator of `Microsoft.Extensions.AI.Evaluation`. Each case is kept under `evals/reports/meai/`, and
+every run writes `evals/reports/<runId>.html` beside its JSON and Markdown: every case with its scores, the sentences
+behind them, and how they moved over the last ten runs.
+
+`make eval SUITE=generation-judge` measures the grade itself, with no agent, and reports three variants:
+- `grade`: the grade on `answer-check.jsonl`'s labelled answers;
+- `check`: the production answer check on the same rows;
+- `points`: the grade on `generation-judge.jsonl`'s reference points labelled stated or contradicted.
+
+Each variant reports accuracy overall and per domain, language and split. See DECISIONS.md §78.
 
 ### Not getting worse
 

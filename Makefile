@@ -250,7 +250,7 @@ eval-selection: require-dotnet ## Eval: tool selection (recall/precision)
 eval-retrieval: require-dotnet ## Eval: retrieval (recall@5/@20, MRR per mode)
 	$(EVAL) retrieval
 
-eval-generation: require-dotnet ## Eval: answers judged for faithfulness/relevance
+eval-generation: require-dotnet ## Eval: answers graded by Jev (faithfulness, relevance, completeness vs reference points)
 	$(EVAL) generation
 
 eval-injection: require-dotnet ## Eval: prompt-injection pass rate

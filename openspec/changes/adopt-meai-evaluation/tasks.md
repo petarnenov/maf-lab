@@ -2,33 +2,33 @@
 
 ## 1. Packages
 
-- [ ] 1.1 Add `PackageVersion` entries for `Microsoft.Extensions.AI.Evaluation` and `.Reporting` 10.10.0 to `Directory.Packages.props` and reference them from `src/Maf.Lab.Eval/Maf.Lab.Eval.csproj`. Add a DECISIONS.md section in the same commit (why Jev grades and the library only reports, versions, the D1 rejections). Verify with `dotnet build src/Maf.Lab.Eval`
-- [ ] 1.2 Confirm two things at 10.10.0: that `DiskBasedReportingConfiguration` accepts a null `ChatConfiguration` with caching off, and that the HTML writer is callable in-process (design D5). Record the answer in the DECISIONS.md section; if the writer is not callable, add `.Console` as a local tool instead
+- [x] 1.1 Add `PackageVersion` entries for `Microsoft.Extensions.AI.Evaluation` and `.Reporting` 10.10.0 to `Directory.Packages.props` and reference them from `src/Maf.Lab.Eval/Maf.Lab.Eval.csproj`. Add a DECISIONS.md section in the same commit (why Jev grades and the library only reports, versions, the D1 rejections). Verify with `dotnet build src/Maf.Lab.Eval`
+- [x] 1.2 Confirm two things at 10.10.0: that `DiskBasedReportingConfiguration` accepts a null `ChatConfiguration` with caching off, and that the HTML writer is callable in-process (design D5). Record the answer in the DECISIONS.md section; if the writer is not callable, add `.Console` as a local tool instead
 
 ## 2. Datasets
 
-- [ ] 2.1 Add `referencePoints` to every row of `evals/generation.jsonl`: one fact, step or condition each, split by hand from `referenceAnswer`. Make the loader fail on a row without points, naming it. Verify with a loader unit test over the real file
-- [ ] 2.2 Write `evals/generation-judge.jsonl`: 16 hand-labelled rows (8 billing, 8 codebase, half Bulgarian) from recorded `generation` answers, each with points labelled stated or contradicted, including removed, paraphrased and contradicted points, with no client data. Add the loader and verify it with a loader unit test
+- [x] 2.1 Add `referencePoints` to every row of `evals/generation.jsonl`: one fact, step or condition each, split by hand from `referenceAnswer`. Make the loader fail on a row without points, naming it. Verify with a loader unit test over the real file
+- [x] 2.2 Write `evals/generation-judge.jsonl`: 16 hand-labelled rows (8 billing, 8 codebase, half Bulgarian) from recorded `generation` answers, each with points labelled stated or contradicted, including removed, paraphrased and contradicted points, with no client data. Add the loader and verify it with a loader unit test
 
 ## 3. The grade
 
-- [ ] 3.1 Implement `AnswerSentences.Split` (design D2). Verify with unit tests on English, Bulgarian and Latin-script Bulgarian prose, markdown lists, tables, back-ticked paths with dots and line ranges, fenced code, and decimals, using answers from `answer-check.jsonl`
-- [ ] 3.2 Build the Jev request (design D3): the state from the question, the sentences, the sources via `AnswerSources.Select` and the points. Generate the questions per sentence, point and source, plus `answer_relevant`, choosing the billing or codebase context as production does. Apply `MaxSentences` truncation. Verify with unit tests on the serialised request (field names, one question per item, no question asking to count, size under the cap at 60 sentences)
-- [ ] 3.3 Compute the metrics from the answers in code (design D4), with the lists behind them. Verify with unit tests on canned `FakeJev` answers: all high, one 0.1 sentence, a 0.45 sentence in the band, a no-claim answer, a contradicted point, and no sources
-- [ ] 3.4 Fallback and logging. Without a key, the suite refuses to start. A failed request scores the case 0 on every judged metric with `judge failed: <reason>`. Each request logs model, usage, latency, question count and case id only, and `judgeInputTokens` is summed into the run's settings. Verify with `FakeJev` failure tests, and by grepping a run's console and OTel output for a dataset sentence, which must be absent
-- [ ] 3.5 Wrap it all as `JevGenerationEvaluator : IEvaluator` (design D5): one `NumericMetric` per metric, the reason and lists as diagnostics, and the probabilities as metadata. Verify with a unit test over a canned `EvaluationResult`
+- [x] 3.1 Implement `AnswerSentences.Split` (design D2). Verify with unit tests on English, Bulgarian and Latin-script Bulgarian prose, markdown lists, tables, back-ticked paths with dots and line ranges, fenced code, and decimals, using answers from `answer-check.jsonl`
+- [x] 3.2 Build the Jev request (design D3): the state from the question, the sentences, the sources via `AnswerSources.Select` and the points. Generate the questions per sentence, point and source, plus `answer_relevant`, choosing the billing or codebase context as production does. Apply `MaxSentences` truncation. Verify with unit tests on the serialised request (field names, one question per item, no question asking to count, size under the cap at 60 sentences)
+- [x] 3.3 Compute the metrics from the answers in code (design D4), with the lists behind them. Verify with unit tests on canned `FakeJev` answers: all high, one 0.1 sentence, a 0.45 sentence in the band, a no-claim answer, a contradicted point, and no sources
+- [x] 3.4 Fallback and logging. Without a key, the suite refuses to start. A failed request scores the case 0 on every judged metric with `judge failed: <reason>`. Each request logs model, usage, latency, question count and case id only, and `judgeInputTokens` is summed into the run's settings. Verify with `FakeJev` failure tests, and by grepping a run's console and OTel output for a dataset sentence, which must be absent
+- [x] 3.5 Wrap it all as `JevGenerationEvaluator : IEvaluator` (design D5): one `NumericMetric` per metric, the reason and lists as diagnostics, and the probabilities as metadata. Verify with a unit test over a canned `EvaluationResult`
 
 ## 4. Suites and report
 
-- [ ] 4.1 Run `GenerationSuite` through the evaluator via `ScenarioRun`s, storing under `evals/reports/meai/` (check with `git check-ignore`). Extend `JudgeScore`, keep `JevMetrics` on faithfulness and relevance, and put the new scores in the per-case progress line. Update `AnswerCheckEvalTests` and `EvalHarnessTests`, and verify that `make test` passes
-- [ ] 4.2 Add the `generation-judge` suite (design D6): accuracy overall and per domain, language and split; the production check's accuracy on the same rows beside it; failures named with their probabilities; a progress line per case over the known count; refusal without the key. Add it to the `all` list and to the `eval` target's help text. Verify with a `FakeJev` suite test and one live run
-- [ ] 4.3 Write `evals/reports/<runId>.html` after `generation` and `generation-judge` runs. Verify that the file lists every case with its scores and unsupported sentences
+- [x] 4.1 Run `GenerationSuite` through the evaluator via `ScenarioRun`s, storing under `evals/reports/meai/` (check with `git check-ignore`). Extend `JudgeScore`, keep `JevMetrics` on faithfulness and relevance, and put the new scores in the per-case progress line. Update `AnswerCheckEvalTests` and `EvalHarnessTests`, and verify that `make test` passes
+- [x] 4.2 Add the `generation-judge` suite (design D6): accuracy overall and per domain, language and split; the production check's accuracy on the same rows beside it; failures named with their probabilities; a progress line per case over the known count; refusal without the key. Add it to the `all` list and to the `eval` target's help text. Verify with a `FakeJev` suite test and one live run
+- [x] 4.3 Write `evals/reports/<runId>.html` after `generation` and `generation-judge` runs. Verify that the file lists every case with its scores and unsupported sentences
 
 ## 5. Side-by-side comparison
 
-- [ ] 5.1 Make `generation` also score each turn with `RubricJudge` and report `rubric:*` and `judgeAgreement:*`, with no thresholds. Verify with a unit test of the agreement computation and one live run
-- [ ] 5.2 Run `make eval-generation` five times and `make eval SUITE=generation-judge` twice. Collect the per-run metrics, the run-to-run ranges for both judges, judge failures, every rubric/Jev disagreement with both reasons, and whether the two `generation-judge` runs are identical
-- [ ] 5.3 Apply the gate (design, Migration Plan step 3) and write the outcome into DECISIONS.md: the numbers, each disagreement and which judge was right, g-01 and g-04 named, and the Bulgarian accuracy. If the gate fails, stop here, keep `RubricJudge`, and revise this change with the user before group 6
+- [x] 5.1 Make `generation` also score each turn with `RubricJudge` and report `rubric:*` and `judgeAgreement:*`, with no thresholds. Verify with a unit test of the agreement computation and one live run
+- [x] 5.2 Run `make eval-generation` five times and `make eval SUITE=generation-judge` twice. Collect the per-run metrics, the run-to-run ranges for both judges, judge failures, every rubric/Jev disagreement with both reasons, and whether the two `generation-judge` runs are identical
+- [x] 5.3 Apply the gate (design, Migration Plan step 3) and write the outcome into DECISIONS.md: the numbers, each disagreement and which judge was right, g-01 and g-04 named, and the Bulgarian accuracy. If the gate fails, stop here, keep `RubricJudge`, and revise this change with the user before group 6
 
 ## 6. Switch
 

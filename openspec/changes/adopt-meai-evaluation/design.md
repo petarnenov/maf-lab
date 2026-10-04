@@ -12,7 +12,7 @@
   `AnswerSources.Select` under `Jev:AnswerCheck:MaxSourceChars` (12000), and the billing and codebase contexts are
   separate (`Questions` / `CodeQuestions`).
 - §42 recorded what that check gets right and wrong:
-  - three identical runs, so Jev is deterministic;
+  - three runs with identical verdicts (probabilities move by a few hundredths, measured in this change);
   - g-04 was caught where the rubric missed it;
   - g-01 was flagged while correct;
   - no single floor separated the two, because a whole-answer Noul cannot say *which* claim is unsupported.
@@ -27,7 +27,7 @@
 ## Goals / Non-Goals
 
 **Goals:**
-- Grade answers with atomic, deterministic Jev judgments, one request per case, with all arithmetic in code.
+- Grade answers with atomic Jev judgments whose verdicts repeat on the same input, one request per case, with all arithmetic in code.
 - Tell *which* sentence or reference point failed, not only that the answer did.
 - Measure the grade itself on labelled answers before trusting it, English and Bulgarian.
 - Use `Microsoft.Extensions.AI.Evaluation` for what it is good at here: the evaluator contract, stored results and the
@@ -45,7 +45,7 @@
 These are on the same release train as the pinned `Microsoft.Extensions.AI` 10.10.0. The grade is an `IEvaluator`
 that returns `NumericMetric`s with diagnostics. It needs no `ChatConfiguration`, because Jev is not an `IChatClient`.
 `.Reporting`'s `DiskBasedReportingConfiguration` stores each run's `ScenarioRunResult`s under `evals/reports/meai/`.
-Response caching is off: there are no chat calls to cache, and Jev answers identical input identically.
+Response caching is off: there are no chat calls to cache. Measured: Jev gives the same verdicts on identical input, with probabilities moving 0.01–0.05 between runs (DECISIONS §78).
 *Rejected:*
 - `.Quality` (Groundedness, Relevance, Completeness, Retrieval): LLM prompts with 1–5 grades bring back the noise,
   the latency and the broad judgments this change removes.
@@ -72,6 +72,7 @@ Sent through `JevClient.AskAsync` with the shared pinned model (`jev-1.13.0`) an
 ```json
 {
   "user_question": "…",
+  "previous_question": "",
   "answer_sentences": ["…", "…"],
   "sources": ["docId › section: text", "path:12-40 › Symbol: code"],
   "reference_points": ["…", "…"]
@@ -81,7 +82,8 @@ Sent through `JevClient.AskAsync` with the shared pinned model (`jev-1.13.0`) an
 - `sources` are chosen and formatted by `AnswerSources.Select` with the production cap, so the grade sees what the
   check sees.
 - The billing or codebase context text is chosen as in production.
-- The previous question is not sent, because generation cases are first turns.
+- `previous_question` is empty for generation cases, which are first turns. A labelled follow-up in
+  `answer-check.jsonl` carries it, and its previous sources follow this turn's in `sources`, as the check reads them.
 
 **Questions.** Generated in code: one set per sentence `i`, per reference point `j` and per source `k`, plus one for
 the whole answer. All are Nouls with a `{ context, question }` instructions object (the guard's style, §35) and
@@ -167,7 +169,7 @@ grounding agreement is the useful one for tuning `MinGrounded`.
    - `generation-judge` runs as a suite of its own.
 2. **Measure.**
    - Five `generation` runs.
-   - Two `generation-judge` runs, which must be identical (D1 determinism).
+   - Two `generation-judge` runs, whose verdicts must agree (D1 determinism).
 3. **Gate** (all must hold):
    - `generation-judge`: grade accuracy on `answer-check.jsonl` ≥ the production check's accuracy on the same rows,
      overall and for Bulgarian. Point accuracy on `generation-judge.jsonl` ≥ 0.9 overall and ≥ 0.85 for Bulgarian.
