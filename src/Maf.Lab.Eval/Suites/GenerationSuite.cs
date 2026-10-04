@@ -26,12 +26,6 @@ public sealed class GenerationSuite(EvalAgentHost host, ReportingConfiguration r
     /// <summary>A case passes at this faithfulness, with relevance 1.</summary>
     public const double PassMark = JevGenerationEvaluator.PassMark;
 
-    /// <summary>
-    /// The LLM rubric's pass mark, at the same 0.75. The generation suite no longer uses the rubric (DECISIONS.md §79);
-    /// the graph-depth comparison still does, and reads its answers at this mark.
-    /// </summary>
-    public const double RubricPass = 0.75;
-
     public const string ScenarioPrefix = "generation.";
 
     /// <summary>Input tokens the grade was charged for in the last run (jev-usage §4.6).</summary>

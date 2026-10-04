@@ -155,7 +155,7 @@ public static class Program
                 "presentation" => await new PresentationSuite(host, host.Services.GetRequiredService<IChatClientFactory>()).RunAsync(ctx, ct),
                 CodeRouteSuite.Name => await new CodeRouteSuite(host).RunAsync(ctx, ct),
                 RetrievalBackendsSuite.Name => await RunRetrievalBackendsAsync(host, configuration, ctx, settings, ct),
-                GraphDepthSuite.Name => await RunGraphDepthAsync(host, configuration, ctx, flags, settings, ct),
+                GraphDepthSuite.Name => await RunGraphDepthAsync(host, configuration, options, ctx, flags, settings, ct),
                 _ => throw new ArgumentException($"Unknown suite '{name}'."),
             };
             var comparisons = CompareWithBaseline(baseline, name, variants, options);
@@ -255,7 +255,7 @@ public static class Program
             [new BackendDomain("billing", host.Services), new BackendDomain("portfolio", portfolio)], ct);
     }
 
-    private static async Task<IReadOnlyList<EvalVariantResult>> RunGraphDepthAsync(EvalAgentHost host, IConfiguration configuration, SuiteContext ctx,
+    private static async Task<IReadOnlyList<EvalVariantResult>> RunGraphDepthAsync(EvalAgentHost host, IConfiguration configuration, EvalOptions options, SuiteContext ctx,
         Dictionary<string, string> flags, Dictionary<string, string> settings, CancellationToken ct)
     {
         var structuralOnly = flags.ContainsKey("structural-only");
@@ -263,8 +263,13 @@ public static class Program
         settings["codeServer"] = "in-process, pinned per variant";
         settings["depths"] = string.Join(",", GraphDepthSuite.Variants.Select(v => v.Depth));
         settings["layers"] = structuralOnly ? "structural" : "structural,end-to-end";
-        var judge = structuralOnly ? null : new RubricJudge(host.Services.GetRequiredService<IChatClientFactory>());
-        return await new GraphDepthSuite(configuration, judge).RunAsync(ctx, structuralOnly, ct);
+        var grader = structuralOnly ? null
+            : new JevGrader(host.Services.GetRequiredService<JevClient>(), options.Judge, host.Services.GetRequiredService<ILogger<JevGrader>>());
+        if (grader is not null)
+        {
+            settings["judgeModel"] = grader.Model;
+        }
+        return await new GraphDepthSuite(configuration, grader).RunAsync(ctx, structuralOnly, ct);
     }
 
     private static async Task<IReadOnlyList<EvalVariantResult>> RunRetrievalAsync(EvalAgentHost host, IConfiguration configuration, EvalOptions options,
