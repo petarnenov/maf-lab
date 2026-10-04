@@ -3029,4 +3029,30 @@ said which account the conversation was about.
       sentences.citationDetection 0.85.
   - The baselines are accepted: `generation` from the ten-run mean, `generation-judge` from one fresh run. Both are
     recorded as a change of judge, not an improvement; earlier `generation` runs (12 cases, rubric) are not comparable.
+- **Verified.** Three `make eval-generation` runs, each the mean of 3 runs, all passed the gate with nothing changed:
+  faithfulness 0.977, 0.959 and 0.968 against the baseline's 0.952 (20261004-153232, -153950, -154647). The protocol
+  holds.
+- **Production check untouched.** `JevAnswerCheck.cs` and `AnswerSources.cs` have no diff. `make eval SUITE=answer-check`
+  is unchanged (accuracy 0.923). The only change in the api is the read-only `TurnResult.Read`.
+- **Jev review (jev-usage §7) of the grade request.**
+  - *Closed and atomic:* every question is a Noul about one sentence, one point or one source. "Is the answer good?" is
+    never asked.
+  - *Nothing code can do:* code cuts the sentences, counts the yeses into shares, and looks up cited places. Jev never
+    counts and never compares numbers; cited sections and line ranges went to code after Jev was measured at 0.57
+    detection on them.
+  - *One request per state:* each case asks one request with every question, about 7–9k input tokens.
+  - *Minimal state:* the state is named fields, and every question points at one by backticked path; the sources are
+    the ones the answer was given.
+  - *Polarity and criteria:* every question is positive, with true/false criteria in the guard's style and the boundary
+    cases (no claim, an honest "cannot answer") on the right side.
+  - *Gating:* a Noul is yes at 0.5 (an eval is the lowest risk class), and the 0.2–0.8 band is counted
+    (`judgeUncertain`), not decided on.
+  - *Fallback:* without a key the suite refuses to run. A failed or partial response scores the case 0 with its
+    reason, and there is no LLM fallback.
+  - *Model and logs:* the model is pinned (`jev-1.13.0`); `model`, `usage`, question count and latency are logged, and
+    never text.
+  - *Client:* the shared `JevClient` provides retries, the circuit and one HTTP client.
+  - *Labelled data:* the grade is tested on labelled English, Bulgarian and Latin-script answers (`generation-judge`:
+    `answer-check.jsonl`, `generation-judge.jsonl`, `generation-sentences.jsonl`, with design and held-out splits).
+  - *Known weakness, measured and left visible:* `unsupportedDetection` is about 0.5 on summaries that overclaim.
 

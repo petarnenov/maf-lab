@@ -38,12 +38,12 @@
 - [x] 6.4 Check cited places in code (`Citations`: `path:start-end` from the system prompt, `Section N … Step M` from the corpus); an unfound place makes its sentence an unsupported claim, a found one is masked before Jev reads the sentence. Verified by `CitationsTests` and a live run (citationDetection 0.571 → 1, citationPass 0.833 → 0.933)
 - [x] 6.5 Grow `generation.jsonl` from 12 to 36 cases (billing and codebase, English and Bulgarian), each reference answer drawn from named corpus files. Verify by the loader tests and a review of the new rows
 - [x] 6.6 Run the tolerance protocol in design.md (fixed before measuring): ten `generation` and three `generation-judge` runs, tolerances and thresholds derived mechanically and committed before verification
-- [ ] 6.7 Accept both baselines from one fresh run, then verify three fresh runs pass the gate with nothing changed; a failure is recorded, never tuned away. Note in DECISIONS.md that this is a change of judge, not an improvement
+- [x] 6.7 Accept both baselines from one fresh run, then verify three fresh runs pass the gate with nothing changed; a failure is recorded, never tuned away. Note in DECISIONS.md that this is a change of judge, not an improvement
 
 ## 7. Jev review
 
-- [ ] 7.1 Run the Jev review checklist (docs/rules/jev-usage.md §7) over the new request and record each answer in the DECISIONS.md section: closed and atomic Nouls; nothing code can compute; one request per state; minimal state with backticked paths; positive polarity with aligned criteria; the 0.5 cut and the 0.2–0.8 band; the no-key and failure fallback; the pinned model logged; the shared client with retries; tested on labelled English and Bulgarian inputs (5.2)
-- [ ] 7.2 Confirm that the production answer check is untouched: its questions are byte-identical, `git diff` on `JevAnswerCheck.cs` is empty, and `make eval SUITE=answer-check` is unchanged within tolerance
+- [x] 7.1 Run the Jev review checklist (docs/rules/jev-usage.md §7) over the new request and record each answer in the DECISIONS.md section: closed and atomic Nouls; nothing code can compute; one request per state; minimal state with backticked paths; positive polarity with aligned criteria; the 0.5 cut and the 0.2–0.8 band; the no-key and failure fallback; the pinned model logged; the shared client with retries; tested on labelled English and Bulgarian inputs (5.2)
+- [x] 7.2 Confirm that the production answer check is untouched: its questions are byte-identical, `git diff` on `JevAnswerCheck.cs` is empty, and `make eval SUITE=answer-check` is unchanged within tolerance
 
 ## 8. Documentation
 
