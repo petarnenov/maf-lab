@@ -208,13 +208,13 @@ make help                  # every target
 | `make testgen-e2e` | Model-free test generation end to end: refresh, run, verify, accept (used by ci-e2e, against its clone) |
 | `make coverage` | Refresh the coverage snapshot at main (both toolchains, through the running stack) |
 | `make verify` | Verify the running stack through the load balancer (37 checks), then AG-UI conformance of every agent (8 checks) |
-| `make eval` | Run evals (SUITE=all\|selection\|retrieval\|generation\|injection\|confirmation\|intent\|domain\|presentation\|guardrail\|answer-check) against the stack's MCP servers |
+| `make eval` | Run evals (SUITE=all\|selection\|retrieval\|generation\|injection\|confirmation\|intent\|domain\|presentation\|guardrail\|answer-check\|generation-judge) against the stack's MCP servers |
 | `make ask` | Ask one question through the agent and print its trace (Q="…" FIRM=firm-a), e.g. a cross-domain one |
 | `make screenshots` | Re-take the README screenshots from the running stack into docs/screenshots (SHOTS=chat,topology for a subset) |
-| `make eval-accept` | Run the evals and accept their metrics as the new baseline (commit the result) |
+| `make eval-accept` | Run the evals and accept their metrics as the new baseline (REPEAT=N: mean of N runs; commit the result) |
 | `make eval-selection` | Eval: tool selection (recall/precision) |
 | `make eval-retrieval` | Eval: retrieval (recall@5/@20, MRR per mode) |
-| `make eval-generation` | Eval: answers judged for faithfulness/relevance |
+| `make eval-generation` | Eval: answers graded by Jev, mean of 3 runs (REPEAT=N to change) |
 | `make eval-injection` | Eval: prompt-injection pass rate |
 | `make eval-confirmation` | Eval: does the summary a person approves say what would happen |
 | `make eval-intent` | Eval: intent classifier alone — would each question force search_documents? (needs JEV_MAF_LAB) |
@@ -620,6 +620,47 @@ Evals run **on demand**, not on every commit. They are **required** before mergi
 - **query normalisation** (`Retrieval:NormalizeQueryLanguage`, `Retrieval:CorpusLanguage`, the translation model) → `retrieval`
 - a **Jev screening or check** (the guard's batteries or `Guard:*`, the answer check's questions or `Jev:AnswerCheck:*`) →
   `guardrail`, `answer-check`; both call Jev alone, with no chat model and no tool
+- the **generation grade** (`src/Maf.Lab.Eval/Judging/*`, `Evals:Judge:*`) → `generation-judge` first (labelled answers,
+  no agent), then `generation`
+
+### How `generation` is graded
+
+Jev grades every answer, in **one request per case**. Code cuts the answer into sentences, and every question is a
+yes/no about one item:
+- per sentence: does it state a fact, and is that fact supported by what the turn read. A place the sentence cites
+  (`path:start-end`, "Section 3 → Step 2") is looked up in code, not asked of Jev: a place no source holds makes the
+  sentence unsupported, and a found one is masked before Jev reads the rest;
+- per reference point (`referencePoints` in `generation.jsonl`): does the answer state it, and does it contradict it;
+- per source: is it on the question's subject;
+- once: does the answer address the question.
+
+Code counts the yeses (a Noul is yes at 0.5) into these metrics:
+- `faithfulness`: supported claim sentences over claim sentences;
+- `relevance`;
+- `completeness`: points stated;
+- `referenceAgreement`: 1 − points contradicted;
+- `retrievalJudged`: sources on the subject;
+- `judgeUncertain`: answers in the 0.2–0.8 band, a diagnostic.
+
+A failed case names the unsupported sentences, the cited places no source holds, and the missed or contradicted
+points. Without `JEV_MAF_LAB` the suite refuses to run rather than report a grade of nothing.
+
+The agent answers differently on every run, so `make eval-generation` runs the 36 cases **three times** and gates
+the mean (`Evals:Repeat`, or `REPEAT=N`). Every run keeps its own report. `make eval-accept SUITE=generation REPEAT=10`
+accepts the mean of ten runs as the baseline.
+
+The grade is an evaluator of `Microsoft.Extensions.AI.Evaluation`. Each case is kept under `evals/reports/meai/`, and
+every run writes `evals/reports/<runId>.html` beside its JSON and Markdown: every case with its scores, the sentences
+behind them, and how they moved over the last ten runs.
+
+`make eval SUITE=generation-judge` measures the grade itself, with no agent, and reports four variants:
+- `grade`: the grade on `answer-check.jsonl`'s labelled answers;
+- `check`: the production answer check on the same rows;
+- `points`: the grade on `generation-judge.jsonl`'s reference points labelled stated or contradicted;
+- `sentences`: the grade per sentence on `generation-sentences.jsonl` — claims, support, and citations correct and
+  invented, apart.
+
+Each variant reports accuracy overall and per domain, language and split. See DECISIONS.md §78.
 
 ### Not getting worse
 
@@ -639,8 +680,9 @@ the baseline does not mention is reported as *new* and one it mentions but the r
 both are how a rename silently switches the gate off. The tolerance is `Evals:RegressionTolerance` (0.02), overridden
 per metric in `Evals:RegressionTolerances`, each override carrying what it was measured from: in `retrieval`,
 `recall@5:bg` and `recall@20` use 0.025, because a non-English query is translated by a live model and moved about
-0.021 over five runs while `recall@5:en` did not move at all; in `generation`, `relevance` uses 0.035 (an LLM judge
-scoring prose). `/evals` plots any metric across past runs with the baseline marked.
+0.021 over five runs while `recall@5:en` did not move at all; in `generation`, each
+tolerance is the range of every 3-run mean over ten runs (faithfulness 0.035), and a `generation-judge` tolerance is
+never below one labelled item. `/evals` plots any metric across past runs with the baseline marked.
 
 Datasets are JSONL under `evals/`; reports land in `evals/reports/` (JSON for the `/evals` page, Markdown for humans).
 Three of them are not run by the harness: `a2a-conformance.jsonl` is run by the probe (`make eval-a2a`), and

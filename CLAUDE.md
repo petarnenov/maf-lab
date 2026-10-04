@@ -25,8 +25,8 @@ Non-negotiables while editing:
   updates its docs in the same change; `make docs-check` (in CI) enforces it.
 
 Chat model: `gpt-oss:120b` on Ollama Cloud — needs `OLLAMA_API_KEY` in the environment.
-Intent classifier: TypeSafe Jev (`jev-1.13.0`), the only one; the same key routes data turns (api) and judges search
-relevance (mcp-retrieval) — needs `JEV_MAF_LAB` in the environment,
+Intent classifier: TypeSafe Jev (`jev-1.13.0`), the only one; the same key routes data turns (api), judges search
+relevance (mcp-retrieval) and grades answers in the eval (`generation`, `generation-judge`) — needs `JEV_MAF_LAB` in the environment,
 sent only as the bearer header; never put it in a prompt, state, trace or log.
 Embeddings: local Ollama, one multilingual model (`embeddinggemma`, vector `dense_v3`). Changing it = new profile + `make rebuild-index FORCE=1`.
 Two instances serve it: `ollama` (11435) for search queries only, `ollama-batch` (11436) for document embeddings (indexing, migrate, admin index runs), each pinned to its own CPUs; every request must send that instance's `num_thread` (one without it reloads the model on all CPUs).

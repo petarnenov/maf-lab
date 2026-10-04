@@ -4,12 +4,14 @@ using Maf.Lab.Api.Agent.Jev;
 using Maf.Lab.Domain.Chat;
 using Maf.Lab.Eval;
 using Maf.Lab.Eval.Datasets;
+using Maf.Lab.Eval.Judging;
 using Maf.Lab.Eval.Suites;
 using Maf.Lab.Retrieval.Jev;
 using Maf.Lab.Retrieval.Models;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Maf.Lab.Tests;
 
@@ -201,6 +203,115 @@ public class AnswerCheckEvalTests
     });
 
     [Fact]
+    public async Task The_generation_judge_suite_reports_the_grade_beside_the_check_and_per_point_accuracy()
+    {
+        var dir = Directory.CreateTempSubdirectory("maf-gj-").FullName;
+        File.WriteAllLines(Path.Combine(dir, "answer-check.jsonl"),
+        [
+            AnswerRow("bad", unsupported: true, "It is cut at 2000 characters. INVENTED it runs twice."),
+            AnswerRow("good", unsupported: false, "It is the densest run of matching lines."),
+        ]);
+        File.WriteAllLines(Path.Combine(dir, "generation-judge.jsonl"),
+        [
+            JsonSerializer.Serialize(new
+            {
+                id = "gj-1", question = "q", answer = "Assign the schedule. Re-run it.", referencePoints = new[] { "Assign the schedule.", "Validate first." },
+                stated = new[] { true, false }, contradicted = new[] { false, false }, domain = "billing", language = "bg", split = "design",
+            }),
+        ]);
+        File.WriteAllLines(Path.Combine(dir, "generation-sentences.jsonl"),
+        [
+            JsonSerializer.Serialize(new
+            {
+                id = "gs-1", question = "how is the window cut?", answer = "It is cut around the match. (See `lab/A.cs:9-12`.)",
+                sources = new[] { new { tool = "search_codebase", item = new { path = "lab/A.cs", startLine = 9, endLine = 12, symbol = "Window", snippet = "Window(...)" } } },
+                sentences = new object[]
+                {
+                    new { text = "It is cut around the match.", claim = true, supported = true, citation = false },
+                    new { text = "(See `lab/A.cs:9-12`.)", claim = true, supported = true, citation = true },
+                },
+                domain = "codebase", language = "en", split = "design",
+            }),
+        ]);
+        var jev = new FakeJev
+        {
+            // The check misses the invented sentence; the grade catches it, and wrongly says the second point is stated.
+            AnswerCheck = (_, _, _) => 0.95,
+            // …and grades the correct citation unsupported.
+            Grade = (id, state) => id.StartsWith("supported_", StringComparison.Ordinal)
+                && state["answer_sentences"]![int.Parse(id["supported_".Length..])]!.GetValue<string>() is var t
+                && (t.Contains("INVENTED") || t.StartsWith("(See", StringComparison.Ordinal)) ? 0.1
+                : id == "stated_1" ? 0.9 : null,
+        };
+        await using var services = JevServices(jev);
+        var grader = new JevGrader(services.GetRequiredService<JevClient>(), new JudgeOptions(), NullLogger<JevGrader>.Instance);
+        var suite = new GenerationJudgeSuite(services.GetRequiredService<JevAnswerCheck>(),
+            GradeReport.Configure(dir, "test-run", new JevGenerationEvaluator(grader)));
+        var progress = new List<string>();
+
+        var variants = await suite.RunAsync(Context(dir, progress), Ct);
+
+        var grade = variants.Single(v => v.Name == "grade");
+        var check = variants.Single(v => v.Name == "check");
+        var points = variants.Single(v => v.Name == "points");
+        var sentences = variants.Single(v => v.Name == "sentences");
+        Assert.Equal(1, grade.Metrics["accuracy"]);
+        Assert.Equal(0.5, check.Metrics["accuracy"]);
+        Assert.Equal(["bad"], check.Failures.Select(f => f.CaseId));
+        Assert.Equal(0.5, points.Metrics["pointAccuracy"]);
+        Assert.Equal(0.5, points.Metrics["pointAccuracy:bg"]);
+        Assert.Equal(1, points.Metrics["contradictedAccuracy"]);
+        Assert.Contains("point 1 expected not stated/not contradicted, got stated=0.9", Assert.Single(points.Failures).Reason);
+        Assert.Equal(0, sentences.Metrics["citationPass"]);
+        Assert.Equal(1, sentences.Metrics["supportedPass"]);
+        Assert.Equal(0.5, sentences.Metrics["sentenceAccuracy"]);
+        Assert.Contains("[1] expected supported citation, got claim=0.95 supported=0.1", Assert.Single(sentences.Failures).Reason);
+        Assert.Equal(4, progress.Count);
+        Assert.StartsWith("generation-judge 1/4 bad: grade ok", progress[0]);
+        Assert.StartsWith("generation-judge 3/4 gj-1: points WRONG 1/2", progress[2]);
+        Assert.StartsWith("generation-judge 4/4 gs-1: sentences WRONG 1/2", progress[3]);
+        Assert.True(suite.InputTokens > 0);
+        // Each graded case is kept for the report; no chat model was asked.
+        Assert.True(Directory.Exists(GradeReport.StorePath(dir)));
+        Assert.Null(services.GetService<IChatClientFactory>());
+        var html = await GradeReport.WriteHtmlAsync(dir, "test-run", GenerationJudgeSuite.ScenarioPrefix, Ct);
+        Assert.Contains("generation-judge.gj-1", await File.ReadAllTextAsync(html, Ct));
+    }
+
+    [Fact]
+    public void Sentence_metrics_read_a_sentence_graded_no_claim_as_passed_and_keep_citations_apart()
+    {
+        var metrics = GenerationJudgeSuite.SentenceMetrics(
+        [
+            new(true, true, true, true, true, false, "billing", "en", "design"),
+            // Graded as no claim: passes for faithfulness, but the claim/no-claim reading is wrong.
+            new(true, true, false, true, false, true, "billing", "en", "design"),
+            new(true, true, true, false, true, true, "billing", "en", "design"),
+            new(true, false, false, null, false, false, "billing", "en", "design"),
+        ]);
+
+        Assert.Equal(1, metrics["supportedPass"]);
+        Assert.Equal(1, metrics["citationPass"]);
+        Assert.Equal(0, metrics["citationDetection"]);
+        Assert.Equal(0.75, metrics["claimAccuracy"]);
+        Assert.Equal(0.5, metrics["sentenceAccuracy"]);
+        Assert.False(metrics.ContainsKey("unsupportedDetection"));
+    }
+
+    [Fact]
+    public void Point_metrics_count_a_failed_grade_as_wrong()
+    {
+        var metrics = GenerationJudgeSuite.PointMetrics(
+        [
+            new(true, true, true, "billing", "en", "design"),
+            new(false, false, false, "billing", "en", "design"),
+        ]);
+
+        Assert.Equal(0.5, metrics["pointAccuracy"]);
+        Assert.Equal(0.5, metrics["graded"]);
+    }
+
+    [Fact]
     public async Task The_answer_check_suite_counts_the_band_and_the_unchecked_and_never_needs_a_chat_model()
     {
         var dir = Directory.CreateTempSubdirectory("maf-ac-").FullName;
@@ -271,7 +382,7 @@ public class AnswerCheckEvalTests
         var metrics = GenerationSuite.JevMetrics(
         [
             Case("pass", 0.9, 0.9, 1, 1),
-            // Uncertain raised no signal: it agrees with a rubric pass.
+            // Uncertain raised no signal: it agrees with a grade pass.
             Case("uncertain", 0.9, 0.4, 1, 1),
             Case("not_grounded", 0.9, 0.1, 0.5, 1),
             Case("unchecked", null, null, 1, 1),

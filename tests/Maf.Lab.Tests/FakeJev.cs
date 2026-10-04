@@ -78,6 +78,13 @@ public sealed partial class FakeJev : HttpMessageHandler
     /// </summary>
     public Func<string, string, string, double>? AnswerCheck { get; set; }
 
+    /// <summary>
+    /// The eval grade's answer (adopt-meai-evaluation), given the question id (<c>claim_3</c>, <c>supported_3</c>,
+    /// <c>stated_0</c>, <c>contradicts_0</c>, <c>on_subject_1</c>, <c>answer_relevant</c>) and the request's state. Null
+    /// answers the next rule; a grade request is recognised by its <c>answer_sentences</c>.
+    /// </summary>
+    public Func<string, JsonNode, double?>? Grade { get; set; }
+
     /// <summary>The run status a question asks about. Default: <see cref="RunStatus"/>.</summary>
     public Func<string, string>? RunStatusOf { get; set; }
 
@@ -124,6 +131,21 @@ public sealed partial class FakeJev : HttpMessageHandler
         {
             // The start-up warm-up: fixed text, one Noul, no user content (jev-client-reuse).
             return Answer(asked.Keys.ToDictionary(id => id, object (_) => new { type = "noul", noul = 0.0 }));
+        }
+        if (root["state"]!["answer_sentences"] is not null)
+        {
+            // The eval grade: every question a Noul; by default every claim supported, every point stated, nothing
+            // contradicted, every source on the subject.
+            foreach (var id in asked.Keys)
+            {
+                var p = Grade?.Invoke(id, root["state"]!) ?? (id.StartsWith("contradicts_", StringComparison.Ordinal) ? 0.02 : 0.95);
+                if (!double.IsNaN(p))
+                {
+                    // NaN leaves the question unanswered, as a partial response would.
+                    answers[id] = new { type = "noul", noul = p };
+                }
+            }
+            return Answer(answers);
         }
         // A classification or a prompt screening carries the user's question; a content screening, the text it judges.
         var question = (root["state"]!["user_question"] ?? root["state"]!["untrusted_text"])!.GetValue<string>();

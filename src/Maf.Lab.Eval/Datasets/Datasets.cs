@@ -20,7 +20,9 @@ public sealed record RetrievalCase(string Id, string Query, IReadOnlyList<string
 public sealed record PresentationCase(string Id, string Question, string FirmId, bool Carded, bool? RebalanceNeeded, string Language,
     bool RowsRequested = false);
 
-public sealed record GenerationCase(string Id, string Question, string ReferenceAnswer, IReadOnlyList<string> ExpectedDocIds, string FirmId, string? Source);
+/// <param name="ReferencePoints">The reference answer split by hand into atomic statements, each graded stated or not (adopt-meai-evaluation).</param>
+public sealed record GenerationCase(string Id, string Question, string ReferenceAnswer, IReadOnlyList<string> ExpectedDocIds, string FirmId, string? Source,
+    IReadOnlyList<string> ReferencePoints);
 /// <param name="Question">What the advisor asks, which must make the assistant propose the adjustment.</param>
 /// <param name="AccountId">The account the proposal must be about.</param>
 /// <param name="Amount">The adjustment the proposal must make.</param>
@@ -57,6 +59,24 @@ public sealed record AnswerCheckSource(string Tool, JsonElement? Item, string? T
 /// <param name="Domain">billing, portfolio or codebase.</param>
 public sealed record AnswerCheckCase(string Id, string Question, string PreviousQuestion, string Answer, IReadOnlyList<AnswerCheckSource> Sources,
     IReadOnlyList<AnswerCheckSource> PreviousSources, bool Unsupported, bool OffTopic, string Domain, string Language, string Split, string? Source);
+
+/// <summary>
+/// An answer graded against its reference points without the agent (adopt-meai-evaluation): for each point, whether a
+/// reviewer found it stated and whether contradicted.
+/// </summary>
+public sealed record GenerationJudgeCase(string Id, string Question, string Answer, IReadOnlyList<string> ReferencePoints,
+    IReadOnlyList<bool> Stated, IReadOnlyList<bool> Contradicted, string Domain, string Language, string Split, string? Source);
+
+/// <summary>
+/// One sentence of a recorded answer as a reviewer labelled it: whether it makes a claim, whether its sources support
+/// that claim (null when it makes none, or when <paramref name="Ambiguous"/>), and whether it is a citation of a source
+/// — a claim the system prompt requires to be exact (adopt-meai-evaluation).
+/// </summary>
+public sealed record SentenceLabel(string Text, bool Claim, bool? Supported, bool Citation, bool Ambiguous);
+
+/// <summary>A recorded answer with the sources it was given and a label per sentence, in the order code cuts them.</summary>
+public sealed record GenerationSentenceCase(string Id, string Question, string Answer, IReadOnlyList<AnswerCheckSource> Sources,
+    IReadOnlyList<SentenceLabel> Sentences, string Domain, string Language, string Split, string? Source);
 
 public sealed record InjectionCase(string Id, string Question, IReadOnlyList<string> ForbiddenStrings, IReadOnlyList<string> ForbiddenTenantIds, string FirmId, string? Source);
 
@@ -134,7 +154,8 @@ public static class DatasetLoader
 
     public static IReadOnlyList<GenerationCase> Generation(string root) => Load(root, "generation.jsonl", (e, where) =>
         new GenerationCase(Str(e, "id", where), Str(e, "question", where), Str(e, "referenceAnswer", where),
-            Strings(e, "expectedDocIds", where, allowEmpty: true), Firm(e, where), Opt(e, "source")));
+            Strings(e, "expectedDocIds", where, allowEmpty: true), Firm(e, where), Opt(e, "source"),
+            Strings(e, "referencePoints", where, allowEmpty: false)));
 
     public static readonly string[] IntentCategories =
         ["in-proc", "in-mixed", "in-data", "in-write", "chitchat", "off-proc", "off-meta", "off-trap", "steer"];
@@ -234,6 +255,74 @@ public static class DatasetLoader
             Sources(e, "sources", where), Sources(e, "previousSources", where), e.GetProperty("unsupported").GetBoolean(),
             e.GetProperty("offTopic").GetBoolean(), domain, language, split, Opt(e, "source"));
     });
+
+    public static IReadOnlyList<GenerationJudgeCase> GenerationJudge(string root) => Load(root, "generation-judge.jsonl", (e, where) =>
+    {
+        var points = Strings(e, "referencePoints", where);
+        var stated = Bools(e, "stated", where);
+        var contradicted = Bools(e, "contradicted", where);
+        if (stated.Count != points.Count || contradicted.Count != points.Count)
+        {
+            throw new InvalidDataException($"{where}: 'stated' and 'contradicted' must have one label per reference point.");
+        }
+        var domain = Str(e, "domain", where);
+        var language = Str(e, "language", where);
+        var split = Str(e, "split", where);
+        if (!AnswerCheckDomains.Contains(domain) || !IntentLanguages.Contains(language) || split is not ("design" or "holdout"))
+        {
+            throw new InvalidDataException($"{where}: unknown domain, language or split.");
+        }
+        return new GenerationJudgeCase(Str(e, "id", where), Str(e, "question", where), Str(e, "answer", where), points, stated,
+            contradicted, domain, language, split, Opt(e, "source"));
+    });
+
+    /// <summary>
+    /// Sentence labels are only as good as their alignment: the labelled texts must be exactly the sentences code cuts
+    /// the answer into, or a label would grade a neighbour.
+    /// </summary>
+    public static IReadOnlyList<GenerationSentenceCase> GenerationSentences(string root) => Load(root, "generation-sentences.jsonl", (e, where) =>
+    {
+        if (!e.TryGetProperty("sentences", out var list) || list.ValueKind != JsonValueKind.Array || list.GetArrayLength() == 0)
+        {
+            throw new InvalidDataException($"{where}: 'sentences' must be a non-empty array.");
+        }
+        var labels = list.EnumerateArray().Select(x =>
+        {
+            var claim = x.TryGetProperty("claim", out var c) && c.ValueKind == JsonValueKind.True;
+            bool? supported = x.TryGetProperty("supported", out var sp) && sp.ValueKind is JsonValueKind.True or JsonValueKind.False ? sp.GetBoolean() : null;
+            var ambiguous = x.TryGetProperty("ambiguous", out var a) && a.ValueKind == JsonValueKind.True;
+            if (claim && supported is null && !ambiguous)
+            {
+                throw new InvalidDataException($"{where}: a claim needs 'supported' unless it is marked ambiguous.");
+            }
+            return new SentenceLabel(Str(x, "text", where), claim, supported, x.TryGetProperty("citation", out var ci) && ci.ValueKind == JsonValueKind.True, ambiguous);
+        }).ToList();
+        var answer = Str(e, "answer", where);
+        var cut = Judging.AnswerSentences.Split(Api.Agent.Jev.AnswerText.Normalise(answer));
+        if (!cut.SequenceEqual(labels.Select(l => l.Text)))
+        {
+            throw new InvalidDataException($"{where}: the labelled sentences are not the {cut.Count} sentences code cuts the answer into.");
+        }
+        var domain = Str(e, "domain", where);
+        var language = Str(e, "language", where);
+        var split = Str(e, "split", where);
+        if (!AnswerCheckDomains.Contains(domain) || !IntentLanguages.Contains(language) || split is not ("design" or "holdout"))
+        {
+            throw new InvalidDataException($"{where}: unknown domain, language or split.");
+        }
+        return new GenerationSentenceCase(Str(e, "id", where), Str(e, "question", where), answer, Sources(e, "sources", where), labels,
+            domain, language, split, Opt(e, "source"));
+    });
+
+    private static IReadOnlyList<bool> Bools(JsonElement e, string name, string where)
+    {
+        if (!e.TryGetProperty(name, out var v) || v.ValueKind != JsonValueKind.Array)
+        {
+            throw new InvalidDataException($"{where}: '{name}' must be an array.");
+        }
+        return v.EnumerateArray().Select(x => x.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? x.GetBoolean() : throw new InvalidDataException($"{where}: '{name}' must contain true or false.")).ToList();
+    }
 
     private static IReadOnlyList<AnswerCheckSource> Sources(JsonElement e, string name, string where)
     {

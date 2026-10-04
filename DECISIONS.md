@@ -50,6 +50,7 @@ model is served, not its size.
 |---|---|
 | Microsoft.Agents.AI | 1.22.0 |
 | Microsoft.Extensions.AI / .Abstractions / .OpenAI | 10.10.0 |
+| Microsoft.Extensions.AI.Evaluation / .Reporting (§78, eval harness only) | 10.10.0 |
 | OllamaSharp | 5.4.30 |
 | ModelContextProtocol / ModelContextProtocol.AspNetCore | 2.2.0 |
 | Qdrant.Client | 1.19.0 |
@@ -2844,3 +2845,214 @@ said which account the conversation was about.
   memory bandwidth). Every re-index request reached `ollama-batch` only, neither runner reloaded (one `threadpool init`
   each), and the same text gives bit-identical vectors on both instances. Forced portfolio re-index: 142 chunks in
   ~21 s.
+
+## 78. Jev grades the generation eval; Microsoft.Extensions.AI.Evaluation reports it (adopt-meai-evaluation, 2026-10-04)
+
+- **Why.** The `generation` suite graded answers with `RubricJudge`, a one-request `gpt-oss:120b` prompt returning two
+  1–5 grades. It was written on day 3 for a first baseline and never weighed against anything. It is noisy (`relevance`
+  carries a 0.035 tolerance for judge noise alone), slow, and broad: one number per answer cannot say which claim is
+  unsupported. On g-04 it missed what Jev's answer check caught (§42).
+- **Jev decides, code counts.** Grading an answer is a set of closed, atomic judgments: whether a sentence makes a
+  claim, whether a claim is supported, whether the answer states a reference point or contradicts it, whether a
+  source is on the question's subject (docs/rules/jev-usage.md §2 C/F/G). The answer is split into sentences by code,
+  all questions about one case go in one Jev request, and every share is computed in code.
+- **Microsoft.Extensions.AI.Evaluation and .Reporting 10.10.0, as the harness only.** The same release train as the
+  pinned `Microsoft.Extensions.AI` 10.10.0. The Jev grade is an `IEvaluator`; `.Reporting` stores each run's results and
+  renders the HTML report.
+  - Checked at 10.10.0: `HtmlReportWriter` (`…Reporting.Formats.Html`) is public and called in-process, so the
+    `.Console` tool (`dotnet aieval`) is not needed. `DiskBasedReportingConfiguration.Create` takes no
+    `ChatConfiguration` when no evaluator is AI-based. Response caching is off: there is no chat call to cache.
+  - Rejected: `.Quality` (Groundedness, Relevance, Completeness, Retrieval). These are LLM prompts with 1–5 grades and
+    would bring back the noise, latency and broad judgments this change removes. Also rejected: Ragas and DeepEval,
+    which add a Python runtime for the same LLM-judge approach. `.NLP` (preview) and `.Safety` (Azure AI Foundry) are
+    out of scope.
+- **The request (one per case, `JevGrader`).**
+  - State: `{ user_question, previous_question, answer_sentences, sources, reference_points }`. The sentences come from
+    `AnswerSentences.Split` over the normalised answer, capped by `Evals:Judge:MaxSentences` (60). `sources` is what the
+    turn read (`TurnResult.Read`), chosen and ordered by `AnswerSources.Select` (cited first, previous turn's after),
+    whole items under `Evals:Judge:MaxSourceChars` (24000). A case over either cap says `truncated`.
+  - Questions are Nouls with a short context and true/false criteria, in the guard's style:
+    - `claim_i`, `supported_i` per sentence; `supported_i` uses the code wording when a codebase source was read;
+    - `stated_j`, `contradicts_j` per reference point;
+    - `on_subject_k` per source;
+    - `answer_relevant` once, with the production check's criteria worded for sentences.
+  - Code reads a Noul as yes at 0.5 and counts the 0.2–0.8 band into `judgeUncertain`; every share is computed in code.
+  - Timeout `Evals:Judge:TimeoutSeconds` (10). The shared `JevClient` provides the pinned `jev-1.13.0`, retries and the
+    circuit.
+  - No key: the suite refuses. A failed or partial response (any question unanswered) scores the case 0 with
+    `judge failed: <reason>`. There is no LLM fallback, so two scales never mix in one run.
+  - Logs carry model, question count, missing answers, input/output tokens and latency, never text. `JevResponse` now
+    reads `usage` for this.
+  - Measured: a 12-case run sends 12 requests of 30–60 questions, about 7–8k input tokens each (83–94k per run), at
+    about 0.3 s each. `generation-judge` sends 55 requests, 153k tokens.
+- **`TurnResult.Read`.** The turn now exposes the items the answer check chooses from, so the grade reads exactly what
+  the model read. No behaviour of the turn changed.
+- **Data.**
+  - `generation.jsonl` gains `referencePoints`, split by hand.
+  - New `generation-judge.jsonl`: 16 answers and 71 points, labelled stated / contradicted. 8 billing and 8 codebase,
+    half Bulgarian. Twelve are recorded agent answers (2026-10-04); four are edited to remove or contradict points.
+  - The labels were written by the implementing agent and are worth a human read.
+- **Determinism, measured.** Two `generation-judge` runs over identical input gave identical metrics and failed the same
+  cases. The probabilities were **not** bit-identical: they moved by 0.01–0.05. So "the same input gives the same
+  grade" holds for outcomes away from the 0.5 cut, not for every probability. §42's "the runs were identical" was
+  about verdicts too.
+- **Comparison (five `generation` runs with both judges, two `generation-judge` runs; 2026-10-04).**
+  - `generation`, Jev grade over the five runs:
+    - faithfulness 0.9464–0.9861;
+    - relevance 1;
+    - completeness 0.8069–0.8486;
+    - referenceAgreement 0.9625–1;
+    - retrievalJudged 0.85–0.9278;
+    - judgeUncertain 0.122–0.170;
+    - no `judge failed` case.
+  - `generation`, rubric over the same runs: faithfulness 0.9583–1, relevance 1. The Jev range (0.040) is no wider than
+    the rubric's (0.042).
+  - Disagreements (faithfulness only; relevance agreed in every run):
+    - **g-01**, 2 of 5 runs. In run 4 the rubric failed it (0.5) and the grade passed it (1); in run 5 the grade failed
+      it (0.67: the effective-date sentence and "re-run … to confirm" judged unsupported) and the rubric passed it. In
+      the other three runs both passed it (grade 0.8–0.83). This is the same answer §42 found Jev strict on: the
+      procedure is followed with added wording, and neither judge is reliably right on it.
+    - **g-03**, 1 of 5. The grade marked a citation sentence ("See the Acme Billing Policy … procedure") unsupported.
+      The rubric is right: a pointer to a document is not a billing claim. This is a known weakness of `claim_i`.
+    - **g-08**, 1 of 5. In that run the grade found the answer half unsupported, with 5 sources off the subject
+      (`retrievalJudged` 0.5): the turn retrieved the wrong documents and the answer still stated the policy. That
+      points to the grade being right, but it was not verified by hand.
+    - **g-04** never disagreed. The grade's faithfulness was 0.83 in one run and 1 in the others. §42's g-04 miss did not
+      recur: the agent's answers no longer add the unsupported steps.
+  - `generation-judge`, labelled answers (`answer-check.jsonl`, 39 rows), grade vs the production check:
+
+    | Metric | Grade | Check |
+    |---|---|---|
+    | accuracy | 0.974 | 0.923 |
+    | accuracy:bg | 0.909 | 0.818 |
+    | groundedDetection | 1 | 0.882 |
+    | groundedPass | 1 | 0.955 |
+    | relevantPass | 0.972 | 1 |
+
+    The grade's one miss is ac-code-bg-u-04, an invented constant: it was caught as unsupported but also wrongly judged
+    off the question. The check's misses are ac-code-bg-u-01 (uncertain), ac-bill-en-u-01 (passed at g=0.52, uncertain
+    at 0.45 in the second run) and ac-code-bg-o-01 (off-topic read as not grounded).
+  - `generation-judge`, points: pointAccuracy 0.9155, bg 0.946, en 0.882, holdout 0.824. Six points were wrong, four of
+    them a stated point that also read as contradicted (0.53–0.56), close to the cut. One was a contradiction missed
+    (gj-code-en-04, the "passes the payload through unchanged" sentence against `Neutralise`).
+- **Gate (design, Migration Plan step 3): held.**
+  - Grade accuracy ≥ the check's, overall (0.974 ≥ 0.923) and for Bulgarian (0.909 ≥ 0.818).
+  - Point accuracy ≥ 0.9 overall (0.916) and ≥ 0.85 for Bulgarian (0.946).
+  - No judge failure.
+  - Faithfulness range no wider than the rubric's.
+  - Known weaknesses to watch: `claim_i` on citation sentences (g-03), and `contradicts_j` near 0.5 on stated points.
+- **What went wrong after the gate, and what replaced it.**
+  - The first switch attempt widened the `faithfulness` tolerance after each run (0.04 → 0.055 → 0.075) until a run
+    passed. The eval-harness spec forbids exactly that, so the attempt is discarded.
+  - The same attempt also excluded citation sentences from grading, first through a criterion and then through a regex
+    built from the failing sentences. That was reverted: the system prompt requires every citation to be exact
+    (`path:start-end`, "never invent a path, a line"), so a citation is a claim the eval must check, and excluding it
+    hid the hallucinations the eval exists to catch.
+- **Citations, measured, then checked in code.**
+  - New `generation-sentences.jsonl`: 16 recorded answers, 4 of them edited with invented citations. Every sentence
+    is labelled claim / supported / citation; ambiguous sentences (paraphrased code, an overclaim in a summary) are
+    marked and excluded rather than guessed. The loader rejects labels that are not exactly the code's cut.
+  - Asked of Jev, citations were a coin toss. Correct ones scored 0.46–0.49 (citationPass 0.833) and invented ones
+    0.58–0.60 (citationDetection 0.571). Whether a section, step or line range exists is a lookup of numbers, which
+    jev-usage §5 gives to code.
+  - `Citations` therefore looks up the formats the answers are told to use and the corpus is written in: `path:start-end`
+    (with bare ranges after a path) and `Section N … Step M`. These are not patterns taken from failures.
+    - A place no source holds makes its sentence an unsupported claim.
+    - A found place is masked (`[cited place verified]`) before Jev reads the sentence.
+  - Result: citationDetection 1.0, citationPass 0.87–0.93, and 1.0 on the held-out rows.
+  - Still weak, recorded and not tuned: `unsupportedDetection` 0.5 on non-citation claims (summaries that overclaim).
+- **Noise was the dataset, not the judge.** At 12 cases, one sentence in one live answer moved mean faithfulness by
+  0.03–0.06. `generation.jsonl` grew to 36 cases: 24 new ones, billing across firms a/b/c and shared, and codebase,
+  in English and Bulgarian, each reference answer drawn from named files.
+- **Tolerance protocol (design.md, fixed before measuring).**
+  - Measured on frozen inputs at b352bde (2026-10-04): ten `generation` runs (20261004-135131 … -141236) and three
+    `generation-judge` runs (-141508, -141546, -141623). No `judge failed` case.
+  - `generation` over the ten runs:
+
+    | Metric | Range | Tolerance |
+    |---|---|---|
+    | faithfulness | 0.9384–0.9651 (0.0267; it was 0.071 at 12 cases) | 0.03 |
+    | relevance | 0.9444 | default 0.02 |
+    | completeness | 0.6306–0.6806 | 0.05 |
+    | referenceAgreement | 0.9852–1 | default 0.02 |
+    | retrievalJudged | 0.8787–0.9306 | 0.055 |
+    | sourceRecall | 0.75–0.7778 | 0.03 |
+    | jevChecked | — | 0.03 |
+    | jevGroundedAgreement | 0.9118–0.9697 | 0.06 |
+    | judgeUncertain, jevUncertain | 0.029–0.206 | not gated (lower is better) |
+
+  - `generation-judge`: the grade and check variants did not move. Points and sentences moved by one item at a time,
+    and each per-slice tolerance is its measured range. `band` is not gated.
+  - Thresholds are the measured minimum minus the tolerance, rounded down to 0.05:
+    - `generation`: faithfulness 0.9, relevance 0.9, completeness 0.55, referenceAgreement 0.95, retrievalJudged 0.8;
+    - `generation-judge`: grade.accuracy 0.9, points.pointAccuracy 0.85, sentences.sentenceAccuracy 0.85,
+      sentences.citationDetection 0.95.
+  - Verification follows: accept the baseline from one fresh run, then three fresh runs must pass with nothing changed.
+- **What the larger dataset shows about the agent, not the judge.** Eight cases failed in all ten runs, mostly
+  Bulgarian codebase questions:
+  - g-code-bg-07 and -08 do not address the question;
+  - g-code-bg-03 cites "610-625", which no source holds, and the code check catches it;
+  - g-02, g-10 and g-code-en-06 retrieve no expected source.
+
+  These are the agent's and retrieval's to fix, in their own change.
+- **Verification failed, and the protocol was amended twice before measuring again.**
+  - The single run accepted as the baseline (faithfulness 0.977) sat above the ten measured runs. A verification run
+    (0.903) sat below them; the production check confirmed the agent answered worse in that run (g-14 `not_grounded`
+    0.17, g-17 0.26).
+    - Amendment 1: `generation` is read as the **mean of 3 runs** (`Evals:Repeat`, `--repeat`, `REPEAT=`). The baseline
+      is the mean of ten runs, and each tolerance is the range of every 3-run mean.
+  - Accepting `generation-judge` then exposed a bug. A citation of a place held only in a previous turn's envelope was
+    graded invented (ac-code-en-s-05, wrong in every run); `Citations` now reads places from envelopes too. It also
+    showed one verdict flip, 1 of 39, above a 0.02 tolerance.
+    - Amendment 2: a labelled-set tolerance is never below one item's weight (1/n).
+  - Both amendments are in design.md.
+- **Measured again (2026-10-04, at 41efd77).**
+  - `generation`: ten runs (`20261004-150436-r1…r10`), accepted as their mean (faithfulness 0.952, relevance 0.947, completeness
+    0.649, retrievalJudged 0.907, sourceRecall 0.758). Ranges of every 3-run mean and the resulting tolerances:
+
+    | Metric | 3-run means | Single runs | Tolerance |
+    |---|---|---|---|
+    | faithfulness | 0.936–0.968 | 0.928–0.972 | 0.035 |
+    | completeness | 0.635–0.670 | — | 0.035 |
+    | retrievalJudged | 0.886–0.923 | — | 0.04 |
+    | sourceRecall | — | — | 0.03 |
+    | jevGroundedAgreement | — | — | 0.07 |
+    | relevance, referenceAgreement | — | — | default 0.02 |
+    | judgeUncertain, jevUncertain | — | — | not gated |
+
+  - `generation-judge`: five runs (20261004-152755, 20261004-152835, 20261004-152911, 20261004-152948, 20261004-153024). Grade accuracy is 0.949, check accuracy 0.923, and the
+    grade's verdicts did not move. Tolerances are at least one item (accuracy 1/39 → 0.03; the per-slice ones are
+    wider by their n), and citationPass moved by 0.1.
+  - Thresholds, each the lowest 3-run mean or the lowest run minus its tolerance, rounded down to 0.05:
+    - `generation`: faithfulness 0.9, relevance 0.9, completeness 0.55, referenceAgreement 0.95, retrievalJudged 0.8;
+    - `generation-judge`: grade.accuracy 0.9, points.pointAccuracy 0.85, sentences.sentenceAccuracy 0.85,
+      sentences.citationDetection 0.85.
+  - The baselines are accepted: `generation` from the ten-run mean, `generation-judge` from one fresh run. Both are
+    recorded as a change of judge, not an improvement; earlier `generation` runs (12 cases, rubric) are not comparable.
+- **Verified.** Three `make eval-generation` runs, each the mean of 3 runs, all passed the gate with nothing changed:
+  faithfulness 0.977, 0.959 and 0.968 against the baseline's 0.952 (20261004-153232, -153950, -154647). The protocol
+  holds.
+- **Production check untouched.** `JevAnswerCheck.cs` and `AnswerSources.cs` have no diff. `make eval SUITE=answer-check`
+  is unchanged (accuracy 0.923). The only change in the api is the read-only `TurnResult.Read`.
+- **Jev review (jev-usage §7) of the grade request.**
+  - *Closed and atomic:* every question is a Noul about one sentence, one point or one source. "Is the answer good?" is
+    never asked.
+  - *Nothing code can do:* code cuts the sentences, counts the yeses into shares, and looks up cited places. Jev never
+    counts and never compares numbers; cited sections and line ranges went to code after Jev was measured at 0.57
+    detection on them.
+  - *One request per state:* each case asks one request with every question, about 7–9k input tokens.
+  - *Minimal state:* the state is named fields, and every question points at one by backticked path; the sources are
+    the ones the answer was given.
+  - *Polarity and criteria:* every question is positive, with true/false criteria in the guard's style and the boundary
+    cases (no claim, an honest "cannot answer") on the right side.
+  - *Gating:* a Noul is yes at 0.5 (an eval is the lowest risk class), and the 0.2–0.8 band is counted
+    (`judgeUncertain`), not decided on.
+  - *Fallback:* without a key the suite refuses to run. A failed or partial response scores the case 0 with its
+    reason, and there is no LLM fallback.
+  - *Model and logs:* the model is pinned (`jev-1.13.0`); `model`, `usage`, question count and latency are logged, and
+    never text.
+  - *Client:* the shared `JevClient` provides retries, the circuit and one HTTP client.
+  - *Labelled data:* the grade is tested on labelled English, Bulgarian and Latin-script answers (`generation-judge`:
+    `answer-check.jsonl`, `generation-judge.jsonl`, `generation-sentences.jsonl`, with design and held-out splits).
+  - *Known weakness, measured and left visible:* `unsupportedDetection` is about 0.5 on summaries that overclaim.
+

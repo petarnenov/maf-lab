@@ -6,6 +6,9 @@
     <PackageVersion Include="Microsoft.Extensions.AI" Version="10.10.0" />
     <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="10.10.1" />
     <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.10.0" />
+    <!-- Eval harness only: the evaluator contract and stored results / HTML report (§78); Jev is the judge -->
+    <PackageVersion Include="Microsoft.Extensions.AI.Evaluation" Version="10.10.0" />
+    <PackageVersion Include="Microsoft.Extensions.AI.Evaluation.Reporting" Version="10.10.0" />
     <PackageVersion Include="OllamaSharp" Version="5.4.30" />
     <!-- A2A: the protocol SDK the Agent Framework's own A2A packages are built on (see DECISIONS.md) -->
     <PackageVersion Include="A2A" Version="1.0.0-preview2" />

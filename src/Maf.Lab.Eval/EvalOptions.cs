@@ -37,6 +37,15 @@ public sealed class EvalOptions
     /// </summary>
     public List<MetricTolerance> RegressionTolerances { get; set; } = [];
 
+    /// <summary>
+    /// suite → how many times a run executes it, its metrics read as the mean (adopt-meai-evaluation). For a suite that
+    /// drives the live agent, whose answers vary from run to run; <c>--repeat N</c> overrides it for one run.
+    /// </summary>
+    public Dictionary<string, int> Repeat { get; set; } = new();
+
+    /// <summary>The Jev grade of generated answers (adopt-meai-evaluation).</summary>
+    public JudgeOptions Judge { get; set; } = new();
+
     /// <summary>The metric's own tolerance, else its suite's, else the default.</summary>
     public double ToleranceFor(string suite, string metric) =>
         RegressionTolerances.FirstOrDefault(t => t.Suite == suite && t.Metric == metric)?.Tolerance
@@ -58,3 +67,20 @@ public sealed class EvalOptions
 /// otherwise be skipped silently rather than reported.
 /// </remarks>
 public sealed record MetricTolerance(string Suite, double Tolerance, string? Metric = null, string? Measured = null);
+
+/// <summary>How the generation grade asks Jev (adopt-meai-evaluation, design D3).</summary>
+public sealed class JudgeOptions
+{
+    /// <summary>Per request. An eval, not a turn: nobody waits on it, so the budget is wider than the answer check's 3 s.</summary>
+    public double TimeoutSeconds { get; set; } = 10;
+
+    /// <summary>Sentences graded per answer; the rest are left out and the case says it was truncated.</summary>
+    public int MaxSentences { get; set; } = 60;
+
+    /// <summary>
+    /// Characters of sources sent, whole items in the order the answer check sends them (cited first). Twice the
+    /// check's cap: the check sends nothing over its cap, the grade has to grade every answer.
+    /// </summary>
+    public int MaxSourceChars { get; set; } = 24000;
+}
+

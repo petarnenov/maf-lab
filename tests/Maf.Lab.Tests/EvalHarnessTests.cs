@@ -26,6 +26,8 @@ public class EvalHarnessTests
         Assert.NotEmpty(DatasetLoader.Selection(EvalsRoot));
         Assert.NotEmpty(DatasetLoader.Retrieval(EvalsRoot));
         Assert.NotEmpty(DatasetLoader.Generation(EvalsRoot));
+        Assert.NotEmpty(DatasetLoader.GenerationJudge(EvalsRoot));
+        Assert.NotEmpty(DatasetLoader.GenerationSentences(EvalsRoot));
         Assert.NotEmpty(DatasetLoader.Injection(EvalsRoot));
         Assert.NotEmpty(DatasetLoader.Confirmation(EvalsRoot));
         Assert.NotEmpty(DatasetLoader.Intent(EvalsRoot));
@@ -122,6 +124,83 @@ public class EvalHarnessTests
     }
 
     [Fact]
+    public void Every_generation_case_carries_reference_points()
+    {
+        var cases = DatasetLoader.Generation(EvalsRoot);
+
+        Assert.All(cases, c => Assert.NotEmpty(c.ReferencePoints));
+        Assert.All(cases.SelectMany(c => c.ReferencePoints), p => Assert.False(string.IsNullOrWhiteSpace(p)));
+    }
+
+    [Fact]
+    public void Generation_judge_dataset_holds_both_languages_and_both_domains_with_misses_and_contradictions()
+    {
+        var cases = DatasetLoader.GenerationJudge(EvalsRoot);
+
+        Assert.Equal(16, cases.Count);
+        foreach (var domain in new[] { "billing", "codebase" })
+        {
+            foreach (var language in new[] { "en", "bg" })
+            {
+                Assert.Equal(4, cases.Count(c => c.Domain == domain && c.Language == language));
+            }
+            Assert.Contains(cases, c => c.Domain == domain && c.Contradicted.Any(x => x));
+            Assert.Contains(cases, c => c.Domain == domain && c.Stated.Any(x => !x));
+        }
+        Assert.Contains(cases, c => c.Split == "holdout");
+    }
+
+    [Fact]
+    public void The_sentence_dataset_holds_correct_and_invented_citations_in_both_languages_and_domains()
+    {
+        var cases = DatasetLoader.GenerationSentences(EvalsRoot);
+        var labels = cases.SelectMany(c => c.Sentences.Select(l => (c.Domain, c.Language, Label: l))).Where(x => !x.Label.Ambiguous).ToList();
+
+        foreach (var domain in new[] { "billing", "codebase" })
+        {
+            foreach (var language in new[] { "en", "bg" })
+            {
+                Assert.Contains(labels, x => x.Domain == domain && x.Language == language && x.Label.Citation && x.Label.Supported == true);
+                Assert.Contains(labels, x => x.Domain == domain && x.Language == language && x.Label.Citation && x.Label.Supported == false);
+            }
+        }
+        Assert.Contains(labels, x => !x.Label.Citation && x.Label.Supported == false);
+        Assert.Contains(labels, x => !x.Label.Claim);
+    }
+
+    [Fact]
+    public void A_sentence_row_whose_labels_are_not_the_cut_sentences_fails()
+    {
+        var dir = Directory.CreateTempSubdirectory("maf-evals-").FullName;
+        File.WriteAllText(Path.Combine(dir, "generation-sentences.jsonl"),
+            "{\"id\":\"gs-x\",\"question\":\"q\",\"answer\":\"One. Two.\",\"sources\":[],\"sentences\":[{\"text\":\"One. Two.\",\"claim\":true,\"supported\":true}],\"domain\":\"billing\",\"language\":\"en\",\"split\":\"design\"}\n");
+        var ex = Assert.Throws<InvalidDataException>(() => DatasetLoader.GenerationSentences(dir));
+        Assert.Contains("generation-sentences.jsonl:1", ex.Message);
+        Assert.Contains("2 sentences", ex.Message);
+    }
+
+    [Fact]
+    public void A_generation_judge_row_needs_one_label_per_point()
+    {
+        var dir = Directory.CreateTempSubdirectory("maf-evals-").FullName;
+        File.WriteAllText(Path.Combine(dir, "generation-judge.jsonl"),
+            "{\"id\":\"gj-x\",\"question\":\"q\",\"answer\":\"a\",\"referencePoints\":[\"p1\",\"p2\"],\"stated\":[true],\"contradicted\":[false,false],\"domain\":\"billing\",\"language\":\"en\",\"split\":\"design\"}\n");
+        var ex = Assert.Throws<InvalidDataException>(() => DatasetLoader.GenerationJudge(dir));
+        Assert.Contains("generation-judge.jsonl:1", ex.Message);
+    }
+
+    [Fact]
+    public void A_generation_row_without_reference_points_fails_with_file_and_line()
+    {
+        var dir = Directory.CreateTempSubdirectory("maf-evals-").FullName;
+        File.WriteAllText(Path.Combine(dir, "generation.jsonl"),
+            "{\"id\":\"g-x\",\"question\":\"q\",\"referenceAnswer\":\"r\",\"referencePoints\":[],\"expectedDocIds\":[],\"firmId\":\"firm-a\"}\n");
+        var ex = Assert.Throws<InvalidDataException>(() => DatasetLoader.Generation(dir));
+        Assert.Contains("generation.jsonl:1", ex.Message);
+        Assert.Contains("referencePoints", ex.Message);
+    }
+
+    [Fact]
     public void Selection_metrics_are_micro_averaged()
     {
         var (recall, precision, exact) = Metrics.Selection(
@@ -186,15 +265,7 @@ public class EvalHarnessTests
     }
 
     [Fact]
-    public void Judge_parses_scores_even_inside_code_fences()
-    {
-        var score = RubricJudge.Parse("```json\n{\"faithfulness\": 5, \"relevance\": 3, \"reason\": \"ok\"}\n```");
-        Assert.Equal(1.0, score.Faithfulness);
-        Assert.Equal(0.5, score.Relevance);
-    }
-
-    [Fact]
-    public void The_generation_suite_names_jevs_verdict_beside_the_rubric()
+    public void The_generation_suite_names_jevs_verdict_beside_the_grade()
     {
         Assert.Equal("jev=none", GenerationSuite.Describe(null));
         Assert.Equal("jev=pass(r=0.93 g=0.88)", GenerationSuite.Describe(
