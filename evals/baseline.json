@@ -1,5 +1,37 @@
 {
   "suites": {
+    "code-route": {
+      "metrics": {
+        "jev": {
+          "accuracy": 0.9206,
+          "accuracy:bg": 0.8947,
+          "accuracy:bg-latn": 0.8,
+          "accuracy:design": 0.9333,
+          "accuracy:en": 1,
+          "accuracy:holdout": 0.8889,
+          "noArgumentKept": 1,
+          "noArgumentKept:bg": 1,
+          "noArgumentKept:bg-latn": 1,
+          "noArgumentKept:design": 1,
+          "noArgumentKept:en": 1,
+          "noArgumentKept:holdout": 1,
+          "structuralRecall": 0.8571,
+          "structuralRecall:bg": 0.8889,
+          "structuralRecall:bg-latn": 0.5714,
+          "structuralRecall:design": 0.8947,
+          "structuralRecall:en": 1,
+          "structuralRecall:holdout": 0.7778,
+          "textKept": 1,
+          "textKept:bg": 1,
+          "textKept:bg-latn": 1,
+          "textKept:design": 1,
+          "textKept:en": 1,
+          "textKept:holdout": 1
+        }
+      },
+      "acceptedFrom": "20261004-085254-code-route",
+      "acceptedAt": "2026-10-04T08:53:13.315209+00:00"
+    },
     "confirmation": {
       "metrics": {
         "agent": {
@@ -238,12 +270,12 @@
         "agent": {
           "exactMatch": 0.9592,
           "negativeAccuracy": 1,
-          "precision": 0.9661,
+          "precision": 0.9636,
           "recall": 1
         }
       },
-      "acceptedFrom": "20261003-062222-selection",
-      "acceptedAt": "2026-10-03T06:24:41.62931+00:00"
+      "acceptedFrom": "20261004-085314-selection",
+      "acceptedAt": "2026-10-04T08:55:53.252883+00:00"
     }
   }
 }

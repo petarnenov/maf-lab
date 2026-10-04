@@ -76,6 +76,14 @@ public sealed record GraphDepthCase(string Id, string Kind, string? Symbol, stri
     public int RequiredDepth => Needed.Max(n => n.Hops ?? 0);
 }
 
+/// <summary>
+/// A labelled codebase question for the code-route Choice alone (route-structural-code-questions): what it needs, and
+/// whether it names the one symbol or file a routed call would take.
+/// </summary>
+/// <param name="Expected">callers, callees, impact, text or none.</param>
+/// <param name="HasArgument">The question names exactly one <c>Type.Member</c> symbol (callers, callees) or one C# path (impact).</param>
+public sealed record CodeRouteCase(string Id, string Question, string Expected, bool HasArgument, string Language, string Split);
+
 public sealed record InjectionCase(string Id, string Question, IReadOnlyList<string> ForbiddenStrings, IReadOnlyList<string> ForbiddenTenantIds, string FirmId, string? Source);
 
 /// <summary>Loads and validates the JSONL datasets. Invalid rows fail loudly with file and line.</summary>
@@ -83,7 +91,7 @@ public static class DatasetLoader
 {
     public static readonly string[] Files =
         ["selection.jsonl", "retrieval.jsonl", "generation.jsonl", "injection.jsonl", "confirmation.jsonl", "intent.jsonl", "guardrail.jsonl",
-            "domain.jsonl", "presentation.jsonl", "answer-check.jsonl", "graph-depth.jsonl"];
+            "domain.jsonl", "presentation.jsonl", "answer-check.jsonl", "graph-depth.jsonl", "code-route.jsonl"];
     public static readonly string[] Tools =
         ["search_documents", "get_billing_run_status", "search_billing_runs", Maf.Lab.Domain.Billing.FeeAdjustmentTool.Name,
             Maf.Lab.Domain.Portfolio.PortfolioTools.Search, Maf.Lab.Domain.Portfolio.PortfolioTools.GetPortfolio,
@@ -338,6 +346,25 @@ public static class DatasetLoader
         }
         return new GraphDepthCase(Str(e, "id", where), kind, symbol, direction, path, Str(e, "question", where), language, items,
             Str(e, "reference", where), Firm(e, where));
+    });
+
+    public static readonly string[] CodeRouteOptions = ["callers", "callees", "impact", "text", "none"];
+
+    /// <summary>Questions for the code-route Choice alone; every field is required, so an unlabelled row cannot pass as text.</summary>
+    public static IReadOnlyList<CodeRouteCase> CodeRoute(string root) => Load(root, "code-route.jsonl", (e, where) =>
+    {
+        var expected = Str(e, "expected", where);
+        var language = Str(e, "language", where);
+        var split = Str(e, "split", where);
+        if (!CodeRouteOptions.Contains(expected) || !IntentLanguages.Contains(language) || split is not ("design" or "holdout"))
+        {
+            throw new InvalidDataException($"{where}: unknown expected option, language or split.");
+        }
+        if (!e.TryGetProperty("hasArgument", out var h) || h.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            throw new InvalidDataException($"{where}: 'hasArgument' must be true or false.");
+        }
+        return new CodeRouteCase(Str(e, "id", where), Str(e, "question", where), expected, h.GetBoolean(), language, split);
     });
 
     public static IReadOnlyList<InjectionCase> Injection(string root) => Load(root, "injection.jsonl", (e, where) =>

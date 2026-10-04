@@ -146,28 +146,38 @@ public sealed partial class ChatTurnRunner(
             Jev.ToolRoute? route = null;
             IReadOnlyList<string> forcedSearches = [];
             IReadOnlyList<Jev.ToolRoute> alongside = [];
+            var (codeRoute, codeRouteReason) = (decision.CodeRoute, decision.CodeRouteReason);
             if (tools is not null)
             {
                 reachedModel = true;
                 state.KnownTools = tools.Names;
                 state.Tools = tools;
+                (codeRoute, codeRouteReason) = OfferedCodeRoute(decision, tools);
                 // A forcing intent searches every domain Jev put the question in, each through its own server's search.
                 forcedSearches = IntentClassifier.ForcesRetrieval(decision.Intent) ? ForcedSearches(decision.Domains, tools)
                     : CodebaseSearch(decision, tools);
+                if (codeRoute is not null)
+                {
+                    // A structural code question starts with its graph call instead of the codebase search
+                    // (route-structural-code-questions); the other domains' searches still go out with it.
+                    forcedSearches = [.. forcedSearches.Where(s => s != Domains.SearchTool[Domains.Codebase])];
+                }
                 forced = forcedSearches.Count > 0;
-                alongside = forced ? Alongside(decision, message, tools) : [];
-                // A data turn Jev routed to a read tool this server offers: the call is issued without the model's first
-                // call. Never a write — the router has no write to offer.
-                route = !forced && decision.Route is { } r && tools.Names.Contains(r.Tool) ? r : null;
+                alongside = forced ? [.. Alongside(decision, message, tools), .. codeRoute is null ? [] : new[] { codeRoute }] : [];
+                // A data turn Jev routed to a read tool this server offers, or a code question routed to the graph: the call
+                // is issued without the model's first call. Never a write — neither router has one to offer.
+                route = forced ? null : decision.Route is { } r && tools.Names.Contains(r.Tool) ? r : codeRoute;
             }
 
             var outside = decision.Reason?.StartsWith("outside the domain", StringComparison.Ordinal) == true
                 ? $", outside the domain {decision.Domains?.Highest ?? decision.InDomain ?? 0:F2}"
                 : "";
             var jev = decision.Confidence is { } confidence ? $" (jev {confidence:F2}{outside}, {decision.DurationMs:F0} ms)" : "";
-            var routed = route is null ? "" : $" → routing {route.Tool} (jev {route.Probability:F2})";
+            var routed = route is null || route == codeRoute ? "" : $" → routing {route.Tool} (jev {route.Probability:F2})";
+            var codeRouted = codeRoute is null ? ""
+                : $" → routed {codeRoute.Tool} ({codeRoute.Arguments.GetValueOrDefault("direction") ?? "impact"}, {codeRoute.Probability:F2})";
             var refusedScope = outOfScope ? $" → outside every domain ({decision.Domains?.Highest ?? 0:F2}), fixed reply" : "";
-            trace.Add(TraceKinds.Intent, $"Intent {decision.Intent}{jev}{(forced ? $" → forcing {string.Join(" + ", forcedSearches.Concat(alongside.Select(a => a.Tool)))}" : "")}{routed}{refusedScope}", new JsonObject
+            trace.Add(TraceKinds.Intent, $"Intent {decision.Intent}{jev}{(forced ? $" → forcing {string.Join(" + ", forcedSearches.Concat(alongside.Select(a => a.Tool)))}" : "")}{routed}{codeRouted}{refusedScope}", new JsonObject
             {
                 ["intent"] = decision.Intent.ToString(),
                 ["forcedRetrieval"] = forced,
@@ -182,7 +192,8 @@ public sealed partial class ChatTurnRunner(
                 ["model"] = decision.Model,
                 ["durationMs"] = decision.DurationMs,
                 ["reason"] = decision.Reason,
-                ["routing"] = Routing(decision, route),
+                ["routing"] = Routing(decision, route == codeRoute ? null : route),
+                ["codeRouting"] = CodeRouting(decision, codeRoute, codeRouteReason),
                 ["domains"] = decision.Domains is { } d
                     ? new JsonObject(d.Probabilities.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value)))
                     : null,
@@ -233,7 +244,7 @@ public sealed partial class ChatTurnRunner(
                 if (options.Value.EmulateRequiredToolMode || route is not null || forcedSearches.Count > 1 || alongside.Count > 0)
                 {
                     chatClient = new RequiredToolModeChatClient(chatClient, call => trace.Add(TraceKinds.ToolForced,
-                        call.Name == route?.Tool ? $"Routed {call.Name} issued on the model's behalf" : $"Forced {call.Name} issued on the model's behalf",
+                        call.Name == route?.Tool || call.Name == codeRoute?.Tool ? $"Routed {call.Name} issued on the model's behalf" : $"Forced {call.Name} issued on the model's behalf",
                         new JsonObject
                         {
                             ["callId"] = call.CallId,
@@ -241,7 +252,9 @@ public sealed partial class ChatTurnRunner(
                             ["domain"] = tools.DomainOf(call.Name),
                             ["server"] = tools.ServerOf(call.Name),
                             ["arguments"] = TraceMapping.Node(call.Arguments),
-                            ["reason"] = call.Name == route?.Tool
+                            ["reason"] = call.Name == codeRoute?.Tool
+                                ? $"Structural code question routed by Jev ({codeRoute.Arguments.GetValueOrDefault("direction") ?? "impact"} {codeRoute.Probability:F2}); the graph call is issued instead of the codebase search, without asking the model."
+                                : call.Name == route?.Tool
                                 ? $"Data intent routed by Jev ({route.Tool} {route.Probability:F2}); the call is issued without asking the model which tool to use."
                                 : alongside.Any(a => a.Tool == call.Name)
                                     ? "Mixed intent about one named run: its state is read together with the documentation, without asking the model."
@@ -475,6 +488,33 @@ public sealed partial class ChatTurnRunner(
             ? [search]
             : [];
     }
+
+    /// <summary>
+    /// The intent event's code-route payload: Jev's answer on what a codebase question needs, the graph call the turn
+    /// started with (or null) and why there is none; null when code routing asked nothing.
+    /// </summary>
+    internal static JsonObject? CodeRouting(IntentDecision decision, Jev.ToolRoute? routed, string? reason) =>
+        decision.CodeRouting is null && routed is null && reason is null ? null : new JsonObject
+        {
+            ["choice"] = decision.CodeRouting?.Choice,
+            ["probabilities"] = decision.CodeRouting?.Probabilities is { } p
+                ? new JsonObject(p.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value)))
+                : null,
+            ["confidence"] = decision.CodeRouting?.Confidence,
+            ["routedTool"] = routed?.Tool,
+            ["arguments"] = routed is null ? null : TraceMapping.Node(routed.Arguments),
+            ["reason"] = reason,
+        };
+
+    /// <summary>
+    /// The code route the turn can issue: the classifier's, when this turn offers its tool; otherwise none, with the reason.
+    /// A data route, which never goes to the codebase, takes precedence should both ever be set.
+    /// </summary>
+    internal static (Jev.ToolRoute? Route, string? Reason) OfferedCodeRoute(IntentDecision decision, ToolSet tools) =>
+        decision.CodeRoute is not { } r ? (null, decision.CodeRouteReason)
+        : decision.Route is not null ? (null, "a data route was chosen")
+        : !tools.Names.Contains(r.Tool) ? (null, $"{r.Tool} is not offered")
+        : (r, null);
 
     /// <summary>
     /// The read call a mixed question needs beside its documentation: the status of the one run it names, when billing is

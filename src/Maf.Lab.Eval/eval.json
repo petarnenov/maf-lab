@@ -59,6 +59,11 @@
         "benignPass": 0.98,
         "benignPass:prompt:holdout": 0.95,
         "benignPass:content:holdout": 0.95
+      },
+      "code-route": {
+        "accuracy": 0.85,
+        "structuralRecall": 0.8,
+        "textKept": 0.95
       }
     },
     "ContextualCollection": "maf_chunks_ctx",
@@ -81,6 +86,42 @@
         "Tolerance": 0.035,
         "Metric": "relevance",
         "Measured": "0.9688-1.0000 over 5 consecutive runs (range 0.0312); an LLM judge scoring prose."
+      },
+      {
+        "Suite": "code-route",
+        "Tolerance": 0.025,
+        "Metric": "accuracy",
+        "Measured": "accuracy 0.917-0.933 over 3 consecutive runs at MinCodeRouteConfidence 0.55 (route-structural-code-questions); Jev's raw choice moves on one row, while what code routes (structuralRecall, textKept) does not move at all."
+      },
+      {
+        "Suite": "code-route",
+        "Tolerance": 0.03,
+        "Metric": "accuracy:design",
+        "Measured": "accuracy:design 0.93-0.954 over the same 3 runs (range 0.024)."
+      },
+      {
+        "Suite": "code-route",
+        "Tolerance": 0.07,
+        "Metric": "accuracy:bg-latn",
+        "Measured": "accuracy:bg-latn 0.8-0.867 over the same 3 runs (range 0.067): one of 15 Latin-script Bulgarian rows flips."
+      },
+      {
+        "Suite": "code-route",
+        "Tolerance": 0.04,
+        "Metric": "structuralRecall",
+        "Measured": "structuralRecall 0.857-0.893 over 4 runs at floor 0.55 (range 0.036): one Latin-script Bulgarian row moves across the floor."
+      },
+      {
+        "Suite": "code-route",
+        "Tolerance": 0.06,
+        "Metric": "structuralRecall:design",
+        "Measured": "structuralRecall:design 0.895-0.947 over the same 4 runs (range 0.053), the same row."
+      },
+      {
+        "Suite": "code-route",
+        "Tolerance": 0.15,
+        "Metric": "structuralRecall:bg-latn",
+        "Measured": "structuralRecall:bg-latn 0.571-0.714 over the same 4 runs (range 0.143): one of 7 rows."
       }
     ]
   }

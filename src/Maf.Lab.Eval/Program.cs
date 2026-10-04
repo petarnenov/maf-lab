@@ -14,7 +14,7 @@ using Microsoft.Extensions.Options;
 namespace Maf.Lab.Eval;
 
 /// <summary>
-/// dotnet run --project src/Maf.Lab.Eval -- --suite selection|retrieval|generation|injection|confirmation|intent|guardrail|domain|presentation|answer-check|all
+/// dotnet run --project src/Maf.Lab.Eval -- --suite selection|retrieval|generation|injection|confirmation|intent|guardrail|domain|presentation|answer-check|code-route|all
 ///   [--rerank [--reranker llm,jev]] [--contextual] [--limit N] [--import-feedback [--api-db "Data Source=..."]]
 /// dotnet run --project src/Maf.Lab.Eval -- --suite graph-depth [--structural-only] [--limit N]   (a comparison: reported, never gated)
 /// dotnet run --project src/Maf.Lab.Eval -- --ask "question" [--firm firm-a] [--trace-json path]   (one turn, its trace printed)
@@ -25,7 +25,8 @@ public static class Program
 {
     /// <summary>All the suites `all` runs. A comparison suite is not among them: it runs only when named.</summary>
     public static readonly string[] AllSuites =
-        ["selection", "retrieval", "generation", "injection", "confirmation", "intent", "guardrail", "domain", "presentation", "answer-check"];
+        ["selection", "retrieval", "generation", "injection", "confirmation", "intent", "guardrail", "domain", "presentation", "answer-check",
+            CodeRouteSuite.Name];
 
     /// <summary>
     /// Suites that compare settings side by side (add-graph-depth-eval): no thresholds, no baseline comparison, never
@@ -119,6 +120,7 @@ public static class Program
                 "answer-check" => await new AnswerCheckSuite(host.Services).RunAsync(ctx, ct),
                 "domain" => await new DomainSuite(host).RunAsync(ctx, ct),
                 "presentation" => await new PresentationSuite(host, host.Services.GetRequiredService<IChatClientFactory>()).RunAsync(ctx, ct),
+                CodeRouteSuite.Name => await new CodeRouteSuite(host).RunAsync(ctx, ct),
                 GraphDepthSuite.Name => await RunGraphDepthAsync(host, configuration, ctx, flags, settings, ct),
                 _ => throw new ArgumentException($"Unknown suite '{name}'."),
             };

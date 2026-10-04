@@ -82,7 +82,7 @@ INDEXER_SRC  := $(shell find src/Maf.Lab.Indexing src/Maf.Lab.Retrieval src/Maf.
 INDEXER      := $(DOTNET) $(INDEXER_DLL)
 
 .PHONY: all help up down restart ps logs clean infra index index-portfolio index-code graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
-        coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-answer-check eval-graph-depth eval-a2a dev doctor banner index-if-empty \
+        coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-answer-check eval-code-route eval-graph-depth eval-a2a dev doctor banner index-if-empty \
         specs docs docs-check lint-dotnet lint-web build-web ci ci-e2e setup \
         require-docker require-dotnet require-npm require-python
 
@@ -226,7 +226,7 @@ verify: ## Verify the running stack through the load balancer (37 checks), then 
 	@[ -d copilot-runtime/node_modules ] || (cd copilot-runtime && $(NPM) ci --no-audit --no-fund >/dev/null)
 	MODEL_FREE=$(CI_MODE) node copilot-runtime/conformance.mjs $(BASE_URL)
 
-eval: require-dotnet ## Run evals (SUITE=all|selection|retrieval|generation|injection|confirmation|intent|domain|presentation|guardrail|answer-check|graph-depth) against the stack's MCP servers
+eval: require-dotnet ## Run evals (SUITE=all|selection|retrieval|generation|injection|confirmation|intent|domain|presentation|guardrail|answer-check|code-route|graph-depth) against the stack's MCP servers
 	Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval -- --suite $(SUITE)
 
 EVAL_HOST = Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval --
@@ -270,6 +270,9 @@ eval-presentation: require-dotnet ## Eval: do portfolio answers build on their d
 
 eval-answer-check: require-dotnet ## Eval: Jev's answer check alone — are labelled unsupported answers flagged and supported ones not? (needs JEV_MAF_LAB)
 	$(EVAL) answer-check
+
+eval-code-route: require-dotnet ## Eval: Jev's code-route answer alone — would each code question start with the right graph call or the search? (needs JEV_MAF_LAB)
+	$(EVAL) code-route
 
 eval-graph-depth: require-dotnet ## Comparison: code graph traces at depth 2, 3 and 4, side by side, never gated (STRUCTURAL=1 for no model)
 	$(EVAL) graph-depth $(if $(STRUCTURAL),--structural-only)

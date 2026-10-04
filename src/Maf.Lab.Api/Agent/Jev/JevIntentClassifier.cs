@@ -132,9 +132,15 @@ public sealed class JevIntentClassifier(JevClient jev, IOptions<JevOptions> opti
                 questions[id] = q;
             }
         }
+        if (o.RouteCodeTools)
+        {
+            // Same request, same state: what a codebase question needs is one more Choice beside the others.
+            var (id, q) = CodeToolRouter.Question();
+            questions[id] = q;
+        }
         var outcome = await jev.AskAsync(new JevState(question), questions, o.TimeoutSeconds, ct);
         return outcome.Response is { } response
-            ? WithRoute(Decide(response, o, outcome.DurationMs), question, response, o, focusAccountId)
+            ? WithCodeRoute(WithRoute(Decide(response, o, outcome.DurationMs), question, response, o, focusAccountId), question, response, o)
             : Failed(outcome.Failure ?? "no answer", o.Model, outcome.DurationMs);
     }
 
@@ -215,6 +221,21 @@ public sealed class JevIntentClassifier(JevClient jev, IOptions<JevOptions> opti
         // Routed only among the tools of the domains Jev put the question in.
         var (route, reason) = DataToolRouter.Route(question, routing, o, decision.Domains, focusAccountId);
         return decision with { Routing = routing, Route = route, RouteReason = reason };
+    }
+
+    /// <summary>
+    /// A second reading of the same answer, like data routing: a structural codebase question gets the graph call it
+    /// starts with, and anything the router cannot pin down keeps today's search, with the reason kept.
+    /// </summary>
+    private static IntentDecision WithCodeRoute(IntentDecision decision, string question, JevResponse response, JevOptions o)
+    {
+        if (!o.RouteCodeTools || response.Answers is null)
+        {
+            return decision;
+        }
+        var answer = CodeToolRouter.Read(response.Answers);
+        var (route, reason) = CodeToolRouter.Route(question, answer, decision.Intent, decision.Domains, o);
+        return decision with { CodeRouting = answer, CodeRoute = route, CodeRouteReason = reason };
     }
 
     private IntentDecision Unused(JevAnswer answer, double? inDomain, string model, double ms, string reason)
