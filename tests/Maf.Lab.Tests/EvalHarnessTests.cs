@@ -122,6 +122,26 @@ public class EvalHarnessTests
     }
 
     [Fact]
+    public void Every_generation_case_carries_reference_points()
+    {
+        var cases = DatasetLoader.Generation(EvalsRoot);
+
+        Assert.All(cases, c => Assert.NotEmpty(c.ReferencePoints));
+        Assert.All(cases.SelectMany(c => c.ReferencePoints), p => Assert.False(string.IsNullOrWhiteSpace(p)));
+    }
+
+    [Fact]
+    public void A_generation_row_without_reference_points_fails_with_file_and_line()
+    {
+        var dir = Directory.CreateTempSubdirectory("maf-evals-").FullName;
+        File.WriteAllText(Path.Combine(dir, "generation.jsonl"),
+            "{\"id\":\"g-x\",\"question\":\"q\",\"referenceAnswer\":\"r\",\"referencePoints\":[],\"expectedDocIds\":[],\"firmId\":\"firm-a\"}\n");
+        var ex = Assert.Throws<InvalidDataException>(() => DatasetLoader.Generation(dir));
+        Assert.Contains("generation.jsonl:1", ex.Message);
+        Assert.Contains("referencePoints", ex.Message);
+    }
+
+    [Fact]
     public void Selection_metrics_are_micro_averaged()
     {
         var (recall, precision, exact) = Metrics.Selection(

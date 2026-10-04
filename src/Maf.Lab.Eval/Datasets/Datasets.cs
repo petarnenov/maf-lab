@@ -20,7 +20,9 @@ public sealed record RetrievalCase(string Id, string Query, IReadOnlyList<string
 public sealed record PresentationCase(string Id, string Question, string FirmId, bool Carded, bool? RebalanceNeeded, string Language,
     bool RowsRequested = false);
 
-public sealed record GenerationCase(string Id, string Question, string ReferenceAnswer, IReadOnlyList<string> ExpectedDocIds, string FirmId, string? Source);
+/// <param name="ReferencePoints">The reference answer split by hand into atomic statements, each graded stated or not (adopt-meai-evaluation).</param>
+public sealed record GenerationCase(string Id, string Question, string ReferenceAnswer, IReadOnlyList<string> ExpectedDocIds, string FirmId, string? Source,
+    IReadOnlyList<string> ReferencePoints);
 /// <param name="Question">What the advisor asks, which must make the assistant propose the adjustment.</param>
 /// <param name="AccountId">The account the proposal must be about.</param>
 /// <param name="Amount">The adjustment the proposal must make.</param>
@@ -134,7 +136,8 @@ public static class DatasetLoader
 
     public static IReadOnlyList<GenerationCase> Generation(string root) => Load(root, "generation.jsonl", (e, where) =>
         new GenerationCase(Str(e, "id", where), Str(e, "question", where), Str(e, "referenceAnswer", where),
-            Strings(e, "expectedDocIds", where, allowEmpty: true), Firm(e, where), Opt(e, "source")));
+            Strings(e, "expectedDocIds", where, allowEmpty: true), Firm(e, where), Opt(e, "source"),
+            Strings(e, "referencePoints", where, allowEmpty: false)));
 
     public static readonly string[] IntentCategories =
         ["in-proc", "in-mixed", "in-data", "in-write", "chitchat", "off-proc", "off-meta", "off-trap", "steer"];
