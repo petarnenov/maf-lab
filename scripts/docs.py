@@ -546,7 +546,37 @@ def check_change_proposals(repo: Repo) -> list[Finding]:
             findings.append(Finding(rel, None, "documentation-impact", "the `## Documentation impact` section is empty",
                                     "name each document the change affects, or say why none is"))
         findings += stopping_findings(rel, change.name, text)
+        findings += progress_findings(rel, change.name, text)
     return findings
+
+
+def proposal_section(text: str, title: str) -> str | None:
+    """A proposal's `## <title>` section, HTML comments dropped; None when the proposal has no such section."""
+    m = re.search(rf"^## {re.escape(title)}[ \t]*\n(.*?)(?=^## |\Z)", text, re.M | re.S)
+    return None if not m else re.sub(r"<!--.*?-->", "", m[1], flags=re.S)
+
+
+# Lines that answer for the whole section rather than state one fact: `None — <reason>`, `Not yet — <reason>`.
+VERDICTS = ("Not yet", "None")
+
+
+def labelled(body: str, labels: tuple[str, ...]) -> dict[str, str]:
+    """
+    The labelled lines of a section, as `{label: value}`: `Key: Esc`, `- Key: Esc` or `- **Key:** Esc`, a value going on
+    over indented lines below it. A verdict (`None`, `Not yet`) counts only as the section's first labelled line.
+    """
+    names = "|".join(re.escape(label) for label in sorted(labels, key=len, reverse=True))
+    pattern = re.compile(rf"^\s*(?:[-*]\s+)?(?:\*\*)?({names})(?:\*\*)?(?:\s*(?::|—|-)\s*|\s*$)(?:\*\*)?\s*(.*)$")
+    found: dict[str, str] = {}
+    current = None
+    for line in body.splitlines():
+        label = pattern.match(line)
+        if label and (label[1] not in VERDICTS or not found):
+            current = label[1]
+            found[current] = label[2].strip()
+        elif current and line.startswith((" ", "\t")) and line.strip():
+            found[current] = f"{found[current]} {line.strip()}".strip()
+    return found
 
 
 # The four facts a proposal states about how what it adds is stopped (stop-anything), in the order they are asked for.
@@ -560,26 +590,12 @@ def stopping_findings(rel: str, change: str, text: str) -> list[Finding]:
     A proposal's `## Stopping` section: either `None` with a reason, or the four facts, each with a value. What the
     section says is review's to judge; that it says it is checked here.
     """
-    m = re.search(r"^## Stopping[ \t]*\n(.*?)(?=^## |\Z)", text, re.M | re.S)
-    if not m:
+    body = proposal_section(text, "Stopping")
+    if body is None:
         return [Finding(rel, None, "stopping", f"change `{change}` has no `## Stopping` section", STOPPING_FIX)]
-    body = re.sub(r"<!--.*?-->", "", m[1], flags=re.S)
     if not body.strip():
         return [Finding(rel, None, "stopping", "the `## Stopping` section is empty", STOPPING_FIX)]
-    # A line, optionally a list item, optionally bold: `- **Key:** Esc`, `Key: Esc`.
-    def facts() -> dict[str, str]:
-        found: dict[str, str] = {}
-        current = None
-        for line in body.splitlines():
-            label = re.match(r"^\s*(?:[-*]\s+)?(?:\*\*)?(None|Key|Stop|Recorded in|Shown)(?:\*\*)?(?:\s*(?::|—|-)\s*|\s*$)"
-                             r"(?:\*\*)?\s*(.*)$", line)
-            if label and (label[1] != "None" or not found):
-                current = label[1]
-                found[current] = label[2].strip()
-            elif current and line.startswith((" ", "\t")) and line.strip():
-                found[current] = f"{found[current]} {line.strip()}".strip()
-        return found
-    found = facts()
+    found = labelled(body, ("None", *STOPPING_FACTS))
     if "None" in found:
         if not found["None"]:
             return [Finding(rel, None, "stopping", "the `## Stopping` section says `None` without a reason",
@@ -594,6 +610,47 @@ def stopping_findings(rel: str, change: str, text: str) -> list[Finding]:
             problems.append(Finding(rel, None, "stopping", f"the `## Stopping` section of `{change}` has an empty `{fact}:`",
                                     STOPPING_FIX))
     return problems
+
+
+# Where what a proposal adds shows its progress (progress-feedback): a terminal's bar, a page's themed progress, or both.
+PROGRESS_FACTS = ("Terminal", "Page")
+PROGRESS_FIX = ("write `None — <reason>`, `Terminal:` and/or `Page:` with how it shows, or "
+                "`Not yet — <reason>; follow-up: <change>` (progress-feedback)")
+
+
+def progress_findings(rel: str, change: str, text: str) -> list[Finding]:
+    """
+    A proposal's `## Progress` section: `None` with a reason; `Not yet` with a reason and the follow-up change that will
+    meet the rule; or how it shows — at least one of `Terminal:` and `Page:`, every one given with a value.
+    """
+    body = proposal_section(text, "Progress")
+    if body is None:
+        return [Finding(rel, None, "progress", f"change `{change}` has no `## Progress` section", PROGRESS_FIX)]
+    if not body.strip():
+        return [Finding(rel, None, "progress", "the `## Progress` section is empty", PROGRESS_FIX)]
+    found = labelled(body, (*VERDICTS, *PROGRESS_FACTS))
+    if "None" in found:
+        return [] if found["None"] else [Finding(rel, None, "progress",
+                                                 "the `## Progress` section says `None` without a reason",
+                                                 "say why: `None — <reason>`")]
+    if "Not yet" in found:
+        reason = re.split(r"[;,]?\s*follow-up\s*:", found["Not yet"], flags=re.I)[0].strip()
+        follow_up = re.search(r"follow-up\s*:\s*\S", found["Not yet"], re.I)
+        problems = []
+        if not reason:
+            problems.append(Finding(rel, None, "progress", "the `## Progress` section says `Not yet` without a reason",
+                                    "say why: `Not yet — <reason>; follow-up: <change>`"))
+        if not follow_up:
+            problems.append(Finding(rel, None, "progress",
+                                    "the `## Progress` section says `Not yet` without naming its follow-up",
+                                    "name the change that will meet the rule: `…; follow-up: <change>`"))
+        return problems
+    given = [fact for fact in PROGRESS_FACTS if fact in found]
+    if not given:
+        return [Finding(rel, None, "progress", f"the `## Progress` section of `{change}` says neither `Terminal:` nor "
+                        "`Page:`", PROGRESS_FIX)]
+    return [Finding(rel, None, "progress", f"the `## Progress` section of `{change}` has an empty `{fact}:`", PROGRESS_FIX)
+            for fact in given if not found[fact]]
 
 
 # ── commands ───────────────────────────────────────────────────────────────────────────────────────────────────────

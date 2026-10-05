@@ -97,7 +97,10 @@ maf-lab/
 - **Progress feedback (top priority).** Every CLI tool shows a progress bar
   for the work it does, and every process started from the UI that can take
   longer than 3 seconds shows progress that matches the page's theme and
-  design. No work runs silently. Details: the `progress-feedback` spec.
+  design. No work runs silently. Every proposal says how what it adds shows
+  progress in a `## Progress` section (`Terminal:`, `Page:`, `None — <reason>`,
+  or `Not yet — <reason>; follow-up: <change>`); `make docs-check` fails one
+  without it. Details: the `progress-feedback` spec.
 - **Everything can be stopped (top priority).** Esc on the page that started
   the work stops it; Ctrl+C or SIGTERM stops a CLI tool at a safe point (exit
   130), cancelling the server work it started. A stop uses only the protocols'

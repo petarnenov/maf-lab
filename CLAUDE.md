@@ -7,7 +7,9 @@ openspec/changes/.
 Non-negotiables while editing:
 - TOP PRIORITY: every CLI tool shows a progress bar for the work it does, and
   every UI-started process that can take longer than 3 seconds shows progress
-  in the page's theme and design (spec: `progress-feedback`).
+  in the page's theme and design (spec: `progress-feedback`). Every proposal
+  says how its work shows progress in a `## Progress` section; `make
+  docs-check` fails one without it.
 - TOP PRIORITY: everything can be stopped — Esc on the page that started it,
   Ctrl+C (and SIGTERM) in a terminal (exit 130, at a safe point, cancelling any
   server work it started). A stop travels only by the protocols' own means

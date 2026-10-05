@@ -102,7 +102,10 @@ context: |
   - **Progress feedback (top priority).** Every CLI tool shows a progress bar
     for the work it does, and every process started from the UI that can take
     longer than 3 seconds shows progress that matches the page's theme and
-    design. No work runs silently. Details: the `progress-feedback` spec.
+    design. No work runs silently. Every proposal says how what it adds shows
+    progress in a `## Progress` section (`Terminal:`, `Page:`, `None — <reason>`,
+    or `Not yet — <reason>; follow-up: <change>`); `make docs-check` fails one
+    without it. Details: the `progress-feedback` spec.
   - **Everything can be stopped (top priority).** Esc on the page that started
     the work stops it; Ctrl+C or SIGTERM stops a CLI tool at a safe point (exit
     130), cancelling the server work it started. A stop uses only the protocols'
@@ -149,10 +152,13 @@ context: |
 
 rules:
   proposal:
-    - If the change adds or alters a CLI tool, a make target, or a UI action
-      that can start a process longer than 3 seconds, state how it shows
-      progress (progress bar in the terminal; themed progress on the page),
-      per the progress-feedback spec.
+    - 'Include a `## Progress` section, per the progress-feedback spec. If the
+      change adds or alters a CLI tool, a make target, or a UI action that can
+      start a process longer than 3 seconds, say how it shows progress:
+      `Terminal:` (the progress bar in the terminal) and/or `Page:` (the themed
+      progress on the page). If it cannot meet the rule yet, write
+      `Not yet — <reason>; follow-up: <change>` and say why in the design.
+      Otherwise write `None — <reason>`. `make docs-check` fails without it.'
     - If the change adds or modifies a Jev call, state why Jev (not code or
       an LLM) is the right tool, per docs/rules/jev-usage.md §2 and §5.
     - Include a `## Documentation impact` section. Name each document the

@@ -159,6 +159,10 @@ PROPOSAL = """\
 
 Because.
 
+## Progress
+
+None — a fixture: it runs nothing long.
+
 ## Stopping
 
 None — a fixture: it starts nothing.
@@ -531,7 +535,8 @@ class PageTests(DocsTestCase):
         self.assertCheckFails("page `/coverage` is not named")
 
 
-STOPS_NOTHING = "## Stopping\n\nNone — it starts nothing.\n\n"
+SHOWS_NOTHING = "## Progress\n\nNone — it runs nothing long.\n\n"
+STOPS_NOTHING = SHOWS_NOTHING + "## Stopping\n\nNone — it starts nothing.\n\n"
 DOCUMENTED = "## Documentation impact\n\nNone: tests only.\n"
 
 
@@ -564,7 +569,8 @@ class StoppingTests(DocsTestCase):
         self.generated()
 
     def propose(self, body: str) -> None:
-        self.fx.write("openspec/changes/add-thing/proposal.md", "# Proposal\n\n" + body)
+        # Every proposal here also says how it shows progress: that rule is ProgressTests'.
+        self.fx.write("openspec/changes/add-thing/proposal.md", "# Proposal\n\n" + SHOWS_NOTHING + body)
 
     FOUR = ("## Stopping\n\n- Key: Esc on the index screen\n- Stop: POST /api/admin/jobs/{id}/cancel\n"
             "- Recorded in: the AdminJobs row, canceled atomically\n- Shown: \"Stopping…\", then canceled\n\n")
@@ -609,8 +615,76 @@ class StoppingTests(DocsTestCase):
 
     def test_an_archived_change_is_not_checked(self):
         self.fx.write("openspec/changes/archive/2026-01-01-old/proposal.md", "# Proposal\n\n" + DOCUMENTED)
-        self.propose(STOPS_NOTHING + DOCUMENTED)
+        self.propose("## Stopping\n\nNone — it starts nothing.\n\n" + DOCUMENTED)
         self.assertCheckPasses()
+
+
+class ProgressTests(DocsTestCase):
+    """How a proposal says what it adds shows progress (progress-feedback): None, how it shows, or not yet."""
+
+    STOPS = "## Stopping\n\nNone — it starts nothing.\n\n"
+
+    def setUp(self):
+        super().setUp()
+        self.generated()
+
+    def propose(self, progress: str) -> None:
+        # Every proposal here also says how it stops: that rule is StoppingTests'.
+        self.fx.write("openspec/changes/add-thing/proposal.md",
+                      "# Proposal\n\n## Progress\n\n" + progress + "\n\n" + self.STOPS + DOCUMENTED)
+
+    def test_a_terminal_bar_alone_passes(self):
+        self.propose("- Terminal: one bar over the documents, done/total")
+        self.assertCheckPasses()
+
+    def test_a_page_alone_passes(self):
+        self.propose("- **Page:** themed progress naming the current step")
+        self.assertCheckPasses()
+
+    def test_both_pass(self):
+        self.propose("- Terminal: a bar per suite\n- Page: the attempts as they finish")
+        self.assertCheckPasses()
+
+    def test_none_with_a_reason_passes(self):
+        self.propose("None — it only renames a document.")
+        self.assertCheckPasses()
+
+    def test_not_yet_with_a_follow_up_passes(self):
+        self.propose("Not yet — the runner reports no steps; follow-up: add-runner-steps")
+        self.assertCheckPasses()
+
+    def test_a_missing_section_fails(self):
+        self.fx.write("openspec/changes/add-thing/proposal.md", "# Proposal\n\n" + self.STOPS + DOCUMENTED)
+        self.assertCheckFails("change `add-thing` has no `## Progress` section", "progress-feedback")
+
+    def test_an_empty_section_fails(self):
+        self.propose("<!-- later -->")
+        self.assertCheckFails("the `## Progress` section is empty")
+
+    def test_an_empty_page_fails_by_name(self):
+        self.propose("- Terminal: a bar\n- Page:")
+        out = self.assertCheckFails("has an empty `Page:`")
+        self.assertNotIn("has an empty `Terminal:`", out)
+
+    def test_none_without_a_reason_fails(self):
+        self.propose("None")
+        self.assertCheckFails("says `None` without a reason")
+
+    def test_not_yet_without_a_follow_up_fails(self):
+        self.propose("Not yet — later")
+        self.assertCheckFails("says `Not yet` without naming its follow-up")
+
+    def test_not_yet_without_a_reason_fails(self):
+        self.propose("Not yet — follow-up: add-runner-steps")
+        self.assertCheckFails("says `Not yet` without a reason")
+
+    def test_no_fact_at_all_fails(self):
+        self.propose("It will show something.")
+        self.assertCheckFails("says neither `Terminal:` nor `Page:`")
+
+    def test_a_proposal_missing_both_rules_learns_both(self):
+        self.fx.write("openspec/changes/add-thing/proposal.md", "# Proposal\n\n" + DOCUMENTED)
+        self.assertCheckFails("has no `## Progress` section", "has no `## Stopping` section")
 
 
 if __name__ == "__main__":
