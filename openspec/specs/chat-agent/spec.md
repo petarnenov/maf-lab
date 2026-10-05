@@ -315,7 +315,8 @@ protocol's means:
   transport defines it; no request or tool of this system's own SHALL be added for it;
 - a consultation of an A2A agent in flight SHALL be cancelled as "A stopped consultation is cancelled over there"
   (a2a-client) says;
-- calls the run makes to its models and other HTTP services SHALL be abandoned with the run.
+- calls the run makes to its models, to Jev and to other HTTP services SHALL be cancelled with the run: the request in
+  flight ends, and no output it would still have sent is read.
 
 The stopped run SHALL record no turn and SHALL leave the conversation as it was before the run, and the stop SHALL be
 recorded in the tool audit as the outcome of every tool call it interrupted, with no message content.
@@ -331,3 +332,11 @@ recorded in the tool audit as the outcome of every tool call it interrupted, wit
 #### Scenario: The interrupted call is audited
 - **WHEN** the run is aborted while a tool call is running
 - **THEN** the tool audit has an entry for that call with a cancelled outcome and its duration, and no query text
+
+#### Scenario: Stopped while the model is answering
+- **WHEN** the run is aborted while the chat model is still streaming its answer
+- **THEN** the model call's request is cancelled, and no part of the answer it would still have sent is read
+
+#### Scenario: Stopped while a Jev call is out
+- **WHEN** the run is aborted while its Jev call is in flight
+- **THEN** that call's request is cancelled, and the run makes no further Jev or model call
