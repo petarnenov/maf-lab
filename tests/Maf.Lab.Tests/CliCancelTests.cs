@@ -84,6 +84,14 @@ public sealed class CliCancelTests
             RedirectStandardOutput = true,
             WorkingDirectory = Path.GetTempPath(),
         };
+        // Under `dotnet test --coverage` the tool would inherit the coverage profiler and join the test host's session:
+        // killed seconds later, its near-empty hits replace the host's for every module it loads (Api, Domain, …).
+        foreach (var key in start.Environment.Keys.Where(k => k.StartsWith("CORECLR_", StringComparison.Ordinal)
+                     || k.StartsWith("CODE_COVERAGE_", StringComparison.Ordinal)
+                     || k.StartsWith("MicrosoftInstrumentationEngine_", StringComparison.Ordinal)).ToList())
+        {
+            start.Environment.Remove(key);
+        }
         foreach (var (k, v) in env)
         {
             start.Environment[k] = v;
