@@ -26,9 +26,8 @@ and symbol name).
 - **THEN** each function is its own chunk carrying the file path and symbol name
 
 ### Requirement: Uniform chunk metadata
-Every chunk SHALL carry doc_id (stable across runs), chunk_id, tenant_id (a
-firm id or "shared"), source_type, source_path, section_path, updated_at,
-model_version, and its text.
+Every chunk SHALL carry doc_id (stable across runs), chunk_id, tenant_id (a tenant id or "shared"), source_type,
+source_path, section_path, updated_at, model_version, and its text.
 
 #### Scenario: Metadata complete
 - **WHEN** any chunk is read back from the index

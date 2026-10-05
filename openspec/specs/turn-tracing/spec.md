@@ -110,15 +110,15 @@ older than the configured retention (default 7 days) SHALL be deleted automatica
 - **THEN** that trace is deleted and requesting it returns not found
 
 ### Requirement: Access scope
-A trace MUST only be readable by the user who owns the turn and, for turns in their firm's review queue, by a
-FIRM_ADMIN of the same firm. Users of other firms MUST receive not found. Trace data MUST NOT be written to logs.
+A trace MUST only be readable by the user who owns the turn and, for turns in their tenant's review queue, by a
+TENANT_ADMIN of the same tenant. Users of other tenants MUST receive not found. Trace data MUST NOT be written to logs.
 
 #### Scenario: Other user
-- **WHEN** a different user of the same firm (not FIRM_ADMIN) requests another user's trace
+- **WHEN** a different user of the same tenant (not TENANT_ADMIN) requests another user's trace
 - **THEN** the response is not found
 
 #### Scenario: Other firm's admin
-- **WHEN** a FIRM_ADMIN of firm B requests a trace of a firm A turn
+- **WHEN** a TENANT_ADMIN of tenant B requests a trace of a tenant A turn
 - **THEN** the response is not found
 
 #### Scenario: Logs stay clean
@@ -168,7 +168,7 @@ turn that has none SHALL say that they were not recorded rather than report an e
 - **THEN** the trace response carries that turn's recorded frames alongside its trace events
 
 #### Scenario: Another firm's admin
-- **WHEN** a FIRM_ADMIN of firm B requests a firm A turn's trace
+- **WHEN** a TENANT_ADMIN of tenant B requests a tenant A turn's trace
 - **THEN** the response is not found, and no frame of that run is disclosed
 
 #### Scenario: Retention

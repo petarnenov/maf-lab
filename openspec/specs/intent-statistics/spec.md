@@ -7,7 +7,7 @@ probabilities, latency, model versions — so its behaviour can be read as a who
 ## Requirements
 
 ### Requirement: Intent statistics endpoint
-`GET /api/admin/intent-stats` SHALL return aggregates of the `intent` trace events of the caller's firm's turns
+`GET /api/admin/intent-stats` SHALL return aggregates of the `intent` trace events of the caller's tenant's turns
 recorded within a window the caller chooses from a fixed list (`1h`, `24h`, `7d`; default `24h`). Any other window
 SHALL be refused as a validation problem. Only events whose recorded model is a Jev model SHALL be counted; events
 written by earlier classifiers SHALL be reported only as a count of excluded events.
@@ -29,7 +29,7 @@ This same aggregate SHALL also be available embedded, unchanged, as the intent s
 (`GET /api/admin/jev-stats`), computed by the same aggregation over the same trace events.
 
 #### Scenario: Aggregates over the window
-- **WHEN** a FIRM_ADMIN requests the statistics after turns that were used, gated below the confidence floor, gated
+- **WHEN** a TENANT_ADMIN requests the statistics after turns that were used, gated below the confidence floor, gated
   outside the domain and timed out
 - **THEN** each turn is counted once under its outcome and reason, and the forced count equals the used procedural and
   mixed turns
@@ -47,19 +47,19 @@ This same aggregate SHALL also be available embedded, unchanged, as the intent s
 - **THEN** the response has zero totals and empty distributions rather than an error
 
 #### Scenario: Embedded in the Jev overview
-- **WHEN** a FIRM_ADMIN requests `GET /api/admin/jev-stats` for a window
+- **WHEN** a TENANT_ADMIN requests `GET /api/admin/jev-stats` for a window
 - **THEN** its intent section is the identical aggregate the intent-stats endpoint returns for that firm and window
 
 ### Requirement: Intent statistics are firm-scoped and admin-only
 The statistics MUST be computed only from turns of the firm in the caller's token; the endpoint MUST NOT accept a firm
-or tenant parameter. Callers without the FIRM_ADMIN role MUST be refused.
+or tenant parameter. Callers without the TENANT_ADMIN role MUST be refused.
 
 #### Scenario: Other firm's turns are invisible
-- **WHEN** a FIRM_ADMIN of firm A requests the statistics and firm B has recorded turns in the window
-- **THEN** none of firm B's turns is counted
+- **WHEN** a TENANT_ADMIN of tenant A requests the statistics and tenant B has recorded turns in the window
+- **THEN** none of tenant B's turns is counted
 
 #### Scenario: Not an admin
-- **WHEN** an ADVISOR requests the statistics
+- **WHEN** a USER requests the statistics
 - **THEN** the response is forbidden
 
 ### Requirement: No message content in intent statistics

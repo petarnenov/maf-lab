@@ -114,13 +114,13 @@ and the runs table SHALL scroll within itself, so neither makes the page scroll 
 ### Requirement: Index administration screen
 The `/admin/index` screen SHALL let an admin trigger indexing, view drift
 percentage, view the distribution of model_version across chunks, and start
-the embedding migration. It SHALL be available only to FIRM_ADMIN.
+the embedding migration. It SHALL be available only to TENANT_ADMIN.
 
 The drift card SHALL also show the graph's drift in the page's theme: how many of the source documents are out of
 sync in the graph, or that the graph is unavailable.
 
 #### Scenario: Non-admin
-- **WHEN** an ADVISOR opens `/admin/index`
+- **WHEN** a USER opens `/admin/index`
 - **THEN** access is denied
 
 #### Scenario: Graph in sync
@@ -255,10 +255,10 @@ has none rather than showing an empty list.
 - **THEN** the AG-UI view says so rather than showing an empty list
 
 ### Requirement: Trace from the review queue
-The `/admin/feedback` review form SHALL offer the turn's trace to the reviewing FIRM_ADMIN.
+The `/admin/feedback` review form SHALL offer the turn's trace to the reviewing TENANT_ADMIN.
 
 #### Scenario: Reviewer opens trace
-- **WHEN** a FIRM_ADMIN opens a flagged turn in the review queue
+- **WHEN** a TENANT_ADMIN opens a flagged turn in the review queue
 - **THEN** a link or panel shows that turn's trace
 
 ### Requirement: Time-travel controls
@@ -434,7 +434,7 @@ SHALL still be shown, with an error telling the user the state is unknown rather
 - **THEN** the screen says a persona must be picked, as the other screens do
 
 ### Requirement: Compliance screen
-The `/admin/compliance` screen SHALL be available to a FIRM_ADMIN and SHALL show three things for their own firm:
+The `/admin/compliance` screen SHALL be available to a TENANT_ADMIN and SHALL show three things for their own tenant:
 the state of the audit chain, the record of actions, and a way to produce an export.
 
 The chain state SHALL be stated in words, not only in colour: whether it is intact, how many records were checked,
@@ -452,7 +452,7 @@ The screen SHALL NOT claim more than the system provides: it SHALL state that th
 than preventing it.
 
 #### Scenario: Intact chain
-- **WHEN** a FIRM_ADMIN opens the screen and the chain is intact
+- **WHEN** a TENANT_ADMIN opens the screen and the chain is intact
 - **THEN** it says so in words, with how many records were checked and how many predate the chain
 
 #### Scenario: Broken chain
@@ -472,7 +472,7 @@ than preventing it.
 - **THEN** the screen says so rather than showing an empty table
 
 #### Scenario: Not an admin
-- **WHEN** a user who is not a FIRM_ADMIN opens the screen
+- **WHEN** a user who is not a TENANT_ADMIN opens the screen
 - **THEN** it shows the same access-denied treatment as the other admin screens
 
 ### Requirement: An error shows the face it deserves
@@ -517,9 +517,9 @@ shown SHALL follow "An error shows the face it deserves": no internal text reach
 - **THEN** the message is sent in the same conversation, not a new one
 
 ### Requirement: A2A screen
-A FIRM_ADMIN SHALL have a screen showing what arrived from partner systems, what this system asked of another
+A TENANT_ADMIN SHALL have a screen showing what arrived from partner systems, what this system asked of another
 agent, and every push delivery — each with its state and timing — and SHALL be able to cancel a task of their
-firm that is still running. A person who is not a FIRM_ADMIN SHALL NOT reach it.
+tenant that is still running. A person who is not a TENANT_ADMIN SHALL NOT reach it.
 
 The screen SHALL also have a read-only section for the test-generation agent, loaded from the api on its own and
 shown whether or not any partner has talked to the system: whether the agent is reachable (or not configured), its
@@ -546,7 +546,7 @@ While the screen's data loads or is refreshed it SHALL show the app's themed pro
 in flight. A section that fails to load SHALL say what could not be loaded without hiding the other.
 
 #### Scenario: What is there
-- **WHEN** a FIRM_ADMIN opens the A2A screen
+- **WHEN** a TENANT_ADMIN opens the A2A screen
 - **THEN** inbound tasks, outbound consultations and push deliveries are listed, each with its state
 
 #### Scenario: Cancelling from the screen
@@ -562,7 +562,7 @@ in flight. A section that fails to load SHALL say what could not be loaded witho
 - **THEN** the screen says so rather than showing empty tables, and the test-generation agent section is still shown
 
 #### Scenario: The test agent section
-- **WHEN** a FIRM_ADMIN opens the screen and the test agent is reachable
+- **WHEN** a TENANT_ADMIN opens the screen and the test agent is reachable
 - **THEN** the section shows it reachable, its card, its run defaults, the run counts with a link to Coverage, and
   the recent runs with file, state, attempt n/N, coverage, reason, duration, cost and when
 
@@ -662,7 +662,7 @@ The `/admin/jev` screen SHALL show, for a period the user chooses, the statistic
 as charts. It SHALL say that Jev calls made on the A2A partner path are not counted there.
 
 The screen SHALL be reachable from the main navigation, and `/admin/intents` SHALL continue to reach it. Like the other
-admin screens, it SHALL be shown only to FIRM_ADMIN.
+admin screens, it SHALL be shown only to TENANT_ADMIN.
 
 It SHALL show a cross-cutting overview and a section per call site:
 
@@ -714,7 +714,7 @@ When the statistics cannot be loaded, the screen SHALL say so and stay usable. N
 screen.
 
 #### Scenario: Charts after classified turns
-- **WHEN** a FIRM_ADMIN opens `/admin/jev` after turns were classified
+- **WHEN** a TENANT_ADMIN opens `/admin/jev` after turns were classified
 - **THEN** the headline numbers, the pipeline diagram and every chart are shown for the chosen period, with the floors
   drawn at 0.5, 0.2 and the timeout
 
@@ -731,17 +731,17 @@ screen.
 - **THEN** the screen draws accuracy per language and per split over the runs, and lists the latest run's failures
 
 #### Scenario: Not an admin
-- **WHEN** an ADVISOR opens `/admin/jev`
+- **WHEN** a USER opens `/admin/jev`
 - **THEN** the screen shows access denied, as the other admin screens do
 
 #### Scenario: Every Jev call site has a section
-- **WHEN** a FIRM_ADMIN opens `/admin/jev` after turns that screened prompts and tool results, gated and reranked
+- **WHEN** a TENANT_ADMIN opens `/admin/jev` after turns that screened prompts and tool results, gated and reranked
   searches, and routed data turns
 - **THEN** the overview and the guardrail, relevance-and-rerank and routing sections are shown alongside the intent
   section, each with its own charts for the chosen period
 
 #### Scenario: The scope is stated
-- **WHEN** a FIRM_ADMIN opens `/admin/jev`
+- **WHEN** a TENANT_ADMIN opens `/admin/jev`
 - **THEN** the screen says that it counts Jev calls made by chat turns, and that the A2A partner path is not counted
 
 ### Requirement: The retrieval view shows Jev's relevance judgment
@@ -857,7 +857,7 @@ in the legend, and its values SHALL be offered on hover. An outage therefore sta
 When no call was skipped in the period, the skipped count SHALL read 0 and the timeline SHALL draw no skipped series.
 
 #### Scenario: Outage with an open circuit
-- **WHEN** a FIRM_ADMIN opens `/admin/jev` for a period in which Jev timed out and the circuit then skipped calls
+- **WHEN** a TENANT_ADMIN opens `/admin/jev` for a period in which Jev timed out and the circuit then skipped calls
 - **THEN** the overview shows the unavailable requests and the skipped calls as separate numbers per site, and the
   timeline shows both series in the buckets where they occurred
 
@@ -923,8 +923,8 @@ The chat input SHALL let the user recall the prompts they sent earlier in the co
 - **THEN** the input shows "status of run 4417"
 
 #### Scenario: Editing ends the recall
-- **WHEN** the user recalls "second", changes it to "second, for firm B", and presses ArrowUp
-- **THEN** the input shows the newest prompt, and ArrowDown past it restores "second, for firm B"
+- **WHEN** the user recalls "second", changes it to "second, for tenant B", and presses ArrowUp
+- **THEN** the input shows the newest prompt, and ArrowDown past it restores "second, for tenant B"
 
 #### Scenario: Sending ends the recall
 - **WHEN** the user recalls a prompt, sends it, and presses ArrowUp in the empty input

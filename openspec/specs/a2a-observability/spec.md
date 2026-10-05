@@ -9,14 +9,14 @@ whom, what was delivered — and what they can stop.
 ### Requirement: What arrived from other agents is visible
 An authorised person SHALL be able to see the tasks partner systems have started with this system: which partner,
 which operation, the task, its state, when it started and when it last changed. Only tasks concerning the
-viewer's own firm SHALL be listed, and message content MUST NOT be shown.
+viewer's own tenant SHALL be listed, and message content MUST NOT be shown.
 
 #### Scenario: A partner's tasks
 - **WHEN** a partner has run tasks against this system
-- **THEN** a FIRM_ADMIN of the firm they concerned sees each one with its partner, operation, task id, state and times
+- **THEN** a TENANT_ADMIN of the tenant they concerned sees each one with its partner, operation, task id, state and times
 
 #### Scenario: Another firm's tasks
-- **WHEN** tasks concerning another firm exist
+- **WHEN** tasks concerning another tenant exist
 - **THEN** they are not listed, whatever parameters are given
 
 #### Scenario: No content
@@ -49,12 +49,12 @@ it carried, how many attempts it took, whether it arrived and, when it did not, 
 - **THEN** the attempt is listed as not delivered, with a short reason
 
 ### Requirement: A running task can be stopped from here
-An authorised person SHALL be able to cancel a task of their own firm that is still running, and the task SHALL
+An authorised person SHALL be able to cancel a task of their own tenant that is still running, and the task SHALL
 report itself cancelled afterwards. A task that has already finished SHALL NOT be cancellable, and a task of
-another firm SHALL NOT be cancellable at all.
+another tenant SHALL NOT be cancellable at all.
 
 #### Scenario: Cancelling
-- **WHEN** a FIRM_ADMIN cancels a running task of their firm
+- **WHEN** a TENANT_ADMIN cancels a running task of their tenant
 - **THEN** the task ends and is reported as cancelled
 
 #### Scenario: Already finished
@@ -62,11 +62,11 @@ another firm SHALL NOT be cancellable at all.
 - **THEN** it is not cancelled and the answer says so
 
 #### Scenario: Another firm's task
-- **WHEN** a FIRM_ADMIN cancels a task concerning another firm
+- **WHEN** a TENANT_ADMIN cancels a task concerning another tenant
 - **THEN** it is refused and nothing is cancelled
 
 ### Requirement: The test-generation agent is visible
-A FIRM_ADMIN SHALL be able to see, read-only and through the api alone, an overview of the test-generation agent:
+A TENANT_ADMIN SHALL be able to see, read-only and through the api alone, an overview of the test-generation agent:
 
 - whether it is configured, and whether it is reachable right now — decided by fetching its public card on the
   internal network within a short timeout — with how long that took and, when it is not reachable, a short reason
@@ -103,7 +103,7 @@ with the agent reported unreachable. Repeated requests within a few seconds SHAL
 than ask the agent again.
 
 #### Scenario: The agent is up
-- **WHEN** a FIRM_ADMIN asks for the overview while the test agent answers its card
+- **WHEN** a TENANT_ADMIN asks for the overview while the test agent answers its card
 - **THEN** it is reported reachable with the time the card took, and the card's name, version, skill, endpoint and
   required scope are shown
 

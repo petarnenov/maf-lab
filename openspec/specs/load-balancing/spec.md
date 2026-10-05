@@ -88,7 +88,7 @@ handle this system hands out SHALL be understood by whichever replica receives i
 - **THEN** every poll returns the job, whichever replica serves it, until it reports `succeeded` or `failed`
 
 #### Scenario: No duplicate concurrent jobs
-- **WHEN** a FIRM_ADMIN starts indexing twice while the first job is running
+- **WHEN** a TENANT_ADMIN starts indexing twice while the first job is running
 - **THEN** the second request returns the running job instead of starting another
 
 ### Requirement: Balancer health

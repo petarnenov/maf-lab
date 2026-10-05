@@ -59,7 +59,7 @@ The counts SHALL come from these records:
   SHALL be counted as one request per screened item.
 
 #### Scenario: Aggregates across the call sites
-- **WHEN** a FIRM_ADMIN requests the statistics after turns that classified an intent, screened prompts and tool
+- **WHEN** a TENANT_ADMIN requests the statistics after turns that classified an intent, screened prompts and tool
   results, gated and reranked searches, and routed data turns
 - **THEN** each site's section reports its counts, and the overview's total requests equal the intent classifications
   plus the content screening requests plus the judged searches, with the unavailable ones counted apart
@@ -97,14 +97,14 @@ The counts SHALL come from these records:
 
 ### Requirement: Jev statistics are firm-scoped and admin-only
 The statistics MUST be computed only from turns of the firm in the caller's token; the endpoint MUST NOT accept a firm
-or tenant parameter. Callers without the FIRM_ADMIN role MUST be refused.
+or tenant parameter. Callers without the TENANT_ADMIN role MUST be refused.
 
 #### Scenario: Other firm's turns are invisible
-- **WHEN** a FIRM_ADMIN of firm A requests the statistics and firm B has recorded turns in the window
-- **THEN** none of firm B's turns is counted in any section
+- **WHEN** a TENANT_ADMIN of tenant A requests the statistics and tenant B has recorded turns in the window
+- **THEN** none of tenant B's turns is counted in any section
 
 #### Scenario: Not an admin
-- **WHEN** an ADVISOR requests the statistics
+- **WHEN** a USER requests the statistics
 - **THEN** the response is forbidden
 
 ### Requirement: No message content in Jev statistics
