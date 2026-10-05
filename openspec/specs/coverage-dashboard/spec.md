@@ -165,8 +165,9 @@ the run is active, the header and the timeline SHALL update live, without a relo
 the agent is working. The timeline SHALL keep the newest entry in view unless the user has scrolled up, and SHALL
 offer a way back to the newest entry. For a run that has ended, the modal SHALL show its full recorded activity and
 its final state. An administrator SHALL be able to cancel an active run from the modal. The dialog SHALL be keyboard
-accessible: it takes focus when it opens, closes with Escape, and returns focus to the button. Closing it SHALL NOT
-affect the run.
+accessible: it takes focus when it opens and returns focus to the button. Escape SHALL stop the active run when the
+person may cancel it (stop-anything) — the modal then says "Stopping…" until the run reports canceled — and SHALL
+close the dialog otherwise. The dialog's close button SHALL close it without affecting the run.
 
 #### Scenario: Watching a run
 - **WHEN** an administrator starts a run and opens Activity
@@ -204,6 +205,14 @@ affect the run.
 - **WHEN** a file has never had a run
 - **THEN** no Activity button is shown
 
+#### Scenario: Esc stops the run for an administrator
+- **WHEN** an administrator has Activity open on an active run and presses Escape
+- **THEN** the run is cancelled, the modal says "Stopping…", and then shows the run canceled
+
+#### Scenario: Esc closes the dialog for a viewer
+- **WHEN** a user who may not cancel has Activity open on an active run and presses Escape
+- **THEN** the dialog closes and the run goes on
+
 ### Requirement: Refresh state is explained
 The Coverage screen SHALL show the last refresh's outcome only when it did not succeed and no later refresh has
 succeeded. It SHALL then say when the refresh ended and why, in user-facing words (interrupted because the service
@@ -217,3 +226,12 @@ taken. It SHALL NOT show internal detail.
 #### Scenario: A later refresh succeeds
 - **WHEN** a refresh succeeds after a failed one
 - **THEN** no refresh failure is shown
+
+### Requirement: The coverage refresh can be stopped
+While a coverage refresh runs, an administrator SHALL be able to stop it with Esc on the coverage screen; the stop
+SHALL cancel the refresh job and the coverage runner job it is waiting on, and the screen SHALL say "Stopping…" and
+then show the refresh canceled, keeping the last complete coverage.
+
+#### Scenario: Refresh stopped
+- **WHEN** an administrator starts a coverage refresh and presses Esc while the runner is building
+- **THEN** the refresh ends canceled, the runner job is cancelled, and the tree shows the previous coverage

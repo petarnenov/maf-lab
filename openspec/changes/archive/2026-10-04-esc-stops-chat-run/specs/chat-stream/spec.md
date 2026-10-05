@@ -1,10 +1,6 @@
-# chat-stream Specification
+# Spec Delta
 
-## Purpose
-Keeps the answer that follows an approved or rejected proposal on the same streaming path as any other chat turn, so
-the user sees it arrive live and the behind-the-scenes monitor shows its trace and tool activity.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Answer runs remain stream-backed
 When the user approves or rejects a pending proposal, the application SHALL create a streaming assistant turn for that
@@ -27,13 +23,3 @@ it again SHALL carry the same idempotency key as the stopped answer, so nothing 
   is `abort`
 - **THEN** the answer turn says it was stopped, the proposal shows as waiting again rather than gone or applied, and
   approving it again sends the same idempotency key as the stopped approval
-
-### Requirement: Resume events reach the monitor
-The answer run that follows an approval or a rejection SHALL be followed by the same client path as an ordinary send,
-so its tool calls and steps are shown in the conversation, and the monitor shows its trace while it runs, read from
-the trace API like any other turn.
-
-#### Scenario: Resume stream includes tool activity
-- **WHEN** a resume run calls a tool and is read to completion
-- **THEN** the conversation shows the tool call and the streamed answer text, and the monitor shows the run's trace
-  events
