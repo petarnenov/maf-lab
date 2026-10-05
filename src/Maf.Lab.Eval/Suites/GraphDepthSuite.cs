@@ -7,6 +7,8 @@ using Maf.Lab.Domain.Evals;
 using Maf.Lab.Domain.Graph;
 using Maf.Lab.Eval.Datasets;
 using Maf.Lab.Eval.Hosting;
+using Maf.Lab.Eval.Judging;
+using Maf.Lab.Retrieval.Jev;
 using Maf.Lab.Hosting.Cli;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -27,9 +29,11 @@ public sealed record GraphDepthProbe(IReadOnlyList<string> Items, int Nodes, boo
 /// <summary>
 /// The graph-depth comparison (add-graph-depth-eval): the same labelled code-graph cases with the graph tools pinned to
 /// 2, 3 and 4 calls. The structural layer calls the tools directly, with no model; the end-to-end layer asks the agent
-/// and has the rubric judge the answer against the case's labelled facts. A comparison: it reports, it does not gate.
+/// and grades the answer with the Jev grade the generation suite uses (graph-depth-jev-grade, DECISIONS.md §80): its
+/// claims against what the turn read, its relevance to the question. Whether it names the labelled items is
+/// <c>mentionRecall</c>, a match in code. A comparison: it reports, it does not gate.
 /// </summary>
-public sealed class GraphDepthSuite(IConfiguration configuration, RubricJudge? judge)
+public sealed class GraphDepthSuite(IConfiguration configuration, JevGrader? grader)
 {
     public const string Name = "graph-depth";
     public static readonly IReadOnlyList<GraphDepthVariant> Variants = [new("depth-2", 2), new("depth-3", 3), new("depth-4", 4)];
@@ -37,13 +41,14 @@ public sealed class GraphDepthSuite(IConfiguration configuration, RubricJudge? j
 
     private readonly TokenCounter _tokens = new();
 
-    /// <param name="structuralOnly">No chat turn and no judge: needs neither the chat model's key nor Jev's.</param>
+    /// <param name="structuralOnly">No chat turn and no grade: needs neither the chat model's key nor Jev's.</param>
     public async Task<IReadOnlyList<EvalVariantResult>> RunAsync(SuiteContext ctx, bool structuralOnly, CancellationToken ct)
     {
         var cases = ctx.Take(DatasetLoader.GraphDepth(ctx.DatasetRoot)).ToList();
-        if (!structuralOnly && judge is null)
+        if (!structuralOnly && grader is not { IsConfigured: true })
         {
-            throw new InvalidOperationException("graph-depth: the end-to-end layer needs the rubric judge; pass --structural-only to run without it.");
+            throw new InvalidOperationException($"graph-depth: the end-to-end layer is graded by Jev and needs {JevCredential.EnvironmentVariable} "
+                + "in the environment; pass --structural-only to run without it.");
         }
         using var console = new ConsoleProgress(Name);
         var bar = new GraphDepthProgress(console, cases.Count, Variants.Count, structuralOnly ? 1 : 2);
@@ -206,14 +211,11 @@ public sealed class GraphDepthSuite(IConfiguration configuration, RubricJudge? j
         {
             bar.Working(c);
             var turn = await host.AskAsync(c.FirmId, c.Question, ct);
-            try
-            {
-                answers.Add((turn, await judge!.ScoreAsync(c.Question, c.Reference, NeededContext(c), turn.Answer, ct), false));
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                answers.Add((turn, new JudgeScore(0, 0, $"judge failed: {ex.GetType().Name}"), true));
-            }
+            // What the turn read, as the generation suite grades it; the labelled items are mentionRecall's, not the grade's.
+            var outcome = await grader!.GradeAsync(new GradeInput(c.Question, turn.Answer, turn.Read, []), ct);
+            answers.Add(outcome.Grade is { } g
+                ? (turn, new JudgeScore(g.Faithfulness, g.Relevance, g.Reason()), false)
+                : (turn, new JudgeScore(0, 0, $"judge failed: {outcome.Failure}"), true));
             bar.Advance();
         }
         return answers;
@@ -245,11 +247,6 @@ public sealed class GraphDepthSuite(IConfiguration configuration, RubricJudge? j
         }, http, NullLoggerFactory.Instance, ownsHttpClient: true);
         return await McpClient.CreateAsync(transport, cancellationToken: ct);
     }
-
-    /// <summary>What the judge holds the answer to besides the reference: the labelled items, never a tool's output.</summary>
-    public static string NeededContext(GraphDepthCase c) =>
-        "An answer needs these " + (c.Kind == "trace" ? "methods" : "test files") + ":\n" +
-        string.Join("\n", c.Needed.Select(n => $"- {n.Item} ({(n.Hops is { } h ? $"{h} call{(h == 1 ? "" : "s")} away" : "more than 4 calls away")})"));
 
     /// <summary>
     /// recall (mean share of needed items reached), fullRecall, recall@needsK by the depth a case needs, signalShare
@@ -297,7 +294,7 @@ public sealed class GraphDepthSuite(IConfiguration configuration, RubricJudge? j
     }
 
     /// <summary>
-    /// faithfulness and relevance from the rubric, mentionRecall (needed items the answer names), graphToolCalled (turns
+    /// faithfulness and relevance from the Jev grade, mentionRecall (needed items the answer names), graphToolCalled (turns
     /// that called a graph tool at all; a turn that did not is still scored), and judgeFailures, a count.
     /// </summary>
     public static Dictionary<string, double> EndToEndMetrics(IReadOnlyList<GraphDepthCase> cases,
@@ -314,7 +311,7 @@ public sealed class GraphDepthSuite(IConfiguration configuration, RubricJudge? j
             mentions += caseMentions;
             called += usedGraph ? 1 : 0;
             judgeFailures += judgeFailed ? 1 : 0;
-            if (score.Faithfulness < GenerationSuite.RubricPass || score.Relevance < GenerationSuite.RubricPass || !usedGraph)
+            if (score.Faithfulness < GenerationSuite.PassMark || score.Relevance < 1 || !usedGraph)
             {
                 failures.Add(new EvalCaseFailure(c.Id, $"e2e faithfulness={score.Faithfulness:0.##} relevance={score.Relevance:0.##} " +
                     $"mentions={caseMentions:0.##} graph={(usedGraph ? "called" : "not called")}: {score.Reason}"));

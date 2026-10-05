@@ -641,7 +641,8 @@ Evals run **on demand**, not on every commit. They are **required** before mergi
 2, 3 and 4 calls, on a codebase server it starts itself (`CodeSearch:GraphDepthPin`, never set in a deployment). It
 reports two layers side by side:
 - **structural**, with no model: recall, also split by the depth a case needs, nodes, tokens, truncation and latency;
-- **end-to-end**: rubric scores, and whether the answer names what it needed.
+- **end-to-end**: the Jev grade `generation` uses (faithfulness against what the turn read, relevance), and whether
+  the answer names what it needed.
 
 Beside the all-turn end-to-end scores it reports each variant's scores over its own turns that called a graph tool
 (`:graph`, with `graphTurns`), and over the cases that called the graph in every variant (`:common`, with
