@@ -9,9 +9,10 @@ namespace Maf.Lab.Tests;
 /// service that accepts and never answers, so it is caught waiting, then signalled. It ends with exit code 130 and a
 /// last line that says it was cancelled and what to do next.
 /// <para>
-/// The signal sent is SIGTERM, which every tool handles on the same path as Ctrl+C. SIGINT itself cannot be relied on
-/// here: a process started in the background by a non-interactive parent inherits SIGINT as ignored (POSIX), and .NET
-/// keeps it so; a terminal's Ctrl+C reaches the foreground job with its default disposition, and was checked so.
+/// Each tool is signalled with SIGTERM and with SIGINT (Ctrl+C), which a .NET tool catches on two different lines. A
+/// process started by a non-interactive parent inherits SIGINT as ignored (POSIX), and .NET keeps it so; a terminal's
+/// Ctrl+C reaches its job with the default disposition. So for SIGINT the tool is started through a launcher that sets
+/// SIGINT back to its default and then execs the tool under the same pid, as a terminal would have it.
 /// </para>
 /// </summary>
 [Collection("TestGeneration")]
@@ -68,9 +69,16 @@ public sealed class CliCancelTests
         return Path.Combine(root!.FullName, projectDir, "bin", configuration, tfm, tool);
     }
 
-    private static async Task<(int Exit, string Stderr)> InterruptAsync(string tool, string[] args, Dictionary<string, string> env)
+    /// <summary>Sets SIGINT to its default, then becomes the command it is given (same pid).</summary>
+    private const string DefaultSigint =
+        "import os, signal, sys; signal.signal(signal.SIGINT, signal.SIG_DFL); os.execvp(sys.argv[1], sys.argv[1:])";
+
+    private static async Task<(int Exit, string Stderr)> InterruptAsync(string signal, string tool, string[] args, Dictionary<string, string> env)
     {
-        var start = new ProcessStartInfo("dotnet", [tool, .. args])
+        var (file, argv) = signal == "INT"
+            ? ("python3", (string[])["-c", DefaultSigint, "dotnet", tool, .. args])
+            : ("dotnet", [tool, .. args]);
+        var start = new ProcessStartInfo(file, argv)
         {
             RedirectStandardError = true,
             RedirectStandardOutput = true,
@@ -90,7 +98,7 @@ public sealed class CliCancelTests
             Assert.Fail($"{Path.GetFileName(tool)} ended before it was interrupted: {await stderr}");
         }
 
-        using (var kill = Process.Start("kill", ["-TERM", process.Id.ToString()])!)
+        using (var kill = Process.Start("kill", [$"-{signal}", process.Id.ToString()])!)
         {
             await kill.WaitForExitAsync(Ct);
         }
@@ -101,12 +109,14 @@ public sealed class CliCancelTests
     private static string LastLine(string text) =>
         text.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => l.Trim()).Where(l => l.Length > 0).LastOrDefault() ?? "";
 
-    [Fact]
-    public async Task The_a2a_probe_stops_when_told()
+    [Theory]
+    [InlineData("TERM")]
+    [InlineData("INT")]
+    public async Task The_a2a_probe_stops_when_told(string signal)
     {
         using var hole = new BlackHole();
 
-        var (exit, stderr) = await InterruptAsync(ToolPath("tools/Maf.Lab.A2AProbe", "Maf.Lab.A2AProbe.dll"),
+        var (exit, stderr) = await InterruptAsync(signal, ToolPath("tools/Maf.Lab.A2AProbe", "Maf.Lab.A2AProbe.dll"),
             [$"http://127.0.0.1:{hole.Port}"], new());
 
         Assert.Equal(130, exit);
@@ -114,12 +124,14 @@ public sealed class CliCancelTests
         Assert.Contains("make eval-a2a", LastLine(stderr), StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task The_eval_tool_stops_when_told_and_keeps_what_finished()
+    [Theory]
+    [InlineData("TERM")]
+    [InlineData("INT")]
+    public async Task The_eval_tool_stops_when_told_and_keeps_what_finished(string signal)
     {
         using var hole = new BlackHole();
 
-        var (exit, stderr) = await InterruptAsync(ToolPath("src/Maf.Lab.Eval", "Maf.Lab.Eval.dll"),
+        var (exit, stderr) = await InterruptAsync(signal, ToolPath("src/Maf.Lab.Eval", "Maf.Lab.Eval.dll"),
             ["--ask", "what is the procedure when a fee schedule is missing"], new()
         {
             ["Qdrant__Host"] = "127.0.0.1",
@@ -131,12 +143,14 @@ public sealed class CliCancelTests
         Assert.Equal(Maf.Lab.Eval.Program.AfterCancel, LastLine(stderr));
     }
 
-    [Fact]
-    public async Task The_indexer_stops_when_told_and_says_what_to_run_again()
+    [Theory]
+    [InlineData("TERM")]
+    [InlineData("INT")]
+    public async Task The_indexer_stops_when_told_and_says_what_to_run_again(string signal)
     {
         using var hole = new BlackHole();
 
-        var (exit, stderr) = await InterruptAsync(ToolPath("src/Maf.Lab.Indexing", "Maf.Lab.Indexing.dll"), ["index"], new()
+        var (exit, stderr) = await InterruptAsync(signal, ToolPath("src/Maf.Lab.Indexing", "Maf.Lab.Indexing.dll"), ["index"], new()
         {
             ["Qdrant__Host"] = "127.0.0.1",
             ["Qdrant__GrpcPort"] = hole.Port.ToString(),
