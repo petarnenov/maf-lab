@@ -55,7 +55,7 @@ public sealed class TraceRetentionServiceTests
 
     private static TurnTraceRow TraceRow(string turnId, DateTime createdAt) => new()
     {
-        TurnId = turnId, ConversationId = "c", UserId = "adam", FirmId = "firm-a", CreatedAt = createdAt, Json = "[]",
+        TurnId = turnId, ConversationId = "c", UserId = "adam", TenantId = "firm-a", CreatedAt = createdAt, Json = "[]",
     };
 
     private static async Task WaitUntilAsync(Func<bool> there, string what)

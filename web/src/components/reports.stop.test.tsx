@@ -18,7 +18,7 @@ describe('reports still loading stop on Esc', () => {
     ['evals', () => <EvalsPage />, (url: string) => url.startsWith('/api/evals/reports')],
   ])('the %s screen', async (_, page, holds) => {
     const held = hangingFetch(holds, () => jsonResponse([]));
-    renderWithProviders(page(), { session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(page(), { session: makeSession('TENANT_ADMIN') });
     await waitFor(() => expect(held.length).toBeGreaterThan(0));
     expect(await screen.findByTestId('stop-hint')).toHaveTextContent('Esc to stop');
 

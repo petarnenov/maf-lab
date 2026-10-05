@@ -85,7 +85,7 @@ public class A2AAdminApiTests
         using var api = Api();
         var taskId = await StartRunAsync(await PartnerAsync(api));
 
-        var activity = await ActivityAsync(api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN));
+        var activity = await ActivityAsync(api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN));
 
         var task = Assert.Single(activity!.Inbound, t => t.TaskId == taskId);
         Assert.Equal("acme-portal", task.PartnerId);
@@ -99,7 +99,7 @@ public class A2AAdminApiTests
         using var api = Api();
         await StartRunAsync(await PartnerAsync(api));
 
-        var activity = await ActivityAsync(api.ClientFor("bob", "firm-b", Role.FIRM_ADMIN));
+        var activity = await ActivityAsync(api.ClientFor("bob", "firm-b", Role.TENANT_ADMIN));
 
         Assert.Empty(activity!.Inbound);
         Assert.Empty(activity.Deliveries);
@@ -111,7 +111,7 @@ public class A2AAdminApiTests
         using var api = Api();
         await StartRunAsync(await PartnerAsync(api));
 
-        var response = await api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN).GetStringAsync("/api/admin/a2a", Ct);
+        var response = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN).GetStringAsync("/api/admin/a2a", Ct);
 
         Assert.DoesNotContain("start a billing run", response, StringComparison.OrdinalIgnoreCase);
     }
@@ -121,7 +121,7 @@ public class A2AAdminApiTests
     {
         using var api = Api();
 
-        var response = await api.ClientFor("adam", "firm-a", Role.ADVISOR).GetAsync("/api/admin/a2a", Ct);
+        var response = await api.ClientFor("adam", "firm-a", Role.USER).GetAsync("/api/admin/a2a", Ct);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -130,7 +130,7 @@ public class A2AAdminApiTests
     public async Task A_running_task_can_be_cancelled_by_the_firm_it_concerns()
     {
         using var api = Api(stepMs: 3_000);
-        var admin = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
 
         // A non-streaming send waits for the task, so it is left running while the admin catches it.
         var partner = await PartnerAsync(api);
@@ -151,9 +151,9 @@ public class A2AAdminApiTests
         using var api = Api(stepMs: 3_000);
         var partner = await PartnerAsync(api);
         var running = StartRunAsync(partner);
-        var taskId = await RunningTaskAsync(api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN));
+        var taskId = await RunningTaskAsync(api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN));
 
-        var response = await api.ClientFor("bob", "firm-b", Role.FIRM_ADMIN)
+        var response = await api.ClientFor("bob", "firm-b", Role.TENANT_ADMIN)
             .PostAsync($"/api/admin/a2a/tasks/{taskId}/cancel", null, Ct);
         await Task.WhenAny(running, Task.Delay(TimeSpan.FromSeconds(20), Ct));
 
@@ -166,7 +166,7 @@ public class A2AAdminApiTests
         using var api = Api();
         await StartRunAsync(await PartnerAsync(api));
 
-        var response = await api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN)
+        var response = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN)
             .PostAsync("/api/admin/a2a/tasks/nothing/cancel", null, Ct);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);

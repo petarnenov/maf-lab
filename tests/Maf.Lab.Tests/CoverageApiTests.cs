@@ -36,7 +36,7 @@ public sealed class CoverageApiTests
         await CoverageApi.IngestAsync(api, await repo.HeadAsync(Ct), Toolchains.Dotnet, SnapshotKind.Official, null,
             ("src/Lab/Small.cs", 10, 10), ("src/Lab/Large.cs", 0, 90));
 
-        var tree = await api.ClientFor("bob", "firm-a", Role.ADVISOR).GetFromJsonAsync<CoverageTreeDto>("/api/coverage/tree", Json, Ct);
+        var tree = await api.ClientFor("bob", "firm-a", Role.USER).GetFromJsonAsync<CoverageTreeDto>("/api/coverage/tree", Json, Ct);
 
         Assert.True(tree!.HasSnapshot);
         Assert.Equal(10.0, tree.Folders.Single(f => f.Path == "src/Lab").Pct);
@@ -65,7 +65,7 @@ public sealed class CoverageApiTests
             await db.SaveChangesAsync(Ct);
         }
 
-        var tree = await api.ClientFor("bob", "firm-a", Role.ADVISOR).GetFromJsonAsync<CoverageTreeDto>("/api/coverage/tree", Json, Ct);
+        var tree = await api.ClientFor("bob", "firm-a", Role.USER).GetFromJsonAsync<CoverageTreeDto>("/api/coverage/tree", Json, Ct);
 
         var small = tree!.Files.Single(f => f.Path == "src/Lab/Small.cs").Candidate!;
         var large = tree.Files.Single(f => f.Path == "src/Lab/Large.cs").Candidate!;
@@ -79,7 +79,7 @@ public sealed class CoverageApiTests
         var repo = await RepoAsync();
         using var api = CoverageApi.Create(repo);
 
-        var tree = await api.ClientFor("bob", "firm-a", Role.ADVISOR).GetFromJsonAsync<CoverageTreeDto>("/api/coverage/tree", Json, Ct);
+        var tree = await api.ClientFor("bob", "firm-a", Role.USER).GetFromJsonAsync<CoverageTreeDto>("/api/coverage/tree", Json, Ct);
 
         Assert.False(tree!.HasSnapshot);
         Assert.Empty(tree.Files);
@@ -106,7 +106,7 @@ public sealed class CoverageApiTests
         // The working tree moves on; the detail still shows the file as it was measured.
         await repo.CommitAsync(new Dictionary<string, string> { ["src/Lab/Small.cs"] = "changed\n" }, "change", Ct);
 
-        var detail = await api.ClientFor("bob", "firm-a", Role.ADVISOR)
+        var detail = await api.ClientFor("bob", "firm-a", Role.USER)
             .GetFromJsonAsync<CoverageEndpoints.FileDetailDto>("/api/coverage/files?path=src/Lab/Small.cs", Json, Ct);
 
         Assert.Equal(first, detail!.Commit);
@@ -126,7 +126,7 @@ public sealed class CoverageApiTests
         using var api = CoverageApi.Create(repo);
         await CoverageApi.IngestAsync(api, await repo.HeadAsync(Ct), Toolchains.Dotnet, SnapshotKind.Official, null, ("src/Lab/Small.cs", 4, 10));
 
-        var response = await api.ClientFor("bob", "firm-a", Role.ADVISOR).GetAsync($"/api/coverage/files?path={Uri.EscapeDataString(path)}", Ct);
+        var response = await api.ClientFor("bob", "firm-a", Role.USER).GetAsync($"/api/coverage/files?path={Uri.EscapeDataString(path)}", Ct);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.DoesNotContain("root:", await response.Content.ReadAsStringAsync(Ct));
@@ -144,7 +144,7 @@ public sealed class CoverageApiTests
         await repo.GitAsync(Ct, "reflog", "expire", "--expire=now", "--all");
         await repo.GitAsync(Ct, "gc", "-q", "--prune=now");
 
-        var response = await api.ClientFor("bob", "firm-a", Role.ADVISOR).GetAsync("/api/coverage/files?path=src/Lab/Small.cs", Ct);
+        var response = await api.ClientFor("bob", "firm-a", Role.USER).GetAsync("/api/coverage/files?path=src/Lab/Small.cs", Ct);
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         var problem = await response.Content.ReadFromJsonAsync<JsonElement>(Json, Ct);
@@ -164,7 +164,7 @@ public sealed class CoverageApiTests
         await Task.Delay(20, Ct);
         await CoverageApi.IngestAsync(api, commit, Toolchains.Dotnet, SnapshotKind.Official, null, ("src/Lab/Small.cs", 7, 10));
 
-        var history = await api.ClientFor("bob", "firm-a", Role.ADVISOR)
+        var history = await api.ClientFor("bob", "firm-a", Role.USER)
             .GetFromJsonAsync<List<CoverageEndpoints.HistoryEntryDto>>("/api/coverage/files/history?path=src/Lab/Small.cs", Json, Ct);
 
         Assert.Equal([70.0, 20.0], history!.Select(h => h.Pct));
@@ -189,7 +189,7 @@ public sealed class CoverageApiTests
         using var api = CoverageApi.Create(repo);
         var xml = FakeCoverageRunner.Report("/work/job", ("src/Lab/Small.cs", 5, 10), ("web/src/App.tsx", 1, 1), ("/etc/x.cs", 0, 1));
 
-        var response = await api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN)
+        var response = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN)
             .PostAsync("/api/coverage/reports", Upload(await repo.HeadAsync(Ct), Toolchains.Dotnet, xml), Ct);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -204,7 +204,7 @@ public sealed class CoverageApiTests
         var repo = await RepoAsync();
         using var api = CoverageApi.Create(repo);
 
-        var response = await api.ClientFor("bob", "firm-a", Role.ADVISOR)
+        var response = await api.ClientFor("bob", "firm-a", Role.USER)
             .PostAsync("/api/coverage/reports", Upload(await repo.HeadAsync(Ct), Toolchains.Dotnet, FakeCoverageRunner.EmptyReport), Ct);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
@@ -217,7 +217,7 @@ public sealed class CoverageApiTests
         var repo = await RepoAsync();
         using var api = CoverageApi.Create(repo);
 
-        var response = await api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN)
+        var response = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN)
             .PostAsync("/api/coverage/reports", Upload(await repo.HeadAsync(Ct), Toolchains.Dotnet, "<not-cobertura/>"), Ct);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -235,7 +235,7 @@ public sealed class CoverageApiTests
                 : FakeCoverageRunner.Report("/work/job/web", ("web/src/App.tsx", 1, 1))),
         };
         using var api = CoverageApi.Create(repo, runner);
-        var admin = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
 
         var started = await (await admin.PostAsync("/api/coverage/refresh", null, Ct)).Content.ReadFromJsonAsync<AdminJob>(Json, Ct);
         var job = await WaitAsync(admin, started!.JobId);
@@ -258,7 +258,7 @@ public sealed class CoverageApiTests
         var repo = await RepoAsync();
         var runner = new FakeCoverageRunner { Down = runnerDown, Answer = _ => FakeCoverageRunner.Result("", status: "error") };
         using var api = CoverageApi.Create(repo, runner);
-        var admin = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
 
         var started = await (await admin.PostAsync("/api/coverage/refresh", null, Ct)).Content.ReadFromJsonAsync<AdminJob>(Json, Ct);
         var job = await WaitAsync(admin, started!.JobId);
@@ -272,7 +272,7 @@ public sealed class CoverageApiTests
         var repo = await RepoAsync();
         var runner = new FakeCoverageRunner { KeepRunning = true };
         using var api = CoverageApi.Create(repo, runner, new Dictionary<string, string?> { ["AdminJobs:CancelPollEvery"] = "00:00:00.020" });
-        var admin = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
         var started = await (await admin.PostAsync("/api/coverage/refresh", null, Ct)).Content.ReadFromJsonAsync<AdminJob>(Json, Ct);
         while (runner.Requests.IsEmpty)
         {
@@ -281,7 +281,7 @@ public sealed class CoverageApiTests
 
         // A viewer may not stop it; an administrator may.
         Assert.Equal(HttpStatusCode.Forbidden,
-            (await api.ClientFor("bob", "firm-a", Role.ADVISOR).PostAsync($"/api/coverage/refresh/{started!.JobId}/cancel", null, Ct)).StatusCode);
+            (await api.ClientFor("bob", "firm-a", Role.USER).PostAsync($"/api/coverage/refresh/{started!.JobId}/cancel", null, Ct)).StatusCode);
         var cancel = await admin.PostAsync($"/api/coverage/refresh/{started.JobId}/cancel", null, Ct);
 
         Assert.Equal(HttpStatusCode.Accepted, cancel.StatusCode);
@@ -300,7 +300,7 @@ public sealed class CoverageApiTests
         var repo = await RepoAsync();
         var runner = new FakeCoverageRunner { Gate = new TaskCompletionSource() };
         using var api = CoverageApi.Create(repo, runner);
-        var admin = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
 
         var first = await (await admin.PostAsync("/api/coverage/refresh", null, Ct)).Content.ReadFromJsonAsync<AdminJob>(Json, Ct);
         var second = await (await admin.PostAsync("/api/coverage/refresh", null, Ct)).Content.ReadFromJsonAsync<AdminJob>(Json, Ct);
@@ -318,7 +318,7 @@ public sealed class CoverageApiTests
         var repo = await RepoAsync();
         using var api = CoverageApi.Create(repo);
 
-        var response = await api.ClientFor("bob", "firm-a", Role.ADVISOR).PostAsync("/api/coverage/refresh", null, Ct);
+        var response = await api.ClientFor("bob", "firm-a", Role.USER).PostAsync("/api/coverage/refresh", null, Ct);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }

@@ -49,7 +49,7 @@ public static class AuditChain
             // differently from the value that was hashed on write.
             DateTime.SpecifyKind(row.At, DateTimeKind.Utc).ToString("O", CultureInfo.InvariantCulture),
             row.PrincipalId,
-            row.FirmId,
+            row.TenantId,
             row.ConversationId ?? "",
             row.TurnId ?? "",
             row.Kind ?? "",

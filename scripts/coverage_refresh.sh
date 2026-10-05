@@ -24,7 +24,7 @@ def req(path, method="GET", body=None, token=None):
         text = resp.read().decode()
         return json.loads(text) if text else None
 
-token = req("/dev/token", "POST", {"userId": "alice", "firmId": "firm-a", "role": "FIRM_ADMIN"})["token"]
+token = req("/dev/token", "POST", {"userId": "alice", "tenantId": "firm-a", "role": "TENANT_ADMIN"})["token"]
 job = req("/api/coverage/refresh", "POST", {}, token)
 
 # Ctrl+C and SIGTERM (stop-anything): the refresh this started is cancelled on the way out, not left running.

@@ -72,7 +72,7 @@ public class ActivityCardTests
         var tools = new FakeToolSource { WithPortfolio = true };
         using var api = new ApiFactory(PortfolioModel(), tools);
 
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), Question);
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), Question);
 
         var card = Assert.Single(Named(events, "ACTIVITY_SNAPSHOT"));
         Assert.Equal("maf-lab/holdings", card.Data.GetProperty("activityType").GetString());
@@ -98,7 +98,7 @@ public class ActivityCardTests
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel(), new FakeToolSource { WithPortfolio = true });
 
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "what is the procedure when a fee schedule is missing");
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "what is the procedure when a fee schedule is missing");
 
         Assert.NotEmpty(Named(events, "TOOL_CALL_RESULT"));
         Assert.Empty(Named(events, "ACTIVITY_SNAPSHOT"));
@@ -109,7 +109,7 @@ public class ActivityCardTests
     {
         using var api = new ApiFactory(PortfolioModel(), new FakeToolSource { WithPortfolio = true, PortfolioFails = true });
 
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), Question);
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), Question);
 
         Assert.Single(Named(events, "TOOL_CALL_RESULT"));
         Assert.Empty(Named(events, "ACTIVITY_SNAPSHOT"));
@@ -121,7 +121,7 @@ public class ActivityCardTests
         var jev = new FakeJev { Guard = (text, id) => id == "guard_to_ai" && text.Contains("Calder", StringComparison.Ordinal) ? 0.97 : 0.02 };
         using var api = new ApiFactory(PortfolioModel(), new FakeToolSource { WithPortfolio = true }, jev: jev);
 
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), Question);
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), Question);
 
         Assert.Empty(Named(events, "ACTIVITY_SNAPSHOT"));
         Assert.DoesNotContain(ApiFactory.TracesOf(events), t => t.GetProperty("kind").GetString() == TraceKinds.Card);
@@ -131,7 +131,7 @@ public class ActivityCardTests
     public async Task A_reopened_conversation_shows_the_card_again()
     {
         using var api = new ApiFactory(PortfolioModel(), new FakeToolSource { WithPortfolio = true });
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         var events = await ApiFactory.ChatAsync(client, Question);
         var conversationId = events.Single(e => e.Name == "RUN_FINISHED").Data.GetProperty("threadId").GetString();
 
@@ -146,7 +146,7 @@ public class ActivityCardTests
     public async Task A_turn_stored_before_cards_opens_with_none()
     {
         using var api = new ApiFactory(PortfolioModel(), new FakeToolSource { WithPortfolio = true });
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         var events = await ApiFactory.ChatAsync(client, Question);
         var conversationId = events.Single(e => e.Name == "RUN_FINISHED").Data.GetProperty("threadId").GetString();
         // What the added column holds for a row written before it existed.

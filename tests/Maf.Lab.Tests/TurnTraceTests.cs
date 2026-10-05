@@ -55,7 +55,7 @@ public class TurnTraceTests
     public async Task Stream_carries_ordered_trace_events_from_turn_start_to_turn_end_before_done()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "what is the procedure when a fee schedule is missing");
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "what is the procedure when a fee schedule is missing");
 
         var traces = ApiFactory.TracesOf(events).Select(t => t.Deserialize<TraceEvent>(Json)!).ToList();
         Assert.NotEmpty(traces);
@@ -72,7 +72,7 @@ public class TurnTraceTests
     {
         var tools = new FakeToolSource { SearchMetaJson = Diagnostics };
         using var api = new ApiFactory(ApiFactory.ProceduralModel("ANSWER-X per the procedure."), tools);
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "what is the procedure when a fee schedule is missing");
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "what is the procedure when a fee schedule is missing");
         var trace = ApiFactory.TracesOf(events).Select(t => t.Deserialize<TraceEvent>(Json)!).ToList();
         var kinds = trace.Select(t => t.Kind).ToList();
 
@@ -120,7 +120,7 @@ public class TurnTraceTests
     {
         var tools = new FakeToolSource { SearchMetaJson = metaJson };
         using var api = new ApiFactory(ApiFactory.ProceduralModel("ANSWER-X per the procedure."), tools);
-        return Trace(await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "what is the procedure when a fee schedule is missing"));
+        return Trace(await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "what is the procedure when a fee schedule is missing"));
     }
 
     [Fact]
@@ -201,7 +201,7 @@ public class TurnTraceTests
     public async Task Intent_event_carries_jevs_answer_in_any_language()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         foreach (var question in new[] { "what is the procedure when a fee schedule is missing", "Каква е процедурата, когато липсва фий схедюл?" })
         {
@@ -231,7 +231,7 @@ public class TurnTraceTests
     public async Task Intent_event_explains_a_classification_that_was_not_used()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel(), jev: new FakeJev { Confidence = 0.3 });
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var events = await ApiFactory.ChatAsync(client, "what is the procedure when a fee schedule is missing");
 
@@ -248,7 +248,7 @@ public class TurnTraceTests
     {
         var chat = new ScriptedChatClient((_, _, _) => ScriptedChatClient.Text("Frogs eat insects."));
         using var api = new ApiFactory(chat, jev: new FakeJev { Choose = _ => "procedural", InDomain = 0.02, Confidence = 0.93 });
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var events = await ApiFactory.ChatAsync(client, "Procedurata kak edna vaba da izqden edin slon e: ???");
 
@@ -281,7 +281,7 @@ public class TurnTraceTests
                 : ScriptedChatClient.Text("ok");
         });
         using var api = new ApiFactory(chat);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         var first = await ApiFactory.ChatAsync(client, "hello there");
         var conversationId = ApiFactory.ThreadOf(first);
         var second = await ApiFactory.ChatAsync(client, "please email this", conversationId);
@@ -299,7 +299,7 @@ public class TurnTraceTests
     {
         var longAnswer = string.Join(" ", Enumerable.Range(1, 220).Select(i => $"word{i}"));
         using var api = new ApiFactory(ApiFactory.ProceduralModel(longAnswer));
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "what is the procedure when a fee schedule is missing");
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "what is the procedure when a fee schedule is missing");
 
         var streamed = string.Concat(events.Where(e => e.Name == "TEXT_MESSAGE_CONTENT").Select(e => e.Data.GetProperty("delta").GetString()));
         var deltas = events.Count(e => e.Name == "TEXT_MESSAGE_CONTENT");
@@ -327,7 +327,7 @@ public class TurnTraceTests
     public async Task Stored_trace_is_readable_by_owner_and_same_firm_admin_for_review_turns_only()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var done = (await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing"))[^1].Data;
         var turnId = done.GetProperty("runId").GetString()!;
         var url = $"/api/turns/{turnId}/trace";
@@ -337,9 +337,9 @@ public class TurnTraceTests
         Assert.Equal(TraceKinds.TurnStart, own.Events[0].Kind);
         Assert.Equal(TraceKinds.TurnEnd, own.Events[^1].Kind);
 
-        Assert.Equal(HttpStatusCode.NotFound, (await api.ClientFor("rita", "firm-a", Role.ADVISOR).GetAsync(url, Ct)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await api.ClientFor("bob", "firm-b", Role.FIRM_ADMIN).GetAsync(url, Ct)).StatusCode);
-        var alice = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        Assert.Equal(HttpStatusCode.NotFound, (await api.ClientFor("rita", "firm-a", Role.USER).GetAsync(url, Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await api.ClientFor("bob", "firm-b", Role.TENANT_ADMIN).GetAsync(url, Ct)).StatusCode);
+        var alice = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
         Assert.Equal(HttpStatusCode.NotFound, (await alice.GetAsync(url, Ct)).StatusCode); // not in the review queue yet
 
         await adam.PostAsJsonAsync("/api/feedback", new Maf.Lab.Domain.Feedback.FeedbackRequest(done.GetProperty("threadId").GetString()!, turnId!, "wrong_answer", null), Ct);
@@ -350,7 +350,7 @@ public class TurnTraceTests
     public async Task Retention_deletes_old_traces_only_and_logs_stay_free_of_trace_content()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel("ANSWER-MARKER-777."));
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var turnId = (await ApiFactory.ChatAsync(adam, "how do I fix ZEBRA-TRACE-42?"))[^1]
             .Data.GetProperty("runId").GetString()!;
 
@@ -359,7 +359,7 @@ public class TurnTraceTests
             var stored = await ctx.TurnTraces.SingleAsync(t => t.TurnId == turnId, Ct);
             Assert.Contains("ZEBRA-TRACE-42", stored.Json);
             Assert.Contains("ANSWER-MARKER-777", stored.Json);
-            ctx.TurnTraces.Add(new TurnTraceRow { TurnId = "t_old", ConversationId = "c", UserId = "adam", FirmId = "firm-a", CreatedAt = DateTime.UtcNow.AddDays(-8), Json = "[]" });
+            ctx.TurnTraces.Add(new TurnTraceRow { TurnId = "t_old", ConversationId = "c", UserId = "adam", TenantId = "firm-a", CreatedAt = DateTime.UtcNow.AddDays(-8), Json = "[]" });
             await ctx.SaveChangesAsync(Ct);
         }
         Assert.DoesNotContain(api.Logs.Messages, m => m.Contains("ZEBRA-TRACE-42") || m.Contains("ANSWER-MARKER-777"));
@@ -389,7 +389,7 @@ public class TurnTraceTests
         {
             ExtraSettings = new Dictionary<string, string?> { ["Jev:RouteDataTools"] = "false" },
         };
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         // A data question: nothing forces retrieval, so the model itself decides to call a tool between its thoughts.
         var events = await ApiFactory.ChatAsync(adam, "status of run 4417");
         var trace = Trace(events);
@@ -422,7 +422,7 @@ public class TurnTraceTests
     public async Task A_model_that_does_not_reason_leaves_no_reasoning_in_the_trace()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR),
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER),
             "what is the procedure when a fee schedule is missing");
         var trace = Trace(events);
 

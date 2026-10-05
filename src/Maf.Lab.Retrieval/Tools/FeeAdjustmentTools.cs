@@ -110,7 +110,7 @@ public sealed class FeeAdjustmentTools(
         var expiresAt = now.Add(signer.ValidFor);
         var state = signer.Issue(new FeeAdjustmentProposalState(
             summary.AdjustmentId,
-            principal.FirmId.Value,
+            principal.TenantId.Value,
             principal.UserId,
             account.AccountId,
             amount,
@@ -165,7 +165,7 @@ public sealed class FeeAdjustmentTools(
         var proposal = ok.Proposal;
 
         // A proposal belongs to the person it was put to, in the firm it was made for.
-        if (proposal.FirmId != principal.FirmId.Value || proposal.UserId != principal.UserId)
+        if (proposal.FirmId != principal.TenantId.Value || proposal.UserId != principal.UserId)
         {
             logger.LogWarning("propose_fee_adjustment: a confirmation was presented by someone other than the proposer");
             return ToolErrors.Error("That confirmation does not match a proposal this server issued. Propose the adjustment again.");
@@ -196,7 +196,7 @@ public sealed class FeeAdjustmentTools(
         var digest = Digest(proposal.AdjustmentId, approved: true);
         if (key is not null)
         {
-            var (outcome, recorded) = await idempotency.CheckAsync(principal.FirmId.Value, key, digest, CancellationToken.None);
+            var (outcome, recorded) = await idempotency.CheckAsync(principal.TenantId.Value, key, digest, CancellationToken.None);
             if (outcome == Maf.Lab.Domain.SharedState.IdempotencyOutcome.Replay && recorded is not null)
             {
                 return SearchDocumentsTool.Raw(recorded.Answer);
@@ -237,7 +237,7 @@ public sealed class FeeAdjustmentTools(
 
         if (key is not null)
         {
-            await idempotency.RecordAsync(principal.FirmId.Value, key, digest, answer, CancellationToken.None);
+            await idempotency.RecordAsync(principal.TenantId.Value, key, digest, answer, CancellationToken.None);
         }
         return SearchDocumentsTool.Raw(answer);
     }

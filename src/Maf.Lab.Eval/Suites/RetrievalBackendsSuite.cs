@@ -109,7 +109,7 @@ public sealed class RetrievalBackendsSuite
         {
             bar.Working(c.Id);
             var diagnostics = new SearchDiagnostics { Branches = false };
-            var hits = await search.RankAsync(EvalAgentHost.EvalPrincipal(c.FirmId), c.Query, null, 20, settings, ct, diagnostics);
+            var hits = await search.RankAsync(EvalAgentHost.EvalPrincipal(c.TenantId), c.Query, null, 20, settings, ct, diagnostics);
             ranked.Add([.. hits.Select(h => h.Chunk.ChunkId)]);
             bar.Advance();
         }

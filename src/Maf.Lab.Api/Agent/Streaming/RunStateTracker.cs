@@ -96,7 +96,7 @@ public sealed class RunStateTracker(IRunStateStore store, Principal principal, s
     }
 
     public RunState Snapshot() => new(
-        runId, conversationId, principal.UserId, principal.FirmId.Value,
+        runId, conversationId, principal.UserId, principal.TenantId.Value,
         _answer.ToString(),
         [.. _order.Select(id => _toolCalls[id])],
         _outcome, _awaitingId, _turnId, _error,

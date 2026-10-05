@@ -195,7 +195,7 @@ public class CodeToolRoutingTests
         using var api = CodeApi(tools, _ => "callers");
         const string question = "Who calls TenantScopedSearch.QueryAsync? MARKER-Q";
 
-        var events = await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN), question);
+        var events = await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN), question);
 
         Assert.Equal(GraphTools.TraceCodeSymbol, tools.Invocations[0]);
         Assert.DoesNotContain(CodeTools.Search, tools.Invocations);
@@ -221,7 +221,7 @@ public class CodeToolRoutingTests
         var tools = new FakeToolSource { WithCodebase = true, WithCodeGraph = true };
         using var api = CodeApi(tools, _ => "impact");
 
-        await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN), "Кои тестове покриват src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs?");
+        await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN), "Кои тестове покриват src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs?");
 
         Assert.Equal(GraphTools.ChangeImpact, tools.Invocations[0]);
         Assert.Equal("src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs", tools.GraphArguments[0]["path"]);
@@ -234,7 +234,7 @@ public class CodeToolRoutingTests
         var tools = new FakeToolSource { WithCodebase = true, WithCodeGraph = true };
         using var api = CodeApi(tools, _ => "callers", intent: "procedural", billing: 0.8);
 
-        var events = await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN), "Who calls TenantScopedSearch.QueryAsync?");
+        var events = await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN), "Who calls TenantScopedSearch.QueryAsync?");
 
         Assert.Equal(["search_documents", GraphTools.TraceCodeSymbol], tools.Invocations.Take(2).Order(StringComparer.Ordinal));
         Assert.DoesNotContain(CodeTools.Search, tools.Invocations);
@@ -247,7 +247,7 @@ public class CodeToolRoutingTests
         var tools = new FakeToolSource { WithCodebase = true, WithCodeGraph = true };
         using var api = CodeApi(tools, _ => "text");
 
-        var events = await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN), "How does TenantScopedSearch.QueryAsync work?");
+        var events = await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN), "How does TenantScopedSearch.QueryAsync work?");
 
         Assert.Equal(CodeTools.Search, tools.Invocations[0]);
         var codeRouting = Trace(events).Single(t => t.Kind == TraceKinds.Intent).Data.GetProperty("codeRouting");
@@ -261,7 +261,7 @@ public class CodeToolRoutingTests
         var tools = new FakeToolSource { WithCodebase = true };
         using var api = CodeApi(tools, _ => "callers");
 
-        var events = await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN), "Who calls TenantScopedSearch.QueryAsync?");
+        var events = await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN), "Who calls TenantScopedSearch.QueryAsync?");
 
         Assert.Equal(CodeTools.Search, tools.Invocations[0]);
         Assert.Equal("trace_code_symbol is not offered",
@@ -274,7 +274,7 @@ public class CodeToolRoutingTests
         var tools = new FakeToolSource { WithCodebase = true, WithCodeGraph = true };
         using var api = CodeApi(tools, _ => "callers", intent: "chitchat");
 
-        await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN), "thanks, TenantScopedSearch.QueryAsync is clear now");
+        await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN), "thanks, TenantScopedSearch.QueryAsync is clear now");
 
         Assert.DoesNotContain(GraphTools.TraceCodeSymbol, tools.Invocations);
         Assert.DoesNotContain(CodeTools.Search, tools.Invocations);

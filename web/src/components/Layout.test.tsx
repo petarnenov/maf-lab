@@ -9,7 +9,7 @@ describe('main navigation', () => {
       'fetch',
       vi.fn(async () => jsonResponse([])),
     );
-    renderWithProviders(<App />, { session: makeSession('ADVISOR'), route: '/curriculum' });
+    renderWithProviders(<App />, { session: makeSession('USER'), route: '/curriculum' });
 
     const nav = screen.getByRole('navigation', { name: 'Main' });
     const labels = Array.from(nav.querySelectorAll('a')).map(

@@ -20,7 +20,7 @@ public sealed partial class ConversationService(IDbContextFactory<MafDbContext> 
         {
             Id = id,
             UserId = principal.UserId,
-            FirmId = principal.FirmId.Value,
+            TenantId = principal.TenantId.Value,
             CreatedAt = time.GetUtcNow().UtcDateTime,
             LastActivityAt = time.GetUtcNow().UtcDateTime,
         };
@@ -38,7 +38,7 @@ public sealed partial class ConversationService(IDbContextFactory<MafDbContext> 
         }
         await using var ctx = await db.CreateDbContextAsync(ct);
         var owned = await ctx.Conversations.AnyAsync(
-            c => c.Id == conversationId && c.UserId == principal.UserId && c.FirmId == principal.FirmId.Value && c.DeletedAt == null, ct);
+            c => c.Id == conversationId && c.UserId == principal.UserId && c.TenantId == principal.TenantId.Value && c.DeletedAt == null, ct);
         return owned ? conversationId : null;
     }
 
@@ -70,7 +70,7 @@ public sealed partial class ConversationService(IDbContextFactory<MafDbContext> 
                 return await ResolveAsync(principal, threadId, ct);
             }
         }
-        return row.UserId == principal.UserId && row.FirmId == principal.FirmId.Value && row.DeletedAt == null ? threadId : null;
+        return row.UserId == principal.UserId && row.TenantId == principal.TenantId.Value && row.DeletedAt == null ? threadId : null;
     }
 
     [System.Text.RegularExpressions.GeneratedRegex("^[A-Za-z0-9_-]{1,64}$")]

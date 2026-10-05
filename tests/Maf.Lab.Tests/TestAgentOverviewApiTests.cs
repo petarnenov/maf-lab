@@ -47,7 +47,7 @@ public sealed class TestAgentOverviewApiTests
     private static async Task<string> AgentUrlAsync(TestAgentFactory agent) =>
         (await agent.ClientAsync(authenticated: false)).BaseAddress!.ToString();
 
-    private static HttpClient Admin(ApiFactory api) => api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+    private static HttpClient Admin(ApiFactory api) => api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
 
     private static async Task<TestAgentOverviewDto> OverviewAsync(ApiFactory api) =>
         (await Admin(api).GetFromJsonAsync<TestAgentOverviewDto>(Route, Json, Ct))!;
@@ -235,7 +235,7 @@ public sealed class TestAgentOverviewApiTests
     {
         using var api = Api("");
 
-        var response = await api.ClientFor("bob", "firm-a", Role.ADVISOR).GetAsync(Route, Ct);
+        var response = await api.ClientFor("bob", "firm-a", Role.USER).GetAsync(Route, Ct);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }

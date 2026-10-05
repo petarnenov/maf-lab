@@ -50,7 +50,7 @@ public sealed class SqliteTaskStore(
                     // Who this task belongs to is known at the moment it is created: the request that created it
                     // was authenticated, and its entitlement is what decides who may see or stop the task later.
                     PartnerId = Metadata(task, "partnerId") ?? Caller()?.PartnerId,
-                    FirmId = Caller() is { AllowedFirms.Count: > 0 } caller ? caller.AllowedFirms.First().Value : null,
+                    TenantId = Caller() is { AllowedFirms.Count: > 0 } caller ? caller.AllowedFirms.First().Value : null,
                     State = state,
                     Json = JsonSerializer.Serialize(task, Json),
                     CreatedAt = time.GetUtcNow().UtcDateTime,

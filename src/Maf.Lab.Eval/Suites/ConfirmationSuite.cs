@@ -22,7 +22,7 @@ public sealed class ConfirmationSuite(EvalAgentHost host)
 
         foreach (var (c, i) in cases.Select((c, i) => (c, i)))
         {
-            var turn = await host.AskAsync(c.FirmId, c.Question, ct);
+            var turn = await host.AskAsync(c.TenantId, c.Question, ct);
             var (ok, reason) = Judge(turn.Proposal, turn.ProposalQuestion, c);
             if (ok)
             {

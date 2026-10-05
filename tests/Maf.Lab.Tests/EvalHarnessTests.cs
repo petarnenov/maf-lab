@@ -95,7 +95,7 @@ public class EvalHarnessTests
         {
             var english = cases.Single(c => c.Id == twin.Id[..^"-bg".Length]);
             Assert.Equal(english.RelevantChunkIds, twin.RelevantChunkIds);
-            Assert.Equal(english.FirmId, twin.FirmId);
+            Assert.Equal(english.TenantId, twin.TenantId);
             Assert.NotEqual(english.Query, twin.Query);
         }
     }
@@ -300,9 +300,9 @@ public class EvalHarnessTests
         await using (var ctx = new MafDbContext(new DbContextOptionsBuilder<MafDbContext>().UseSqlite(db).Options))
         {
             await ctx.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
-            var turn = new TurnRow { Id = "t_1", ConversationId = "c_1", UserId = "adam", FirmId = "firm-a", Question = "how do I re-run a failed run" };
+            var turn = new TurnRow { Id = "t_1", ConversationId = "c_1", UserId = "adam", TenantId = "firm-a", Question = "how do I re-run a failed run" };
             var (row, _) = FeedbackEndpoints.BuildRow(turn, new LabelRequest(EvalDataset.Retrieval, null, ["shared/procedures/rerun-failed-billing-run.txt#re-running-a-failed-billing-run"], null, null));
-            ctx.Labels.Add(new LabelRow { Id = "l_1", TurnId = "t_1", FirmId = "firm-a", ReviewerId = "alice", Dataset = EvalDataset.Retrieval, RowJson = row!.ToJsonString() });
+            ctx.Labels.Add(new LabelRow { Id = "l_1", TurnId = "t_1", TenantId = "firm-a", ReviewerId = "alice", Dataset = EvalDataset.Retrieval, RowJson = row!.ToJsonString() });
             await ctx.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
         var writer = new DatasetWriter(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Evals:Root"] = Path.Combine(dir, "evals") }).Build());

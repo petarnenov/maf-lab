@@ -22,7 +22,7 @@ namespace Maf.Lab.Eval;
 ///   [--rerank [--reranker llm,jev]] [--contextual] [--limit N] [--repeat N] [--import-feedback [--api-db "Data Source=..."]]
 /// dotnet run --project src/Maf.Lab.Eval -- --suite graph-depth [--structural-only] [--limit N]   (a comparison: reported, never gated)
 /// dotnet run --project src/Maf.Lab.Eval -- --suite retrieval-backends [--limit N]   (the Neo4j spike against Qdrant; a comparison)
-/// dotnet run --project src/Maf.Lab.Eval -- --ask "question" [--firm firm-a] [--trace-json path]   (one turn, its trace printed)
+/// dotnet run --project src/Maf.Lab.Eval -- --ask "question" [--tenant firm-a] [--trace-json path]   (one turn, its trace printed)
 /// Run on demand, and always after changing prompts, tool descriptions, the model, the tool set or chunking.
 /// Exit code 1 when any suite is below its configured thresholds.
 /// </summary>
@@ -100,7 +100,7 @@ public static class Program
         if (flags.TryGetValue("ask", out var question))
         {
             await using var asking = await EvalAgentHost.StartAsync(configuration, ct);
-            return await AskCommand.RunAsync(asking, flags.GetValueOrDefault("firm") ?? "firm-a", question, flags.GetValueOrDefault("trace-json"), ct);
+            return await AskCommand.RunAsync(asking, flags.GetValueOrDefault("tenant") ?? flags.GetValueOrDefault("firm") ?? "firm-a", question, flags.GetValueOrDefault("trace-json"), ct);
         }
 
         var suite = flags.GetValueOrDefault("suite") ?? "all";

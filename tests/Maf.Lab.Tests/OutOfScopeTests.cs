@@ -30,7 +30,7 @@ public class OutOfScopeTests
     public async Task A_first_question_outside_every_domain_gets_the_fixed_reply_without_a_model_call()
     {
         using var api = new ApiFactory(Answering(), jev: new FakeJev { InDomain = 0.02 });
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var events = await ApiFactory.ChatAsync(client, Frogs);
 
@@ -50,7 +50,7 @@ public class OutOfScopeTests
     {
         using var api = new ApiFactory(Answering(), jev: new FakeJev { InDomain = 0.02 });
 
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "Какво яде жабата?");
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "Какво яде жабата?");
 
         Assert.Equal(OutOfScope.ReplyBulgarian, ApiFactory.AnswerOf(events));
         Assert.DoesNotContain("жаба", ApiFactory.AnswerOf(events));
@@ -60,7 +60,7 @@ public class OutOfScopeTests
     public async Task A_follow_up_outside_every_domain_is_left_to_the_model()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         var first = await ApiFactory.ChatAsync(client, "what is the procedure when a fee schedule is missing");
         var calls = api.Chat.Requests.Count;
 
@@ -77,7 +77,7 @@ public class OutOfScopeTests
     {
         using var api = new ApiFactory(Answering(), jev: new FakeJev { InDomain = 0.0 });
 
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "hello");
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "hello");
 
         Assert.NotEmpty(api.Chat.Requests);
         Assert.DoesNotContain(TurnSignal.OutOfScope, Signals(events));
@@ -91,7 +91,7 @@ public class OutOfScopeTests
             ExtraSettings = new Dictionary<string, string?> { ["Jev:RefuseOutsideDomains"] = "false" },
         };
 
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), Frogs);
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), Frogs);
 
         Assert.NotEmpty(api.Chat.Requests);
         Assert.DoesNotContain(TurnSignal.OutOfScope, Signals(events));
@@ -102,7 +102,7 @@ public class OutOfScopeTests
     {
         using var api = new ApiFactory(Answering(), jev: new FakeJev { InDomain = 0.02, Status = System.Net.HttpStatusCode.InternalServerError });
 
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), Frogs);
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), Frogs);
 
         Assert.NotEmpty(api.Chat.Requests);
         Assert.DoesNotContain(TurnSignal.OutOfScope, Signals(events));

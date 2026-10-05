@@ -241,7 +241,7 @@ public sealed class TestAgentClient(
         {
             // Coverage runs belong to the repository, not a firm: filed under the shared scope, as a system action.
             await audit.RecordAsync(new AuditEntry(
-                new Principal("maf-lab-assistant", TenantId.Shared, UserRole.READ_ONLY, []),
+                new Principal("maf-lab-assistant", TenantId.Shared, UserRole.READ_ONLY),
                 null, null, operation, $"agent=testgen runId={runId} taskId={taskId ?? "-"}",
                 outcome, (long)took.TotalMilliseconds, Compliance.AuditKinds.A2AConsultation), CancellationToken.None);
         }

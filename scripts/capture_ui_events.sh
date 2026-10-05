@@ -24,7 +24,7 @@ def post(path, body, token=None):
         return response.read().decode()
 
 def token(user, firm, role):
-    return json.loads(post("/dev/token", {"userId": user, "firmId": firm, "role": role}))["token"]
+    return json.loads(post("/dev/token", {"userId": user, "tenantId": firm, "role": role}))["token"]
 
 def run(access, message, thread=None):
     """One turn, as the browser makes it: through CopilotKit's runtime, the frames in the order they arrived."""
@@ -74,7 +74,7 @@ def expected(frames, trace):
     return {"answer": answer, "reasoning": reasoning, "toolCalls": tools, "sources": len(sources),
             "traceSteps": len(trace), "aguiFrames": len(frames), "pending": pending}
 
-adam = token("adam", "firm-a", "ADVISOR")
+adam = token("adam", "firm-a", "USER")
 rows = []
 for name, what, message in [
     ("plain-answer", "an answer with no tool call", "Hello — what can you help me with?"),

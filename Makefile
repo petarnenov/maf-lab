@@ -248,8 +248,8 @@ eval: require-dotnet ## Run evals (SUITE=all|selection|retrieval|generation|inje
 EVAL_HOST = Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval --
 EVAL = $(EVAL_HOST) --suite
 
-ask: require-dotnet ## Ask one question through the agent and print its trace (Q="…" FIRM=firm-a), e.g. a cross-domain one
-	$(EVAL_HOST) --ask "$(Q)" --firm $(or $(FIRM),firm-a)
+ask: require-dotnet ## Ask one question through the agent and print its trace (Q="…" TENANT=firm-a), e.g. a cross-domain one
+	$(EVAL_HOST) --ask "$(Q)" --tenant $(or $(TENANT),$(FIRM),firm-a)
 
 screenshots: require-npm ## Re-take the README screenshots from the running stack into docs/screenshots (SHOTS=chat,topology for a subset)
 	@curl -fsS -o /dev/null $(BASE_URL)/dev/users || { echo "✗ The stack is not answering on $(BASE_URL); run 'make' first."; exit 1; }

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Maf.Lab.Domain.SharedState;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
@@ -25,6 +26,21 @@ public sealed class RedisRunStateStore(IConnectionMultiplexer redis, IOptions<Sh
     public async Task<RunState?> GetAsync(string runId, CancellationToken ct)
     {
         var value = await redis.GetDatabase().StringGetAsync(Key(runId));
-        return value.IsNullOrEmpty ? null : JsonSerializer.Deserialize<RunState>((string)value!, Json);
+        return value.IsNullOrEmpty ? null : Read((string)value!);
+    }
+
+    /// <summary>
+    /// Reads a stored run state. A state written before rename-firm-to-tenant names its tenant <c>firmId</c>; it is read
+    /// as <c>tenantId</c> until such states have aged out (they live for the run grace only).
+    /// </summary>
+    public static RunState? Read(string json)
+    {
+        if (JsonNode.Parse(json) is JsonObject node && node["tenantId"] is null && node["firmId"] is { } legacy)
+        {
+            node.Remove("firmId");
+            node["tenantId"] = legacy.DeepClone();
+            return node.Deserialize<RunState>(Json);
+        }
+        return JsonSerializer.Deserialize<RunState>(json, Json);
     }
 }

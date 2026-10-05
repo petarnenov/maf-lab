@@ -47,17 +47,23 @@ public static class DevJwt
         RoleClaimType = PrincipalClaims.Role,
     };
 
-    public static (string Token, DateTimeOffset ExpiresAt) Issue(AuthOptions auth, string userId, TenantId firm, Role role, IEnumerable<string> advisorIds, DateTimeOffset? now = null)
+    /// <summary>
+    /// Issues a dev token. Domain roles and advisor ids are domain claims the core never reads; they ride along for the
+    /// domain's own server (rename-firm-to-tenant).
+    /// </summary>
+    public static (string Token, DateTimeOffset ExpiresAt) Issue(AuthOptions auth, string userId, TenantId tenant, Role role,
+        DateTimeOffset? now = null, IEnumerable<string>? domainRoles = null, IEnumerable<string>? advisorIds = null)
     {
         var issuedAt = now ?? DateTimeOffset.UtcNow;
         var expires = issuedAt + auth.TokenLifetime;
         var claims = new List<Claim>
         {
             new(PrincipalClaims.UserId, userId),
-            new(PrincipalClaims.FirmId, firm.Value),
+            new(PrincipalClaims.TenantId, tenant.Value),
             new(PrincipalClaims.Role, role.ToString()),
         };
-        claims.AddRange(advisorIds.Select(a => new Claim(PrincipalClaims.AdvisorId, a)));
+        claims.AddRange((domainRoles ?? []).Select(r => new Claim(PrincipalClaims.DomainRoles, r)));
+        claims.AddRange((advisorIds ?? []).Select(a => new Claim(PrincipalClaims.AdvisorIds, a)));
 
         var token = new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
         {

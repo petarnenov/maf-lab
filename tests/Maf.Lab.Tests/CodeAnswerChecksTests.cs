@@ -67,7 +67,7 @@ public class CodeAnswerChecksTests
     {
         using var api = CodeApi(OnSnippet("guard_to_ai", 0.97));
 
-        var events = await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN), CodeQuestion);
+        var events = await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN), CodeQuestion);
 
         Assert.Contains(CodeSnippet, ModelSaw(api));
         Assert.DoesNotContain(TurnSignal.GuardrailWithheld, Signals(events));
@@ -94,7 +94,7 @@ public class CodeAnswerChecksTests
         using var api = new ApiFactory(ApiFactory.ProceduralModel(),
             jev: new FakeJev { Guard = (text, id) => id == "guard_to_ai" && text.Contains("Ignore previous instructions") ? 0.97 : 0.02 });
 
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "what is the procedure when a fee schedule is missing");
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "what is the procedure when a fee schedule is missing");
 
         Assert.Contains(TurnSignal.GuardrailWithheld, Signals(events));
         var guard = Trace(events).Single(t => t.Kind == TraceKinds.Guardrail && t.Data.GetProperty("check").GetString() == Guardrail.CheckToolResult).Data;
@@ -114,7 +114,7 @@ public class CodeAnswerChecksTests
     {
         using var api = CodeApi(OnSnippet("guard_override", 0.9));
 
-        var events = await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN), CodeQuestion);
+        var events = await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN), CodeQuestion);
 
         Assert.Contains(TurnSignal.GuardrailWithheld, Signals(events));
         Assert.Equal("withheld", CodeGuard(events).GetProperty("decision").GetString());
@@ -145,7 +145,7 @@ public class CodeAnswerChecksTests
     {
         using var api = CodeApi(OnSnippet("guard_exfiltrate", 0.6));
 
-        var events = await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN), CodeQuestion);
+        var events = await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN), CodeQuestion);
 
         Assert.Contains(CodeSnippet, ModelSaw(api));
         var guard = CodeGuard(events);
@@ -177,7 +177,7 @@ public class CodeAnswerChecksTests
             ExtraSettings = new Dictionary<string, string?> { ["Guard:TimeoutSeconds"] = "0.05" },
         };
 
-        var events = await ApiFactory.ChatAsync(slow.ClientFor("alice", "firm-a", Role.FIRM_ADMIN), CodeQuestion);
+        var events = await ApiFactory.ChatAsync(slow.ClientFor("alice", "firm-a", Role.TENANT_ADMIN), CodeQuestion);
 
         Assert.Contains(CodeSnippet, ModelSaw(slow));
         var guard = CodeGuard(events);
@@ -254,7 +254,7 @@ public class CodeAnswerChecksTests
         const string answer = "The guard withholds in src/Maf.Lab.Api/Agent/ToolSource.cs:17‑27.";
         using var api = CodeApi(null, answer);
 
-        var events = await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN), CodeQuestion);
+        var events = await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN), CodeQuestion);
 
         Assert.Equal(answer, ApiFactory.AnswerOf(events));
         var check = Bodies(api).Single(b => b.GetProperty("state").TryGetProperty("answer", out _));
@@ -443,7 +443,7 @@ public class CodeAnswerChecksTests
         using var api = CodeApi(null, "ANSWER-MARKER lives in src/Maf.Lab.Api/Agent/ToolSource.cs:17-27.");
         api.Jev.AnswerCheck = (id, _, _) => id == JevAnswerCheck.GroundedId ? 0.35 : 0.9;
 
-        var events = await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN), CodeQuestion);
+        var events = await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN), CodeQuestion);
 
         var check = Trace(events).Single(t => t.Kind == TraceKinds.AnswerCheck);
         Assert.Equal(AnswerVerdict.Uncertain, check.Data.GetProperty("verdict").GetString());

@@ -44,7 +44,7 @@ public class FocusStateTests
     private static (ApiFactory Api, HttpClient Client) Start()
     {
         var api = new ApiFactory(Model(), new FakeToolSource { WithPortfolio = true });
-        return (api, api.ClientFor("adam", "firm-a", Role.ADVISOR));
+        return (api, api.ClientFor("adam", "firm-a", Role.USER));
     }
 
     [Fact]
@@ -181,7 +181,7 @@ public class FocusStateTests
                 : ScriptedChatClient.Call(PortfolioTools.GetPortfolio, new() { ["accountId"] = "A-1043" }));
         var tools = new FakeToolSource { WithPortfolio = true };
         using var api = new ApiFactory(model, tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         var conversationId = ApiFactory.ThreadOf(await ApiFactory.ChatAsync(client, "Rebalance A-1043"));
         int Reads() => tools.Invocations.Count(i => i == PortfolioTools.GetPortfolio);
         var before = Reads();

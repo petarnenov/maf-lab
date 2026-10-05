@@ -10,16 +10,20 @@ Tenant is taken from the token only — no route or body has a tenant field.
 
 | Method | Path | Body | Response |
 |---|---|---|---|
-| GET | `/dev/users` | — | `[{ userId, firmId, role, advisorIds, label }]` predefined personas |
-| POST | `/dev/token` | `{ userId, firmId, role, advisorIds? }` | `{ token, expiresAt }` |
+| GET | `/dev/users` | — | `[{ userId, tenantId, role, domainRoles, advisorIds, label }]` predefined personas |
+| POST | `/dev/token` | `{ userId, tenantId, role, domainRoles?, advisorIds? }` | `{ token, expiresAt }` |
 
-Roles: `FIRM_ADMIN`, `ADVISOR`, `OPS`, `READ_ONLY`. Firms: `firm-a`, `firm-b`, `firm-c`.
+Core roles: `TENANT_ADMIN`, `USER`, `READ_ONLY`. Tenants: `firm-a`, `firm-b`, `firm-c`. A persona's domain claims
+(`domain_roles` such as `billing:advisor`, and `advisor_ids`) ride in its token and are read only by the billing
+server; when the request names none, the issuer adds the persona's own. For one release the issuer also accepts
+`firmId` for `tenantId` and the old role names (`FIRM_ADMIN`, `ADVISOR`, `OPS`), and the api accepts a token's
+`firm_id` claim for `tenant_id`.
 
 ## Identity
 
 | Method | Path | Body | Response |
 |---|---|---|---|
-| GET | `/api/me` | — | `{ userId, firmId, role, advisorIds }` |
+| GET | `/api/me` | — | `{ userId, tenantId, role }` |
 
 ## Chat
 
@@ -201,14 +205,14 @@ conversation's id returns `404`.
 
 | Method | Path | Response |
 |---|---|---|
-| GET | `/api/turns/{turnId}/trace` | `{ turnId, conversationId, createdAt, events: TraceEvent[], aguiFrames: RunFrame[] \| null }` — the turn's owner, or a FIRM_ADMIN of the same firm for turns in the review queue; otherwise `404`. Kept for `Tracing:RetentionDays` (7). `aguiFrames` is the run's own events as they crossed the wire, and is `null` for a turn answered before they were kept. |
+| GET | `/api/turns/{turnId}/trace` | `{ turnId, conversationId, createdAt, events: TraceEvent[], aguiFrames: RunFrame[] \| null }` — the turn's owner, or a TENANT_ADMIN of the same firm for turns in the review queue; otherwise `404`. Kept for `Tracing:RetentionDays` (7). `aguiFrames` is the run's own events as they crossed the wire, and is `null` for a turn answered before they were kept. |
 
 `RunFrame` = `{ seq, atMs, type, bytes, payload?, truncated }` — see [trace-events.md](trace-events.md). Turns recorded
 before agui-protocol-only may also carry `name` and `traceSeq` on their custom-event frames.
 
 ## Runs
 
-A run's snapshot — `RunState` = `{ runId, conversationId, userId, firmId, answer, toolCalls, outcome, awaitingId, turnId,
+A run's snapshot — `RunState` = `{ runId, conversationId, userId, tenantId, answer, toolCalls, outcome, awaitingId, turnId,
 error, startedAt, updatedAt }`, `outcome` one of `running`, `answered`, `awaiting_person`, `failed`, `cancelled` — is kept
 in the shared store so a rejoin can be answered by any replica (see Stopping and rejoining). It is a snapshot, not a
 replay, and is no longer served on its own — see [shared-state.md](shared-state.md).
@@ -238,7 +242,7 @@ Through the load balancer: `/jaeger` opens the trace store, and `/v1/traces` is 
 `kind`: `wrong_tool` \| `wrong_document` \| `wrong_answer` \| `wrong_confirmation`. The last one is about the
 summary a person was asked to approve, so the UI offers it only on a turn that asked for one.
 
-## Admin (FIRM_ADMIN only, otherwise `403`)
+## Admin (TENANT_ADMIN only, otherwise `403`)
 
 | Method | Path | Body | Response |
 |---|---|---|---|
@@ -303,7 +307,7 @@ name, each asked its own `/health`; `facts` are display strings (chunk count, mo
 secret — the chat provider reports only *whether* its key is configured. The report is probed concurrently with a
 2 s budget per service and reused for `cacheSeconds`.
 
-## Agent to agent (FIRM_ADMIN only, otherwise `403`)
+## Agent to agent (TENANT_ADMIN only, otherwise `403`)
 
 | Method | Path | Body | Response |
 |---|---|---|---|
@@ -348,7 +352,7 @@ call was made or the model is priced at zero. The coverage runner's build and te
 null caps are unlimited. Runs describe the repository, not a firm, so nothing here is scoped by tenant and
 the route takes no parameter.
 
-## Compliance (FIRM_ADMIN only, otherwise `403`)
+## Compliance (TENANT_ADMIN only, otherwise `403`)
 
 | Method | Path | Query | Response |
 |---|---|---|---|
@@ -363,16 +367,16 @@ changed or removed row breaks the chain; `verify` walks it by row id and names t
 `actions` reads the record newest first, paged by row id: pass the previous page's `nextCursor` as `before` for the
 older ones, until it is null. Reading is never recorded — browsing the log must not grow it.
 
-The export's firm comes from the token; a `firmId` parameter is ignored, and `userId` only narrows (a data subject
+The export's tenant comes from the token; a `firmId` or `tenantId` parameter is ignored, and `userId` only narrows (a data subject
 request). Deleted conversations are included, carrying `deletedAt`. The manifest is
-`{ firmId, subjectUserId, from, to, generatedAt, by, counts, sha256, auditChainHead }`.
+`{ tenantId, subjectUserId, from, to, generatedAt, by, counts, sha256, auditChainHead }`.
 
 `sha256` covers the three content sections in a **canonical rendering**, not this service's JSON output, so any
 recipient can recompute it: the literal section names `conversations`, `turns`, `actions` each on their own line,
 followed by one line per row, fields joined with `U+001F` in the order the DTOs declare them, timestamps as UTC
 `yyyy-MM-ddTHH:mm:ss.fffZ`, booleans as `true`/`false`, nulls as the empty string, rows terminated by `\n`.
 
-## Coverage (any authenticated role reads; FIRM_ADMIN changes, otherwise `403`)
+## Coverage (any authenticated role reads; TENANT_ADMIN changes, otherwise `403`)
 
 The Coverage screen's API. Coverage describes the repository, so nothing here is scoped to a firm. A run's
 lifecycle is `submitted → working → verifying → candidate → accepted | discarded`, or it ends `failed`,

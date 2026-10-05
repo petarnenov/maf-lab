@@ -19,7 +19,7 @@ public class MessageRetentionTests
     public async Task A_conversation_past_its_retention_goes_with_its_messages_and_its_turns()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var old = await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing");
         var fresh = await ApiFactory.ChatAsync(adam, "and what about a failed run");
         var oldId = ApiFactory.ThreadOf(old);
@@ -63,7 +63,7 @@ public class MessageRetentionTests
     public async Task Deleting_a_conversation_does_not_wait_for_any_retention()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var id = ApiFactory.ThreadOf(await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing"));
 
         Assert.Equal(System.Net.HttpStatusCode.NoContent, (await adam.DeleteAsync($"/api/conversations/{id}", Ct)).StatusCode);

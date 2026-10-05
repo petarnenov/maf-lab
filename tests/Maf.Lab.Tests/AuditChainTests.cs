@@ -15,7 +15,7 @@ public class AuditChainTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private static Principal Adam => new("adam", TenantId.Firm("firm-a"), Role.ADVISOR, []);
+    private static Principal Adam => new("adam", TenantId.Firm("firm-a"), Role.USER);
 
     private static AuditEntry Entry(string action, string kind = AuditKinds.Tool, string args = "") =>
         new(Adam, "c_1", "t_1", action, args, "ok", 5, kind);
@@ -124,7 +124,7 @@ public class AuditChainTests
         {
             db.Audit.Add(new AuditRow
             {
-                At = DateTime.UtcNow.AddDays(-1), PrincipalId = "adam", FirmId = "firm-a",
+                At = DateTime.UtcNow.AddDays(-1), PrincipalId = "adam", TenantId = "firm-a",
                 ToolName = "search_documents", Arguments = "", Outcome = "ok", DurationMs = 12,
             });
             await db.SaveChangesAsync(Ct);

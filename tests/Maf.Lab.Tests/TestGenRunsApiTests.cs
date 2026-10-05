@@ -33,7 +33,7 @@ public sealed class TestGenRunsApiTests
         public TestAgentFactory Agent => agent;
         public FakeCoverageRunner Runner => runner;
         public AttemptModel Model => model;
-        public HttpClient Admin { get; } = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        public HttpClient Admin { get; } = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
 
         public T Get<T>() where T : notnull => api.Services.GetRequiredService<T>();
 
@@ -439,9 +439,9 @@ public sealed class TestGenRunsApiTests
         // A second replica over the same database: it has never followed this run.
         using var other = CoverageApi.Create(s.Repo, s.Runner, dataDir: s.Api.DataDir);
 
-        await using var stream = await RunStream.OpenAsync(s.Api.ClientFor("bob", "firm-a", Role.ADVISOR), started.Id);
+        await using var stream = await RunStream.OpenAsync(s.Api.ClientFor("bob", "firm-a", Role.USER), started.Id);
         var events = await stream.ReadAsync();
-        await using var fromOther = await RunStream.OpenAsync(other.ClientFor("bob", "firm-a", Role.ADVISOR), started.Id);
+        await using var fromOther = await RunStream.OpenAsync(other.ClientFor("bob", "firm-a", Role.USER), started.Id);
         var otherEvents = await fromOther.ReadAsync();
 
         Assert.Equal("text/event-stream", stream.MediaType);
@@ -476,7 +476,7 @@ public sealed class TestGenRunsApiTests
         var started = (await (await StartAsync(s, pct: 95)).Content.ReadFromJsonAsync<RunSummary>(Json, Ct))!;
         await UntilAsync(s, started.Id, r => r.Attempt == 2);
 
-        await using var stream = await RunStream.OpenAsync(s.Api.ClientFor("bob", "firm-a", Role.ADVISOR), started.Id, seconds: 60);
+        await using var stream = await RunStream.OpenAsync(s.Api.ClientFor("bob", "firm-a", Role.USER), started.Id, seconds: 60);
         var sofar = await stream.ReadAsync(e => e.Name == "STEP_STARTED" && e.Data.GetProperty("stepName").GetString() == "attempt 2: generating");
         release.SetResult();
         var live = await stream.ReadAsync();
@@ -570,7 +570,7 @@ public sealed class TestGenRunsApiTests
     public async Task Starting_and_cancelling_are_for_admins()
     {
         await using var s = await StackAsync();
-        var advisor = s.Api.ClientFor("bob", "firm-a", Role.ADVISOR);
+        var advisor = s.Api.ClientFor("bob", "firm-a", Role.USER);
 
         var start = await advisor.PostAsJsonAsync("/api/coverage/runs", new CoverageEndpoints.StartRunRequest(Target, 85, "glm-5.3:cloud"), Ct);
         var cancel = await advisor.PostAsync("/api/coverage/runs/r_x/cancel", null, Ct);
@@ -611,7 +611,7 @@ public sealed class TestGenRunsApiTests
         });
         await CoverageApi.IngestAsync(api, await repo.HeadAsync(Ct), Toolchains.Dotnet, SnapshotKind.Official, null, (Target, 1, 4));
 
-        var response = await api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN)
+        var response = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN)
             .PostAsJsonAsync("/api/coverage/runs", new CoverageEndpoints.StartRunRequest(Target, 85, "glm-5.3:cloud"), Ct);
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         System.Diagnostics.Activity? run = null;

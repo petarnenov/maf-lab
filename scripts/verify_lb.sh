@@ -52,7 +52,7 @@ signal.signal(signal.SIGINT, stop)
 signal.signal(signal.SIGTERM, stop)
 
 def token(user, firm, role):
-    _, _, body = req("/dev/token", "POST", {"userId": user, "firmId": firm, "role": role})
+    _, _, body = req("/dev/token", "POST", {"userId": user, "tenantId": firm, "role": role})
     return json.loads(body)["token"]
 
 # 4.1 entry point, routing, closed ports ---------------------------------------------------------------
@@ -73,7 +73,7 @@ for port in (5080, 5090, 5174):
     s.close()
     check(f"host port {port} is closed", refused)
 
-adam = token("adam", "firm-a", "ADVISOR")
+adam = token("adam", "firm-a", "USER")
 instances = collections.Counter()
 for _ in range(20):
     status, headers, _ = req("/api/me", token=adam)
@@ -153,7 +153,7 @@ finally:
     subprocess.run(f"{COMPOSE} exec -T lb nginx -c /etc/nginx/lb/nginx.conf -s reload", shell=True, capture_output=True)
 
 # 4.4 admin jobs across replicas ------------------------------------------------------------------------
-alice = token("alice", "firm-a", "FIRM_ADMIN")
+alice = token("alice", "firm-a", "TENANT_ADMIN")
 status, _, body = req("/api/admin/index/run", "POST", token=alice)
 job = json.loads(body)
 started_jobs.append((job["jobId"], alice))

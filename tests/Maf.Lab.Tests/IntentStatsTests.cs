@@ -122,7 +122,7 @@ public class IntentStatsTests
         {
             ExtraSettings = new Dictionary<string, string?> { ["Jev:TimeoutSeconds"] = "0.3" },
         };
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
 
         await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing");   // used, forced
         await ApiFactory.ChatAsync(adam, "hello");                                                  // used, chitchat
@@ -136,7 +136,7 @@ public class IntentStatsTests
         await ApiFactory.ChatAsync(adam, "how do I re-run a failed billing run");                   // timed out
         api.Jev.Hang = null;
 
-        var r = await StatsAsync(api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN));
+        var r = await StatsAsync(api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN));
 
         Assert.Equal(new IntentStatsTotals(5, 2, 2, 1, 1, 0), r.Totals);
         Assert.Equal(1, r.Pipeline.Forced);
@@ -152,28 +152,28 @@ public class IntentStatsTests
     public async Task A_firm_admin_never_sees_another_firms_turns()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "what is the procedure when a fee schedule is missing");
-        await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "hello");
-        await ApiFactory.ChatAsync(api.ClientFor("bob", "firm-b", Role.ADVISOR), "hello");
+        await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "what is the procedure when a fee schedule is missing");
+        await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "hello");
+        await ApiFactory.ChatAsync(api.ClientFor("bob", "firm-b", Role.USER), "hello");
 
-        Assert.Equal(2, (await StatsAsync(api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN))).Totals.Classified);
-        Assert.Equal(1, (await StatsAsync(api.ClientFor("bea", "firm-b", Role.FIRM_ADMIN))).Totals.Classified);
+        Assert.Equal(2, (await StatsAsync(api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN))).Totals.Classified);
+        Assert.Equal(1, (await StatsAsync(api.ClientFor("bea", "firm-b", Role.TENANT_ADMIN))).Totals.Classified);
         // No parameter can widen it: an unknown one is ignored, and the firm still comes from the token.
-        var widened = await api.ClientFor("bea", "firm-b", Role.FIRM_ADMIN)
+        var widened = await api.ClientFor("bea", "firm-b", Role.TENANT_ADMIN)
             .GetFromJsonAsync<IntentStatsReport>("/api/admin/intent-stats?window=24h&firmId=firm-a", Json, Ct);
         Assert.Equal(1, widened!.Totals.Classified);
-        Assert.Equal(0, (await StatsAsync(api.ClientFor("carl", "firm-c", Role.FIRM_ADMIN))).Totals.Classified);
+        Assert.Equal(0, (await StatsAsync(api.ClientFor("carl", "firm-c", Role.TENANT_ADMIN))).Totals.Classified);
     }
 
     [Fact]
     public async Task Only_a_firm_admin_may_read_and_only_the_listed_windows()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        foreach (var role in new[] { Role.ADVISOR, Role.OPS })
+        foreach (var role in new[] { Role.USER, Role.USER })
         {
             Assert.Equal(HttpStatusCode.Forbidden, (await api.ClientFor("x", "firm-a", role).GetAsync("/api/admin/intent-stats", Ct)).StatusCode);
         }
-        var admin = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
         var refused = await admin.GetAsync("/api/admin/intent-stats?window=30d", Ct);
         Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
         Assert.Contains("1h, 24h, 7d", await refused.Content.ReadAsStringAsync(Ct));
@@ -188,9 +188,9 @@ public class IntentStatsTests
     {
         const string marker = "zq-sentinel-7781";
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), $"what is the procedure for {marker} fees");
+        await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), $"what is the procedure for {marker} fees");
 
-        var response = await api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN).GetAsync("/api/admin/intent-stats", Ct);
+        var response = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN).GetAsync("/api/admin/intent-stats", Ct);
         var body = await response.Content.ReadAsStringAsync(Ct);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.DoesNotContain(marker, body);

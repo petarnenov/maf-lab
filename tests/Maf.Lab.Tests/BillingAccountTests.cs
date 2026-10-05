@@ -8,8 +8,8 @@ namespace Maf.Lab.Tests;
 
 public class BillingAccountTests
 {
-    private static readonly Principal FirmA = new("adam", TenantId.Firm("firm-a"), Role.ADVISOR, []);
-    private static readonly Principal FirmB = new("bianca", TenantId.Firm("firm-b"), Role.ADVISOR, []);
+    private static readonly Principal FirmA = new("adam", TenantId.Firm("firm-a"), Role.USER);
+    private static readonly Principal FirmB = new("bianca", TenantId.Firm("firm-b"), Role.USER);
 
     internal static BillingAccountStore Load() =>
         new(File.ReadAllText(Path.Combine(CorpusLoaderTests.RepoRoot(), "compose", "seed", "billing-accounts.json")));

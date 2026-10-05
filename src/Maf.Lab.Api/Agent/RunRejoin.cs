@@ -23,7 +23,7 @@ public sealed class RunRejoin(IRunStateStore runs, IDbContextFactory<MafDbContex
     /// <summary>Whether <paramref name="runId"/> is a run of this caller's thread that is still kept.</summary>
     public async Task<RunState?> FindAsync(Principal principal, string threadId, string runId, CancellationToken ct) =>
         await runs.GetAsync(runId, ct) is { } state
-        && state.UserId == principal.UserId && state.FirmId == principal.FirmId.Value && state.ConversationId == threadId
+        && state.UserId == principal.UserId && state.TenantId == principal.TenantId.Value && state.ConversationId == threadId
             ? state
             : null;
 
@@ -59,7 +59,7 @@ public sealed class RunRejoin(IRunStateStore runs, IDbContextFactory<MafDbContex
     {
         await using var context = await db.CreateDbContextAsync(ct);
         var row = await context.PendingAdjustments.FirstOrDefaultAsync(p => p.Id == adjustmentId
-            && p.UserId == principal.UserId && p.FirmId == principal.FirmId.Value
+            && p.UserId == principal.UserId && p.TenantId == principal.TenantId.Value
             && p.Status == PendingAdjustmentStatus.AwaitingConfirmation, ct);
         if (row is null)
         {

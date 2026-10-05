@@ -15,7 +15,7 @@ public sealed class GraphTraceIntegrationTests(Neo4jFixture neo4j)
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly TenantId A = TenantId.Firm("firm-a");
-    private static readonly Principal FirmA = new("u-a", A, Role.ADVISOR, []);
+    private static readonly Principal FirmA = new("u-a", A, Role.USER);
 
     [Fact]
     public async Task Each_read_is_recorded_with_what_it_returned()

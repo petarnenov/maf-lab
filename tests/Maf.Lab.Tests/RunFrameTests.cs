@@ -65,7 +65,7 @@ public class RunFrameTests
     public async Task A_turn_keeps_every_frame_its_run_streamed_and_serves_them_with_its_trace()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel("ANSWER-FRAMES-9."));
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var events = await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing");
         var turnId = events[^1].Data.GetProperty("runId").GetString()!;
 
@@ -92,7 +92,7 @@ public class RunFrameTests
     public async Task A_turn_recorded_before_the_frames_were_kept_reports_none_rather_than_an_empty_run()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var turnId = (await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing"))[^1]
             .Data.GetProperty("runId").GetString()!;
 
@@ -127,7 +127,7 @@ public class RunFrameTests
         {
             ExtraSettings = new Dictionary<string, string?> { ["Compliance:BaseUrl"] = "" },
         };
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
 
         var proposed = await ApiFactory.ChatAsync(adam, "adjust the fee on A-1042 down by 200");
         var interrupt = ApiFactory.InterruptOf(proposed);
@@ -154,7 +154,7 @@ public class RunFrameTests
     public async Task Retention_takes_the_frames_with_the_trace()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var turnId = (await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing"))[^1]
             .Data.GetProperty("runId").GetString()!;
 

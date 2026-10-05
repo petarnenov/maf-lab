@@ -59,7 +59,7 @@ public static class CoverageEndpoints
     public static IEndpointRouteBuilder MapCoverage(this IEndpointRouteBuilder app)
     {
         var read = app.MapGroup("/api/coverage").RequireAuthorization();
-        var admin = app.MapGroup("/api/coverage").RequireAuthorization(AuthPolicies.FirmAdmin);
+        var admin = app.MapGroup("/api/coverage").RequireAuthorization(AuthPolicies.TenantAdmin);
 
         read.MapGet("/tree", async (CoverageStore store, IDbContextFactory<MafDbContext> db, IOptions<CoverageOptions> options,
             CancellationToken ct) => Results.Ok(await TreeAsync(store, db, options.Value, ct)));
@@ -156,7 +156,7 @@ public static class CoverageEndpoints
             var limits = new RunLimitsDto(TestGenRuns.AttemptBounds(agent), RunLimits.ToolRoundsPerAttempt, RunLimits.TestRunsPerAttempt,
                 TestGenRuns.DeadlineBounds(agent), RunLimits.SuspectedBugs);
             return Results.Ok(new ModelsDto(models, limits, bytes is { } b ? CostEstimator.Parts(b) : null));
-        }).RequireAuthorization(AuthPolicies.FirmAdmin);
+        }).RequireAuthorization(AuthPolicies.TenantAdmin);
 
         admin.MapPost("/runs", async (StartRunRequest request, IPrincipalAccessor principals, TestGenRuns runs, CancellationToken ct) =>
             await runs.StartAsync(request.Path ?? "", request.Pct, request.Model ?? "", request.Budget, request.Limits, principals.Current.UserId, ct) switch

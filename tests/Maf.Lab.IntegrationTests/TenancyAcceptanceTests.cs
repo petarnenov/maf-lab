@@ -12,8 +12,8 @@ namespace Maf.Lab.IntegrationTests;
 [Collection(CorpusCollection.Name)]
 public class TenancyAcceptanceTests(CorpusIndexFixture corpus)
 {
-    private static readonly Principal AdvisorA = new("adam", TenantId.Firm("firm-a"), Role.ADVISOR, ["adv-a-1"]);
-    private static readonly Principal AdvisorC = new("chris", TenantId.Firm("firm-c"), Role.ADVISOR, ["adv-c-1"]);
+    private static readonly Principal AdvisorA = new("adam", TenantId.Firm("firm-a"), Role.USER);
+    private static readonly Principal AdvisorC = new("chris", TenantId.Firm("firm-c"), Role.USER);
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]

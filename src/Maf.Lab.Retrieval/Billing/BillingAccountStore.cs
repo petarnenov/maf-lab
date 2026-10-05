@@ -39,7 +39,7 @@ public sealed class BillingAccountStore
     public BillingAccount? Find(Principal principal, string accountId)
     {
         var id = Normalize(accountId);
-        var account = _accounts.FirstOrDefault(a => a.FirmId == principal.FirmId.Value && Normalize(a.AccountId) == id);
+        var account = _accounts.FirstOrDefault(a => a.FirmId == principal.TenantId.Value && Normalize(a.AccountId) == id);
         return account is null
             ? null
             : new BillingAccount(account.AccountId, account.Name, account.Fee, account.Currency, account.NextPeriodStart, account.NextPeriodEnd);

@@ -25,7 +25,7 @@ export function CoveragePage() {
   const api = useApi();
   const [params, setParams] = useSearchParams();
   const selected = params.get('file');
-  const isAdmin = session?.user.role === 'FIRM_ADMIN';
+  const isAdmin = session?.user.role === 'TENANT_ADMIN';
 
   const tree = useQuery({
     queryKey: coverageKeys.tree,

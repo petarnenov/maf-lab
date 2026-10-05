@@ -23,7 +23,7 @@ public sealed record RunState(
     string RunId,
     string ConversationId,
     string UserId,
-    string FirmId,
+    string TenantId,
     string Answer,
     IReadOnlyList<RunToolCall> ToolCalls,
     string Outcome,

@@ -13,7 +13,7 @@ namespace Maf.Lab.Tests;
 public class GraphChunkSearchTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
-    private static readonly Principal FirmA = new("u-a", TenantId.Firm("firm-a"), Role.ADVISOR, []);
+    private static readonly Principal FirmA = new("u-a", TenantId.Firm("firm-a"), Role.USER);
 
     private static ChunkRecord Chunk(string id) => new()
     {

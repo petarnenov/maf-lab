@@ -16,7 +16,7 @@ public class InstanceIdentityTests
     public async Task Api_responses_carry_the_instance_header_and_health_reports_it()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var me = await client.GetAsync("/api/me", Ct);
         Assert.Equal(Environment.MachineName, me.Headers.GetValues(InstanceIdentity.Header).Single());

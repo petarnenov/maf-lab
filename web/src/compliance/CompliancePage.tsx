@@ -27,8 +27,8 @@ export function CompliancePage() {
     <section className={page.page}>
       <h1 className={page.heading}>Compliance</h1>
       <p className={page.subheading}>
-        Every audited action of {session?.user.firmId} — tool calls, deletions and exports — in one
-        chained record.
+        Every audited action of {session?.user.tenantId} — tool calls, deletions and exports — in
+        one chained record.
       </p>
       <ChainPanel />
       <ActionLog />
@@ -289,7 +289,7 @@ function ExportPanel({ api }: { api: ReturnType<typeof useApi> }) {
       );
       download(
         pkg,
-        `maf-lab-compliance-${pkg.manifest.firmId}-${pkg.manifest.generatedAt.slice(0, 10)}.json`,
+        `maf-lab-compliance-${pkg.manifest.tenantId}-${pkg.manifest.generatedAt.slice(0, 10)}.json`,
       );
       setManifest(pkg.manifest);
     } catch {

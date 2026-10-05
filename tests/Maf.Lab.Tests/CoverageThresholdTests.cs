@@ -56,7 +56,7 @@ public sealed class CoverageThresholdTests
     public async Task Lowering_a_threshold_saves_at_once()
     {
         using var api = await ApiAsync();
-        var admin = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
 
         var response = await PutAsync(admin, 50);
 
@@ -69,7 +69,7 @@ public sealed class CoverageThresholdTests
     public async Task Raising_above_coverage_asks_for_a_run_and_saves_nothing()
     {
         using var api = await ApiAsync();
-        var admin = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
 
         var response = await PutAsync(admin, 85);
 
@@ -83,7 +83,7 @@ public sealed class CoverageThresholdTests
     public async Task Raising_to_a_value_coverage_already_meets_saves_at_once()
     {
         using var api = await ApiAsync();
-        var admin = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
         Assert.Equal(HttpStatusCode.OK, (await PutAsync(admin, 40)).StatusCode);
 
         var response = await PutAsync(admin, 60);
@@ -97,7 +97,7 @@ public sealed class CoverageThresholdTests
     {
         using var api = await ApiAsync();
 
-        var response = await PutAsync(api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN), 80);
+        var response = await PutAsync(api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN), 80);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
@@ -106,7 +106,7 @@ public sealed class CoverageThresholdTests
     public async Task Clearing_an_override_returns_the_file_to_the_default()
     {
         using var api = await ApiAsync();
-        var admin = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
         await PutAsync(admin, 50);
 
         var response = await PutAsync(admin, null);
@@ -122,7 +122,7 @@ public sealed class CoverageThresholdTests
     public async Task An_out_of_range_threshold_is_rejected(int pct)
     {
         using var api = await ApiAsync();
-        var admin = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
 
         var response = await PutAsync(admin, pct);
 
@@ -140,7 +140,7 @@ public sealed class CoverageThresholdTests
             await db.SaveChangesAsync(Ct);
         }
 
-        var response = await PutAsync(api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN), 50);
+        var response = await PutAsync(api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN), 50);
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Contains("run_active", await response.Content.ReadAsStringAsync(Ct));
@@ -151,7 +151,7 @@ public sealed class CoverageThresholdTests
     {
         using var api = await ApiAsync();
 
-        var response = await PutAsync(api.ClientFor("bob", "firm-a", Role.ADVISOR), 50);
+        var response = await PutAsync(api.ClientFor("bob", "firm-a", Role.USER), 50);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -200,7 +200,7 @@ public sealed class CoverageThresholdTests
             s.AddSingleton<IChatClientFactory>(models);
         });
 
-        var picker = await api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN)
+        var picker = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN)
             .GetFromJsonAsync<CoverageEndpoints.ModelsDto>($"/api/coverage/models?path={Uri.EscapeDataString(File)}", Json, Ct);
 
         Assert.Equal(["glm-5.3:cloud", "kimi-k3:cloud", "glm-5.3-flash:cloud", "deepseek-v4-pro:cloud", "deepseek-v4.1-flash:cloud"],
@@ -218,7 +218,7 @@ public sealed class CoverageThresholdTests
 
         // The answer is reused: a second look does not ask the provider again.
         var asked = models.Asked.Count;
-        await api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN).GetAsync("/api/coverage/models", Ct);
+        await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN).GetAsync("/api/coverage/models", Ct);
         Assert.Equal(asked, models.Asked.Count);
     }
 

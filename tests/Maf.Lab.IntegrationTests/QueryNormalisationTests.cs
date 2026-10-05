@@ -16,7 +16,7 @@ public class QueryNormalisationTests(CorpusIndexFixture corpus)
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static Principal Advisor(string firm = "firm-a") =>
-        new("adam", TenantId.Firm(firm), Role.ADVISOR, []);
+        new("adam", TenantId.Firm(firm), Role.USER);
 
     /// <summary>Stands in for the translation model: returns the English twin of the question under test.</summary>
     private sealed class FixedTranslator(string searched) : IQueryTranslator

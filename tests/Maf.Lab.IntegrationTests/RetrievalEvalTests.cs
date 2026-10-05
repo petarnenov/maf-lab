@@ -23,7 +23,7 @@ public class RetrievalEvalTests(CorpusIndexFixture corpus)
         {
             File.Copy(file, Path.Combine(root, Path.GetFileName(file)));
         }
-        var turn = new TurnRow { Id = "t_feedback", ConversationId = "c", UserId = "adam", FirmId = "firm-a", Question = "how do I void an invoice and issue a new one" };
+        var turn = new TurnRow { Id = "t_feedback", ConversationId = "c", UserId = "adam", TenantId = "firm-a", Question = "how do I void an invoice and issue a new one" };
         var (row, _) = FeedbackEndpoints.BuildRow(turn, new LabelRequest(EvalDataset.Retrieval, null,
             ["shared/procedures/void-and-reissue-invoice.txt#voiding-and-reissuing-an-invoice"], null, null));
         var writer = new DatasetWriter(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Evals:Root"] = root }).Build());

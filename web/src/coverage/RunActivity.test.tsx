@@ -178,7 +178,7 @@ describe('Run activity', () => {
   it('shows what the agent does as it happens, without a reload', async () => {
     const stream = liveStreams();
     stubApi(run(), stream.open);
-    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('TENANT_ADMIN') });
 
     const dialog = await openActivity();
     await stream.push([started, state(run()), ...attemptOne.slice(0, 1)]);
@@ -222,7 +222,7 @@ describe('Run activity', () => {
         sse(EventType.RUN_FINISHED, { threadId: 'testgen:r_1', runId: 'r_1', outcome: { type: 'success' } }),
       ]),
     );
-    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('TENANT_ADMIN') });
 
     const dialog = await openActivity();
 
@@ -236,7 +236,7 @@ describe('Run activity', () => {
     stubApi(failed, () =>
       streamResponse([started, state(failed), ...attemptOne, state(failed), sse(EventType.RUN_ERROR, { code: 'runner_unavailable', message: '' })]),
     );
-    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('TENANT_ADMIN') });
 
     const dialog = await openActivity();
 
@@ -258,7 +258,7 @@ describe('Run activity', () => {
         sse(EventType.RUN_ERROR, { code: 'runner_unavailable', message: 'The run failed (runner_unavailable).' }),
       ]),
     );
-    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('TENANT_ADMIN') });
 
     const dialog = await openActivity();
 
@@ -289,7 +289,7 @@ describe('Run activity', () => {
         sse(EventType.RUN_FINISHED, { threadId: 'testgen:r_1', runId: 'r_1', outcome: { type: 'success' } }),
       ]),
     );
-    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('TENANT_ADMIN') });
 
     const dialog = await openActivity();
 
@@ -305,7 +305,7 @@ describe('Run activity', () => {
   it('shows the budget as unlimited, and that the agent is working, while a run without one is live', async () => {
     const streams = liveStreams();
     stubApi(run(), streams.open);
-    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('TENANT_ADMIN') });
 
     const dialog = await openActivity();
     await streams.push([started, state(run())]);
@@ -318,7 +318,7 @@ describe('Run activity', () => {
   it('says so when a run recorded no activity', async () => {
     const done = run({ state: 'completed_no_change', active: false });
     stubApi(done, () => streamResponse([started, state(done), sse(EventType.RUN_FINISHED, { threadId: 'testgen:r_1', runId: 'r_1', outcome: { type: 'success' } })]));
-    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('TENANT_ADMIN') });
 
     const dialog = await openActivity();
 
@@ -327,7 +327,7 @@ describe('Run activity', () => {
 
   it('lets an administrator cancel an active run from the modal', async () => {
     const calls = stubApi(run(), () => liveStream().response);
-    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('TENANT_ADMIN') });
 
     const dialog = await openActivity();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel run' }));
@@ -362,7 +362,7 @@ describe('Run activity', () => {
 
   it('stops the run with Escape for an administrator, once, and says it is stopping', async () => {
     const calls = stubApi(run(), () => liveStream().response);
-    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('TENANT_ADMIN') });
 
     const dialog = await openActivity();
     expect(within(dialog).getByTestId('stop-hint')).toHaveTextContent('Esc to stop');
@@ -384,7 +384,7 @@ describe('Run activity', () => {
   it('stays where the user scrolled, and offers the way back to the newest entry', async () => {
     const stream = liveStreams();
     stubApi(run(), stream.open);
-    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('TENANT_ADMIN') });
     const dialog = await openActivity();
     await stream.push([started, state(run()), ...attemptOne.slice(0, 1)]);
     const timeline = within(dialog).getByRole('list', { name: 'Run activity' });
@@ -415,7 +415,7 @@ describe('Run activity', () => {
         return jsonResponse(undefined, 204);
       })),
     );
-    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('TENANT_ADMIN') });
     const dialog = await openActivity();
 
     // The run ends: the file now shows it unlocked, and the stream says why it ended.
@@ -429,7 +429,7 @@ describe('Run activity', () => {
 
   it('is offered next to Save, and only for a file that has a run', async () => {
     stubApi(null, () => streamResponse([]));
-    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('TENANT_ADMIN') });
 
     expect(await screen.findByRole('button', { name: 'Save' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Activity' })).toBeNull();
@@ -437,7 +437,7 @@ describe('Run activity', () => {
 
   it('takes the place of Save while a run is active', async () => {
     stubApi(run(), () => liveStream().response);
-    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('TENANT_ADMIN') });
 
     expect(await screen.findByRole('button', { name: 'Activity' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
@@ -446,7 +446,7 @@ describe('Run activity', () => {
   it('sits next to Save once a run has ended', async () => {
     const finished = run({ state: 'failed', reason: 'deadline', active: false });
     stubApi(finished, () => streamResponse([started, state(finished), sse(EventType.RUN_ERROR, { code: 'deadline', message: '' })]));
-    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('TENANT_ADMIN') });
 
     const save = await screen.findByRole('button', { name: 'Save' });
     expect(save.parentElement).toContainElement(screen.getByRole('button', { name: 'Activity' }));

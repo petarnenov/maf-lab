@@ -53,7 +53,7 @@ public class ConfirmationApiTests
     {
         var tools = new FakeToolSource();
         using var api = Api(tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         var (conversationId, adjustmentId) = await ProposeAsync(client);
 
         var events = await AnswerAsync(client, conversationId, adjustmentId, approve: true);
@@ -68,7 +68,7 @@ public class ConfirmationApiTests
     {
         var tools = new FakeToolSource();
         using var api = Api(tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         var (conversationId, adjustmentId) = await ProposeAsync(client);
 
         var first = await AnswerAsync(client, conversationId, adjustmentId, approve: true);
@@ -85,7 +85,7 @@ public class ConfirmationApiTests
     {
         var tools = new FakeToolSource();
         using var api = Api(tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         var (conversationId, adjustmentId) = await ProposeAsync(client);
 
         var events = await AnswerAsync(client, conversationId, adjustmentId, approve: false);
@@ -99,11 +99,11 @@ public class ConfirmationApiTests
     {
         var tools = new FakeToolSource();
         using var api = Api(tools);
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var (conversationId, adjustmentId) = await ProposeAsync(adam);
 
         // The proposal was put to adam, in adam's conversation. Amy cannot even reach the thread.
-        var amy = api.ClientFor("amy", "firm-a", Role.ADVISOR);
+        var amy = api.ClientFor("amy", "firm-a", Role.USER);
         var response = await amy.PostAsJsonAsync("/api/chat", new
         {
             threadId = conversationId,
@@ -121,7 +121,7 @@ public class ConfirmationApiTests
     {
         var tools = new FakeToolSource();
         using var api = Api(tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         var (conversationId, _) = await ProposeAsync(client);
 
         var events = await AnswerAsync(client, conversationId, "adj_nothing", approve: true);
@@ -134,7 +134,7 @@ public class ConfirmationApiTests
     {
         var tools = new FakeToolSource();
         using var api = Api(tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         var (conversationId, adjustmentId) = await ProposeAsync(client);
 
         await AnswerAsync(client, conversationId, adjustmentId, approve: true);
@@ -158,7 +158,7 @@ public class ConfirmationApiTests
     {
         var tools = new FakeToolSource();
         using var api = Api(tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         var (conversationId, adjustmentId) = await ProposeAsync(client);
 
         await AnswerAsync(client, conversationId, adjustmentId, approve: false);

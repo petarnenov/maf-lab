@@ -33,8 +33,8 @@ public class PortfolioDomainTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    private static readonly Principal FirmA = new("adam", TenantId.Firm("firm-a"), Role.ADVISOR, []);
-    private static readonly Principal FirmB = new("bea", TenantId.Firm("firm-b"), Role.ADVISOR, []);
+    private static readonly Principal FirmA = new("adam", TenantId.Firm("firm-a"), Role.USER);
+    private static readonly Principal FirmB = new("bea", TenantId.Firm("firm-b"), Role.USER);
 
     private static PortfolioStore Store() => new(new ConfigurationBuilder().Build());
 
@@ -169,7 +169,7 @@ public class PortfolioDomainTests
     [Fact]
     public void A_firm_without_accounts_gets_an_empty_list()
     {
-        var list = Store().List(new Principal("zed", TenantId.Firm("firm-z"), Role.ADVISOR, []));
+        var list = Store().List(new Principal("zed", TenantId.Firm("firm-z"), Role.USER));
 
         Assert.Equal(0, list.Count);
         Assert.Empty(list.Accounts);
@@ -304,7 +304,7 @@ public class PortfolioDomainTests
 
     private static async Task<McpClient> ClientAsync(WebApplicationFactory<Maf.Lab.Portfolio.Program> factory, string firm)
     {
-        var (token, _) = DevJwt.Issue(new AuthOptions(), "u-" + firm, TenantId.Firm(firm), Role.ADVISOR, []);
+        var (token, _) = DevJwt.Issue(new AuthOptions(), "u-" + firm, TenantId.Firm(firm), Role.USER);
         var http = factory.CreateDefaultClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         var transport = new HttpClientTransport(new HttpClientTransportOptions
@@ -473,7 +473,7 @@ public class PortfolioDomainTests
         var stubborn = new ScriptedChatClient((_, _, _) => ScriptedChatClient.Text("answer"));
         using var api = new ApiFactory(stubborn);
 
-        await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "why did run 4417 and run 4418 fail");
+        await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "why did run 4417 and run 4418 fail");
 
         Assert.Equal(["search_documents"], api.Tools.Invocations);
     }
@@ -482,7 +482,7 @@ public class PortfolioDomainTests
 
     private static Maf.Lab.Api.Storage.TurnRow Turn(params ToolCallRecord[] calls) => new()
     {
-        Id = "t1", ConversationId = "c1", UserId = "adam", FirmId = "firm-a", Question = "q",
+        Id = "t1", ConversationId = "c1", UserId = "adam", TenantId = "firm-a", Question = "q",
         ToolCallsJson = JsonSerializer.Serialize(calls, Json),
     };
 
@@ -523,7 +523,7 @@ public class PortfolioDomainTests
         var tools = new FakeToolSource { WithPortfolio = true };
         using var api = new ApiFactory(ApiFactory.ProceduralModel("The AUM crossed $3M, per Quarter-End Valuation."), tools);
 
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR),
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER),
             "Why did the fee on A-1042 go up — did its AUM cross a tier?");
         var trace = Trace(events);
 
@@ -563,7 +563,7 @@ public class PortfolioDomainTests
         var tools = new FakeToolSource { WithPortfolio = true };
         using var api = new ApiFactory(new ScriptedChatClient((_, _, _) => ScriptedChatClient.Text("answer")), tools, emulateForcing: false);
 
-        await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "Why did the fee on A-1042 go up — did its AUM cross a tier?");
+        await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "Why did the fee on A-1042 go up — did its AUM cross a tier?");
 
         Assert.Equal(["search_documents", PortfolioTools.Search], tools.Invocations);
     }
@@ -574,7 +574,7 @@ public class PortfolioDomainTests
         var tools = new FakeToolSource { WithPortfolio = true };
         using var api = new ApiFactory(ApiFactory.ProceduralModel(), tools);
 
-        var trace = Trace(await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "what is the procedure when a fee schedule is missing"));
+        var trace = Trace(await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "what is the procedure when a fee schedule is missing"));
 
         Assert.False(trace.Single(t => t.Kind == TraceKinds.Domain).Data.GetProperty("crossing").GetBoolean());
         Assert.DoesNotContain(trace, t => t.Kind == TraceKinds.Boundary);
@@ -588,7 +588,7 @@ public class PortfolioDomainTests
         var tools = new FakeToolSource { WithPortfolio = true, PortfolioUnavailable = true };
         using var api = new ApiFactory(ApiFactory.ProceduralModel(), tools);
 
-        var trace = Trace(await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR),
+        var trace = Trace(await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER),
             "Why did the fee on A-1042 go up — did its AUM cross a tier?"));
 
         var prompt = trace.Single(t => t.Kind == TraceKinds.Prompt);

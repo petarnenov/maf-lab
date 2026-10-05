@@ -164,7 +164,7 @@ describe('A2AAdminPage', () => {
       <RequireAdmin>
         <A2AAdminPage />
       </RequireAdmin>,
-      { session: makeSession('ADVISOR') },
+      { session: makeSession('USER') },
     );
 
     expect(screen.getByText('Access denied')).toBeInTheDocument();

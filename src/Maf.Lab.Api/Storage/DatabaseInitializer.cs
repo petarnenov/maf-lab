@@ -36,6 +36,9 @@ public static partial class DatabaseInitializer
 {
     public static async Task InitializeAsync(MafDbContext db, CancellationToken ct = default)
     {
+        // First: a column the model renamed must be renamed in place before the additive pass, or that pass would add an
+        // empty column beside it (rename-firm-to-tenant).
+        await RenameLegacyColumnsAsync(db, ct);
         var script = db.Database.GenerateCreateScript();
         foreach (var statement in Statements(script).Where(s => s.StartsWith("CREATE TABLE", StringComparison.OrdinalIgnoreCase)))
         {
@@ -48,6 +51,101 @@ public static partial class DatabaseInitializer
             await db.Database.ExecuteSqlRawAsync(statement, ct);
         }
         await BackfillAsync(db, ct);
+    }
+
+    /// <summary>Columns renamed by the model, old name → new name. A table is touched only when it has the old one.</summary>
+    internal static readonly IReadOnlyList<(string From, string To)> RenamedColumns = [("FirmId", "TenantId")];
+
+    /// <summary>
+    /// Renames, in every existing table the model maps, each column of <see cref="RenamedColumns"/> that still has its
+    /// old name and lacks its new one, and drops the indexes named after the old column, so the index pass creates
+    /// their successors. Each table's check and rename run in one <c>BEGIN IMMEDIATE</c> transaction, so a second replica
+    /// starting at the same moment waits, then sees the new name and skips it; a lost race is tolerated as the additive
+    /// pass tolerates one. Idempotent: a renamed table is left alone.
+    /// </summary>
+    internal static async Task RenameLegacyColumnsAsync(MafDbContext db, CancellationToken ct)
+    {
+        var connection = (Microsoft.Data.Sqlite.SqliteConnection)db.Database.GetDbConnection();
+        await db.Database.OpenConnectionAsync(ct);
+        try
+        {
+            foreach (var table in db.Model.GetEntityTypes().Select(e => e.GetTableName()).OfType<string>().Distinct())
+            {
+                foreach (var (from, to) in RenamedColumns)
+                {
+                    await RenameAsync(connection, table, from, to, ct);
+                }
+            }
+        }
+        finally
+        {
+            await db.Database.CloseConnectionAsync();
+        }
+    }
+
+    private static async Task RenameAsync(Microsoft.Data.Sqlite.SqliteConnection connection, string table, string from, string to, CancellationToken ct)
+    {
+        // Not deferred = BEGIN IMMEDIATE: the write lock is taken before the schema is read, so check and rename are one step.
+        await using var transaction = connection.BeginTransaction(deferred: false);
+        try
+        {
+            var columns = await ColumnsAsync(connection, transaction, table, ct);
+            if (!columns.Contains(from) || columns.Contains(to))
+            {
+                await transaction.CommitAsync(ct);
+                return;
+            }
+            // Table and column names come from the EF model and RenamedColumns, never from a request.
+            var indexes = new List<string>();
+            await using (var list = connection.CreateCommand())
+            {
+                list.Transaction = transaction;
+                list.CommandText = "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = $table AND name LIKE $pattern ESCAPE '\\'";
+                list.Parameters.AddWithValue("$table", table);
+                list.Parameters.AddWithValue("$pattern", $"%\\_{from}%");
+                await using var reader = await list.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                {
+                    indexes.Add(reader.GetString(0));
+                }
+            }
+            foreach (var index in indexes)
+            {
+                await ExecuteAsync(connection, transaction, $"DROP INDEX IF EXISTS \"{index}\"", ct);
+            }
+            await ExecuteAsync(connection, transaction, $"ALTER TABLE \"{table}\" RENAME COLUMN \"{from}\" TO \"{to}\"", ct);
+            await transaction.CommitAsync(ct);
+        }
+        catch (Microsoft.Data.Sqlite.SqliteException ex) when (ex.Message.Contains("no such column", StringComparison.OrdinalIgnoreCase)
+                                                              || ex.Message.Contains("duplicate column", StringComparison.OrdinalIgnoreCase))
+        {
+            // Another replica renamed it first.
+            await transaction.RollbackAsync(CancellationToken.None);
+        }
+    }
+
+    private static async Task<HashSet<string>> ColumnsAsync(Microsoft.Data.Sqlite.SqliteConnection connection,
+        Microsoft.Data.Sqlite.SqliteTransaction transaction, string table, CancellationToken ct)
+    {
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = $"PRAGMA table_info(\"{table}\")";
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            columns.Add(reader.GetString(1));
+        }
+        return columns;
+    }
+
+    private static async Task ExecuteAsync(Microsoft.Data.Sqlite.SqliteConnection connection, Microsoft.Data.Sqlite.SqliteTransaction transaction,
+        string sql, CancellationToken ct)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = sql;
+        await command.ExecuteNonQueryAsync(ct);
     }
 
     /// <summary>

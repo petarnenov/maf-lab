@@ -40,7 +40,7 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
         });
         var source = new McpToolSource(Options.Create(new AgentOptions { McpEndpoint = new Uri(server.Server.BaseAddress, "/mcp").ToString() }),
             NullLoggerFactory.Instance, new ServerHttpClientFactory(server));
-        var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.ADVISOR, []);
+        var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.USER);
 
         await using var tools = await source.GetToolsAsync(token, null, TestContext.Current.CancellationToken);
 
@@ -85,7 +85,7 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
         var sending = new SendingHandler($"00-{traceId.ToHexString()}-{ActivitySpanId.CreateRandom().ToHexString()}-01");
         var source = new McpToolSource(Options.Create(new AgentOptions { McpEndpoint = new Uri(server.Server.BaseAddress, "/mcp").ToString() }),
             NullLoggerFactory.Instance, new ServerHttpClientFactory(server, sending));
-        var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.ADVISOR, []);
+        var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.USER);
         await using var tools = await source.GetToolsAsync(token, null, TestContext.Current.CancellationToken);
         var search = (AIFunction)tools.Tools.Single(t => t.Name == "search_documents");
 
@@ -132,7 +132,7 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
         var sending = new SendingHandler($"00-{traceId.ToHexString()}-{ActivitySpanId.CreateRandom().ToHexString()}-01");
         var source = new McpToolSource(Options.Create(new AgentOptions { McpEndpoint = new Uri(server.Server.BaseAddress, "/mcp").ToString() }),
             NullLoggerFactory.Instance, new ServerHttpClientFactory(server, sending));
-        var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.ADVISOR, []);
+        var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.USER);
 
         await using var tools = await source.GetToolsAsync(token, null, TestContext.Current.CancellationToken);
         var search = (AIFunction)tools.Tools.Single(t => t.Name == "search_documents");

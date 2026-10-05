@@ -32,7 +32,7 @@ public class TelemetryTests
     public async Task With_no_endpoint_configured_nothing_is_exported_and_a_turn_is_unaffected()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel("ANSWER-NO-OTEL."));
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
 
         // Nothing is listening, so nothing is wired: no provider is registered to export to.
         Assert.Null(LabTelemetry.EndpointOf(api.Services.GetRequiredService<IConfiguration>()));
@@ -76,7 +76,7 @@ public class TelemetryTests
     {
         using var signals = new SignalCapture();
         using var api = new ApiFactory(ApiFactory.ProceduralModel("ANSWER-OTEL-MARKER."));
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
 
         await ApiFactory.ChatAsync(adam, "QUESTION-OTEL-MARKER procedure when a fee schedule is missing");
 
@@ -97,7 +97,7 @@ public class TelemetryTests
     {
         using var signals = new SignalCapture();
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
 
         await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing");
 
@@ -114,7 +114,7 @@ public class TelemetryTests
     {
         using var signals = new SignalCapture();
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
 
         await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing");
 
@@ -134,7 +134,7 @@ public class TelemetryTests
         var chat = new ScriptedChatClient((_, _, _) => throw new InvalidOperationException("the model is down"));
         using var api = new ApiFactory(chat);
 
-        await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "anything at all");
+        await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "anything at all");
 
         Assert.Contains(signals.Instruments, i => i.StartsWith("maf.turns=") && i.Contains("outcome=failed"));
     }
@@ -147,7 +147,7 @@ public class TelemetryTests
             ? ScriptedChatClient.Call("send_email", new() { ["to"] = "external@evil.example" })
             : ScriptedChatClient.Text("I can't send email."));
         using var api = new ApiFactory(chat);
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
 
         await ApiFactory.ChatAsync(adam, "summarise our fee arrangement for me");
 
@@ -174,7 +174,7 @@ public class TelemetryTests
             : ScriptedChatClient.Text("ANSWER-MARKER assign it and re-run."));
         using var api = new ApiFactory(chat, tools);
 
-        await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR),
+        await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER),
             "QUESTION-MARKER what is the procedure when a fee schedule is missing");
 
         // Spans, metrics and logs alike: identifiers, names, counts and durations — and none of the words.
@@ -194,7 +194,7 @@ public class TelemetryTests
     {
         using var signals = new SignalCapture();
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR),
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER),
             "what is the procedure when a fee schedule is missing");
 
         var start = ApiFactory.TracesOf(events).First(t => t.GetProperty("kind").GetString() == TraceKinds.TurnStart);

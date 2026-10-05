@@ -18,7 +18,7 @@ public class RunProtocolTests
     public async Task A_run_begins_once_ends_once_and_says_nothing_after()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "hello");
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "hello");
 
         var names = events.Select(e => e.Name).ToList();
         Assert.Equal("RUN_STARTED", names[0]);
@@ -31,7 +31,7 @@ public class RunProtocolTests
     public async Task Every_event_of_a_run_names_the_run_it_belongs_to()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "hello", runId: "r_known");
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "hello", runId: "r_known");
 
         foreach (var e in events.Where(e => e.Name is "RUN_STARTED" or "RUN_FINISHED"))
         {
@@ -43,7 +43,7 @@ public class RunProtocolTests
     public async Task A_run_without_a_thread_creates_one_and_reports_it()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "hello");
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "hello");
 
         Assert.StartsWith("c_", ApiFactory.ThreadOf(events));
     }
@@ -54,7 +54,7 @@ public class RunProtocolTests
         var chat = new ScriptedChatClient((_, _, _) => throw new InvalidOperationException("Qdrant at 10.0.0.7:6334 refused the connection"));
         using var api = new ApiFactory(chat);
 
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "hello");
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "hello");
 
         var last = events[^1];
         Assert.Equal("RUN_ERROR", last.Name);
@@ -71,7 +71,7 @@ public class RunProtocolTests
         var chat = new ScriptedChatClient((_, _, _) => ScriptedChatClient.Text(""));
         using var api = new ApiFactory(chat);
 
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "hello");
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "hello");
 
         Assert.DoesNotContain(events, e => e.Name == "TEXT_MESSAGE_START");
     }
@@ -83,7 +83,7 @@ public class RunProtocolTests
         using var api = new ApiFactory(ApiFactory.ProceduralModel(), tools);
 
         var events = await ApiFactory.ChatAsync(
-            api.ClientFor("adam", "firm-a", Role.ADVISOR),
+            api.ClientFor("adam", "firm-a", Role.USER),
             "what is the procedure when SECRET-PHRASE-9 is missing");
 
         var wire = string.Join("\n", events.Where(e => e.Name.StartsWith("TOOL_CALL")).Select(e => e.Data.ToString()));
@@ -107,7 +107,7 @@ public class RunProtocolTests
             },
         };
         using var api = new ApiFactory(ApiFactory.ProceduralModel(), tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         using var stop = new CancellationTokenSource();
 
         var run = ApiFactory.ChatAsync(client, "what is the procedure when a fee schedule is missing", runId: "r_stop", cancel: stop.Token);
@@ -147,7 +147,7 @@ public class RunProtocolTests
             },
         };
         using var api = new ApiFactory(ApiFactory.ProceduralModel(), tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         using var stop = new CancellationTokenSource();
 
         var run = ApiFactory.ChatAsync(client, "what is the procedure when a fee schedule is missing", runId: "r_held", cancel: stop.Token);
@@ -185,7 +185,7 @@ public class RunProtocolTests
         var model = ApiFactory.ProceduralModel();
         model.HoldAfterWords = 3;
         using var api = new ApiFactory(model);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         using var stop = new CancellationTokenSource();
 
         var run = ApiFactory.ChatAsync(client, "what is the procedure when a fee schedule is missing", runId: "r_model", cancel: stop.Token);
@@ -213,7 +213,7 @@ public class RunProtocolTests
         // The run's first Jev call — the intent classification — is held until its request is cancelled.
         var jev = new FakeJev { HoldWhen = _ => true };
         using var api = new ApiFactory(model, jev: jev);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         using var stop = new CancellationTokenSource();
 
         var run = ApiFactory.ChatAsync(client, "what is the procedure when a fee schedule is missing", runId: "r_jev", cancel: stop.Token);
@@ -240,7 +240,7 @@ public class RunProtocolTests
     public async Task A_run_id_used_before_starts_no_run()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         var thread = ApiFactory.ThreadOf(await ApiFactory.ChatAsync(client, "hello", runId: "r_once"));
 
         // The run id names the turn it recorded: a second run under it is refused before it starts.
@@ -260,7 +260,7 @@ public class RunProtocolTests
     public async Task There_is_no_stop_endpoint_beside_the_protocol()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var response = await client.PostAsync("/api/chat/r_nothing/stop", null, Ct);
 
@@ -281,7 +281,7 @@ public class RunProtocolTests
     public async Task A_run_needs_something_to_run_on()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var response = await client.PostAsJsonAsync("/api/chat", new
         {

@@ -39,7 +39,7 @@ public sealed class RetrievalSuite
             foreach (var c in cases)
             {
                 var diagnostics = new SearchDiagnostics { Branches = false };
-                var ranked = (await variant.Search.RankAsync(EvalAgentHost.EvalPrincipal(c.FirmId), c.Query, null, 20, variant.Settings, ct, diagnostics))
+                var ranked = (await variant.Search.RankAsync(EvalAgentHost.EvalPrincipal(c.TenantId), c.Query, null, 20, variant.Settings, ct, diagnostics))
                     .Select(r => r.Chunk.ChunkId).ToList();
                 judge.Add(c.Id, diagnostics.Relevance, offDomain: false);
                 var relevant = c.RelevantChunkIds.ToHashSet();
@@ -60,7 +60,7 @@ public sealed class RetrievalSuite
             foreach (var c in offDomain)
             {
                 var diagnostics = new SearchDiagnostics { Branches = false };
-                var ranked = await variant.Search.RankAsync(EvalAgentHost.EvalPrincipal(c.FirmId), c.Query, null, 20, variant.Settings, ct, diagnostics);
+                var ranked = await variant.Search.RankAsync(EvalAgentHost.EvalPrincipal(c.TenantId), c.Query, null, 20, variant.Settings, ct, diagnostics);
                 judge.Add(c.Id, diagnostics.Relevance, offDomain: true);
                 if (ranked.Count == 0)
                 {

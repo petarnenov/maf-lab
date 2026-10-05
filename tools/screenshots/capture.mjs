@@ -7,7 +7,7 @@ import { chromium } from 'playwright';
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:7171';
 const OUT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../docs/screenshots');
-const PERSONA = 'alice'; // firm-a FIRM_ADMIN: sees every admin screen
+const PERSONA = 'alice'; // firm-a TENANT_ADMIN: sees every admin screen
 const VIEWPORT = { width: 1440, height: 900 };
 const OUTPUT_WIDTH = 1600;
 const WARN_BYTES = 400 * 1024;
@@ -58,7 +58,7 @@ async function devSession() {
   const res = await fetch(`${BASE}/dev/token`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ userId: user.userId, firmId: user.firmId, role: user.role, advisorIds: user.advisorIds }),
+    body: JSON.stringify({ userId: user.userId, tenantId: user.tenantId, role: user.role, domainRoles: user.domainRoles, advisorIds: user.advisorIds }),
   });
   if (!res.ok) throw new Error(`POST /dev/token answered ${res.status}`);
   const { token, expiresAt } = await res.json();

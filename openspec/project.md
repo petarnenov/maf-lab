@@ -128,8 +128,10 @@ maf-lab/
   `Standards:`, an `Own: <what> — <why>; DECISIONS §<n>` line for anything of
   its own, or `None — <reason>`); `make docs-check` fails one without it.
   Details: the `solid-and-standards` spec.
-- Tenant is `firm_id`. It is derived from the caller's token, never from a
-  request parameter, tool argument, or model output.
+- Tenant is `tenant_id`. It is derived from the caller's token, never from a
+  request parameter, tool argument, or model output. The core principal holds
+  only core roles (`TENANT_ADMIN`, `USER`, `READ_ONLY`); domain roles and
+  attributes (billing's advisor ids) are claims only the domain's server reads.
 - Every Qdrant query goes through exactly one method that takes a
   Principal and applies the tenant filter. No other code builds queries.
 - Every graph read goes through exactly one method that takes a Principal

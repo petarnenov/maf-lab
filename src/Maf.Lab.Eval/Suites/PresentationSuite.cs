@@ -25,7 +25,7 @@ public sealed partial class PresentationSuite(EvalAgentHost host, IChatClientFac
         var failures = new List<EvalCaseFailure>();
         foreach (var (c, i) in cases.Select((c, i) => (c, i)))
         {
-            var turn = await host.AskAsync(c.FirmId, c.Question, ct);
+            var turn = await host.AskAsync(c.TenantId, c.Question, ct);
             var reasons = new List<string>();
             if (c.Carded != turn.Cards.Count > 0)
             {

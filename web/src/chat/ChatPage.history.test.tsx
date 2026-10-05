@@ -265,7 +265,7 @@ describe('ChatPage with history', () => {
         vi.fn(async (url: string, init?: RequestInit) => {
           const auth = new Headers(init?.headers).get('Authorization') ?? '';
           if (url.startsWith('/api/conversations?'))
-            return jsonResponse(auth.includes('FIRM_ADMIN') ? page('alice-1') : page('adam-1'));
+            return jsonResponse(auth.includes('TENANT_ADMIN') ? page('alice-1') : page('adam-1'));
           if (url === '/api/conversations/adam-1')
             return jsonResponse({ ...detail, conversationId: 'adam-1' });
           return jsonResponse({}, 404);
@@ -275,7 +275,7 @@ describe('ChatPage with history', () => {
     function SwitchPersona() {
       const { setSession } = useAuth();
       return (
-        <button type="button" onClick={() => setSession(makeSession('FIRM_ADMIN'))}>
+        <button type="button" onClick={() => setSession(makeSession('TENANT_ADMIN'))}>
           switch
         </button>
       );

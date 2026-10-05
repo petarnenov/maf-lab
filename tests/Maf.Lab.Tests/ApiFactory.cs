@@ -104,7 +104,7 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
 
     public HttpClient ClientFor(string user, string firm, Role role)
     {
-        var (token, _) = DevJwt.Issue(new AuthOptions(), user, TenantId.Firm(firm), role, []);
+        var (token, _) = DevJwt.Issue(new AuthOptions(), user, TenantId.Firm(firm), role);
         var client = CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return client;

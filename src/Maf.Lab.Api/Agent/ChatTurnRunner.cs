@@ -97,7 +97,7 @@ public sealed partial class ChatTurnRunner(
         {
             ["conversationId"] = conversationId,
             ["turnId"] = turnId,
-            ["principal"] = new JsonObject { ["userId"] = principal.UserId, ["firmId"] = principal.FirmId.Value, ["role"] = principal.Role.ToString() },
+            ["principal"] = new JsonObject { ["userId"] = principal.UserId, ["tenantId"] = principal.TenantId.Value, ["role"] = principal.Role.ToString() },
             ["apiInstance"] = InstanceIdentity.Name,
             // Where this turn's spans are, so a person reading it can open the whole trace.
             ["traceId"] = traceId,
@@ -1163,7 +1163,7 @@ public sealed partial class ChatTurnRunner(
             TurnId = turnId,
             ConversationId = conversationId,
             UserId = principal.UserId,
-            FirmId = principal.FirmId.Value,
+            TenantId = principal.TenantId.Value,
             CreatedAt = time.GetUtcNow().UtcDateTime,
             Json = JsonSerializer.Serialize(trace.Events, TurnTrace.Json),
         });
@@ -1172,7 +1172,7 @@ public sealed partial class ChatTurnRunner(
             Id = turnId,
             ConversationId = conversationId,
             UserId = principal.UserId,
-            FirmId = principal.FirmId.Value,
+            TenantId = principal.TenantId.Value,
             Question = question,
             Answer = answer,
             Intent = intent.ToString(),

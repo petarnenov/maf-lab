@@ -8,7 +8,7 @@ export const TITLE_MAX = 120;
 /** Query keys include the signed-in user, so switching persona never shows another user's history. */
 export function useUserKey(): string {
   const { session } = useAuth();
-  return session ? `${session.user.firmId}/${session.user.userId}` : 'anonymous';
+  return session ? `${session.user.tenantId}/${session.user.userId}` : 'anonymous';
 }
 
 export const conversationsKey = (userKey: string, search: string) => [

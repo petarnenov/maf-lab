@@ -38,7 +38,7 @@ public sealed class GenerationSuite(EvalAgentHost host, ReportingConfiguration r
         var failures = new List<EvalCaseFailure>();
         foreach (var (c, i) in cases.Select((c, i) => (c, i)))
         {
-            var turn = await host.AskAsync(c.FirmId, c.Question, ct);
+            var turn = await host.AskAsync(c.TenantId, c.Question, ct);
             var context = new JevGradeContext(turn.Read, c.ReferencePoints);
             await using (var run = await reporting.CreateScenarioRunAsync(ScenarioPrefix + c.Id, cancellationToken: ct))
             {

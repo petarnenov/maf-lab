@@ -27,7 +27,7 @@ public class ChatHistoryTests
         await using (var ctx = await factory.CreateDbContextAsync(Ct))
         {
             // The pre-history schema: Conversations without Title/LastActivityAt/DeletedAt, and one turn.
-            await ctx.Database.ExecuteSqlRawAsync("""CREATE TABLE "Conversations" ("Id" TEXT NOT NULL CONSTRAINT "PK_Conversations" PRIMARY KEY, "UserId" TEXT NOT NULL, "FirmId" TEXT NOT NULL, "CreatedAt" TEXT NOT NULL)""", Ct);
+            await ctx.Database.ExecuteSqlRawAsync("""CREATE TABLE "Conversations" ("Id" TEXT NOT NULL CONSTRAINT "PK_Conversations" PRIMARY KEY, "UserId" TEXT NOT NULL, "TenantId" TEXT NOT NULL, "CreatedAt" TEXT NOT NULL)""", Ct);
             await ctx.Database.ExecuteSqlRawAsync("""INSERT INTO "Conversations" VALUES ('c_old', 'adam', 'firm-a', '2026-09-01 10:00:00')""", Ct);
         }
         await Task.WhenAll(Enumerable.Range(0, 3).Select(async _ =>
@@ -37,7 +37,7 @@ public class ChatHistoryTests
         }));
         await using (var ctx = await factory.CreateDbContextAsync(Ct))
         {
-            ctx.Turns.Add(new TurnRow { Id = "t1", ConversationId = "c_old", UserId = "adam", FirmId = "firm-a", Question = "q", CreatedAt = new DateTime(2026, 9, 3, 8, 0, 0, DateTimeKind.Utc) });
+            ctx.Turns.Add(new TurnRow { Id = "t1", ConversationId = "c_old", UserId = "adam", TenantId = "firm-a", Question = "q", CreatedAt = new DateTime(2026, 9, 3, 8, 0, 0, DateTimeKind.Utc) });
             await ctx.SaveChangesAsync(Ct);
             await ctx.Database.ExecuteSqlRawAsync("""UPDATE "Conversations" SET "LastActivityAt" = '' WHERE "Id" = 'c_old'""", Ct);
             await DatabaseInitializer.InitializeAsync(ctx, Ct);
@@ -70,13 +70,13 @@ public class ChatHistoryTests
     public async Task List_is_owner_only_searchable_hides_empty_and_pages()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel("Answer about credits and schedules."));
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         foreach (var q in new[] { "How do I issue a billing credit?", "explain breakpoint pricing", "what is proration" })
         {
             await ApiFactory.ChatAsync(adam, q);
         }
-        await ApiFactory.ChatAsync(api.ClientFor("rita", "firm-a", Role.ADVISOR), "rita's question about credit");
-        await ApiFactory.ChatAsync(api.ClientFor("bianca", "firm-b", Role.ADVISOR), "bianca asks about credit");
+        await ApiFactory.ChatAsync(api.ClientFor("rita", "firm-a", Role.USER), "rita's question about credit");
+        await ApiFactory.ChatAsync(api.ClientFor("bianca", "firm-b", Role.USER), "bianca asks about credit");
         await adam.PostAsync("/api/conversations", null, Ct); // empty conversation
 
         var all = await adam.GetFromJsonAsync<ConversationPage>("/api/conversations", Json, Ct);
@@ -104,7 +104,7 @@ public class ChatHistoryTests
     public async Task Opening_restores_tools_sources_feedback_and_trace_flag_and_is_owner_only()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel("Assign the schedule and re-run."));
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var done = (await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing"))[^1].Data;
         var (conversationId, turnId) = (done.GetProperty("threadId").GetString()!, done.GetProperty("runId").GetString()!);
         await adam.PostAsJsonAsync("/api/feedback", new FeedbackRequest(conversationId, turnId, FeedbackKind.WrongDocument, null), Ct);
@@ -122,21 +122,21 @@ public class ChatHistoryTests
         Assert.Equal([FeedbackKind.WrongDocument], turn.FeedbackKinds);
         Assert.True(turn.TraceAvailable);
 
-        Assert.Equal(HttpStatusCode.NotFound, (await api.ClientFor("rita", "firm-a", Role.ADVISOR).GetAsync($"/api/conversations/{conversationId}", Ct)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await api.ClientFor("adam", "firm-b", Role.ADVISOR).GetAsync($"/api/conversations/{conversationId}", Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await api.ClientFor("rita", "firm-a", Role.USER).GetAsync($"/api/conversations/{conversationId}", Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await api.ClientFor("adam", "firm-b", Role.USER).GetAsync($"/api/conversations/{conversationId}", Ct)).StatusCode);
     }
 
     [Fact]
     public async Task Turns_stored_before_history_still_open()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         await using (var ctx = ChatApiTests.Db(api))
         {
-            ctx.Conversations.Add(new ConversationRow { Id = "c_legacy", UserId = "adam", FirmId = "firm-a", CreatedAt = DateTime.UtcNow, LastActivityAt = DateTime.UtcNow });
+            ctx.Conversations.Add(new ConversationRow { Id = "c_legacy", UserId = "adam", TenantId = "firm-a", CreatedAt = DateTime.UtcNow, LastActivityAt = DateTime.UtcNow });
             ctx.Turns.Add(new TurnRow
             {
-                Id = "t_legacy", ConversationId = "c_legacy", UserId = "adam", FirmId = "firm-a", Question = "old question", Answer = "old answer",
+                Id = "t_legacy", ConversationId = "c_legacy", UserId = "adam", TenantId = "firm-a", Question = "old question", Answer = "old answer",
                 ToolCallsJson = """[{"toolName":"search_documents","argumentSummary":"","outcome":"ok","sourceCount":1,"docIds":["shared/docs/a.md"],"chunkIds":[]}]""",
                 SourcesJson = """[{"docId":"shared/docs/a.md","sectionPath":"A > B"}]""",
                 CreatedAt = DateTime.UtcNow,
@@ -156,12 +156,12 @@ public class ChatHistoryTests
     public async Task Continuing_an_untitled_conversation_keeps_the_first_question_as_its_title()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         await using (var ctx = ChatApiTests.Db(api))
         {
             // A conversation stored before titles existed: Title is null although it already has a turn.
-            ctx.Conversations.Add(new ConversationRow { Id = "c_untitled", UserId = "adam", FirmId = "firm-a", CreatedAt = DateTime.UtcNow.AddHours(-2), LastActivityAt = DateTime.UtcNow.AddHours(-2) });
-            ctx.Turns.Add(new TurnRow { Id = "t_first", ConversationId = "c_untitled", UserId = "adam", FirmId = "firm-a", Question = "the original question", Answer = "a", CreatedAt = DateTime.UtcNow.AddHours(-2) });
+            ctx.Conversations.Add(new ConversationRow { Id = "c_untitled", UserId = "adam", TenantId = "firm-a", CreatedAt = DateTime.UtcNow.AddHours(-2), LastActivityAt = DateTime.UtcNow.AddHours(-2) });
+            ctx.Turns.Add(new TurnRow { Id = "t_first", ConversationId = "c_untitled", UserId = "adam", TenantId = "firm-a", Question = "the original question", Answer = "a", CreatedAt = DateTime.UtcNow.AddHours(-2) });
             await ctx.SaveChangesAsync(Ct);
         }
 
@@ -178,19 +178,19 @@ public class ChatHistoryTests
     public async Task Rename_validates_and_delete_hides_blocks_chat_and_keeps_the_review_queue()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var done = (await ApiFactory.ChatAsync(adam, "explain breakpoint pricing"))[^1].Data;
         var (conversationId, turnId) = (done.GetProperty("threadId").GetString()!, done.GetProperty("runId").GetString()!);
         var url = $"/api/conversations/{conversationId}";
 
         Assert.Equal(HttpStatusCode.BadRequest, (await adam.PatchAsJsonAsync(url, new RenameConversationRequest("   "), Ct)).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await adam.PatchAsJsonAsync(url, new RenameConversationRequest(new string('x', 121)), Ct)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await api.ClientFor("rita", "firm-a", Role.ADVISOR).PatchAsJsonAsync(url, new RenameConversationRequest("x"), Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await api.ClientFor("rita", "firm-a", Role.USER).PatchAsJsonAsync(url, new RenameConversationRequest("x"), Ct)).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await adam.PatchAsJsonAsync(url, new RenameConversationRequest("  Breakpoints for Smith  "), Ct)).StatusCode);
         Assert.Equal("Breakpoints for Smith", (await adam.GetFromJsonAsync<ConversationDetail>(url, Json, Ct))!.Title);
 
         await adam.PostAsJsonAsync("/api/feedback", new FeedbackRequest(conversationId, turnId, FeedbackKind.WrongAnswer, null), Ct);
-        Assert.Equal(HttpStatusCode.NotFound, (await api.ClientFor("rita", "firm-a", Role.ADVISOR).DeleteAsync(url, Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await api.ClientFor("rita", "firm-a", Role.USER).DeleteAsync(url, Ct)).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await adam.DeleteAsync(url, Ct)).StatusCode);
 
         Assert.Empty((await adam.GetFromJsonAsync<ConversationPage>("/api/conversations", Json, Ct))!.Conversations);
@@ -202,7 +202,7 @@ public class ChatHistoryTests
             messages = new[] { new { id = "u1", role = "user", content = "more?" } },
         }, Ct)).StatusCode);
 
-        var queue = await api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN).GetFromJsonAsync<List<ReviewQueueItem>>("/api/admin/feedback/queue", Json, Ct);
+        var queue = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN).GetFromJsonAsync<List<ReviewQueueItem>>("/api/admin/feedback/queue", Json, Ct);
         Assert.Contains(queue!, q => q.TurnId == turnId);
     }
 
@@ -210,12 +210,12 @@ public class ChatHistoryTests
     public async Task Continuing_uses_the_earlier_turns_and_moves_the_conversation_to_the_top()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel("First answer."));
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var first = ApiFactory.ThreadOf(await ApiFactory.ChatAsync(adam, "explain breakpoint pricing"));
         await ApiFactory.ChatAsync(adam, "what is proration");
 
         // "Reload": a fresh client continues the first conversation by id.
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "and for new accounts?", first);
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "and for new accounts?", first);
         var history = ApiFactory.TracesOf(events).Select(t => t.Deserialize<TraceEvent>(Json)!).Single(t => t.Kind == TraceKinds.History);
         Assert.Contains("explain breakpoint pricing", history.Data.GetProperty("included").GetRawText());
 

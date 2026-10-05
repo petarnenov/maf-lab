@@ -87,7 +87,7 @@ public sealed class FeeAdjustmentFlow(
 
         var request = new FeeAdjustment(
             open?.ReviewAdjustmentId ?? adjustment.AdjustmentId,
-            principal.FirmId.Value,
+            principal.TenantId.Value,
             adjustment.AccountId,
             adjustment.Amount,
             userMessage);
@@ -182,7 +182,7 @@ public sealed class FeeAdjustmentFlow(
         await using var context = await db.CreateDbContextAsync(ct);
         var rows = await context.PendingAdjustments
             .Where(p => p.ConversationId == conversationId
-                && p.FirmId == principal.FirmId.Value
+                && p.TenantId == principal.TenantId.Value
                 && p.UserId == principal.UserId
                 && p.Status == PendingAdjustmentStatus.AwaitingJustification)
             .OrderByDescending(p => p.UpdatedAt)
@@ -213,7 +213,7 @@ public sealed class FeeAdjustmentFlow(
             context.PendingAdjustments.Add(new PendingAdjustmentRow
             {
                 Id = captured.Adjustment.AdjustmentId,
-                FirmId = principal.FirmId.Value,
+                TenantId = principal.TenantId.Value,
                 UserId = principal.UserId,
                 ConversationId = conversationId,
                 TurnId = turnId,
@@ -255,7 +255,7 @@ public sealed class FeeAdjustmentFlow(
     {
         await using var context = await db.CreateDbContextAsync(ct);
         var row = await context.PendingAdjustments.FirstOrDefaultAsync(p => p.Id == adjustment.AdjustmentId, ct);
-        if (row is null || row.FirmId != principal.FirmId.Value)
+        if (row is null || row.TenantId != principal.TenantId.Value)
         {
             return;
         }
@@ -266,7 +266,7 @@ public sealed class FeeAdjustmentFlow(
         // Any other proposal for this account in this conversation is stale once one has been resolved.
         var stale = await context.PendingAdjustments
             .Where(p => p.ConversationId == conversationId
-                && p.FirmId == principal.FirmId.Value
+                && p.TenantId == principal.TenantId.Value
                 && p.Status == PendingAdjustmentStatus.AwaitingJustification)
             .ToListAsync(ct);
         foreach (var other in stale.Where(o => o.Id != row.Id))

@@ -80,7 +80,7 @@ public class InjectionA2ATests
         var url = (await reviewer.ListenAsync()).TrimEnd('/');
         var tools = new FakeToolSource();
         using var api = Api(url);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         // Where the fixture wrote "the adjustment we asked about", the reviewer echoes the id this system
         // actually minted. Every other identifier in the row is sent back exactly as written.
@@ -110,7 +110,7 @@ public class InjectionA2ATests
 
         // Every proposal on record is the one this system made, about the account the advisor named — the
         // summary is what a person would be shown, so it is where an account the verdict invented would surface.
-        Assert.All(pending, p => Assert.Equal("firm-a", p.FirmId));
+        Assert.All(pending, p => Assert.Equal("firm-a", p.TenantId));
         Assert.All(pending, p => Assert.Contains(row.AskedAccountId, p.Summary, StringComparison.Ordinal));
         foreach (var named in Named(row.Verdict).Where(n => !string.Equals(n, row.AskedAccountId, StringComparison.OrdinalIgnoreCase)))
         {
@@ -134,7 +134,7 @@ public class InjectionA2ATests
         var url = (await reviewer.ListenAsync()).TrimEnd('/');
         var tools = new FakeToolSource();
         using var api = Api(url);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         reviewer.Verdict = row.Verdict;
         reviewer.EchoedPlaceholder = row.AskedAdjustmentId;
 
@@ -161,7 +161,7 @@ public class InjectionA2ATests
         var url = (await reviewer.ListenAsync()).TrimEnd('/');
         using var api = Api(url);
         api.Jev.Guard = (text, id) => id == "guard_to_ai" && text.Contains("SYSTEM:", StringComparison.Ordinal) ? 0.97 : 0.01;
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         reviewer.Verdict = row.Verdict;
         reviewer.EchoedPlaceholder = row.AskedAdjustmentId;
 
@@ -193,7 +193,7 @@ public class InjectionA2ATests
         using var api = Api(url);
         // Jev is down for everything: the turn fails open, the reviewer's words fail closed.
         api.Jev.Status = System.Net.HttpStatusCode.ServiceUnavailable;
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         reviewer.Verdict = JsonSerializer.SerializeToElement(new
         {
             decision = "refused",
@@ -222,7 +222,7 @@ public class InjectionA2ATests
         using var api = Api(url, ApiFactory.OpensOnFirstFailure);
         // The first Jev failure opens the circuit: the reviewer's words are skipped, not screened, and still fail closed.
         api.Jev.Status = System.Net.HttpStatusCode.ServiceUnavailable;
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         reviewer.Verdict = JsonSerializer.SerializeToElement(new
         {
             decision = "refused",

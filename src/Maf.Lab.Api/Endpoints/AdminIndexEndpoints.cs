@@ -10,7 +10,7 @@ using Microsoft.Extensions.Options;
 
 namespace Maf.Lab.Api.Endpoints;
 
-/// <summary>Index administration for a FIRM_ADMIN, scoped to the admin's firm plus the shared corpus.</summary>
+/// <summary>Index administration for a TENANT_ADMIN, scoped to the admin's tenant plus the shared corpus.</summary>
 public static class AdminIndexEndpoints
 {
     public sealed record MigrateRequest(string? TargetModel);
@@ -31,7 +31,7 @@ public static class AdminIndexEndpoints
 
     public static IEndpointRouteBuilder MapAdminIndex(this IEndpointRouteBuilder app)
     {
-        var admin = app.MapGroup("/api/admin").RequireAuthorization(AuthPolicies.FirmAdmin);
+        var admin = app.MapGroup("/api/admin").RequireAuthorization(AuthPolicies.TenantAdmin);
 
         admin.MapGet("/index/status", async (IPrincipalAccessor principals, TenantScopedMaintenance store, CollectionBootstrapper bootstrapper,
             IOptions<RetrievalOptions> retrieval, AdminJobRunner jobs, CancellationToken ct) =>
@@ -47,7 +47,7 @@ public static class AdminIndexEndpoints
                 }
             }
             return Results.Ok(new IndexStatus(counts.Select(c => new ModelVersionCount(c.Key, c.Value)).OrderBy(c => c.ModelVersion).ToList(),
-                retrieval.Value.DenseVector, await jobs.CurrentAsync(principal.FirmId.Value, ct)));
+                retrieval.Value.DenseVector, await jobs.CurrentAsync(principal.TenantId.Value, ct)));
         });
 
         admin.MapGet("/index/drift", async (IPrincipalAccessor principals, DriftService drift, CancellationToken ct) =>
@@ -56,7 +56,7 @@ public static class AdminIndexEndpoints
         admin.MapPost("/index/run", async (IPrincipalAccessor principals, IndexingPipeline pipeline, AdminJobRunner jobs, CancellationToken requestCt) =>
         {
             var principal = principals.Current;
-            var job = await jobs.StartAsync(principal.FirmId.Value, "index", async (progress, ct) =>
+            var job = await jobs.StartAsync(principal.TenantId.Value, "index", async (progress, ct) =>
             {
                 var summary = await pipeline.RunAsync(new IndexRequest
                 {
@@ -82,7 +82,7 @@ public static class AdminIndexEndpoints
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["targetModel"] = ["Unknown target; use a configured dense vector name or model."] });
             }
-            var job = await jobs.StartAsync(principal.FirmId.Value, "migrate", async (progress, ct) =>
+            var job = await jobs.StartAsync(principal.TenantId.Value, "migrate", async (progress, ct) =>
             {
                 var summary = await migration.RunAsync(Scope(principal), target, 64, ct, batch =>
                 {
@@ -95,12 +95,12 @@ public static class AdminIndexEndpoints
         });
 
         admin.MapGet("/jobs/{jobId}", async (string jobId, IPrincipalAccessor principals, AdminJobRunner jobs, CancellationToken ct) =>
-            await jobs.GetAsync(principals.Current.FirmId.Value, jobId, ct) is { } job ? Results.Ok(job) : Results.NotFound());
+            await jobs.GetAsync(principals.Current.TenantId.Value, jobId, ct) is { } job ? Results.Ok(job) : Results.NotFound());
 
         // Stops a running job of the admin's firm (stop-anything), whichever replica runs it: 202 with the job while it
         // stops, 409 when it had already ended.
         admin.MapPost("/jobs/{jobId}/cancel", async (string jobId, IPrincipalAccessor principals, AdminJobRunner jobs, CancellationToken ct) =>
-            Canceled(await jobs.CancelAsync(principals.Current.FirmId.Value, jobId, ct)));
+            Canceled(await jobs.CancelAsync(principals.Current.TenantId.Value, jobId, ct)));
 
         return app;
     }

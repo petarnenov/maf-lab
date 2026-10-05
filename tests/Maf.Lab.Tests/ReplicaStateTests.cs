@@ -52,7 +52,7 @@ public class ReplicaStateTests
         {
             ctx.AdminJobs.Add(new AdminJobRow
             {
-                Id = "j_dead", FirmId = "firm-a", Kind = "migrate", State = AdminJobStates.Running, OwnerInstance = "replica-gone",
+                Id = "j_dead", TenantId = "firm-a", Kind = "migrate", State = AdminJobStates.Running, OwnerInstance = "replica-gone",
                 StartedAt = DateTime.UtcNow.AddMinutes(-10), HeartbeatAt = DateTime.UtcNow.AddMinutes(-5),
             });
             await ctx.SaveChangesAsync(Ct);
@@ -171,7 +171,7 @@ public class ReplicaStateTests
         {
             ctx.AdminJobs.Add(new AdminJobRow
             {
-                Id = "j_w", FirmId = "firm-a", Kind = "index", State = state, OwnerInstance = "replica-a",
+                Id = "j_w", TenantId = "firm-a", Kind = "index", State = state, OwnerInstance = "replica-a",
                 StartedAt = DateTime.UtcNow, HeartbeatAt = DateTime.UtcNow,
             });
             await ctx.SaveChangesAsync(Ct);
@@ -258,7 +258,7 @@ public class ReplicaStateTests
                 TurnId = "t_1",
                 ConversationId = "c",
                 UserId = "adam",
-                FirmId = "firm-a",
+                TenantId = "firm-a",
                 CreatedAt = DateTime.UtcNow,
                 Json = "[]",
                 AguiJson = "[{\"seq\":1}]",
@@ -308,8 +308,8 @@ public class ReplicaStateTests
         var dir = Directory.CreateTempSubdirectory("maf-replicas-").FullName;
         using var hostA = new ApiFactory(ApiFactory.ProceduralModel("Answer from A."), dataDir: dir);
         using var hostB = new ApiFactory(ApiFactory.ProceduralModel("Answer from B."), dataDir: dir);
-        var clientA = hostA.ClientFor("adam", "firm-a", Role.ADVISOR);
-        var clientB = hostB.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var clientA = hostA.ClientFor("adam", "firm-a", Role.USER);
+        var clientB = hostB.ClientFor("adam", "firm-a", Role.USER);
 
         // Concurrent turns from both replicas into the same file.
         var turns = await Task.WhenAll(Enumerable.Range(0, 6).Select(i =>

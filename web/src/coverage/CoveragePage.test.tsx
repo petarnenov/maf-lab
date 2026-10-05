@@ -135,7 +135,7 @@ describe('CoveragePage', () => {
           : jsonResponse(undefined, 204),
     });
 
-    renderWithProviders(<CoveragePage />, { session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CoveragePage />, { session: makeSession('TENANT_ADMIN') });
 
     expect(await screen.findByText('No coverage report yet.')).toBeInTheDocument();
     await userEvent.click(await screen.findByRole('button', { name: 'Refresh coverage' }));
@@ -188,7 +188,7 @@ describe('CoveragePage', () => {
 
     renderWithProviders(<CoveragePage />, {
       route: '/coverage?file=src%2FLab%2FBeta.cs',
-      session: makeSession('FIRM_ADMIN'),
+      session: makeSession('TENANT_ADMIN'),
     });
 
     const alert = await screen.findByRole('alert');
@@ -229,7 +229,7 @@ describe('CoveragePage', () => {
       '/api/coverage/refresh': () => jsonResponse(refreshJob('failed', summary)),
     });
 
-    renderWithProviders(<CoveragePage />, { session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CoveragePage />, { session: makeSession('TENANT_ADMIN') });
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(`The last refresh failed at ${new Date('2026-09-30T12:16:00Z').toLocaleString()}: ${summary}`);
@@ -255,7 +255,7 @@ describe('CoveragePage', () => {
       },
       '/api/coverage/refresh': () => jsonResponse(job(canceled ? 'canceled' : 'running')),
     });
-    renderWithProviders(<CoveragePage />, { session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CoveragePage />, { session: makeSession('TENANT_ADMIN') });
     expect(await screen.findByRole('button', { name: 'Measuring…' })).toBeDisabled();
     expect(screen.getByTestId('stop-hint')).toHaveTextContent('Esc to stop');
 
@@ -275,7 +275,7 @@ describe('CoveragePage', () => {
       '/api/coverage/refresh': () => jsonResponse(refreshJob('succeeded', '24e09c9 — dotnet: 237 files')),
     });
 
-    renderWithProviders(<CoveragePage />, { session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CoveragePage />, { session: makeSession('TENANT_ADMIN') });
 
     expect(await screen.findByRole('button', { name: 'Refresh coverage' })).toBeInTheDocument();
     expect(screen.queryByText(/The last refresh failed/)).toBeNull();

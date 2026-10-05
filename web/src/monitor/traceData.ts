@@ -31,7 +31,8 @@ export interface TraceMessage {
 export interface TurnStartData {
   conversationId?: string;
   turnId?: string;
-  principal?: { userId?: string; firmId?: string; role?: string };
+  /** `firmId` is the tenant's name in traces stored before rename-firm-to-tenant; read it when `tenantId` is absent. */
+  principal?: { userId?: string; tenantId?: string; firmId?: string; role?: string };
   apiInstance?: string;
   question?: string;
   /** The trace this turn's spans are in, and where to open it. Absent without a trace store. */

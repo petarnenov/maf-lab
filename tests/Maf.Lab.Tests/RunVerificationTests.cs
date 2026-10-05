@@ -410,7 +410,7 @@ public sealed class RunVerificationTests
     private static async Task<TestGenRunRow> CandidateAsync(Harness h, string body = GoodTest, IReadOnlyList<SuspectedBug>? bugs = null) =>
         await VerifyAsync(h, await VerifyingRunAsync(h, NewTest(body), bugs: bugs));
 
-    private static HttpClient Admin(Harness h) => h.Api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+    private static HttpClient Admin(Harness h) => h.Api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
 
     [Fact]
     public async Task Accept_merges_into_main_and_makes_the_candidate_official()

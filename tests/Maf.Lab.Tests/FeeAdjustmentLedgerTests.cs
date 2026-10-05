@@ -5,8 +5,8 @@ namespace Maf.Lab.Tests;
 
 public class FeeAdjustmentLedgerTests : IDisposable
 {
-    private static readonly Principal FirmA = new("adam", TenantId.Firm("firm-a"), Role.ADVISOR, []);
-    private static readonly Principal FirmB = new("bianca", TenantId.Firm("firm-b"), Role.ADVISOR, []);
+    private static readonly Principal FirmA = new("adam", TenantId.Firm("firm-a"), Role.USER);
+    private static readonly Principal FirmB = new("bianca", TenantId.Firm("firm-b"), Role.USER);
     private static readonly DateTimeOffset At = new(2026, 9, 20, 12, 0, 0, TimeSpan.Zero);
 
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"maf-lab-ledger-{Guid.NewGuid():N}.db");
@@ -181,8 +181,8 @@ public class FeeAdjustmentLedgerTests : IDisposable
 
 public class AccountFeesTests : IDisposable
 {
-    private static readonly Principal FirmA = new("adam", TenantId.Firm("firm-a"), Role.ADVISOR, []);
-    private static readonly Principal FirmB = new("bianca", TenantId.Firm("firm-b"), Role.ADVISOR, []);
+    private static readonly Principal FirmA = new("adam", TenantId.Firm("firm-a"), Role.USER);
+    private static readonly Principal FirmB = new("bianca", TenantId.Firm("firm-b"), Role.USER);
     private static readonly DateTimeOffset At = new(2026, 9, 20, 12, 0, 0, TimeSpan.Zero);
 
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"maf-lab-fees-{Guid.NewGuid():N}.db");

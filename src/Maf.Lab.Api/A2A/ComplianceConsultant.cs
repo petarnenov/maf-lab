@@ -359,7 +359,7 @@ public sealed class ComplianceConsultant(
         {
             var firm = TenantId.TryParse(adjustment.FirmId, out var parsed) ? parsed : TenantId.Shared;
             await audit.RecordAsync(new AuditEntry(
-                new Principal("maf-lab-assistant", firm, UserRole.READ_ONLY, []),
+                new Principal("maf-lab-assistant", firm, UserRole.READ_ONLY),
                 null, null, operation,
                 $"agent=compliance adjustmentId={adjustment.AdjustmentId} taskId={taskId ?? "-"}",
                 outcome, (long)took.TotalMilliseconds, Compliance.AuditKinds.A2AConsultation), ct);

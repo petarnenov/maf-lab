@@ -20,7 +20,7 @@ public class RunStateTests
     public async Task A_finished_run_says_what_it_said_and_which_tools_it_called()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel("Assign the schedule and re-run."));
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var lost = await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing", runId: "r_rejoin");
 
         var events = await ApiFactory.RejoinAsync(adam, ApiFactory.ThreadOf(lost), "r_rejoin");
@@ -52,7 +52,7 @@ public class RunStateTests
         {
             ExtraSettings = new Dictionary<string, string?> { ["Compliance:BaseUrl"] = "" },
         };
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var lost = await ApiFactory.ChatAsync(adam, "adjust the fee on A-1042 down by 200", runId: "r_waiting");
         var interrupt = ApiFactory.InterruptOf(lost);
         Assert.NotNull(interrupt);
@@ -70,15 +70,15 @@ public class RunStateTests
     public async Task A_run_of_another_principal_and_a_run_nobody_kept_are_both_not_found()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var thread = ApiFactory.ThreadOf(await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing", runId: "r_mine"));
 
         // Another user of the same firm, and another firm entirely: the thread is theirs to name, not the run.
-        using (var rita = await ApiFactory.SendRejoinAsync(api.ClientFor("rita", "firm-a", Role.ADVISOR), thread, "r_mine"))
+        using (var rita = await ApiFactory.SendRejoinAsync(api.ClientFor("rita", "firm-a", Role.USER), thread, "r_mine"))
         {
             Assert.Equal(HttpStatusCode.NotFound, rita.StatusCode);
         }
-        using (var bob = await ApiFactory.SendRejoinAsync(api.ClientFor("bob", "firm-b", Role.FIRM_ADMIN), null, "r_mine"))
+        using (var bob = await ApiFactory.SendRejoinAsync(api.ClientFor("bob", "firm-b", Role.TENANT_ADMIN), null, "r_mine"))
         {
             Assert.Equal(HttpStatusCode.NotFound, bob.StatusCode);
         }
@@ -98,7 +98,7 @@ public class RunStateTests
     {
         var chat = new ScriptedChatClient((_, _, _) => throw new InvalidOperationException("the model is down"));
         using var api = new ApiFactory(chat);
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
 
         var events = await ApiFactory.ChatAsync(adam, "anything at all", runId: "r_failed");
 

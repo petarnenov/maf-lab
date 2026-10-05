@@ -15,7 +15,7 @@ namespace Maf.Lab.IntegrationTests;
 [Collection(CorpusCollection.Name)]
 public class RelevanceGateAcceptanceTests(CorpusIndexFixture corpus)
 {
-    private static readonly Principal AdvisorA = new("adam", TenantId.Firm("firm-a"), Role.ADVISOR, ["adv-a-1"]);
+    private static readonly Principal AdvisorA = new("adam", TenantId.Firm("firm-a"), Role.USER);
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private const string Query = "what is the procedure when a fee schedule is missing";
 

@@ -1,20 +1,20 @@
 // Mirrors the DTOs in src/Maf.Lab.Domain (camelCase JSON). See docs/http-api.md.
 
-export type Role = 'FIRM_ADMIN' | 'ADVISOR' | 'OPS' | 'READ_ONLY';
+/** The core's roles. Domain roles (billing's advisor, ops) are claims the core and this shell do not read. */
+export type Role = 'TENANT_ADMIN' | 'USER' | 'READ_ONLY';
 
 export interface DevUser {
   userId: string;
-  firmId: string;
+  tenantId: string;
   role: Role;
-  advisorIds: string[];
   label: string;
 }
 
+/** The dev issuer adds a persona's domain claims itself; the shell sends only the core shape. */
 export interface DevTokenRequest {
   userId: string;
-  firmId: string;
+  tenantId: string;
   role: Role;
-  advisorIds?: string[];
 }
 
 export interface DevTokenResponse {
@@ -24,9 +24,8 @@ export interface DevTokenResponse {
 
 export interface Me {
   userId: string;
-  firmId: string;
+  tenantId: string;
   role: Role;
-  advisorIds: string[];
 }
 
 // ---- Chat ----
@@ -455,7 +454,7 @@ export interface ActionPage {
 }
 
 export interface ExportManifest {
-  firmId: string;
+  tenantId: string;
   subjectUserId: string | null;
   from: string;
   to: string;

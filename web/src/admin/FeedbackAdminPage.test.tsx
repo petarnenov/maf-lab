@@ -34,7 +34,7 @@ describe('FeedbackAdminPage', () => {
       'fetch',
       vi.fn(async () => jsonResponse([item])),
     );
-    renderWithProviders(<FeedbackAdminPage />, { session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<FeedbackAdminPage />, { session: makeSession('TENANT_ADMIN') });
     expect(await screen.findByText(item.question)).toBeInTheDocument();
     expect(screen.getByText('zero retrieval results')).toBeInTheDocument();
     expect(screen.getByText('negative feedback')).toBeInTheDocument();
@@ -48,7 +48,7 @@ describe('FeedbackAdminPage', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    renderWithProviders(<FeedbackAdminPage />, { session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<FeedbackAdminPage />, { session: makeSession('TENANT_ADMIN') });
     await userEvent.click(await screen.findByText(item.question));
 
     expect(screen.getByRole('combobox', { name: 'Dataset' })).toHaveValue('retrieval');
@@ -78,7 +78,7 @@ describe('FeedbackAdminPage', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    renderWithProviders(<FeedbackAdminPage />, { session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<FeedbackAdminPage />, { session: makeSession('TENANT_ADMIN') });
     await userEvent.click(await screen.findByText(item.question));
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Dataset' }), 'selection');
     await userEvent.click(screen.getByLabelText('get_billing_run_status'));
@@ -105,7 +105,7 @@ describe('LabelForm retrieval without returned chunks', () => {
       'fetch',
       vi.fn(async () => jsonResponse([empty])),
     );
-    renderWithProviders(<FeedbackAdminPage />, { session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<FeedbackAdminPage />, { session: makeSession('TENANT_ADMIN') });
     await userEvent.click(await screen.findByText(item.question));
 
     expect(screen.getByText('This turn returned no chunks.')).toBeInTheDocument();
@@ -130,7 +130,7 @@ describe('LabelForm retrieval without returned chunks', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    renderWithProviders(<FeedbackAdminPage />, { session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<FeedbackAdminPage />, { session: makeSession('TENANT_ADMIN') });
     await userEvent.click(await screen.findByText(item.question));
     await userEvent.click(screen.getByRole('button', { name: 'Open trace' }));
 

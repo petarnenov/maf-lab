@@ -60,7 +60,7 @@ describe('IndexAdminPage', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    renderWithProviders(<IndexAdminPage />, { session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<IndexAdminPage />, { session: makeSession('TENANT_ADMIN') });
 
     expect(await screen.findByTestId('drift-percent')).toHaveTextContent('5.0%');
     expect(screen.getByTestId('drift-graph')).toHaveTextContent('Graph: 3 of 40 out of sync');
@@ -104,7 +104,7 @@ describe('IndexAdminPage', () => {
       }),
     );
 
-    renderWithProviders(<IndexAdminPage />, { session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<IndexAdminPage />, { session: makeSession('TENANT_ADMIN') });
 
     expect(
       screen.getByRole('progressbar', { name: 'Checking the index and the graph…' }),

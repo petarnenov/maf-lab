@@ -213,7 +213,7 @@ make help                  # every target
 | `make coverage` | Refresh the coverage snapshot at main (both toolchains, through the running stack) |
 | `make verify` | Verify the running stack through the load balancer (37 checks), then AG-UI conformance of every agent (8 checks) |
 | `make eval` | Run evals (SUITE=all\|selection\|retrieval\|generation\|injection\|confirmation\|intent\|domain\|presentation\|guardrail\|answer-check\|code-route\|graph-depth\|generation-judge) against the stack's MCP servers |
-| `make ask` | Ask one question through the agent and print its trace (Q="…" FIRM=firm-a), e.g. a cross-domain one |
+| `make ask` | Ask one question through the agent and print its trace (Q="…" TENANT=firm-a), e.g. a cross-domain one |
 | `make screenshots` | Re-take the README screenshots from the running stack into docs/screenshots (SHOTS=chat,topology for a subset) |
 | `make eval-accept` | Run the evals and accept their metrics as the new baseline (REPEAT=N: mean of N runs; commit the result) |
 | `make eval-selection` | Eval: tool selection (recall/precision) |
@@ -308,7 +308,7 @@ self-assessment. It writes a report in the same shape every eval suite writes, t
 `make ci-e2e` runs it. `make eval SUITE=…` does **not** — that target dispatches into the harness, which links
 against the service.
 
-**`/admin/a2a`** (FIRM_ADMIN) is where that traffic is visible: what arrived from partners, what this system
+**`/admin/a2a`** (TENANT_ADMIN) is where that traffic is visible: what arrived from partners, what this system
 asked of the reviewer, and every push delivery — each with its state, when it happened and how long it took. A
 task still running can be cancelled from there, through the same protocol call a partner would make. The same
 page shows the test-generation agent, through the api: whether its card answers, what the card says, what a run
@@ -343,7 +343,7 @@ flow against a reviewer that answers with it verbatim. None of them changes what
 
 **`/coverage`** shows how well the lab's own C# and TypeScript source is covered by tests — folder by folder, file by
 file and line by line, each file against its threshold (a configured default, or the file's own override). Any
-signed-in user can look; only a FIRM_ADMIN can change a threshold, refresh coverage or start, cancel, accept or
+signed-in user can look; only a TENANT_ADMIN can change a threshold, refresh coverage or start, cancel, accept or
 discard a run, and the server enforces that. `make coverage` refreshes the snapshot at `main` through the running
 stack.
 
@@ -355,7 +355,7 @@ tests run in the **coverage-runner**, which has no secrets and no route to the i
 exposes a bug is skipped and reported, not worked around.
 
 The api then checks the result itself before anyone sees it, commits it to a candidate branch
-(`test-agent/<file-slug>-<runId>`), and waits for a FIRM_ADMIN to accept it — a conflict-free merge into `main` — or
+(`test-agent/<file-slug>-<runId>`), and waits for a TENANT_ADMIN to accept it — a conflict-free merge into `main` — or
 discard it. A suspected bug whose test still fails when un-skipped becomes a GitHub issue (`GITHUB_ISSUES_TOKEN`). The page
 follows a run live, and `/admin/a2a` shows the agent and its runs. `make testgen-e2e` drives the whole path without a
 model; `make ci-e2e` includes it.
@@ -738,7 +738,7 @@ and the previous row's digest, so a changed or removed row can be detected and *
   <img src="docs/screenshots/compliance-light.png" alt="The compliance screen: the audit chain verified and the action log of the firm">
 </picture>
 
-**`/admin/compliance`** (FIRM_ADMIN) shows it: whether the chain is intact — in words, with how many records were
+**`/admin/compliance`** (TENANT_ADMIN) shows it: whether the chain is intact — in words, with how many records were
 checked and how many predate it — or, when it is broken, which record broke it and that everything before it is
 unaffected. Below that, the firm's actions newest first, filterable by person, kind and period. The same endpoints
 serve a script:
@@ -749,7 +749,7 @@ GET /api/admin/compliance/actions?userId=&kind=…      # the record, paged
 GET /api/admin/compliance/export?from=&to=[&userId=]  # the package, with a manifest
 ```
 
-A FIRM_ADMIN can hand an authorised person a package for a period: their firm's conversations, turns and actions,
+A TENANT_ADMIN can hand an authorised person a package for a period: their tenant's conversations, turns and actions,
 including deleted conversations marked as deleted. Adding `userId` narrows it to one person, for a data subject
 request. The firm comes from the token, so no parameter reaches another firm. The manifest carries who produced it,
 when, the counts, the audit chain head, and a digest over a canonical rendering of the content — documented in

@@ -39,7 +39,7 @@ public sealed class BillingSeedStore
     public BillingRunStatus? GetStatus(Principal principal, string runId)
     {
         var id = NormalizeRunId(runId);
-        var run = _runs.FirstOrDefault(r => r.FirmId == principal.FirmId.Value && r.RunId == id);
+        var run = _runs.FirstOrDefault(r => r.FirmId == principal.TenantId.Value && r.RunId == id);
         return run is null
             ? null
             : new BillingRunStatus(run.RunId, run.Status, run.PeriodStart, run.PeriodEnd, run.AccountCount, run.FailureReason, run.UpdatedAt);
@@ -48,7 +48,7 @@ public sealed class BillingSeedStore
     public SearchBillingRunsResult Search(Principal principal, string? status, DateOnly? periodFrom, DateOnly? periodTo, int limit)
     {
         var matches = _runs
-            .Where(r => r.FirmId == principal.FirmId.Value)
+            .Where(r => r.FirmId == principal.TenantId.Value)
             .Where(r => status is null || string.Equals(r.Status, status, StringComparison.OrdinalIgnoreCase))
             .Where(r => periodFrom is null || r.PeriodEnd >= periodFrom)
             .Where(r => periodTo is null || r.PeriodStart <= periodTo)

@@ -47,21 +47,21 @@ public sealed class AdminJobRunner(
 
     public string Instance { get; init; } = Environment.MachineName;
 
-    public Task<AdminJob> StartAsync(string firmId, string kind, Func<CancellationToken, Task<string>> work, CancellationToken ct) =>
-        StartAsync(firmId, kind, (_, token) => work(token), ct);
+    public Task<AdminJob> StartAsync(string tenantId, string kind, Func<CancellationToken, Task<string>> work, CancellationToken ct) =>
+        StartAsync(tenantId, kind, (_, token) => work(token), ct);
 
     /// <summary>Starts a job whose work reports how far it has got, so a canceled job can say so.</summary>
-    public async Task<AdminJob> StartAsync(string firmId, string kind, Func<IProgress<string>, CancellationToken, Task<string>> work,
+    public async Task<AdminJob> StartAsync(string tenantId, string kind, Func<IProgress<string>, CancellationToken, Task<string>> work,
         CancellationToken ct)
     {
         await using var ctx = await db.CreateDbContextAsync(ct);
-        await ExpireStaleAsync(ctx, firmId, ct);
+        await ExpireStaleAsync(ctx, tenantId, ct);
 
         var now = time.GetUtcNow().UtcDateTime;
         var row = new AdminJobRow
         {
             Id = $"j_{Guid.NewGuid():N}",
-            FirmId = firmId,
+            TenantId = tenantId,
             Kind = kind,
             State = AdminJobStates.Running,
             StartedAt = now,
@@ -78,7 +78,7 @@ public sealed class AdminJobRunner(
             // Another request (possibly on another replica) already started this job: return it.
             await using var read = await db.CreateDbContextAsync(ct);
             var running = await read.AdminJobs.AsNoTracking()
-                .FirstAsync(j => j.FirmId == firmId && j.Kind == kind && j.State == AdminJobStates.Running, ct);
+                .FirstAsync(j => j.TenantId == tenantId && j.Kind == kind && j.State == AdminJobStates.Running, ct);
             return ToContract(running);
         }
 
@@ -86,11 +86,11 @@ public sealed class AdminJobRunner(
         return ToContract(row);
     }
 
-    public async Task<AdminJob?> GetAsync(string firmId, string jobId, CancellationToken ct)
+    public async Task<AdminJob?> GetAsync(string tenantId, string jobId, CancellationToken ct)
     {
         await using var ctx = await db.CreateDbContextAsync(ct);
-        await ExpireStaleAsync(ctx, firmId, ct);
-        var row = await ctx.AdminJobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == jobId && j.FirmId == firmId, ct);
+        await ExpireStaleAsync(ctx, tenantId, ct);
+        var row = await ctx.AdminJobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == jobId && j.TenantId == tenantId, ct);
         return row is null ? null : ToContract(row);
     }
 
@@ -98,17 +98,17 @@ public sealed class AdminJobRunner(
     /// Cancels a running job of the firm, whichever replica runs it: one guarded update moves its row to canceled, and
     /// the replica running it stops the work when it sees that.
     /// </summary>
-    public async Task<(AdminJobCancel Outcome, AdminJob? Job)> CancelAsync(string firmId, string jobId, CancellationToken ct)
+    public async Task<(AdminJobCancel Outcome, AdminJob? Job)> CancelAsync(string tenantId, string jobId, CancellationToken ct)
     {
         await using var ctx = await db.CreateDbContextAsync(ct);
         var now = time.GetUtcNow().UtcDateTime;
         var canceled = await ctx.AdminJobs
-            .Where(j => j.Id == jobId && j.FirmId == firmId && j.State == AdminJobStates.Running)
+            .Where(j => j.Id == jobId && j.TenantId == tenantId && j.State == AdminJobStates.Running)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(j => j.State, AdminJobStates.Canceled)
                 .SetProperty(j => j.Summary, CanceledSummary)
                 .SetProperty(j => j.FinishedAt, now), ct);
-        var row = await ctx.AdminJobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == jobId && j.FirmId == firmId, ct);
+        var row = await ctx.AdminJobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == jobId && j.TenantId == tenantId, ct);
         if (row is null)
         {
             return (AdminJobCancel.NotFound, null);
@@ -116,11 +116,11 @@ public sealed class AdminJobRunner(
         return (canceled == 1 ? AdminJobCancel.Canceling : AdminJobCancel.AlreadyEnded, ToContract(row));
     }
 
-    public async Task<AdminJob?> CurrentAsync(string firmId, CancellationToken ct)
+    public async Task<AdminJob?> CurrentAsync(string tenantId, CancellationToken ct)
     {
         await using var ctx = await db.CreateDbContextAsync(ct);
-        await ExpireStaleAsync(ctx, firmId, ct);
-        var row = await ctx.AdminJobs.AsNoTracking().Where(j => j.FirmId == firmId).OrderByDescending(j => j.StartedAt).FirstOrDefaultAsync(ct);
+        await ExpireStaleAsync(ctx, tenantId, ct);
+        var row = await ctx.AdminJobs.AsNoTracking().Where(j => j.TenantId == tenantId).OrderByDescending(j => j.StartedAt).FirstOrDefaultAsync(ct);
         return row is null ? null : ToContract(row);
     }
 
@@ -194,11 +194,11 @@ public sealed class AdminJobRunner(
     }
 
     /// <summary>Marks running jobs of the firm whose owner stopped heart-beating as failed, releasing the lock.</summary>
-    private async Task ExpireStaleAsync(MafDbContext ctx, string firmId, CancellationToken ct)
+    private async Task ExpireStaleAsync(MafDbContext ctx, string tenantId, CancellationToken ct)
     {
         var cutoff = time.GetUtcNow().UtcDateTime - _options.StaleAfter;
         var now = time.GetUtcNow().UtcDateTime;
-        await ctx.AdminJobs.Where(j => j.FirmId == firmId && j.State == AdminJobStates.Running && j.HeartbeatAt < cutoff)
+        await ctx.AdminJobs.Where(j => j.TenantId == tenantId && j.State == AdminJobStates.Running && j.HeartbeatAt < cutoff)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(j => j.State, AdminJobStates.Failed)
                 .SetProperty(j => j.Summary, Interrupted)

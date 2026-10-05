@@ -29,7 +29,7 @@ public sealed class McpServerTests(CorpusIndexFixture corpus) : IAsyncDisposable
     [Fact]
     public async Task Server_lists_its_tools_annotated_honestly_and_without_tenant_inputs()
     {
-        var client = await ClientAsync("adam", "firm-a", Role.ADVISOR);
+        var client = await ClientAsync("adam", "firm-a", Role.USER);
         var tools = await client.ListToolsAsync(cancellationToken: Ct);
 
         Assert.Equal(
@@ -87,7 +87,7 @@ public sealed class McpServerTests(CorpusIndexFixture corpus) : IAsyncDisposable
         var response = await anonymous.PostAsync("/mcp", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"), Ct);
         Assert.Equal(System.Net.HttpStatusCode.Unauthorized, response.StatusCode);
 
-        var client = await ClientAsync("adam", "firm-a", Role.ADVISOR, factory);
+        var client = await ClientAsync("adam", "firm-a", Role.USER, factory);
         Assert.Null(client.SessionId);
         var first = await client.CallToolAsync("get_billing_run_status", new Dictionary<string, object?> { ["runId"] = "4417" }, cancellationToken: Ct);
         var second = await client.CallToolAsync("get_billing_run_status", new Dictionary<string, object?> { ["runId"] = "4417" }, cancellationToken: Ct);
@@ -98,7 +98,7 @@ public sealed class McpServerTests(CorpusIndexFixture corpus) : IAsyncDisposable
     [Fact]
     public async Task Search_documents_caps_results_filters_and_ignores_a_tenant_argument()
     {
-        var client = await ClientAsync("adam", "firm-a", Role.ADVISOR);
+        var client = await ClientAsync("adam", "firm-a", Role.USER);
 
         var capped = await client.CallToolAsync("search_documents",
             new Dictionary<string, object?> { ["query"] = "fee schedule procedure", ["maxResults"] = 50 }, cancellationToken: Ct);
@@ -132,8 +132,8 @@ public sealed class McpServerTests(CorpusIndexFixture corpus) : IAsyncDisposable
     [Fact]
     public async Task Billing_tools_are_firm_scoped_and_never_return_the_note()
     {
-        var a = await ClientAsync("adam", "firm-a", Role.ADVISOR);
-        var b = await ClientAsync("bianca", "firm-b", Role.ADVISOR);
+        var a = await ClientAsync("adam", "firm-a", Role.USER);
+        var b = await ClientAsync("bianca", "firm-b", Role.USER);
 
         var own = await a.CallToolAsync("get_billing_run_status", new Dictionary<string, object?> { ["runId"] = "4417" }, cancellationToken: Ct);
         Assert.NotEqual(true, own.IsError);
@@ -160,7 +160,7 @@ public sealed class McpServerTests(CorpusIndexFixture corpus) : IAsyncDisposable
     public async Task Vector_store_outage_returns_a_short_error_without_internals()
     {
         var factory = Factory(o => o["Qdrant:GrpcPort"] = "1");
-        var client = await ClientAsync("adam", "firm-a", Role.ADVISOR, factory);
+        var client = await ClientAsync("adam", "firm-a", Role.USER, factory);
 
         var result = await client.CallToolAsync("search_documents", new Dictionary<string, object?> { ["query"] = "fee schedule procedure" }, cancellationToken: Ct);
 
@@ -177,7 +177,7 @@ public sealed class McpServerTests(CorpusIndexFixture corpus) : IAsyncDisposable
     public async Task A_proposal_over_the_wire_asks_for_input_and_writes_nothing()
     {
         var factory = Factory();
-        var client = await ClientAsync("adam", "firm-a", Role.ADVISOR, factory);
+        var client = await ClientAsync("adam", "firm-a", Role.USER, factory);
 
         var asked = await Assert.ThrowsAnyAsync<Exception>(async () => await client.CallToolAsync(
             "propose_fee_adjustment",
@@ -200,7 +200,7 @@ public sealed class McpServerTests(CorpusIndexFixture corpus) : IAsyncDisposable
             v["Neo4j:Uri"] = "bolt://127.0.0.1:1";
             v["Neo4j:ConnectTimeoutSeconds"] = "1";
         });
-        var client = await ClientAsync("adam", "firm-a", Role.ADVISOR, factory);
+        var client = await ClientAsync("adam", "firm-a", Role.USER, factory);
 
         var graph = await client.CallToolAsync("trace_billing_relationships", new Dictionary<string, object?> { ["entityId"] = "A-1042" }, cancellationToken: Ct);
         Assert.True(graph.IsError);
@@ -242,7 +242,7 @@ public sealed class McpServerTests(CorpusIndexFixture corpus) : IAsyncDisposable
         WebApplicationFactory<Maf.Lab.Retrieval.Program>? factory = null, params DelegatingHandler[] handlers)
     {
         factory ??= Factory();
-        var (token, _) = DevJwt.Issue(new AuthOptions(), user, TenantId.Firm(firm), role, []);
+        var (token, _) = DevJwt.Issue(new AuthOptions(), user, TenantId.Firm(firm), role);
         var http = factory.CreateDefaultClient(handlers);
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         var transport = new HttpClientTransport(new HttpClientTransportOptions
@@ -261,7 +261,7 @@ public sealed class McpServerTests(CorpusIndexFixture corpus) : IAsyncDisposable
         // A stopped chat run cancels its tool calls; the server must stop the search, not finish it for nobody.
         var encoder = new HeldEncoder();
         var wire = new MethodsSent();
-        var client = await ClientAsync("adam", "firm-a", Role.ADVISOR, Factory(encoder: encoder), wire);
+        var client = await ClientAsync("adam", "firm-a", Role.USER, Factory(encoder: encoder), wire);
         using var run = CancellationTokenSource.CreateLinkedTokenSource(Ct);
 
         var call = client.CallToolAsync("search_documents",
@@ -369,7 +369,7 @@ public sealed class McpDiagnosticsTests(CorpusIndexFixture corpus)
                 s.AddSingleton<IDenseEncoder>(FakeDenseEncoder.Default());
             });
         });
-        var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.ADVISOR, []);
+        var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.USER);
         var http = factory.CreateDefaultClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         await using var client = await McpClient.CreateAsync(new HttpClientTransport(new HttpClientTransportOptions
@@ -420,7 +420,7 @@ public sealed class McpDiagnosticsTests(CorpusIndexFixture corpus)
                 s.AddSingleton<Maf.Lab.Retrieval.Rerank.IRelevanceJudge>(new FixedJudge(0.8));
             });
         });
-        var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.ADVISOR, []);
+        var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.USER);
         var http = factory.CreateDefaultClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         await using var client = await McpClient.CreateAsync(new HttpClientTransport(new HttpClientTransportOptions

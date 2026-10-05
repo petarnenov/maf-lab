@@ -13,7 +13,7 @@ namespace Maf.Lab.IntegrationTests;
 [Collection(CorpusCollection.Name)]
 public class RelevanceFloorAcceptanceTests(CorpusIndexFixture corpus)
 {
-    private static readonly Principal AdvisorA = new("adam", TenantId.Firm("firm-a"), Role.ADVISOR, ["adv-a-1"]);
+    private static readonly Principal AdvisorA = new("adam", TenantId.Firm("firm-a"), Role.USER);
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     /// <summary>Floors no candidate in any corpus can clear, so the test is about the mechanism, not the numbers.</summary>

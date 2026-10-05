@@ -214,7 +214,7 @@ public sealed partial class BillingAgentHandler(
     };
 
     /// <summary>A partner reads one firm at a time, with no advisor scope: it is not a user.</summary>
-    private static Principal PartnerScope(TenantId firm) => new($"a2a:{firm.Value}", firm, UserRole.READ_ONLY, []);
+    private static Principal PartnerScope(TenantId firm) => new($"a2a:{firm.Value}", firm, UserRole.READ_ONLY);
 
     private async Task RecordAsync(PartnerPrincipal partner, string operation, string taskId, DateTimeOffset started, CancellationToken ct)
     {
@@ -223,7 +223,7 @@ public sealed partial class BillingAgentHandler(
             await audit.RecordAsync(new AuditEntry(
                 new Principal(partner.PartnerId,
                     partner.AllowedFirms.Count > 0 ? partner.AllowedFirms.First() : TenantId.Firm("unknown"),
-                    UserRole.READ_ONLY, []),
+                    UserRole.READ_ONLY),
                 null, null, $"a2a.{operation}", $"taskId={taskId}", "ok",
                 (long)(time.GetUtcNow() - started).TotalMilliseconds, Compliance.AuditKinds.A2ARequest), ct);
         }

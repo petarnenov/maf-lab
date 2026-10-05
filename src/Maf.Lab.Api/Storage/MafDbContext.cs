@@ -31,31 +31,31 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
     protected override void OnModelCreating(ModelBuilder b)
     {
         b.Entity<ConversationRow>().HasKey(x => x.Id);
-        b.Entity<ConversationRow>().HasIndex(x => new { x.UserId, x.FirmId, x.DeletedAt, x.LastActivityAt });
+        b.Entity<ConversationRow>().HasIndex(x => new { x.UserId, x.TenantId, x.DeletedAt, x.LastActivityAt });
         b.Entity<MessageRow>().HasIndex(x => new { x.ConversationId, x.Id });
         b.Entity<TurnRow>().HasKey(x => x.Id);
-        b.Entity<TurnRow>().HasIndex(x => new { x.FirmId, x.CreatedAt });
+        b.Entity<TurnRow>().HasIndex(x => new { x.TenantId, x.CreatedAt });
         b.Entity<TurnRow>().HasIndex(x => new { x.ConversationId, x.CreatedAt });
         b.Entity<FeedbackRow>().HasKey(x => x.Id);
         b.Entity<FeedbackRow>().HasIndex(x => x.TurnId);
         b.Entity<LabelRow>().HasKey(x => x.Id);
-        b.Entity<AuditRow>().HasIndex(x => new { x.FirmId, x.At });
+        b.Entity<AuditRow>().HasIndex(x => new { x.TenantId, x.At });
         // An investigation starts from a person, not from a firm.
         b.Entity<AuditRow>().HasIndex(x => new { x.PrincipalId, x.At });
         b.Entity<AdminJobRow>().HasKey(x => x.Id);
         b.Entity<TurnTraceRow>().HasKey(x => x.TurnId);
         b.Entity<TurnTraceRow>().HasIndex(x => x.CreatedAt);
         // At most one running job per firm and kind, enforced by the database across replicas.
-        b.Entity<AdminJobRow>().HasIndex(x => new { x.FirmId, x.Kind }).IsUnique().HasFilter("\"State\" = 'running'");
+        b.Entity<AdminJobRow>().HasIndex(x => new { x.TenantId, x.Kind }).IsUnique().HasFilter("\"State\" = 'running'");
         b.Entity<A2ATaskRow>().HasKey(x => x.Id);
         b.Entity<A2ATaskRow>().HasIndex(x => new { x.ContextId, x.UpdatedAt });
         b.Entity<A2ATaskRow>().HasIndex(x => new { x.PartnerId, x.UpdatedAt });
-        b.Entity<A2ATaskRow>().HasIndex(x => new { x.FirmId, x.UpdatedAt });
+        b.Entity<A2ATaskRow>().HasIndex(x => new { x.TenantId, x.UpdatedAt });
         b.Entity<A2APushConfigRow>().HasKey(x => x.Id);
         b.Entity<A2APushConfigRow>().HasIndex(x => x.TaskId);
         b.Entity<A2APushDeliveryRow>().HasIndex(x => new { x.TaskId, x.At });
         b.Entity<PendingAdjustmentRow>().HasKey(x => x.Id);
-        b.Entity<PendingAdjustmentRow>().HasIndex(x => new { x.FirmId, x.UserId, x.UpdatedAt });
+        b.Entity<PendingAdjustmentRow>().HasIndex(x => new { x.TenantId, x.UserId, x.UpdatedAt });
         b.Entity<PendingAdjustmentRow>().HasIndex(x => new { x.ConversationId, x.UpdatedAt });
         b.Entity<CoverageSnapshotRow>().HasKey(x => x.Id);
         b.Entity<CoverageSnapshotRow>().HasIndex(x => new { x.Kind, x.CreatedAt });
@@ -79,7 +79,7 @@ public sealed class ConversationRow
 {
     public required string Id { get; set; }
     public required string UserId { get; set; }
-    public required string FirmId { get; set; }
+    public required string TenantId { get; set; }
     public DateTime CreatedAt { get; set; }
     /// <summary>User-set title; null = derived from the first question.</summary>
     public string? Title { get; set; }
@@ -110,7 +110,7 @@ public sealed class TurnRow
     public required string Id { get; set; }
     public required string ConversationId { get; set; }
     public required string UserId { get; set; }
-    public required string FirmId { get; set; }
+    public required string TenantId { get; set; }
     public required string Question { get; set; }
     public string Answer { get; set; } = "";
     public string Intent { get; set; } = "";
@@ -131,7 +131,7 @@ public sealed class FeedbackRow
     public required string TurnId { get; set; }
     public required string ConversationId { get; set; }
     public required string UserId { get; set; }
-    public required string FirmId { get; set; }
+    public required string TenantId { get; set; }
     public required string Kind { get; set; }
     public string? Comment { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -141,7 +141,7 @@ public sealed class LabelRow
 {
     public required string Id { get; set; }
     public required string TurnId { get; set; }
-    public required string FirmId { get; set; }
+    public required string TenantId { get; set; }
     public required string ReviewerId { get; set; }
     public required string Dataset { get; set; }
     public required string RowJson { get; set; }
@@ -157,7 +157,7 @@ public sealed class AuditRow
     public long Id { get; set; }
     public DateTime At { get; set; }
     public required string PrincipalId { get; set; }
-    public required string FirmId { get; set; }
+    public required string TenantId { get; set; }
     public string? ConversationId { get; set; }
     public string? TurnId { get; set; }
     /// <summary>The action: a tool name for a tool call, otherwise the action name (e.g. conversation.delete).</summary>
@@ -182,7 +182,7 @@ public sealed class AuditRow
 public sealed class PendingAdjustmentRow
 {
     public required string Id { get; set; }
-    public required string FirmId { get; set; }
+    public required string TenantId { get; set; }
     public required string UserId { get; set; }
     public required string ConversationId { get; set; }
     public required string TurnId { get; set; }
@@ -219,7 +219,7 @@ public static class PendingAdjustmentStatus
 public sealed class AdminJobRow
 {
     public required string Id { get; set; }
-    public required string FirmId { get; set; }
+    public required string TenantId { get; set; }
     public required string Kind { get; set; }
     public required string State { get; set; }
     public DateTime StartedAt { get; set; }
@@ -235,7 +235,7 @@ public sealed class TurnTraceRow
     public required string TurnId { get; set; }
     public required string ConversationId { get; set; }
     public required string UserId { get; set; }
-    public required string FirmId { get; set; }
+    public required string TenantId { get; set; }
     public DateTime CreatedAt { get; set; }
     public required string Json { get; set; }
 
@@ -251,7 +251,7 @@ public sealed class A2ATaskRow
     public string? PartnerId { get; set; }
 
     /// <summary>The firm the partner was entitled to act for when the task was created.</summary>
-    public string? FirmId { get; set; }
+    public string? TenantId { get; set; }
     public required string State { get; set; }
     /// <summary>The task as the SDK serialises it, including its history and artifacts.</summary>
     public required string Json { get; set; }

@@ -27,18 +27,18 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
   });
 }
 
-const token = async (userId, firmId, role) =>
+const token = async (userId, tenantId, role) =>
   (
     await (
       await fetch(`${base}/dev/token`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ userId, firmId, role }),
+        body: JSON.stringify({ userId, tenantId, role }),
       })
     ).json()
   ).token;
 
-const adam = { Authorization: `Bearer ${await token('adam', 'firm-a', 'ADVISOR')}` };
+const adam = { Authorization: `Bearer ${await token('adam', 'firm-a', 'USER')}` };
 const thread = () => `c_${crypto.randomUUID().replaceAll('-', '')}`;
 const routes = {
   chat: { direct: `${base}/api/chat`, runtime: `${base}/copilotkit/agent/chat/run` },

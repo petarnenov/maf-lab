@@ -51,7 +51,7 @@ public class GraphDepthEvalTests
         Assert.Equal(("trace", "A.B", "callers", null), (c.Kind, c.Symbol, c.Direction, c.Path));
         Assert.Equal([new GraphDepthNeed("C.D", 1), new GraphDepthNeed("E.F", 3), new GraphDepthNeed("G.H", null)], c.Needed);
         Assert.Equal(3, c.RequiredDepth);
-        Assert.Equal("firm-a", c.FirmId);
+        Assert.Equal("firm-a", c.TenantId);
     }
 
     [Fact]

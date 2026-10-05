@@ -123,7 +123,7 @@ public sealed partial class PortfolioStore
     }
 
     /// <summary>The one firm rule of this store: a record is visible only to its own firm.</summary>
-    private static bool Owns(Principal principal, PortfolioRecord record) => record.FirmId == principal.FirmId.Value;
+    private static bool Owns(Principal principal, PortfolioRecord record) => record.FirmId == principal.TenantId.Value;
 
     /// <summary>"account A-1042", "a-1042" and "A1042" all mean the same account, as in billing.</summary>
     internal static string Normalize(string accountId) =>

@@ -29,7 +29,7 @@ namespace Maf.Lab.Tests;
 public class GraphTraceEventTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
-    private static readonly Principal FirmA = new("u-a", TenantId.Firm("firm-a"), Role.ADVISOR, []);
+    private static readonly Principal FirmA = new("u-a", TenantId.Firm("firm-a"), Role.USER);
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     // ── the read log ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -307,7 +307,7 @@ public class GraphTraceEventTests
     {
         var tools = new FakeToolSource { SearchMetaJson = $$"""{"{{TraceMeta.Graph}}":{{TwoReads}},"maf-lab/instance":"mcp-retrieval-1"}""" };
         using var api = new ApiFactory(ApiFactory.ProceduralModel("ANSWER-X per the procedure."), tools);
-        var trace = ApiFactory.TracesOf(await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "what is the procedure when a fee schedule is missing"))
+        var trace = ApiFactory.TracesOf(await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "what is the procedure when a fee schedule is missing"))
             .Select(t => t.Deserialize<TraceEvent>(Json)!).ToList();
         var kinds = trace.Select(t => t.Kind).ToList();
 

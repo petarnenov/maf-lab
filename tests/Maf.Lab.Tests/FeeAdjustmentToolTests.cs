@@ -20,9 +20,9 @@ namespace Maf.Lab.Tests;
 /// </summary>
 public class FeeAdjustmentToolTests : IDisposable
 {
-    private static readonly Principal Adam = new("adam", TenantId.Firm("firm-a"), Role.ADVISOR, []);
-    private static readonly Principal Amy = new("amy", TenantId.Firm("firm-a"), Role.ADVISOR, []);
-    private static readonly Principal Bianca = new("bianca", TenantId.Firm("firm-b"), Role.ADVISOR, []);
+    private static readonly Principal Adam = new("adam", TenantId.Firm("firm-a"), Role.USER);
+    private static readonly Principal Amy = new("amy", TenantId.Firm("firm-a"), Role.USER);
+    private static readonly Principal Bianca = new("bianca", TenantId.Firm("firm-b"), Role.USER);
     private static readonly DateTimeOffset Noon = new(2026, 9, 20, 12, 0, 0, TimeSpan.Zero);
 
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"maf-lab-tool-{Guid.NewGuid():N}.db");

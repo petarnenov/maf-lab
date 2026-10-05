@@ -53,7 +53,7 @@ describe('run events (AG-UI)', () => {
 
     renderWithProviders(<CoveragePage />, {
       route: '/coverage?file=src%2FLab%2FBeta.cs',
-      session: makeSession('FIRM_ADMIN'),
+      session: makeSession('TENANT_ADMIN'),
     });
 
     const status = await screen.findByRole('status', { name: 'Run status' });
@@ -116,7 +116,7 @@ describe('run events (AG-UI)', () => {
           <Follower id="r_1" />
           <Follower id="r_1" />
         </>,
-        { session: makeSession('FIRM_ADMIN') },
+        { session: makeSession('TENANT_ADMIN') },
       );
 
       await vi.waitFor(() => expect(screen.getAllByTestId('follower').map((p) => p.textContent)).toEqual(['attempt 2', 'attempt 2']));
@@ -138,7 +138,7 @@ describe('run events (AG-UI)', () => {
           </>
         );
       }
-      const view = renderWithProviders(<Later />, { session: makeSession('FIRM_ADMIN') });
+      const view = renderWithProviders(<Later />, { session: makeSession('TENANT_ADMIN') });
       await vi.waitFor(() => expect(screen.getByTestId('follower')).toHaveTextContent('attempt 2'));
 
       await act(async () => screen.getByRole('button', { name: 'add' }).click());

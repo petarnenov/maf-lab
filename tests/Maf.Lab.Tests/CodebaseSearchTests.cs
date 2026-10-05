@@ -34,7 +34,7 @@ namespace Maf.Lab.Tests;
 public class CodebaseSearchTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
-    private static readonly Principal FirmA = new("adam", TenantId.Firm("firm-a"), Role.ADVISOR, []);
+    private static readonly Principal FirmA = new("adam", TenantId.Firm("firm-a"), Role.USER);
 
     // ---- the token estimate ---------------------------------------------------------------------------------------------
 
@@ -506,7 +506,7 @@ public class CodebaseSearchTests
 
     private static async Task<IList<McpClientTool>> ListToolsAsync(WebApplicationFactory<Maf.Lab.CodeSearch.Program> factory)
     {
-        var (token, _) = DevJwt.Issue(new AuthOptions(), "u-a", TenantId.Firm("firm-a"), Role.ADVISOR, []);
+        var (token, _) = DevJwt.Issue(new AuthOptions(), "u-a", TenantId.Firm("firm-a"), Role.USER);
         var http = factory.CreateDefaultClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         var transport = new HttpClientTransport(new HttpClientTransportOptions

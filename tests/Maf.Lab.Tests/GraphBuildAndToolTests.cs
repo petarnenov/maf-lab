@@ -21,7 +21,7 @@ public class GraphBuildAndToolTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly TenantId A = TenantId.Firm("firm-a");
     private static readonly TenantId B = TenantId.Firm("firm-b");
-    private static readonly Principal FirmA = new("u-a", A, Maf.Lab.Domain.Tenancy.Role.ADVISOR, []);
+    private static readonly Principal FirmA = new("u-a", A, Maf.Lab.Domain.Tenancy.Role.USER);
 
     private const string Accounts = """
         [

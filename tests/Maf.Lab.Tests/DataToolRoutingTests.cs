@@ -311,7 +311,7 @@ public class DataToolRoutingTests
     public async Task A_routed_status_question_calls_the_tool_before_any_model_call()
     {
         using var api = new ApiFactory(DataModel()) { ExtraSettings = new Dictionary<string, string?> { ["Jev:RouteDataTools"] = "true" } };
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var events = await ApiFactory.ChatAsync(client, "status of run 4417");
 
@@ -343,7 +343,7 @@ public class DataToolRoutingTests
         {
             ExtraSettings = new Dictionary<string, string?> { ["Jev:RouteDataTools"] = "true" },
         };
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var events = await ApiFactory.ChatAsync(client, "status of run 4417 and run 4418");
 
@@ -361,7 +361,7 @@ public class DataToolRoutingTests
         {
             ExtraSettings = new Dictionary<string, string?> { ["Jev:RouteDataTools"] = "true" },
         };
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var events = await ApiFactory.ChatAsync(client, "reduce the fee on A-1043 by 50");
 
@@ -376,7 +376,7 @@ public class DataToolRoutingTests
     public async Task Routing_off_leaves_data_turns_as_they_were()
     {
         using var api = new ApiFactory(DataModel()) { ExtraSettings = new Dictionary<string, string?> { ["Jev:RouteDataTools"] = "false" } };
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var events = await ApiFactory.ChatAsync(client, "status of run 4417");
 

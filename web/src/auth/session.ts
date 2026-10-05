@@ -13,7 +13,8 @@ export function loadSession(): Session | null {
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const session = JSON.parse(raw) as Session;
-    if (!session.token || Date.parse(session.expiresAt) <= Date.now()) {
+    // A session saved before rename-firm-to-tenant has no tenantId: it is dropped, and the user picks a persona again.
+    if (!session.token || !session.user?.tenantId || Date.parse(session.expiresAt) <= Date.now()) {
       sessionStorage.removeItem(STORAGE_KEY);
       return null;
     }

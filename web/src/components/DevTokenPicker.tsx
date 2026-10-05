@@ -5,7 +5,7 @@ import type { DevTokenRequest, DevTokenResponse, DevUser } from '../api/types';
 import { useAuth } from '../auth/useAuth';
 import styles from './Layout.module.css';
 
-const personaKey = (u: DevUser) => `${u.firmId}/${u.userId}/${u.role}`;
+const personaKey = (u: DevUser) => `${u.tenantId}/${u.userId}/${u.role}`;
 
 export function DevTokenPicker() {
   const { session, setSession } = useAuth();
@@ -29,9 +29,8 @@ export function DevTokenPicker() {
     try {
       const request: DevTokenRequest = {
         userId: user.userId,
-        firmId: user.firmId,
+        tenantId: user.tenantId,
         role: user.role,
-        advisorIds: user.advisorIds,
       };
       const minted = await apiRequest<DevTokenResponse>(null, '/dev/token', {
         method: 'POST',
@@ -58,14 +57,14 @@ export function DevTokenPicker() {
           <option value="">{users.isError ? 'Dev issuer unavailable' : 'Signed out'}</option>
           {users.data?.map((u) => (
             <option key={personaKey(u)} value={personaKey(u)}>
-              {u.label} ({u.firmId} · {u.role})
+              {u.label} ({u.tenantId} · {u.role})
             </option>
           ))}
         </select>
       </label>
       {session && (
         <span className={styles.badge} data-testid="current-persona">
-          {session.user.userId} · {session.user.firmId} · {session.user.role}
+          {session.user.userId} · {session.user.tenantId} · {session.user.role}
         </span>
       )}
       {error && (

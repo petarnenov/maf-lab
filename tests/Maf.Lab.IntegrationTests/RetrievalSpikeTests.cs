@@ -54,8 +54,8 @@ public sealed class RetrievalSpikeCollection : ICollectionFixture<RetrievalSpike
 public sealed class RetrievalSpikeTests(RetrievalSpikeFixture spike)
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
-    private static readonly Principal AdvisorA = new("adam", TenantId.Firm("firm-a"), Role.ADVISOR, ["adv-a-1"]);
-    private static readonly Principal AdvisorC = new("chris", TenantId.Firm("firm-c"), Role.ADVISOR, ["adv-c-1"]);
+    private static readonly Principal AdvisorA = new("adam", TenantId.Firm("firm-a"), Role.USER);
+    private static readonly Principal AdvisorC = new("chris", TenantId.Firm("firm-c"), Role.USER);
 
     private static async Task<IReadOnlyList<IRecord>> Cypher(IServiceProvider services, string query) =>
         (await services.GetRequiredService<IDriver>().ExecutableQuery(query).ExecuteAsync(Ct)).Result;

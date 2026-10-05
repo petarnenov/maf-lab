@@ -17,7 +17,7 @@ namespace Maf.Lab.Tests;
 /// </summary>
 public class GraphStoreTests
 {
-    private static readonly Principal FirmA = new("u-a", TenantId.Firm("firm-a"), Role.ADVISOR, []);
+    private static readonly Principal FirmA = new("u-a", TenantId.Firm("firm-a"), Role.USER);
 
     [Fact]
     public void Every_template_guards_every_node_it_matches()

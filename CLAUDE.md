@@ -27,8 +27,9 @@ Non-negotiables while editing:
   DECISIONS.md with the alternatives rejected (spec: `solid-and-standards`).
   Every proposal says what it stands on in a `## Principles` section; `make
   docs-check` fails one without it.
-- Tenant (firm_id) comes from the principal only. Never add a tenant
-  parameter to a tool, an endpoint, or a query builder.
+- Tenant (tenant_id) comes from the principal only. Never add a tenant
+  parameter to a tool, an endpoint, or a query builder. The core principal
+  holds core roles only; domain roles are claims the domain's server reads.
 - One method builds Qdrant queries and applies the tenant filter. Do not
   add another. The graph has its own one: `TenantScopedGraph.ReadAsync` runs
   a fixed Cypher template and binds the tenants; Cypher never comes from a

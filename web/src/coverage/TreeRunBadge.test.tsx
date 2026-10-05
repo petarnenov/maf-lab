@@ -46,7 +46,7 @@ describe('tree row run badge', () => {
         ]),
     });
 
-    renderWithProviders(<CoveragePage />, { route: '/coverage', session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CoveragePage />, { route: '/coverage', session: makeSession('TENANT_ADMIN') });
 
     const beta = await row('Beta.cs');
     await vi.waitFor(() => expect(beta).toHaveTextContent('Working 2/5 · building'));
@@ -59,7 +59,7 @@ describe('tree row run badge', () => {
       '/api/coverage/runs/r_1/events': () => streamResponse([sse(EventType.STATE_SNAPSHOT, { snapshot: run({ attempt: 0, phase: 'measuring' }) })]),
     });
 
-    renderWithProviders(<CoveragePage />, { route: '/coverage', session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CoveragePage />, { route: '/coverage', session: makeSession('TENANT_ADMIN') });
 
     await vi.waitFor(async () => expect(await row('Beta.cs')).toHaveTextContent('Working baseline · measuring'));
   });
@@ -68,7 +68,7 @@ describe('tree row run badge', () => {
     const ended = run({ state: 'completed_no_change', reason: 'budget', active: false, attempt: 2 });
     stubCoverageApi({ '/api/coverage/tree': () => jsonResponse(treeWith(ended)) });
 
-    renderWithProviders(<CoveragePage />, { route: '/coverage', session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CoveragePage />, { route: '/coverage', session: makeSession('TENANT_ADMIN') });
 
     const beta = await row('Beta.cs');
     const label = within(beta).getByText('no change');
@@ -80,7 +80,7 @@ describe('tree row run badge', () => {
     const ended = run({ state: 'failed', reason: 'deadline', active: false, updatedAt: '2026-09-30T09:00:00Z' });
     stubCoverageApi({ '/api/coverage/tree': () => jsonResponse(treeWith(ended)) });
 
-    renderWithProviders(<CoveragePage />, { route: '/coverage', session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CoveragePage />, { route: '/coverage', session: makeSession('TENANT_ADMIN') });
 
     expect(within(await row('Beta.cs')).queryByText('failed')).toBeNull();
   });

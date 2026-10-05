@@ -8,11 +8,11 @@ import { AgentsProvider } from '../agents/AgentsProvider';
 import { AuthProvider } from '../auth/AuthProvider';
 import type { Session } from '../auth/session';
 
-export function makeSession(role: Role = 'ADVISOR', firmId = 'firm-a'): Session {
+export function makeSession(role: Role = 'USER', tenantId = 'firm-a'): Session {
   return {
     token: `token-${role}`,
     expiresAt: new Date(Date.now() + 3600_000).toISOString(),
-    user: { userId: `u-${role.toLowerCase()}`, firmId, role, advisorIds: [], label: role },
+    user: { userId: `u-${role.toLowerCase()}`, tenantId, role, label: role },
   };
 }
 

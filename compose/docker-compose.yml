@@ -549,8 +549,8 @@ services:
     environment:
       CLIENT_PORT: "7173"
       LAB_USER_ID: adam
-      LAB_FIRM_ID: firm-a
-      LAB_ROLE: ADVISOR
+      LAB_TENANT_ID: firm-a
+      LAB_ROLE: USER
     volumes:
       - ./mcp-inspector:/opt/lab:ro
     network_mode: "service:lb"

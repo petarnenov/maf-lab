@@ -31,7 +31,7 @@ export const fixtureTrace: TraceEvent[] = [
   ev(0, 'turn.start', 'Turn started', {
     conversationId: 'c_1',
     turnId: 't_1',
-    principal: { userId: 'adam', firmId: 'firm-a', role: 'ADVISOR' },
+    principal: { userId: 'adam', tenantId: 'firm-a', role: 'USER' },
     apiInstance: 'api-replica-1',
     question: 'What is the procedure when a fee schedule is missing?',
   }),
@@ -282,7 +282,7 @@ export const fixtureTraceOutOfVocabulary: TraceEvent[] = [
   ev(0, 'turn.start', 'Turn started', {
     conversationId: 'c_oov',
     turnId: 't_oov',
-    principal: { userId: 'adam', firmId: 'firm-a', role: 'ADVISOR' },
+    principal: { userId: 'adam', tenantId: 'firm-a', role: 'USER' },
     question: 'What is JWE?',
   }),
   ev(118, 'retrieval', 'Hybrid search (rrf)', {
@@ -318,7 +318,7 @@ export const fixtureTraceAllOutOfVocabulary: TraceEvent[] = [
   ev(0, 'turn.start', 'Turn started', {
     conversationId: 'c_oov_all',
     turnId: 't_oov_all',
-    principal: { userId: 'adam', firmId: 'firm-a', role: 'ADVISOR' },
+    principal: { userId: 'adam', tenantId: 'firm-a', role: 'USER' },
     question: 'JWE JWS?',
   }),
   ev(104, 'retrieval', 'Hybrid search (rrf)', {
@@ -358,7 +358,7 @@ export const fixtureTraceAllDropped: TraceEvent[] = [
   ev(0, 'turn.start', 'Turn started', {
     conversationId: 'c_dropped',
     turnId: 't_dropped',
-    principal: { userId: 'adam', firmId: 'firm-a', role: 'ADVISOR' },
+    principal: { userId: 'adam', tenantId: 'firm-a', role: 'USER' },
     question: 'What is JWE?',
   }),
   ev(112, 'retrieval', 'Hybrid search (rrf)', {
@@ -402,7 +402,7 @@ export const fixtureTraceNothingFound: TraceEvent[] = [
   ev(0, 'turn.start', 'Turn started', {
     conversationId: 'c_empty',
     turnId: 't_empty',
-    principal: { userId: 'adam', firmId: 'firm-a', role: 'ADVISOR' },
+    principal: { userId: 'adam', tenantId: 'firm-a', role: 'USER' },
     question: 'What is JWE?',
   }),
   ev(98, 'retrieval', 'Hybrid search (rrf)', {
@@ -440,7 +440,7 @@ export const fixtureGraphTrace: TraceEvent[] = [
   ev(0, 'turn.start', 'Turn started', {
     conversationId: 'c_graph',
     turnId: 't_graph',
-    principal: { userId: 'adam', firmId: 'firm-a', role: 'ADVISOR' },
+    principal: { userId: 'adam', tenantId: 'firm-a', role: 'USER' },
     apiInstance: 'api-replica-1',
     question: 'Which accounts share a household with A-1042?',
   }),

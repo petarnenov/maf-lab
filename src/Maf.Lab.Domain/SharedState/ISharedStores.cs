@@ -47,8 +47,8 @@ public interface IIdempotencyStore
 {
     /// <summary>What to do about a call arriving under this key.</summary>
     Task<(IdempotencyOutcome Outcome, IdempotentAnswer? Answer)> CheckAsync(
-        string firmId, string key, string requestDigest, CancellationToken ct);
+        string tenantId, string key, string requestDigest, CancellationToken ct);
 
     /// <summary>Records the answer given, so a repeat is replayed rather than done again.</summary>
-    Task RecordAsync(string firmId, string key, string requestDigest, string answer, CancellationToken ct);
+    Task RecordAsync(string tenantId, string key, string requestDigest, string answer, CancellationToken ct);
 }

@@ -49,7 +49,7 @@ public class PartnerIdentityTests
     [Fact]
     public void A_chat_token_is_refused_by_the_a2a_validator()
     {
-        var (token, _) = DevJwt.Issue(Auth, "adam", TenantId.Firm("firm-a"), Role.ADVISOR, []);
+        var (token, _) = DevJwt.Issue(Auth, "adam", TenantId.Firm("firm-a"), Role.USER);
 
         Assert.False(Validates(token, PartnerJwt.ValidationParameters(Auth, Options("firm-a"))));
     }

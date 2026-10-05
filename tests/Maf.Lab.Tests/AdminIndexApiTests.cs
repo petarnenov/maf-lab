@@ -33,7 +33,7 @@ public sealed class AdminIndexApiTests
     {
         using var api = AdminApi();
 
-        var response = await api.ClientFor("bob", "firm-a", Role.ADVISOR).GetAsync("/api/admin/index/status", Ct);
+        var response = await api.ClientFor("bob", "firm-a", Role.USER).GetAsync("/api/admin/index/status", Ct);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -42,7 +42,7 @@ public sealed class AdminIndexApiTests
     public async Task A_running_job_is_stopped_through_its_cancel_route()
     {
         using var api = AdminApi();
-        var admin = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
         var runner = api.Services.GetRequiredService<Maf.Lab.Api.Admin.AdminJobRunner>();
         var job = await runner.StartAsync("firm-a", "index", async ct => { await Task.Delay(Timeout.Infinite, ct); return "never"; }, Ct);
 
@@ -53,7 +53,7 @@ public sealed class AdminIndexApiTests
         // Once ended, a second cancel is a conflict; an unknown job is not found; a non-admin may not.
         Assert.Equal(HttpStatusCode.Conflict, (await admin.PostAsync($"/api/admin/jobs/{job.JobId}/cancel", null, Ct)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await admin.PostAsync("/api/admin/jobs/j_nope/cancel", null, Ct)).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await api.ClientFor("bob", "firm-a", Role.ADVISOR)
+        Assert.Equal(HttpStatusCode.Forbidden, (await api.ClientFor("bob", "firm-a", Role.USER)
             .PostAsync($"/api/admin/jobs/{job.JobId}/cancel", null, Ct)).StatusCode);
     }
 
@@ -63,7 +63,7 @@ public sealed class AdminIndexApiTests
         // One profile, and it is the active vector: there is no other target to fall back to.
         using var api = AdminApi();
 
-        var response = await api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN)
+        var response = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN)
             .PostAsync("/api/admin/index/migrate", null, Ct);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -77,7 +77,7 @@ public sealed class AdminIndexApiTests
     {
         using var api = AdminApi(TwoVectors());
 
-        var response = await api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN)
+        var response = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN)
             .PostAsJsonAsync("/api/admin/index/migrate", new { targetModel = "not-a-vector" }, Ct);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -91,7 +91,7 @@ public sealed class AdminIndexApiTests
     {
         using var api = AdminApi();
 
-        var response = await api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN)
+        var response = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN)
             .PostAsync("/api/admin/index/migrate", new StringContent("{not json", Encoding.UTF8, "application/json"), Ct);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -103,7 +103,7 @@ public sealed class AdminIndexApiTests
     public async Task A_migrate_to_a_configured_vector_name_starts_a_job_that_can_be_polled()
     {
         using var api = AdminApi(TwoVectors());
-        var admin = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
 
         var response = await admin.PostAsJsonAsync("/api/admin/index/migrate", new { targetModel = "dense_alt" }, Ct);
 
@@ -121,7 +121,7 @@ public sealed class AdminIndexApiTests
     public async Task A_migrate_may_name_the_model_instead_of_the_vector()
     {
         using var api = AdminApi(TwoVectors());
-        var admin = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
 
         var response = await admin.PostAsJsonAsync("/api/admin/index/migrate", new { targetModel = "alt-model" }, Ct);
 
@@ -136,7 +136,7 @@ public sealed class AdminIndexApiTests
     public async Task A_migrate_with_no_body_targets_the_configured_vector_that_is_not_active()
     {
         using var api = AdminApi(TwoVectors());
-        var admin = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
 
         var response = await admin.PostAsync("/api/admin/index/migrate", null, Ct);
 
@@ -151,7 +151,7 @@ public sealed class AdminIndexApiTests
     public async Task An_index_run_is_started_as_a_job_that_can_be_polled()
     {
         using var api = AdminApi();
-        var admin = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
 
         var response = await admin.PostAsync("/api/admin/index/run", null, Ct);
 
@@ -169,7 +169,7 @@ public sealed class AdminIndexApiTests
     {
         using var api = AdminApi();
 
-        var response = await api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN).GetAsync("/api/admin/jobs/j_missing", Ct);
+        var response = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN).GetAsync("/api/admin/jobs/j_missing", Ct);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }

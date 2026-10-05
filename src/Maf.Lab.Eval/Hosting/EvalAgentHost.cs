@@ -154,21 +154,21 @@ public sealed class EvalAgentHost : IAsyncDisposable
         return (code, code.Urls.First().TrimEnd('/') + "/mcp");
     }
 
-    /// <summary>A bearer token for the eval principal of <paramref name="firmId"/>: the servers derive the tenant from it.</summary>
-    public static string EvalToken(IConfiguration configuration, string firmId)
+    /// <summary>A bearer token for the eval principal of <paramref name="tenantId"/>: the servers derive the tenant from it.</summary>
+    public static string EvalToken(IConfiguration configuration, string tenantId)
     {
-        var principal = EvalPrincipal(firmId);
+        var principal = EvalPrincipal(tenantId);
         var auth = configuration.GetSection(AuthOptions.Section).Get<AuthOptions>() ?? new AuthOptions();
-        return DevJwt.Issue(auth, principal.UserId, principal.FirmId, principal.Role, []).Token;
+        return DevJwt.Issue(auth, principal.UserId, principal.TenantId, principal.Role).Token;
     }
 
-    public static Principal EvalPrincipal(string firmId) => new($"eval-{firmId}", TenantId.Firm(firmId), Role.ADVISOR, []);
+    public static Principal EvalPrincipal(string tenantId) => new($"eval-{tenantId}", TenantId.Firm(tenantId), Role.USER);
 
-    public async Task<TurnResult> AskAsync(string firmId, string question, CancellationToken ct)
+    public async Task<TurnResult> AskAsync(string tenantId, string question, CancellationToken ct)
     {
-        var principal = EvalPrincipal(firmId);
+        var principal = EvalPrincipal(tenantId);
         var auth = Services.GetRequiredService<IOptions<AuthOptions>>().Value;
-        var (token, _) = DevJwt.Issue(auth, principal.UserId, principal.FirmId, principal.Role, []);
+        var (token, _) = DevJwt.Issue(auth, principal.UserId, principal.TenantId, principal.Role);
         var conversationId = await Services.GetRequiredService<ConversationService>().CreateAsync(principal, ct);
         // The eval reads the turn's result, not its stream, so what the turn says goes to a channel nobody drains.
         var channel = Channel.CreateUnbounded<Microsoft.Extensions.AI.ChatResponseUpdate>();

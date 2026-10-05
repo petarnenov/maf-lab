@@ -16,7 +16,7 @@ public static class ChatEndpoints
         api.MapGet("/me", (IPrincipalAccessor principals) =>
         {
             var p = principals.Current;
-            return Results.Ok(new { p.UserId, FirmId = p.FirmId.Value, Role = p.Role.ToString(), p.AllowedAdvisorIds });
+            return Results.Ok(new { p.UserId, TenantId = p.TenantId.Value, Role = p.Role.ToString() });
         });
 
         api.MapPost("/conversations", async (IPrincipalAccessor principals, ConversationService conversations, CancellationToken ct) =>
@@ -29,7 +29,7 @@ public static class ChatEndpoints
         {
             var principal = principals.Current;
             var state = await runs.GetAsync(runId, ct);
-            if (state is null || state.UserId != principal.UserId || state.FirmId != principal.FirmId.Value)
+            if (state is null || state.UserId != principal.UserId || state.TenantId != principal.TenantId.Value)
             {
                 return Results.NotFound();
             }

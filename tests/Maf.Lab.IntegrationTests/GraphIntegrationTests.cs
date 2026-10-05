@@ -22,8 +22,8 @@ public sealed class GraphIntegrationTests(Neo4jFixture neo4j) : IDisposable
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly TenantId A = TenantId.Firm("firm-a");
     private static readonly TenantId B = TenantId.Firm("firm-b");
-    private static readonly Principal FirmA = new("u-a", A, Role.ADVISOR, []);
-    private static readonly Principal FirmB = new("u-b", B, Role.ADVISOR, []);
+    private static readonly Principal FirmA = new("u-a", A, Role.USER);
+    private static readonly Principal FirmB = new("u-b", B, Role.USER);
 
     private readonly string _work = Directory.CreateTempSubdirectory("maf-lab-graph-").FullName;
 

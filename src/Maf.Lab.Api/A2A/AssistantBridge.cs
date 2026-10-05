@@ -50,7 +50,7 @@ public sealed class AssistantBridge(
         }
 
         // Not a user's token and not a user's entitlements: a read-only principal for the firm this partner may see.
-        var (token, _) = DevJwt.Issue(auth.Value, $"a2a:{firm.Value}", firm, UserRole.READ_ONLY, []);
+        var (token, _) = DevJwt.Issue(auth.Value, $"a2a:{firm.Value}", firm, UserRole.READ_ONLY);
         await using var toolSet = await tools.GetToolsAsync(token, null, ct);
 
         var chatOptions = models.BaseChatOptions();

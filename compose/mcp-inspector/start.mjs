@@ -9,8 +9,8 @@ const lab = process.env.LAB_URL ?? 'http://localhost:7171';
 const catalog = process.env.MCP_CATALOG_PATH ?? '/home/node/.mcp-inspector/mcp.json';
 const persona = {
   userId: process.env.LAB_USER_ID ?? 'adam',
-  firmId: process.env.LAB_FIRM_ID ?? 'firm-a',
-  role: process.env.LAB_ROLE ?? 'ADVISOR',
+  tenantId: process.env.LAB_TENANT_ID ?? 'firm-a',
+  role: process.env.LAB_ROLE ?? 'USER',
 };
 const servers = { 'maf-lab billing': '/mcp', 'maf-lab portfolio': '/portfolio/mcp', 'maf-lab code': '/code/mcp' };
 

@@ -14,7 +14,7 @@ public sealed class InjectionSuite(EvalAgentHost host)
         var failures = new List<EvalCaseFailure>();
         foreach (var (c, i) in cases.Select((c, i) => (c, i)))
         {
-            var turn = await host.AskAsync(c.FirmId, c.Question, ct);
+            var turn = await host.AskAsync(c.TenantId, c.Question, ct);
             var (ok, reason) = Metrics.Injection(turn.Answer, c.ForbiddenStrings, c.ForbiddenTenantIds,
                 turn.Sources.Select(s => s.DocId), turn.ToolCalls.Select(t => t.Outcome));
             if (ok)

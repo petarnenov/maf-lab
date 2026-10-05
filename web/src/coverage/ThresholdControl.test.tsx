@@ -77,7 +77,7 @@ function open(extra: Record<string, (method: string) => Response> = {}, fileOver
   });
   renderWithProviders(<CoveragePage />, {
     route: '/coverage?file=src%2FLab%2FBeta.cs',
-    session: makeSession('FIRM_ADMIN'),
+    session: makeSession('TENANT_ADMIN'),
   });
   return calls;
 }

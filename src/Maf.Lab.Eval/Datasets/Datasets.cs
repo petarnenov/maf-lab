@@ -2,14 +2,14 @@ using System.Text.Json;
 
 namespace Maf.Lab.Eval.Datasets;
 
-public sealed record SelectionCase(string Id, string Question, IReadOnlyList<string> ExpectedTools, string Category, string FirmId, string? Source);
+public sealed record SelectionCase(string Id, string Question, IReadOnlyList<string> ExpectedTools, string Category, string TenantId, string? Source);
 /// <param name="Language">Language of the query; null means the corpus language, so old datasets keep working.</param>
 /// <param name="OffDomain">
 /// A question this corpus cannot answer, for which the right retrieval is none at all. Such a case declares no
 /// relevant chunks; the marker is what stops an unlabelled row being read as one.
 /// </param>
 /// <param name="Domain">Whose collection the case is searched in: billing (the default, when a row names none) or portfolio.</param>
-public sealed record RetrievalCase(string Id, string Query, IReadOnlyList<string> RelevantChunkIds, string FirmId, string? Source,
+public sealed record RetrievalCase(string Id, string Query, IReadOnlyList<string> RelevantChunkIds, string TenantId, string? Source,
     string? Language = null, bool OffDomain = false, string Domain = "billing");
 /// <summary>
 /// A portfolio question whose answer is judged for how it presents the turn's data cards (add-system-prompt-v3).
@@ -17,16 +17,16 @@ public sealed record RetrievalCase(string Id, string Query, IReadOnlyList<string
 /// </summary>
 /// <paramref name="RowsRequested"/> marks a question that explicitly asks about every row (each class, each account): a
 /// list is then a legitimate answer and is not counted as restating the card.
-public sealed record PresentationCase(string Id, string Question, string FirmId, bool Carded, bool? RebalanceNeeded, string Language,
+public sealed record PresentationCase(string Id, string Question, string TenantId, bool Carded, bool? RebalanceNeeded, string Language,
     bool RowsRequested = false);
 
 /// <param name="ReferencePoints">The reference answer split by hand into atomic statements, each graded stated or not (adopt-meai-evaluation).</param>
-public sealed record GenerationCase(string Id, string Question, string ReferenceAnswer, IReadOnlyList<string> ExpectedDocIds, string FirmId, string? Source,
+public sealed record GenerationCase(string Id, string Question, string ReferenceAnswer, IReadOnlyList<string> ExpectedDocIds, string TenantId, string? Source,
     IReadOnlyList<string> ReferencePoints);
 /// <param name="Question">What the advisor asks, which must make the assistant propose the adjustment.</param>
 /// <param name="AccountId">The account the proposal must be about.</param>
 /// <param name="Amount">The adjustment the proposal must make.</param>
-public sealed record ConfirmationCase(string Id, string Question, string AccountId, decimal Amount, string FirmId, string? Source);
+public sealed record ConfirmationCase(string Id, string Question, string AccountId, decimal Amount, string TenantId, string? Source);
 
 /// <param name="Forces">Whether the classifier should force search_documents for this question.</param>
 /// <param name="Split">"design" when the case informed the classifier's thresholds, "holdout" when it did not.</param>
@@ -90,7 +90,7 @@ public sealed record GraphDepthNeed(string Item, int? Hops);
 /// <param name="Kind">"trace" or "impact".</param>
 /// <param name="Reference">The labelled facts the rubric judge holds the answer to.</param>
 public sealed record GraphDepthCase(string Id, string Kind, string? Symbol, string? Direction, string? Path, string Question,
-    string Language, IReadOnlyList<GraphDepthNeed> Needed, string Reference, string FirmId)
+    string Language, IReadOnlyList<GraphDepthNeed> Needed, string Reference, string TenantId)
 {
     /// <summary>The calls the case needs to be answered in full: its deepest reachable item.</summary>
     public int RequiredDepth => Needed.Max(n => n.Hops ?? 0);
@@ -104,7 +104,7 @@ public sealed record GraphDepthCase(string Id, string Kind, string? Symbol, stri
 /// <param name="HasArgument">The question names exactly one <c>Type.Member</c> symbol (callers, callees) or one C# path (impact).</param>
 public sealed record CodeRouteCase(string Id, string Question, string Expected, bool HasArgument, string Language, string Split);
 
-public sealed record InjectionCase(string Id, string Question, IReadOnlyList<string> ForbiddenStrings, IReadOnlyList<string> ForbiddenTenantIds, string FirmId, string? Source);
+public sealed record InjectionCase(string Id, string Question, IReadOnlyList<string> ForbiddenStrings, IReadOnlyList<string> ForbiddenTenantIds, string TenantId, string? Source);
 
 /// <summary>Loads and validates the JSONL datasets. Invalid rows fail loudly with file and line.</summary>
 public static class DatasetLoader
@@ -133,7 +133,7 @@ public static class DatasetLoader
         {
             throw new InvalidDataException($"{where}: unknown category '{category}'.");
         }
-        return new SelectionCase(Str(e, "id", where), Str(e, "question", where), tools, category, Firm(e, where), Opt(e, "source"));
+        return new SelectionCase(Str(e, "id", where), Str(e, "question", where), tools, category, Tenant(e, where), Opt(e, "source"));
     });
 
     /// <summary>A write to propose, and what the sentence put to a person must therefore state.</summary>
@@ -143,7 +143,7 @@ public static class DatasetLoader
             Str(e, "question", where),
             Str(e, "accountId", where),
             Decimal(e, "amount", where),
-            Firm(e, where),
+            Tenant(e, where),
             Opt(e, "source")));
 
     public static IReadOnlyList<RetrievalCase> Retrieval(string root) => Load(root, "retrieval.jsonl", (e, where) =>
@@ -161,7 +161,7 @@ public static class DatasetLoader
         {
             throw new InvalidDataException($"{where}: domain must be billing or portfolio.");
         }
-        return new RetrievalCase(Str(e, "id", where), Str(e, "query", where), relevant, Firm(e, where), Opt(e, "source"),
+        return new RetrievalCase(Str(e, "id", where), Str(e, "query", where), relevant, Tenant(e, where), Opt(e, "source"),
             Opt(e, "language"), offDomain, domain);
     });
 
@@ -174,13 +174,13 @@ public static class DatasetLoader
         }
         bool? needed = e.TryGetProperty("rebalanceNeeded", out var n) && n.ValueKind is JsonValueKind.True or JsonValueKind.False
             ? n.GetBoolean() : null;
-        return new PresentationCase(Str(e, "id", where), Str(e, "question", where), Firm(e, where), Bool(e, "carded"), needed, language,
+        return new PresentationCase(Str(e, "id", where), Str(e, "question", where), Tenant(e, where), Bool(e, "carded"), needed, language,
             Bool(e, "rowsRequested"));
     });
 
     public static IReadOnlyList<GenerationCase> Generation(string root) => Load(root, "generation.jsonl", (e, where) =>
         new GenerationCase(Str(e, "id", where), Str(e, "question", where), Str(e, "referenceAnswer", where),
-            Strings(e, "expectedDocIds", where, allowEmpty: true), Firm(e, where), Opt(e, "source"),
+            Strings(e, "expectedDocIds", where, allowEmpty: true), Tenant(e, where), Opt(e, "source"),
             Strings(e, "referencePoints", where, allowEmpty: false)));
 
     public static readonly string[] IntentCategories =
@@ -434,7 +434,7 @@ public static class DatasetLoader
             throw new InvalidDataException($"{where}: at least one needed item must be reachable, or the case measures nothing.");
         }
         return new GraphDepthCase(Str(e, "id", where), kind, symbol, direction, path, Str(e, "question", where), language, items,
-            Str(e, "reference", where), Firm(e, where));
+            Str(e, "reference", where), Tenant(e, where));
     });
 
     public static readonly string[] CodeRouteOptions = ["callers", "callees", "impact", "text", "none"];
@@ -458,7 +458,7 @@ public static class DatasetLoader
 
     public static IReadOnlyList<InjectionCase> Injection(string root) => Load(root, "injection.jsonl", (e, where) =>
         new InjectionCase(Str(e, "id", where), Str(e, "question", where), Strings(e, "forbiddenStrings", where),
-            Strings(e, "forbiddenTenantIds", where, allowEmpty: true), Firm(e, where), Opt(e, "source")));
+            Strings(e, "forbiddenTenantIds", where, allowEmpty: true), Tenant(e, where), Opt(e, "source")));
 
     private static IReadOnlyList<T> Load<T>(string root, string file, Func<JsonElement, string, T> parse)
     {
@@ -507,10 +507,11 @@ public static class DatasetLoader
 
     private static bool Bool(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
 
-    private static string Firm(JsonElement e, string where)
+    /// <summary>The case's tenant: <c>tenantId</c>, or its pre-rename name <c>firmId</c> for one release.</summary>
+    private static string Tenant(JsonElement e, string where)
     {
-        var firm = Opt(e, "firmId") ?? "firm-a";
-        return Maf.Lab.Domain.Tenancy.TenantId.TryParse(firm, out var t) && !t.IsShared ? firm : throw new InvalidDataException($"{where}: firmId '{firm}' is not a firm.");
+        var tenant = Opt(e, "tenantId") ?? Opt(e, "firmId") ?? "firm-a";
+        return Maf.Lab.Domain.Tenancy.TenantId.TryParse(tenant, out var t) && !t.IsShared ? tenant : throw new InvalidDataException($"{where}: tenantId '{tenant}' is not a tenant.");
     }
 
     private static IReadOnlyList<string> Strings(JsonElement e, string name, string where, bool allowEmpty = false)

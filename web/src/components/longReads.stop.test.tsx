@@ -29,7 +29,7 @@ describe('long reads stop on Esc', () => {
       (url) => url === '/api/admin/compliance/verify',
       () => jsonResponse({ actions: [], nextCursor: null }),
     );
-    renderWithProviders(<CompliancePage />, { session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CompliancePage />, { session: makeSession('TENANT_ADMIN') });
     await waitFor(() => expect(held).toHaveLength(1));
 
     await userEvent.keyboard('{Escape}');
@@ -46,7 +46,7 @@ describe('long reads stop on Esc', () => {
         url.startsWith('/api/admin/compliance/export') || url === '/api/admin/compliance/verify',
       () => jsonResponse({ actions: [], nextCursor: null }),
     );
-    renderWithProviders(<CompliancePage />, { session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CompliancePage />, { session: makeSession('TENANT_ADMIN') });
     // The chain check is held too; stop it first so the export is the only thing left running.
     await waitFor(() => expect(held).toHaveLength(1));
     await userEvent.keyboard('{Escape}');

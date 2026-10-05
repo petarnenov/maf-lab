@@ -21,7 +21,7 @@ public class HandleTests
     public async Task A_cursor_carries_its_own_meaning_and_pages_on_wherever_it_is_presented()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         for (var i = 0; i < 3; i++)
         {
             await ApiFactory.ChatAsync(adam, $"what is the procedure when a fee schedule is missing, case {i}");
@@ -32,7 +32,7 @@ public class HandleTests
         Assert.NotNull(first.NextCursor);
 
         // A second client — which is what another replica is, from the cursor's point of view — continues it.
-        var second = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var second = api.ClientFor("adam", "firm-a", Role.USER);
         var next = await second.GetFromJsonAsync<ConversationPage>(
             $"/api/conversations?limit=2&before={Uri.EscapeDataString(first.NextCursor!)}", Json, Ct);
 
@@ -62,10 +62,10 @@ public class HandleTests
         // The run id is the other kind: not self-describing, so it lives in the shared store — which is what
         // makes it answerable by a replica that did not serve the run.
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var lost = await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing", runId: "r_handle");
 
-        var elsewhere = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var elsewhere = api.ClientFor("adam", "firm-a", Role.USER);
         using var rejoin = await ApiFactory.SendRejoinAsync(elsewhere, ApiFactory.ThreadOf(lost), "r_handle");
         Assert.Equal(HttpStatusCode.OK, rejoin.StatusCode);
     }

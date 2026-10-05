@@ -67,7 +67,7 @@ public class A2AProtocolTests
         Assert.Equal(HttpStatusCode.Unauthorized, rest.StatusCode);
 
         // A chat user's token is not a partner token, whatever its role.
-        var user = api.ClientFor("alice", "firm-a", Maf.Lab.Domain.Tenancy.Role.FIRM_ADMIN);
+        var user = api.ClientFor("alice", "firm-a", Maf.Lab.Domain.Tenancy.Role.TENANT_ADMIN);
         var asUser = await user.PostAsJsonAsync("/a2a", new { jsonrpc = "2.0", id = 1, method = "message/send" }, Ct);
         Assert.Equal(HttpStatusCode.Unauthorized, asUser.StatusCode);
     }

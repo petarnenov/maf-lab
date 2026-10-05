@@ -92,7 +92,7 @@ public static class HistoryEndpoints
             var principal = principals.Current;
             await using var context = await db.CreateDbContextAsync(ct);
             var owns = await context.Conversations.AnyAsync(
-                c => c.Id == id && c.UserId == principal.UserId && c.FirmId == principal.FirmId.Value && c.DeletedAt == null, ct);
+                c => c.Id == id && c.UserId == principal.UserId && c.TenantId == principal.TenantId.Value && c.DeletedAt == null, ct);
             if (!owns)
             {
                 return Results.NotFound();
@@ -101,7 +101,7 @@ public static class HistoryEndpoints
             var row = await context.PendingAdjustments
                 .Where(p => p.ConversationId == id
                     && p.UserId == principal.UserId
-                    && p.FirmId == principal.FirmId.Value
+                    && p.TenantId == principal.TenantId.Value
                     && p.Status == PendingAdjustmentStatus.AwaitingConfirmation)
                 .OrderByDescending(p => p.UpdatedAt)
                 .FirstOrDefaultAsync(ct);
@@ -163,7 +163,7 @@ public static class HistoryEndpoints
     }
 
     private static IQueryable<ConversationRow> Owned(MafDbContext ctx, Principal p) =>
-        ctx.Conversations.Where(c => c.UserId == p.UserId && c.FirmId == p.FirmId.Value && c.DeletedAt == null);
+        ctx.Conversations.Where(c => c.UserId == p.UserId && c.TenantId == p.TenantId.Value && c.DeletedAt == null);
 
     /// <summary>Reads full SourceRefs; rows stored before chat history only have docId/sectionPath.</summary>
     private static List<SourceRef> ReadSources(string json)

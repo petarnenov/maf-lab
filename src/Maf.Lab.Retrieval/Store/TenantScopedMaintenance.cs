@@ -16,7 +16,7 @@ public sealed record MigrationCandidate(Guid PointId, string Text, string? Conte
 
 /// <summary>
 /// Writes and administrative reads of chunk points. Every operation is scoped to exactly one tenant,
-/// which comes from the corpus layout (indexer) or from a FIRM_ADMIN principal — never from request input.
+/// which comes from the corpus layout (indexer) or from a TENANT_ADMIN principal — never from request input.
 /// </summary>
 public sealed class TenantScopedMaintenance(QdrantClient client, IOptions<QdrantOptions> options)
 {

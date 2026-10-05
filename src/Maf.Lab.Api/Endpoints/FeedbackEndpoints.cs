@@ -26,7 +26,7 @@ public static class FeedbackEndpoints
             var principal = principals.Current;
             await using var ctx = await db.CreateDbContextAsync(ct);
             var turn = await ctx.Turns.FirstOrDefaultAsync(t => t.Id == request.TurnId && t.ConversationId == request.ConversationId
-                && t.UserId == principal.UserId && t.FirmId == principal.FirmId.Value, ct);
+                && t.UserId == principal.UserId && t.TenantId == principal.TenantId.Value, ct);
             if (turn is null)
             {
                 return Results.NotFound();
@@ -38,7 +38,7 @@ public static class FeedbackEndpoints
                 TurnId = turn.Id,
                 ConversationId = turn.ConversationId,
                 UserId = principal.UserId,
-                FirmId = principal.FirmId.Value,
+                TenantId = principal.TenantId.Value,
                 Kind = request.Kind,
                 Comment = request.Comment is { Length: > 1000 } c ? c[..1000] : request.Comment,
                 CreatedAt = time.GetUtcNow().UtcDateTime,
@@ -54,14 +54,14 @@ public static class FeedbackEndpoints
             return Results.Accepted(value: new FeedbackAccepted(row.Id));
         }).RequireAuthorization();
 
-        var admin = app.MapGroup("/api/admin/feedback").RequireAuthorization(AuthPolicies.FirmAdmin);
+        var admin = app.MapGroup("/api/admin/feedback").RequireAuthorization(AuthPolicies.TenantAdmin);
 
         admin.MapGet("/queue", async (IPrincipalAccessor principals, IDbContextFactory<MafDbContext> db, TenantScopedMaintenance store,
             [Microsoft.Extensions.DependencyInjection.FromKeyedServices(Domains.Portfolio)] TenantScopedMaintenance portfolioStore, CancellationToken ct) =>
         {
             var principal = principals.Current;
             await using var ctx = await db.CreateDbContextAsync(ct);
-            var turns = await ctx.Turns.Where(t => t.FirmId == principal.FirmId.Value && t.SignalsJson != "[]")
+            var turns = await ctx.Turns.Where(t => t.TenantId == principal.TenantId.Value && t.SignalsJson != "[]")
                 .OrderByDescending(t => t.CreatedAt).Take(100).ToListAsync(ct);
             var turnIds = turns.Select(t => t.Id).ToList();
             var feedback = await ctx.Feedback.Where(f => turnIds.Contains(f.TurnId)).ToListAsync(ct);
@@ -100,7 +100,7 @@ public static class FeedbackEndpoints
         {
             var principal = principals.Current;
             await using var ctx = await db.CreateDbContextAsync(ct);
-            var turn = await ctx.Turns.FirstOrDefaultAsync(t => t.Id == turnId && t.FirmId == principal.FirmId.Value, ct);
+            var turn = await ctx.Turns.FirstOrDefaultAsync(t => t.Id == turnId && t.TenantId == principal.TenantId.Value, ct);
             if (turn is null)
             {
                 return Results.NotFound();
@@ -116,7 +116,7 @@ public static class FeedbackEndpoints
             {
                 Id = $"l_{Guid.NewGuid():N}",
                 TurnId = turn.Id,
-                FirmId = turn.FirmId,
+                TenantId = turn.TenantId,
                 ReviewerId = principal.UserId,
                 Dataset = request.Dataset,
                 RowJson = row.ToJsonString(Json),
@@ -160,13 +160,13 @@ public static class FeedbackEndpoints
                 return (new JsonObject
                 {
                     ["id"] = id, ["question"] = turn.Question, ["expectedTools"] = Array(request.ExpectedTools),
-                    ["category"] = "feedback", ["firmId"] = turn.FirmId, ["source"] = "feedback",
+                    ["category"] = "feedback", ["tenantId"] = turn.TenantId, ["source"] = "feedback",
                 }, null);
             case EvalDataset.Retrieval when request.RelevantChunkIds is { Count: > 0 }:
                 var retrieval = new JsonObject
                 {
                     ["id"] = id, ["query"] = turn.Question, ["relevantChunkIds"] = Array(request.RelevantChunkIds),
-                    ["firmId"] = turn.FirmId, ["source"] = "feedback",
+                    ["tenantId"] = turn.TenantId, ["source"] = "feedback",
                 };
                 if (domain != Domains.Billing)
                 {
@@ -177,7 +177,7 @@ public static class FeedbackEndpoints
                 return (new JsonObject
                 {
                     ["id"] = id, ["question"] = turn.Question, ["referenceAnswer"] = request.ReferenceAnswer,
-                    ["expectedDocIds"] = Array(request.ExpectedDocIds ?? []), ["firmId"] = turn.FirmId, ["source"] = "feedback",
+                    ["expectedDocIds"] = Array(request.ExpectedDocIds ?? []), ["tenantId"] = turn.TenantId, ["source"] = "feedback",
                 }, null);
             default:
                 return (null, "selection needs expectedTools, retrieval needs relevantChunkIds, generation needs referenceAnswer.");

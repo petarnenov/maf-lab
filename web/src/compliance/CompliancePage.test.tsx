@@ -32,7 +32,7 @@ const action = (id: number, overrides: Partial<AuditAction> = {}): AuditAction =
 });
 
 const manifest: ExportManifest = {
-  firmId: 'firm-a',
+  tenantId: 'firm-a',
   subjectUserId: null,
   from: '2026-09-01T00:00:00Z',
   to: '2026-09-30T00:00:00Z',
@@ -68,7 +68,7 @@ function stubFetch(
   return fetchMock;
 }
 
-const admin = { session: makeSession('FIRM_ADMIN') };
+const admin = { session: makeSession('TENANT_ADMIN') };
 
 describe('CompliancePage', () => {
   it('says in words that the chain is intact, and what the chain does not promise', async () => {
@@ -211,7 +211,7 @@ describe('CompliancePage', () => {
       <RequireAdmin>
         <CompliancePage />
       </RequireAdmin>,
-      { session: makeSession('ADVISOR') },
+      { session: makeSession('USER') },
     );
 
     expect(screen.getByText('Access denied')).toBeInTheDocument();

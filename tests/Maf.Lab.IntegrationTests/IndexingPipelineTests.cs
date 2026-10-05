@@ -15,7 +15,7 @@ namespace Maf.Lab.IntegrationTests;
 
 public class IndexingPipelineTests(QdrantFixture qdrant)
 {
-    private static readonly Principal FirmA = new("adam", TenantId.Firm("firm-a"), Role.ADVISOR, []);
+    private static readonly Principal FirmA = new("adam", TenantId.Firm("firm-a"), Role.USER);
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
@@ -372,7 +372,7 @@ public class IndexingPipelineTests(QdrantFixture qdrant)
         var search = services.GetRequiredService<DocumentSearchService>();
         foreach (var vector in new[] { "dense_v3", Alt })
         {
-            var hits = await search.SearchAsync(new Principal("adam", TenantId.Firm("firm-a"), Role.ADVISOR, []), "fee schedule defines the rate",
+            var hits = await search.SearchAsync(new Principal("adam", TenantId.Firm("firm-a"), Role.USER), "fee schedule defines the rate",
                 null, 5, new SearchSettings(RetrievalModes.Dense, FusionModes.Rrf, vector, false), Ct);
             Assert.Contains(hits.Result.Results, r => r.DocId == "shared/docs/billing.md");
         }

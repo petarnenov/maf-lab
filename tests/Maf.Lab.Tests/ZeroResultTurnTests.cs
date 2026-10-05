@@ -23,7 +23,7 @@ public class ZeroResultTurnTests
     {
         var tools = new FakeToolSource { SearchPayloadJson = Empty };
         using var api = new ApiFactory(ApiFactory.ProceduralModel("We have no documentation covering that."), tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var events = await ApiFactory.ChatAsync(client, "what is JWE");
 
@@ -37,7 +37,7 @@ public class ZeroResultTurnTests
     {
         var tools = new FakeToolSource { SearchPayloadJson = Empty };
         using var api = new ApiFactory(ApiFactory.ProceduralModel("We have no documentation covering that."), tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         await ApiFactory.ChatAsync(client, "what is JWE");
 
@@ -64,7 +64,7 @@ public class ZeroResultTurnTests
             ? ScriptedChatClient.Call("search_documents", new() { ["query"] = "procedure when a fee schedule is missing" })
             : ScriptedChatClient.Text("Assign the missing fee schedule and re-run."));
         using var api = new ApiFactory(chat, tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var events = await ApiFactory.ChatAsync(client, "what is the procedure when a fee schedule is missing");
 
@@ -79,7 +79,7 @@ public class ZeroResultTurnTests
     public async Task A_search_that_returns_rows_still_cites_them_and_raises_nothing()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var events = await ApiFactory.ChatAsync(client, "what is the procedure when a fee schedule is missing");
 

@@ -71,7 +71,7 @@ const runDetail: RunDetail = {
   ],
 };
 
-function open(decision: (method: string) => Response, role: 'FIRM_ADMIN' | 'ADVISOR' = 'FIRM_ADMIN', shown: RunDetail = runDetail) {
+function open(decision: (method: string) => Response, role: 'TENANT_ADMIN' | 'USER' = 'TENANT_ADMIN', shown: RunDetail = runDetail) {
   const calls = stubCoverageApi({
     '/api/coverage/tree': () => jsonResponse(sampleTree),
     '/api/coverage/files': () => jsonResponse(detail({ run: candidate })),
@@ -129,14 +129,14 @@ describe('candidate panel', () => {
   });
 
   it('offers no decision to someone who is not an admin', async () => {
-    open(() => jsonResponse({}), 'ADVISOR');
+    open(() => jsonResponse({}), 'USER');
 
     const panel = await screen.findByRole('region', { name: 'Candidate' });
     expect(within(panel).queryByRole('button', { name: 'Accept' })).toBeNull();
   });
 
   it('says when verification reused the runner result computed for the agent confirmation', async () => {
-    open(() => jsonResponse({}), 'FIRM_ADMIN', {
+    open(() => jsonResponse({}), 'TENANT_ADMIN', {
       ...runDetail,
       report: {
         ...runDetail.report!,

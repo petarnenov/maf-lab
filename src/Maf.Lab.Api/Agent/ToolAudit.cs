@@ -19,14 +19,14 @@ public sealed class ToolAudit(IDbContextFactory<MafDbContext> db, ILogger<ToolAu
     /// <summary>Appends the action and returns the digest it was chained with.</summary>
     public async Task<string> RecordAsync(AuditEntry entry, CancellationToken ct)
     {
-        logger.LogInformation("audit kind={Kind} principal={PrincipalId} firm={FirmId} action={Action} args={Args} outcome={Outcome} ms={DurationMs}",
-            entry.Kind, entry.Principal.UserId, entry.Principal.FirmId.Value, entry.ToolName, entry.Arguments, entry.Outcome, entry.DurationMs);
+        logger.LogInformation("audit kind={Kind} principal={PrincipalId} tenant={TenantId} action={Action} args={Args} outcome={Outcome} ms={DurationMs}",
+            entry.Kind, entry.Principal.UserId, entry.Principal.TenantId.Value, entry.ToolName, entry.Arguments, entry.Outcome, entry.DurationMs);
 
         var row = new AuditRow
         {
             At = time.GetUtcNow().UtcDateTime,
             PrincipalId = entry.Principal.UserId,
-            FirmId = entry.Principal.FirmId.Value,
+            TenantId = entry.Principal.TenantId.Value,
             ConversationId = entry.ConversationId,
             TurnId = entry.TurnId,
             Kind = entry.Kind,

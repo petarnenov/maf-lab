@@ -74,7 +74,7 @@ public class FeeAdjustmentFlowTests
         await using var _ = agent;
         var tools = new FakeToolSource();
         using var api = ApiFor(url, tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by 200");
 
@@ -94,7 +94,7 @@ public class FeeAdjustmentFlowTests
         await using var _ = agent;
         var tools = new FakeToolSource();
         using var api = ApiFor(url, tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
 
@@ -112,7 +112,7 @@ public class FeeAdjustmentFlowTests
         await using var _ = agent;
         var tools = new FakeToolSource();
         using var api = ApiFor(url, tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         // An increase of 1,200 is over the reviewer's own threshold.
         var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042: increase it");
@@ -127,7 +127,7 @@ public class FeeAdjustmentFlowTests
     {
         var tools = new FakeToolSource();
         using var api = ApiFor(reviewerUrl: null, tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
 
@@ -142,7 +142,7 @@ public class FeeAdjustmentFlowTests
         await using var _ = agent;
         var tools = new FakeToolSource();
         using var api = ApiFor(url, tools, deadline: "00:00:00.300");
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
 
@@ -157,7 +157,7 @@ public class FeeAdjustmentFlowTests
         await using var _ = agent;
         var tools = new FakeToolSource();
         using var api = ApiFor(url, tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
 
@@ -180,7 +180,7 @@ public class FeeAdjustmentFlowTests
         await using var _ = agent;
         var tools = new FakeToolSource();
         using var api = ApiFor(url, tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var first = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
         var conversationId = ApiFactory.ThreadOf(first);
@@ -201,7 +201,7 @@ public class FeeAdjustmentFlowTests
         await using var _ = agent;
         var tools = new FakeToolSource();
         using var api = ApiFor(url, tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
 
@@ -219,7 +219,7 @@ public class FeeAdjustmentFlowTests
         await using var _ = agent;
         var tools = new FakeToolSource();
         using var api = ApiFor(url, tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by 200");
 
@@ -228,7 +228,7 @@ public class FeeAdjustmentFlowTests
         Assert.All(steps, s =>
         {
             Assert.Equal("adam", s.PrincipalId);
-            Assert.Equal("firm-a", s.FirmId);
+            Assert.Equal("firm-a", s.TenantId);
             Assert.Contains("accountId=A-1042", s.Arguments);
         });
     }
@@ -240,7 +240,7 @@ public class FeeAdjustmentFlowTests
         await using var _ = agent;
         var tools = new FakeToolSource();
         using var api = ApiFor(url, tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
 
@@ -261,7 +261,7 @@ public class FeeAdjustmentFlowTests
         await using var _ = agent;
         var tools = new FakeToolSource();
         using var api = ApiFor(url, tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
 

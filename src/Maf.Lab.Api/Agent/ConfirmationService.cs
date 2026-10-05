@@ -46,7 +46,7 @@ public sealed class ConfirmationService(
 
         // A proposal belongs to the person it was put to. Anyone else is told only that there is nothing here.
         if (row is null
-            || row.FirmId != principal.FirmId.Value
+            || row.TenantId != principal.TenantId.Value
             || row.UserId != principal.UserId
             || row.ConversationId != conversationId
             || row.Status != PendingAdjustmentStatus.AwaitingConfirmation)

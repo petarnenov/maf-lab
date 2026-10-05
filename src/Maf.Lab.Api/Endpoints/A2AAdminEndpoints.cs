@@ -28,7 +28,7 @@ public static class A2AAdminEndpoints
 
     public static IEndpointRouteBuilder MapA2AAdmin(this IEndpointRouteBuilder app)
     {
-        var api = app.MapGroup("/api/admin/a2a").RequireAuthorization(AuthPolicies.FirmAdmin);
+        var api = app.MapGroup("/api/admin/a2a").RequireAuthorization(AuthPolicies.TenantAdmin);
 
         api.MapGet("", async (IPrincipalAccessor principals, IDbContextFactory<MafDbContext> db, CancellationToken ct) =>
         {
@@ -39,7 +39,7 @@ public static class A2AAdminEndpoints
             // would have been the other candidate, but it is written when a request *finishes*, so a task still
             // running would be invisible — and an operator's first question is about exactly those.
             var tasks = await context.A2ATasks.AsNoTracking()
-                .Where(t => t.FirmId == principal.FirmId.Value)
+                .Where(t => t.TenantId == principal.TenantId.Value)
                 .OrderByDescending(t => t.UpdatedAt)
                 .Take(100)
                 .ToListAsync(ct);
@@ -48,7 +48,7 @@ public static class A2AAdminEndpoints
 
             // The audit says what each request was and how long it took, for the ones that have finished.
             var records = await context.Audit
-                .Where(a => a.FirmId == principal.FirmId.Value
+                .Where(a => a.TenantId == principal.TenantId.Value
                     && (a.Kind == AuditKinds.A2ARequest || a.Kind == AuditKinds.A2AConsultation))
                 .OrderByDescending(a => a.Id)
                 .Take(500)
@@ -107,7 +107,7 @@ public static class A2AAdminEndpoints
             await using var context = await db.CreateDbContextAsync(ct);
 
             var row = await context.A2ATasks.AsNoTracking()
-                .FirstOrDefaultAsync(t => t.Id == id && t.FirmId == principal.FirmId.Value, ct);
+                .FirstOrDefaultAsync(t => t.Id == id && t.TenantId == principal.TenantId.Value, ct);
             if (row is null)
             {
                 return Results.NotFound();

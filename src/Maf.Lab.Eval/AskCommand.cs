@@ -22,14 +22,14 @@ public static class AskCommand
         TraceKinds.ToolCall, TraceKinds.ToolResult, TraceKinds.Boundary, TraceKinds.ModelResponse, TraceKinds.Sources, TraceKinds.TurnEnd,
     ];
 
-    public static async Task<int> RunAsync(EvalAgentHost host, string firmId, string question, string? jsonPath, CancellationToken ct)
+    public static async Task<int> RunAsync(EvalAgentHost host, string tenantId, string question, string? jsonPath, CancellationToken ct)
     {
-        var turn = await host.AskAsync(firmId, question, ct);
+        var turn = await host.AskAsync(tenantId, question, ct);
         await using var db = await host.Services.GetRequiredService<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(ct);
         var row = await db.TurnTraces.SingleAsync(t => t.TurnId == turn.TurnId, ct);
         var events = JsonSerializer.Deserialize<List<TraceEvent>>(row.Json, TurnTrace.Json) ?? [];
 
-        Console.WriteLine($"Q ({firmId}): {question}");
+        Console.WriteLine($"Q ({tenantId}): {question}");
         foreach (var e in events.Where(e => Shown.Contains(e.Kind)))
         {
             var marker = e.Kind == TraceKinds.Boundary ? "  ⇢ " : "    ";

@@ -125,15 +125,15 @@ public sealed class GraphDepthSuite(IConfiguration configuration, JevGrader? gra
                 // One unmeasured call first: a fresh server's first calls pay for JIT and connections, and the variant
                 // that runs first would otherwise carry that cost in its latency.
                 var first = cases[0];
-                await ProbeAsync(variant, clients[first.FirmId] = await ConnectAsync(endpoint, EvalAgentHost.EvalToken(configuration, first.FirmId), ct), first, ct);
+                await ProbeAsync(variant, clients[first.TenantId] = await ConnectAsync(endpoint, EvalAgentHost.EvalToken(configuration, first.TenantId), ct), first, ct);
             }
             var probes = new List<GraphDepthProbe>();
             foreach (var c in cases)
             {
                 bar.Working(c);
-                if (!clients.TryGetValue(c.FirmId, out var client))
+                if (!clients.TryGetValue(c.TenantId, out var client))
                 {
-                    client = clients[c.FirmId] = await ConnectAsync(endpoint, EvalAgentHost.EvalToken(configuration, c.FirmId), ct);
+                    client = clients[c.TenantId] = await ConnectAsync(endpoint, EvalAgentHost.EvalToken(configuration, c.TenantId), ct);
                 }
                 probes.Add(await ProbeAsync(variant, client, c, ct));
                 bar.Advance();
@@ -210,7 +210,7 @@ public sealed class GraphDepthSuite(IConfiguration configuration, JevGrader? gra
         foreach (var c in cases)
         {
             bar.Working(c);
-            var turn = await host.AskAsync(c.FirmId, c.Question, ct);
+            var turn = await host.AskAsync(c.TenantId, c.Question, ct);
             // What the turn read, as the generation suite grades it; the labelled items are mentionRecall's, not the grade's.
             var outcome = await grader!.GradeAsync(new GradeInput(c.Question, turn.Answer, turn.Read, []), ct);
             answers.Add(outcome.Grade is { } g

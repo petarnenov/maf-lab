@@ -23,7 +23,7 @@ public class LiveTraceTests
     public async Task The_owner_reads_a_runs_trace_and_then_only_what_came_after()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing", runId: "r_live");
 
         var all = await adam.GetFromJsonAsync<LiveTraceDocument>("/api/runs/r_live/trace", Json, Ct);
@@ -44,15 +44,15 @@ public class LiveTraceTests
     public async Task Another_user_and_another_firm_are_told_nothing()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "what is the procedure when a fee schedule is missing",
+        await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "what is the procedure when a fee schedule is missing",
             runId: "r_private");
 
         Assert.Equal(HttpStatusCode.NotFound,
-            (await api.ClientFor("rita", "firm-a", Role.FIRM_ADMIN).GetAsync("/api/runs/r_private/trace", Ct)).StatusCode);
+            (await api.ClientFor("rita", "firm-a", Role.TENANT_ADMIN).GetAsync("/api/runs/r_private/trace", Ct)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound,
-            (await api.ClientFor("bob", "firm-b", Role.ADVISOR).GetAsync("/api/runs/r_private/trace", Ct)).StatusCode);
+            (await api.ClientFor("bob", "firm-b", Role.USER).GetAsync("/api/runs/r_private/trace", Ct)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound,
-            (await api.ClientFor("adam", "firm-a", Role.ADVISOR).GetAsync("/api/runs/r_unknown/trace", Ct)).StatusCode);
+            (await api.ClientFor("adam", "firm-a", Role.USER).GetAsync("/api/runs/r_unknown/trace", Ct)).StatusCode);
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public class LiveTraceTests
         {
             ExtraSettings = new Dictionary<string, string?> { ["Compliance:BaseUrl"] = "" },
         };
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var proposed = await ApiFactory.ChatAsync(adam, "adjust the fee on A-1042 down by 200");
         var resumed = await ApiFactory.ResumeAsync(adam, ApiFactory.ThreadOf(proposed),
             ApiFactory.InterruptOf(proposed)!.Value.GetProperty("id").GetString()!, approve: true);
@@ -96,7 +96,7 @@ public class LiveTraceTests
             },
         };
         using var api = new ApiFactory(ApiFactory.ProceduralModel(), tools);
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
 
         var run = ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing", runId: "r_early");
         await reached.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);

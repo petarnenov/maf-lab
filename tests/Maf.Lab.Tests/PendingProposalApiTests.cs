@@ -55,7 +55,7 @@ public class PendingProposalApiTests
     {
         var tools = new FakeToolSource();
         using var api = Api(tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         var (conversationId, adjustmentId) = await ProposeAsync(client);
 
         var pending = await PendingAsync(client, conversationId);
@@ -74,7 +74,7 @@ public class PendingProposalApiTests
     {
         var tools = new FakeToolSource();
         using var api = Api(tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         var events = await ApiFactory.ChatAsync(client, "hello");
 
         var pending = await PendingAsync(client, ApiFactory.ThreadOf(events));
@@ -87,7 +87,7 @@ public class PendingProposalApiTests
     {
         var tools = new FakeToolSource();
         using var api = Api(tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         var (conversationId, adjustmentId) = await ProposeAsync(client);
 
         await ApiFactory.ResumeAsync(client, conversationId, adjustmentId, approve: true);
@@ -100,7 +100,7 @@ public class PendingProposalApiTests
     {
         var tools = new FakeToolSource();
         using var api = Api(tools);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
         var (conversationId, _) = await ProposeAsync(client);
 
         // Move the proposal's expiry into the past, as time would.
@@ -120,9 +120,9 @@ public class PendingProposalApiTests
     {
         var tools = new FakeToolSource();
         using var api = Api(tools);
-        var (conversationId, _) = await ProposeAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR));
+        var (conversationId, _) = await ProposeAsync(api.ClientFor("adam", "firm-a", Role.USER));
 
-        var response = await api.ClientFor("amy", "firm-a", Role.ADVISOR)
+        var response = await api.ClientFor("amy", "firm-a", Role.USER)
             .GetAsync($"/api/conversations/{conversationId}/pending", Ct);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);

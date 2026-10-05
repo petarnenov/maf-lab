@@ -41,7 +41,7 @@ public class TopologyTests
         return api;
     }
 
-    private static async Task<TopologyReport> GetAsync(ApiFactory api, Role role = Role.ADVISOR)
+    private static async Task<TopologyReport> GetAsync(ApiFactory api, Role role = Role.USER)
     {
         var response = await api.ClientFor("adam", "firm-a", role).GetAsync("/api/topology", Ct);
         response.EnsureSuccessStatusCode();
@@ -324,7 +324,7 @@ public class TopologyTests
     {
         using var api = Api(StubHandler.AllHealthy());
 
-        var response = await api.ClientFor("adam", "firm-a", Role.ADVISOR).GetAsync("/api/topology", Ct);
+        var response = await api.ClientFor("adam", "firm-a", Role.USER).GetAsync("/api/topology", Ct);
         var body = await response.Content.ReadAsStringAsync(Ct);
         var node = JsonSerializer.Deserialize<TopologyReport>(body, Json)!.Nodes.Single(n => n.Id == "chat-provider");
 
@@ -342,7 +342,7 @@ public class TopologyTests
     {
         using var api = Api(StubHandler.AllHealthy());
 
-        var body = await api.ClientFor("adam", "firm-a", Role.ADVISOR).GetStringAsync("/api/topology", Ct);
+        var body = await api.ClientFor("adam", "firm-a", Role.USER).GetStringAsync("/api/topology", Ct);
 
         Assert.Contains("\"health\":\"Healthy\"", body);
         Assert.DoesNotContain("\"health\":0", body);
@@ -380,7 +380,7 @@ public class TopologyTests
     public async Task The_diagram_is_served_and_holds_exactly_the_reported_nodes()
     {
         using var api = Api(StubHandler.AllHealthy());
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var response = await client.GetAsync("/api/topology/diagram", Ct);
         var xml = await response.Content.ReadAsStringAsync(Ct);
@@ -400,7 +400,7 @@ public class TopologyTests
     public async Task No_two_boxes_in_the_diagram_overlap()
     {
         using var api = Api(StubHandler.AllHealthy());
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var xml = await client.GetStringAsync("/api/topology/diagram", Ct);
         var boxes = Boxes(xml);

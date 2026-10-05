@@ -10,7 +10,7 @@ describe('TurnFeedback', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderWithProviders(<TurnFeedback conversationId="conv-1" turnId="turn-9" />, {
-      session: makeSession('ADVISOR'),
+      session: makeSession('USER'),
     });
     await userEvent.click(screen.getByRole('button', { name: 'Wrong document' }));
 
@@ -28,7 +28,7 @@ describe('TurnFeedback', () => {
     const [url, init] = posts[0];
     expect(url).toBe('/api/feedback');
     expect(init.method).toBe('POST');
-    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer token-ADVISOR');
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer token-USER');
     expect(JSON.parse(init.body as string)).toEqual({
       conversationId: 'conv-1',
       turnId: 'turn-9',

@@ -4,7 +4,7 @@ import { jsonResponse, makeSession, renderWithProviders } from '../test/render';
 import { TestAgentSection } from './TestAgentSection';
 import { reachableAgent, unconfiguredAgent, unreachableAgent } from './testAgentFixtures';
 
-const admin = { session: makeSession('FIRM_ADMIN') };
+const admin = { session: makeSession('TENANT_ADMIN') };
 
 describe('TestAgentSection', () => {
   it('shows a reachable agent: its card, its defaults, its runs by state and the recent ones', async () => {

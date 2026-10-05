@@ -1,8 +1,8 @@
-{"id": "p-01", "question": "Препоръчай ребалансиране за A-1043", "firmId": "firm-a", "carded": true, "rebalanceNeeded": false, "language": "bg"}
-{"id": "p-02", "question": "Does A-1043 need rebalancing?", "firmId": "firm-a", "carded": true, "rebalanceNeeded": false, "language": "en"}
-{"id": "p-03", "question": "Does A-1042 need rebalancing?", "firmId": "firm-a", "carded": true, "rebalanceNeeded": true, "language": "en"}
-{"id": "p-04", "question": "Нужно ли е ребалансиране на A-1042?", "firmId": "firm-a", "carded": true, "rebalanceNeeded": true, "language": "bg"}
-{"id": "p-05", "question": "What does A-1044 hold, and how far is each class from its target?", "firmId": "firm-a", "carded": true, "rowsRequested": true, "language": "en"}
-{"id": "p-06", "question": "Покажи AUM на A-1043 по тримесечия", "firmId": "firm-a", "carded": true, "language": "bg"}
-{"id": "p-07", "question": "Which accounts do I have access to?", "firmId": "firm-a", "carded": true, "language": "en"}
-{"id": "p-08", "question": "Should we rebalance B-200?", "firmId": "firm-b", "carded": true, "rebalanceNeeded": false, "language": "en"}
+{"id": "p-01", "question": "Препоръчай ребалансиране за A-1043", "tenantId": "firm-a", "carded": true, "rebalanceNeeded": false, "language": "bg"}
+{"id": "p-02", "question": "Does A-1043 need rebalancing?", "tenantId": "firm-a", "carded": true, "rebalanceNeeded": false, "language": "en"}
+{"id": "p-03", "question": "Does A-1042 need rebalancing?", "tenantId": "firm-a", "carded": true, "rebalanceNeeded": true, "language": "en"}
+{"id": "p-04", "question": "Нужно ли е ребалансиране на A-1042?", "tenantId": "firm-a", "carded": true, "rebalanceNeeded": true, "language": "bg"}
+{"id": "p-05", "question": "What does A-1044 hold, and how far is each class from its target?", "tenantId": "firm-a", "carded": true, "rowsRequested": true, "language": "en"}
+{"id": "p-06", "question": "Покажи AUM на A-1043 по тримесечия", "tenantId": "firm-a", "carded": true, "language": "bg"}
+{"id": "p-07", "question": "Which accounts do I have access to?", "tenantId": "firm-a", "carded": true, "language": "en"}
+{"id": "p-08", "question": "Should we rebalance B-200?", "tenantId": "firm-b", "carded": true, "rebalanceNeeded": false, "language": "en"}

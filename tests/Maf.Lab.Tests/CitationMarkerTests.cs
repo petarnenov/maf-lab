@@ -101,7 +101,7 @@ public class CitationMarkerTests
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel(
             "Assign the missing fee schedule 【sourcePath: procedures/missing-fee-schedule.txt】 and re-run 【tool_data†search_documents】."));
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "what is the procedure when a fee schedule is missing");
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "what is the procedure when a fee schedule is missing");
 
         Assert.Equal("Assign the missing fee schedule and re-run.", ApiFactory.AnswerOf(events));
         var turn = await ChatApiTests.Db(api).Turns.SingleAsync(Ct);

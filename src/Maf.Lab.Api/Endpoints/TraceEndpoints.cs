@@ -11,18 +11,18 @@ public static class TraceEndpoints
 {
     public static IEndpointRouteBuilder MapTraces(this IEndpointRouteBuilder app)
     {
-        // Owner, or a FIRM_ADMIN of the same firm for turns in the review queue (turns with signals). Everyone else: 404.
+        // Owner, or a TENANT_ADMIN of the same tenant for turns in the review queue (turns with signals). Everyone else: 404.
         app.MapGet("/api/turns/{turnId}/trace", async (string turnId, IPrincipalAccessor principals, IDbContextFactory<MafDbContext> db, CancellationToken ct) =>
         {
             var principal = principals.Current;
             await using var ctx = await db.CreateDbContextAsync(ct);
-            var trace = await ctx.TurnTraces.AsNoTracking().FirstOrDefaultAsync(t => t.TurnId == turnId && t.FirmId == principal.FirmId.Value, ct);
+            var trace = await ctx.TurnTraces.AsNoTracking().FirstOrDefaultAsync(t => t.TurnId == turnId && t.TenantId == principal.TenantId.Value, ct);
             if (trace is null)
             {
                 return Results.NotFound();
             }
             var allowed = trace.UserId == principal.UserId
-                || principal.IsFirmAdmin && await ctx.Turns.AnyAsync(t => t.Id == turnId && t.FirmId == principal.FirmId.Value && t.SignalsJson != "[]", ct);
+                || principal.IsTenantAdmin && await ctx.Turns.AnyAsync(t => t.Id == turnId && t.TenantId == principal.TenantId.Value && t.SignalsJson != "[]", ct);
             if (!allowed)
             {
                 return Results.NotFound();

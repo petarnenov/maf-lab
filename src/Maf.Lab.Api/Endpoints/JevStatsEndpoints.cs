@@ -31,7 +31,7 @@ public static class JevStatsEndpoints
             var from = (now - w.Span).UtcDateTime;
             await using var ctx = await db.CreateDbContextAsync(ct);
             var rows = await ctx.TurnTraces.AsNoTracking()
-                .Where(t => t.FirmId == principal.FirmId.Value && t.CreatedAt >= from)
+                .Where(t => t.TenantId == principal.TenantId.Value && t.CreatedAt >= from)
                 .Select(t => new IntentStatistics.TraceRow(t.CreatedAt, t.Json))
                 .ToListAsync(ct);
             var o = jev.Value;
@@ -40,7 +40,7 @@ public static class JevStatsEndpoints
             return Results.Ok(JevStatistics.Aggregate(rows, chosen,
                 new IntentStatsSettings(o.Model, o.MinConfidence, o.MinInDomain, o.TimeoutSeconds),
                 new JevStatistics.GuardSettings(g.Enabled, g.PromptBlockAt, g.ContentWithholdAt, crossTenant), now));
-        }).RequireAuthorization(AuthPolicies.FirmAdmin);
+        }).RequireAuthorization(AuthPolicies.TenantAdmin);
 
         return app;
     }

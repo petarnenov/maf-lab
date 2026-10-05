@@ -208,7 +208,7 @@ function stub(stats: () => Response, reports: EvalReportSummary[] = []) {
   return urls;
 }
 
-const admin = makeSession('FIRM_ADMIN');
+const admin = makeSession('TENANT_ADMIN');
 
 describe('JevPage', () => {
   it('draws the overview and every call site with the running floors', async () => {
@@ -486,7 +486,7 @@ describe('/admin/jev', () => {
   });
 
   it('denies an advisor, as the other admin screens do', () => {
-    renderWithProviders(<App />, { route: '/admin/jev', session: makeSession('ADVISOR') });
+    renderWithProviders(<App />, { route: '/admin/jev', session: makeSession('USER') });
     expect(screen.getByRole('alert')).toHaveTextContent('Access denied');
   });
 });

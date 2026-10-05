@@ -63,7 +63,7 @@ public sealed class FeeAdjustmentLedger
         using var connection = Open();
         using var command = connection.CreateCommand();
         command.CommandText = """SELECT "Amount" FROM "FeeAdjustments" WHERE "FirmId" = $firm AND "AccountId" = $account ORDER BY "AppliedAt", "rowid";""";
-        command.Parameters.AddWithValue("$firm", principal.FirmId.Value);
+        command.Parameters.AddWithValue("$firm", principal.TenantId.Value);
         command.Parameters.AddWithValue("$account", accountId);
         using var reader = command.ExecuteReader();
         var total = 0m;
@@ -91,13 +91,13 @@ public sealed class FeeAdjustmentLedger
         // Immediate, not deferred: the fee is read and written in one go, and a second writer waits rather than racing.
         using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable, deferred: false);
 
-        if (Read(connection, transaction, principal.FirmId.Value, adjustmentId) is { } existing)
+        if (Read(connection, transaction, principal.TenantId.Value, adjustmentId) is { } existing)
         {
             transaction.Commit();
             return existing with { AlreadyApplied = true };
         }
 
-        var previousFee = seededFee + Total(connection, transaction, principal.FirmId.Value, accountId);
+        var previousFee = seededFee + Total(connection, transaction, principal.TenantId.Value, accountId);
         var resultingFee = previousFee + amount;
 
         // Checked here, not only at proposal: this is the one place the fee cannot move underneath us, so two
@@ -118,7 +118,7 @@ public sealed class FeeAdjustmentLedger
                 VALUES ($id, $firm, $account, $amount, $previous, $resulting, $currency, $at, $by);
                 """;
             insert.Parameters.AddWithValue("$id", adjustmentId);
-            insert.Parameters.AddWithValue("$firm", principal.FirmId.Value);
+            insert.Parameters.AddWithValue("$firm", principal.TenantId.Value);
             insert.Parameters.AddWithValue("$account", accountId);
             insert.Parameters.AddWithValue("$amount", Money.Format(amount));
             insert.Parameters.AddWithValue("$previous", Money.Format(previousFee));
@@ -136,7 +136,7 @@ public sealed class FeeAdjustmentLedger
                 // Another replica got there first between the read above and this insert.
                 transaction.Rollback();
                 using var after = Open();
-                if (Read(after, null, principal.FirmId.Value, adjustmentId) is { } winner)
+                if (Read(after, null, principal.TenantId.Value, adjustmentId) is { } winner)
                 {
                     return winner with { AlreadyApplied = true };
                 }

@@ -157,7 +157,7 @@ public class CodebaseDomainTests
         var tools = new FakeToolSource { WithPortfolio = true, WithCodebase = true };
         using var api = CodeApi(tools);
 
-        var events = await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN), "как в кода се прави идемпотентност на тул?");
+        var events = await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN), "как в кода се прави идемпотентност на тул?");
 
         // Only the codebase server's tools were loaded, and its search was forced.
         Assert.Equal([Domains.Codebase], tools.RequestedDomains.Single()!);
@@ -187,7 +187,7 @@ public class CodebaseDomainTests
     {
         var tools = new FakeToolSource { WithPortfolio = true, WithCodebase = true };
         using var api = CodeApi(tools);
-        var client = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var client = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
         var conversationId = ApiFactory.ThreadOf(await ApiFactory.ChatAsync(client, "how does the code confirm a tool call?"));
 
         var events = await ApiFactory.ChatAsync(client, "покажи още", conversationId);
@@ -208,7 +208,7 @@ public class CodebaseDomainTests
         var tools = new FakeToolSource { WithPortfolio = true, WithCodebase = true };
         using var api = new ApiFactory(ApiFactory.ProceduralModel(), tools);
 
-        await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.ADVISOR), "What is the procedure when a fee schedule is missing?");
+        await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "What is the procedure when a fee schedule is missing?");
 
         Assert.Equal([Domains.Billing], tools.RequestedDomains.Single()!);
         Assert.DoesNotContain(CodeTools.Search, api.Chat.Requests[^1].Options!.Tools!.Select(t => t.Name));
@@ -252,7 +252,7 @@ public class CodebaseDomainTests
             McpEndpoint = "http://billing.test/mcp",
             Servers = [new McpServerOptions { Domain = Domains.Codebase, Endpoint = "http://code.test/mcp", Tools = [CodeTools.Search] }],
         }), LoggerFactory.Create(_ => { }), new CodeTestClients(() => new HttpClient(router, disposeHandler: false)));
-        var (token, _) = Maf.Lab.Retrieval.Auth.DevJwt.Issue(new Maf.Lab.Domain.Configuration.AuthOptions(), "alice", TenantId.Firm("firm-a"), Role.FIRM_ADMIN, []);
+        var (token, _) = Maf.Lab.Retrieval.Auth.DevJwt.Issue(new Maf.Lab.Domain.Configuration.AuthOptions(), "alice", TenantId.Firm("firm-a"), Role.TENANT_ADMIN);
 
         await using var set = await source.GetToolsAsync(token, null, Ct, new HashSet<string> { Domains.Codebase });
 

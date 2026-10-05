@@ -32,7 +32,7 @@ def check(name, ok, detail=""):
     if not ok:
         failures.append(name)
 
-_, t = req("/dev/token", "POST", {"userId": "alice", "firmId": "firm-a", "role": "FIRM_ADMIN"})
+_, t = req("/dev/token", "POST", {"userId": "alice", "tenantId": "firm-a", "role": "TENANT_ADMIN"})
 token = t["token"]
 q = urllib.parse.quote(target, safe="")
 

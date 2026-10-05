@@ -40,7 +40,7 @@ public class CodeSnippetsApiTests
             "src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs > TenantFilter.For", CodeKinds.Code, "csharp", 0.8, "public static Filter For(...)");
         var source = new FakeSource(_ => new CodeSearchResult([snippet], 1, false, null));
         using var api = Api(source);
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var response = await client.PostAsJsonAsync("/api/code/snippets", new { question = "  where is the tenant filter built?  " }, Ct);
 
@@ -58,7 +58,7 @@ public class CodeSnippetsApiTests
     {
         using var api = Api(new FakeSource(_ => throw new CodeSearchUnavailableException("Code search is unavailable right now.",
             new HttpRequestException("Connection refused (lb:80)"))));
-        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var response = await client.PostAsJsonAsync("/api/code/snippets", new { question = "anything" }, Ct);
 
@@ -75,7 +75,7 @@ public class CodeSnippetsApiTests
         using var api = Api(source);
 
         var anonymous = await api.CreateClient().PostAsJsonAsync("/api/code/snippets", new { question = "x" }, Ct);
-        var empty = await api.ClientFor("adam", "firm-a", Role.ADVISOR).PostAsJsonAsync("/api/code/snippets", new { question = " " }, Ct);
+        var empty = await api.ClientFor("adam", "firm-a", Role.USER).PostAsJsonAsync("/api/code/snippets", new { question = " " }, Ct);
 
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, empty.StatusCode);

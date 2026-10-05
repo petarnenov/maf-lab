@@ -35,7 +35,7 @@ public class ComplianceApiTests
     public async Task Only_a_firm_admin_may_verify_or_export()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var advisor = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var advisor = api.ClientFor("adam", "firm-a", Role.USER);
 
         Assert.Equal(HttpStatusCode.Forbidden, (await advisor.GetAsync("/api/admin/compliance/verify", Ct)).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await advisor.GetAsync("/api/admin/compliance/export", Ct)).StatusCode);
@@ -46,8 +46,8 @@ public class ComplianceApiTests
     public async Task Verification_reports_an_intact_chain_and_then_the_row_that_was_altered()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
-        var alice = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
+        var alice = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
         await ChatAsync(api, adam, "what is the procedure when a fee schedule is missing");
         await ChatAsync(api, adam, "how do I issue a billing credit?");
 
@@ -76,7 +76,7 @@ public class ComplianceApiTests
     public async Task Deleting_a_conversation_is_recorded_and_a_refused_delete_is_not()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var rita = api.ClientFor("rita", "firm-a", Role.READ_ONLY);
         var conversationId = await ChatAsync(api, adam, "what is the procedure when a fee schedule is missing");
 
@@ -101,7 +101,7 @@ public class ComplianceApiTests
     public async Task A_tool_call_and_a_deletion_sit_in_one_ordered_chain()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var conversationId = await ChatAsync(api, adam, "what is the procedure when a fee schedule is missing");
         await adam.DeleteAsync($"/api/conversations/{conversationId}", Ct);
 
@@ -119,9 +119,9 @@ public class ComplianceApiTests
     public async Task The_package_holds_the_firms_own_data_with_a_manifest_that_can_be_rechecked()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
-        var alice = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
-        var bob = api.ClientFor("bob", "firm-b", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
+        var alice = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
+        var bob = api.ClientFor("bob", "firm-b", Role.USER);
         await ChatAsync(api, adam, "what is the procedure when a fee schedule is missing");
         var deleted = await ChatAsync(api, adam, "how do I issue a billing credit?");
         await adam.DeleteAsync($"/api/conversations/{deleted}", Ct);
@@ -129,7 +129,7 @@ public class ComplianceApiTests
 
         var package = await GetAsync<ExportPackage>(alice, "/api/admin/compliance/export");
 
-        Assert.Equal("firm-a", package.Manifest.FirmId);
+        Assert.Equal("firm-a", package.Manifest.TenantId);
         Assert.Equal("alice", package.Manifest.By);
         Assert.All(package.Conversations, c => Assert.NotEqual("bob", c.UserId));
         Assert.All(package.Turns, t => Assert.NotEqual("bob", t.UserId));
@@ -152,8 +152,8 @@ public class ComplianceApiTests
     public async Task The_record_can_be_browsed_a_page_at_a_time_newest_first()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
-        var alice = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
+        var alice = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
         var first = await ChatAsync(api, adam, "what is the procedure when a fee schedule is missing");
         await ChatAsync(api, adam, "how do I issue a billing credit?");
         await adam.DeleteAsync($"/api/conversations/{first}", Ct);
@@ -177,9 +177,9 @@ public class ComplianceApiTests
     public async Task Browsing_filters_by_person_and_kind_and_says_when_there_is_nothing()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
-        var olga = api.ClientFor("olga", "firm-a", Role.OPS);
-        var alice = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
+        var olga = api.ClientFor("olga", "firm-a", Role.USER);
+        var alice = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
         var conversation = await ChatAsync(api, adam, "what is the procedure when a fee schedule is missing");
         await adam.DeleteAsync($"/api/conversations/{conversation}", Ct);
         await ChatAsync(api, olga, "how do I issue a billing credit?");
@@ -201,9 +201,9 @@ public class ComplianceApiTests
     public async Task Browsing_stays_in_the_firm_leaves_no_trace_and_needs_an_admin()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var bob = api.ClientFor("bob", "firm-b", Role.ADVISOR);
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
-        var alice = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var bob = api.ClientFor("bob", "firm-b", Role.USER);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
+        var alice = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
         await ChatAsync(api, bob, "what is the procedure when a fee schedule is missing");
         await ChatAsync(api, adam, "what is the procedure when a fee schedule is missing");
 
@@ -256,13 +256,13 @@ public class ComplianceApiTests
     public async Task Another_firm_cannot_be_reached_by_any_parameter()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var bob = api.ClientFor("bob", "firm-b", Role.ADVISOR);
-        var alice = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var bob = api.ClientFor("bob", "firm-b", Role.USER);
+        var alice = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
         await ChatAsync(api, bob, "what is the procedure when a fee schedule is missing");
 
         var package = await GetAsync<ExportPackage>(alice, "/api/admin/compliance/export?firmId=firm-b&userId=bob");
 
-        Assert.Equal("firm-a", package.Manifest.FirmId);
+        Assert.Equal("firm-a", package.Manifest.TenantId);
         Assert.Empty(package.Conversations);
         Assert.Empty(package.Turns);
         Assert.Empty(package.Actions);
@@ -272,9 +272,9 @@ public class ComplianceApiTests
     public async Task A_subject_scoped_package_holds_only_that_person()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
-        var olga = api.ClientFor("olga", "firm-a", Role.OPS);
-        var alice = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
+        var olga = api.ClientFor("olga", "firm-a", Role.USER);
+        var alice = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
         await ChatAsync(api, adam, "what is the procedure when a fee schedule is missing");
         await ChatAsync(api, olga, "how do I issue a billing credit?");
 
@@ -291,8 +291,8 @@ public class ComplianceApiTests
     public async Task The_export_is_itself_recorded_and_appears_in_the_next_one()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
-        var alice = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
+        var alice = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
         await ChatAsync(api, adam, "what is the procedure when a fee schedule is missing");
 
         var first = await GetAsync<ExportPackage>(alice, "/api/admin/compliance/export");

@@ -55,7 +55,7 @@ public class TelemetryQueryTests
     public async Task A_window_the_server_does_not_know_is_refused_rather_than_passed_on()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
 
         var refused = await adam.GetAsync("/api/telemetry?window=1h)%20or%20drop", Ct);
         Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
