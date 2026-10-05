@@ -15,7 +15,8 @@ Non-negotiables while editing:
   work that outlives its request is stopped through the store that owns its
   state, atomically, and its worker watches that store — any replica takes the
   stop, no sticky routing. A stop is shown only once the work's own state says
-  so (spec: `stop-anything`).
+  so (spec: `stop-anything`). Every proposal says how its work stops in a
+  `## Stopping` section; `make docs-check` fails one without it.
 - Tenant (firm_id) comes from the principal only. Never add a tenant
   parameter to a tool, an endpoint, or a query builder.
 - One method builds Qdrant queries and applies the tenant filter. Do not

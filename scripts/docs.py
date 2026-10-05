@@ -545,7 +545,55 @@ def check_change_proposals(repo: Repo) -> list[Finding]:
         elif not re.sub(r"<!--.*?-->", "", m[1], flags=re.S).strip():
             findings.append(Finding(rel, None, "documentation-impact", "the `## Documentation impact` section is empty",
                                     "name each document the change affects, or say why none is"))
+        findings += stopping_findings(rel, change.name, text)
     return findings
+
+
+# The four facts a proposal states about how what it adds is stopped (stop-anything), in the order they are asked for.
+STOPPING_FACTS = ("Key", "Stop", "Recorded in", "Shown")
+STOPPING_FIX = ("write `None — <reason>`, or one line each for `Key:`, `Stop:`, `Recorded in:` and `Shown:` "
+                "(stop-anything)")
+
+
+def stopping_findings(rel: str, change: str, text: str) -> list[Finding]:
+    """
+    A proposal's `## Stopping` section: either `None` with a reason, or the four facts, each with a value. What the
+    section says is review's to judge; that it says it is checked here.
+    """
+    m = re.search(r"^## Stopping[ \t]*\n(.*?)(?=^## |\Z)", text, re.M | re.S)
+    if not m:
+        return [Finding(rel, None, "stopping", f"change `{change}` has no `## Stopping` section", STOPPING_FIX)]
+    body = re.sub(r"<!--.*?-->", "", m[1], flags=re.S)
+    if not body.strip():
+        return [Finding(rel, None, "stopping", "the `## Stopping` section is empty", STOPPING_FIX)]
+    # A line, optionally a list item, optionally bold: `- **Key:** Esc`, `Key: Esc`.
+    def facts() -> dict[str, str]:
+        found: dict[str, str] = {}
+        current = None
+        for line in body.splitlines():
+            label = re.match(r"^\s*(?:[-*]\s+)?(?:\*\*)?(None|Key|Stop|Recorded in|Shown)(?:\*\*)?(?:\s*(?::|—|-)\s*|\s*$)"
+                             r"(?:\*\*)?\s*(.*)$", line)
+            if label and (label[1] != "None" or not found):
+                current = label[1]
+                found[current] = label[2].strip()
+            elif current and line.startswith((" ", "\t")) and line.strip():
+                found[current] = f"{found[current]} {line.strip()}".strip()
+        return found
+    found = facts()
+    if "None" in found:
+        if not found["None"]:
+            return [Finding(rel, None, "stopping", "the `## Stopping` section says `None` without a reason",
+                            "say why: `None — <reason>`")]
+        return []
+    problems = []
+    for fact in STOPPING_FACTS:
+        if fact not in found:
+            problems.append(Finding(rel, None, "stopping", f"the `## Stopping` section of `{change}` has no `{fact}:`",
+                                    STOPPING_FIX))
+        elif not found[fact]:
+            problems.append(Finding(rel, None, "stopping", f"the `## Stopping` section of `{change}` has an empty `{fact}:`",
+                                    STOPPING_FIX))
+    return problems
 
 
 # ── commands ───────────────────────────────────────────────────────────────────────────────────────────────────────

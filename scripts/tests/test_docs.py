@@ -159,6 +159,10 @@ PROPOSAL = """\
 
 Because.
 
+## Stopping
+
+None — a fixture: it starts nothing.
+
 ## Documentation impact
 
 - README.md: a row.
@@ -527,23 +531,85 @@ class PageTests(DocsTestCase):
         self.assertCheckFails("page `/coverage` is not named")
 
 
+STOPS_NOTHING = "## Stopping\n\nNone — it starts nothing.\n\n"
+DOCUMENTED = "## Documentation impact\n\nNone: tests only.\n"
+
+
 class ProposalTests(DocsTestCase):
     def setUp(self):
         super().setUp()
         self.generated()
 
+    def propose(self, body: str) -> None:
+        self.fx.write("openspec/changes/add-thing/proposal.md", "# Proposal\n\n" + body)
+
     def test_missing_section_fails(self):
-        self.fx.write("openspec/changes/add-thing/proposal.md", "# Proposal\n\n## Why\n\nBecause.\n")
+        self.propose("## Why\n\nBecause.\n\n" + STOPS_NOTHING)
         self.assertCheckFails("change `add-thing` has no `## Documentation impact` section")
 
     def test_empty_section_fails(self):
-        self.fx.write("openspec/changes/add-thing/proposal.md",
-                      "# Proposal\n\n## Documentation impact\n\n<!-- todo -->\n\n## Impact\n\nx\n")
+        self.propose(STOPS_NOTHING + "## Documentation impact\n\n<!-- todo -->\n\n## Impact\n\nx\n")
         self.assertCheckFails("the `## Documentation impact` section is empty")
 
     def test_none_with_reason_passes(self):
-        self.fx.write("openspec/changes/add-thing/proposal.md",
-                      "# Proposal\n\n## Documentation impact\n\nNone: tests only, no behavior a document describes.\n")
+        self.propose(STOPS_NOTHING + "## Documentation impact\n\nNone: tests only, no behavior a document describes.\n")
+        self.assertCheckPasses()
+
+
+class StoppingTests(DocsTestCase):
+    """How a proposal says what it adds is stopped (stop-anything): `None — reason`, or the four facts."""
+
+    def setUp(self):
+        super().setUp()
+        self.generated()
+
+    def propose(self, body: str) -> None:
+        self.fx.write("openspec/changes/add-thing/proposal.md", "# Proposal\n\n" + body)
+
+    FOUR = ("## Stopping\n\n- Key: Esc on the index screen\n- Stop: POST /api/admin/jobs/{id}/cancel\n"
+            "- Recorded in: the AdminJobs row, canceled atomically\n- Shown: \"Stopping…\", then canceled\n\n")
+
+    def test_the_four_facts_pass(self):
+        self.propose(self.FOUR + DOCUMENTED)
+        self.assertCheckPasses()
+
+    def test_bold_list_items_and_continuation_lines_pass(self):
+        self.propose("## Stopping\n\n- **Key:** Esc\n- **Stop:** CopilotKit's stop\n- **Recorded in:**\n  the request itself\n"
+                     "- **Shown:** \"Stopping…\", then \"Stopped.\"\n\n" + DOCUMENTED)
+        self.assertCheckPasses()
+
+    def test_none_with_a_reason_passes(self):
+        self.propose("## Stopping\n\nNone — it only renames a document.\n\n" + DOCUMENTED)
+        self.assertCheckPasses()
+
+    def test_a_missing_section_fails(self):
+        self.propose(DOCUMENTED)
+        self.assertCheckFails("change `add-thing` has no `## Stopping` section", "stop-anything")
+
+    def test_an_empty_section_fails(self):
+        self.propose("## Stopping\n\n<!-- later -->\n\n" + DOCUMENTED)
+        self.assertCheckFails("the `## Stopping` section is empty")
+
+    def test_a_missing_fact_fails_by_name(self):
+        self.propose(self.FOUR.replace("- Recorded in: the AdminJobs row, canceled atomically\n", "") + DOCUMENTED)
+        out = self.assertCheckFails("has no `Recorded in:`")
+        self.assertNotIn("has no `Key:`", out)
+
+    def test_an_empty_fact_fails_by_name(self):
+        self.propose(self.FOUR.replace('- Shown: "Stopping…", then canceled', "- Shown:") + DOCUMENTED)
+        self.assertCheckFails("has an empty `Shown:`")
+
+    def test_two_gaps_are_both_named(self):
+        self.propose("## Stopping\n\n- Key: Esc\n- Stop: a cancel route\n\n" + DOCUMENTED)
+        self.assertCheckFails("has no `Recorded in:`", "has no `Shown:`")
+
+    def test_none_without_a_reason_fails(self):
+        self.propose("## Stopping\n\nNone\n\n" + DOCUMENTED)
+        self.assertCheckFails("says `None` without a reason")
+
+    def test_an_archived_change_is_not_checked(self):
+        self.fx.write("openspec/changes/archive/2026-01-01-old/proposal.md", "# Proposal\n\n" + DOCUMENTED)
+        self.propose(STOPS_NOTHING + DOCUMENTED)
         self.assertCheckPasses()
 
 

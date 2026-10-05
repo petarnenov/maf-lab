@@ -107,7 +107,10 @@ maf-lab/
   the store that owns its state (Redis for agent tasks, the api's SQLite for its
   jobs and tasks): a terminal state written atomically and never overwritten,
   watched by the worker, taken by any replica. A page says "Stopping…" until the
-  work's own state says it stopped. Details: the `stop-anything` spec.
+  work's own state says it stopped. Every proposal says how what it adds is
+  stopped in a `## Stopping` section (`Key:`, `Stop:`, `Recorded in:`,
+  `Shown:`, or `None — <reason>`); `make docs-check` fails one without it.
+  Details: the `stop-anything` spec.
 - Tenant is `firm_id`. It is derived from the caller's token, never from a
   request parameter, tool argument, or model output.
 - Every Qdrant query goes through exactly one method that takes a

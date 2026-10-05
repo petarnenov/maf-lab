@@ -112,7 +112,10 @@ context: |
     the store that owns its state (Redis for agent tasks, the api's SQLite for its
     jobs and tasks): a terminal state written atomically and never overwritten,
     watched by the worker, taken by any replica. A page says "Stopping…" until the
-    work's own state says it stopped. Details: the `stop-anything` spec.
+    work's own state says it stopped. Every proposal says how what it adds is
+    stopped in a `## Stopping` section (`Key:`, `Stop:`, `Recorded in:`,
+    `Shown:`, or `None — <reason>`); `make docs-check` fails one without it.
+    Details: the `stop-anything` spec.
   - Tenant is `firm_id`. It is derived from the caller's token, never from a
     request parameter, tool argument, or model output.
   - Every Qdrant query goes through exactly one method that takes a
@@ -156,6 +159,14 @@ rules:
       change makes untrue or incomplete (README.md, CLAUDE.md, docs/*.md,
       openspec/project.md, .github/copilot-instructions.md) and what changes
       in it, or say why none is affected. `make docs-check` fails without it.
+    - Include a `## Stopping` section, per the stop-anything spec. If the
+      change adds or alters work a person can start (a UI action, a job, an
+      agent run, a CLI tool or a make target), give one line each for `Key:`
+      (Esc on the page, Ctrl+C or SIGTERM in a terminal), `Stop:` (the
+      protocol's own stop or this system's cancel route), `Recorded in:` (the
+      store that records the stop, or `the request itself`) and `Shown:` (how
+      the page or the terminal says it is stopping, then stopped). Otherwise
+      write `None — <reason>`. `make docs-check` fails without it.
   specs:
     - For Jev-backed behavior, write scenarios for high-, medium- and
       low-confidence outcomes, including the fallback path.
