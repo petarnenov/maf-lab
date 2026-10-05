@@ -30,17 +30,21 @@ public class A2AHandlerTests
           "accountCount":88,"failureReason":null,"updatedAt":"2026-07-01T00:00:00Z"}]
         """;
 
-    private static (BillingAgentHandler Handler, ApiFactory Api) Build(params string[] firms)
+    private static (BillingAgentHandler Handler, ApiFactory Api) Build(params string[] firms) =>
+        Build(new A2AOptions { SimulatedStepMs = 1 }, null, firms);
+
+    private static (BillingAgentHandler Handler, ApiFactory Api) Build(A2AOptions a2a, string? dataDir, params string[] firms)
     {
-        var api = new ApiFactory(ApiFactory.ProceduralModel());
+        var api = new ApiFactory(ApiFactory.ProceduralModel(), dataDir: dataDir);
         var partner = new PartnerPrincipal("acme-portal", firms.Select(TenantId.Firm).ToHashSet(),
             new HashSet<string> { A2AScopes.BillingRead });
         var handler = new BillingAgentHandler(
             new FixedPartner(partner),
             new BillingSeedStore(Seed),
-            Options.Create(new A2AOptions { SimulatedStepMs = 1 }),
+            Options.Create(a2a),
             api.Services.GetRequiredService<ToolAudit>(),
             api.Services.GetRequiredService<AssistantBridge>(),
+            api.Services.GetRequiredService<ITaskStore>(),
             api.Services.GetRequiredService<Microsoft.Extensions.Hosting.IHostApplicationLifetime>(),
             TimeProvider.System,
             NullLogger<BillingAgentHandler>.Instance);
@@ -173,6 +177,33 @@ public class A2AHandlerTests
         var events = await DrainAsync(q => handler.CancelAsync(Context("start a billing run"), q, Ct), Ct);
 
         Assert.Equal(TaskState.Canceled, States(events).Last());
+    }
+
+    [Fact]
+    public async Task A_run_cancelled_through_the_other_replica_stops_before_its_next_stage()
+    {
+        // Two api replicas over one database: the run goes on one, the cancel is recorded through the other.
+        var (handler, working) = Build(new A2AOptions { SimulatedStepMs = 400, CancelPollMs = 20 }, null, "firm-a");
+        using var _ = working;
+        using var other = new ApiFactory(ApiFactory.ProceduralModel(), dataDir: working.DataDir);
+        var shared = other.Services.GetRequiredService<ITaskStore>();
+        await shared.SaveTaskAsync("t-x", new AgentTask
+        {
+            Id = "t-x", ContextId = "ctx-1",
+            Status = new global::A2A.TaskStatus { State = TaskState.Working, Timestamp = DateTimeOffset.UtcNow },
+        }, Ct);
+
+        var events = new List<StreamResponse>();
+        var running = DrainAsync(q => handler.ExecuteAsync(Context("start a billing run for firm-a 2026-06", "t-x"), q, Ct), Ct);
+        await Task.Delay(250, Ct);
+        await shared.SaveTaskAsync("t-x", new AgentTask
+        {
+            Id = "t-x", ContextId = "ctx-1",
+            Status = new global::A2A.TaskStatus { State = TaskState.Canceled, Timestamp = DateTimeOffset.UtcNow },
+        }, Ct);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => running.WaitAsync(TimeSpan.FromSeconds(5), Ct));
+        Assert.Equal(TaskState.Canceled, (await shared.GetTaskAsync("t-x", Ct))!.Status!.State);
     }
 
     [Fact]

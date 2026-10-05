@@ -48,8 +48,9 @@ public sealed class MigrationService(
                 }
                 var texts = batch.Select(c => c.Context is null ? $"{c.SectionPath}\n{c.Text}" : $"{c.Context}\n{c.SectionPath}\n{c.Text}").ToList();
                 var vectors = await dense.EmbedDocumentsAsync(targetVector, texts, ct);
+                // A batch, once its vectors are made, is written whole: the stop takes effect before the next one.
                 await store.ApplyMigrationBatchAsync(tenant, targetVector, target, targetVector == indexing.Value.DenseVector,
-                    batch.Select((c, i) => (c.PointId, vectors[i])).ToList(), ct);
+                    batch.Select((c, i) => (c.PointId, vectors[i])).ToList(), CancellationToken.None);
                 tenantMigrated += batch.Count;
                 batchNo++;
                 if (afterBatch is not null)

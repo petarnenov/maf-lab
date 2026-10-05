@@ -410,6 +410,7 @@ public class GuardrailTests
             Options.Create(new A2AOptions { SimulatedStepMs = 1 }),
             api.Services.GetRequiredService<ToolAudit>(),
             api.Services.GetRequiredService<AssistantBridge>(),
+            api.Services.GetRequiredService<global::A2A.ITaskStore>(),
             api.Services.GetRequiredService<Microsoft.Extensions.Hosting.IHostApplicationLifetime>(),
             TimeProvider.System,
             NullLogger<BillingAgentHandler>.Instance);

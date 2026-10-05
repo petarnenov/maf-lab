@@ -25,7 +25,7 @@ export function A2AAdminPage() {
 
   const activity = useQuery({
     queryKey: ['admin', 'a2a', session?.token],
-    queryFn: () => api<A2AActivity>('/api/admin/a2a'),
+    queryFn: ({ signal }) => api<A2AActivity>('/api/admin/a2a', { signal }),
   });
 
   const cancel = useMutation({

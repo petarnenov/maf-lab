@@ -28,11 +28,11 @@ export function useConversations(search: string) {
   return useInfiniteQuery({
     queryKey: conversationsKey(userKey, search),
     initialPageParam: null as string | null,
-    queryFn: ({ pageParam }) => {
+    queryFn: ({ pageParam, signal }) => {
       const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
       if (search) params.set('search', search);
       if (pageParam) params.set('before', pageParam);
-      return api<ConversationPage>(`/api/conversations?${params.toString()}`);
+      return api<ConversationPage>(`/api/conversations?${params.toString()}`, { signal });
     },
     getNextPageParam: (last) => last.nextCursor ?? null,
   });
@@ -43,7 +43,8 @@ export function useConversation(id: string | undefined, enabled: boolean) {
   const userKey = useUserKey();
   return useQuery({
     queryKey: conversationKey(userKey, id),
-    queryFn: () => api<ConversationDetail>(`/api/conversations/${encodeURIComponent(id ?? '')}`),
+    queryFn: ({ signal }) =>
+      api<ConversationDetail>(`/api/conversations/${encodeURIComponent(id ?? '')}`, { signal }),
     enabled: Boolean(id) && enabled,
     // Always load the current state of a conversation when it is opened.
     staleTime: 0,

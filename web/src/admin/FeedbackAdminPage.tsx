@@ -30,7 +30,7 @@ export function FeedbackAdminPage() {
 
   const queue = useQuery({
     queryKey: ['admin', 'feedback', 'queue', session?.token],
-    queryFn: () => api<ReviewQueueItem[]>('/api/admin/feedback/queue'),
+    queryFn: ({ signal }) => api<ReviewQueueItem[]>('/api/admin/feedback/queue', { signal }),
   });
 
   const label = useMutation({

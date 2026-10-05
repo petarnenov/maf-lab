@@ -26,6 +26,38 @@ public class A2ATaskStoreTests
         History = [new Message { MessageId = "m1", Role = Role.User, Parts = [new Part { Text = "status of run 4417" }] }],
     };
 
+    [Theory]
+    [InlineData(TaskState.Working)]
+    [InlineData(TaskState.Completed)]
+    public async Task A_cancelled_task_is_not_written_over(TaskState late)
+    {
+        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        var store = Store(api);
+        await store.SaveTaskAsync("t-c", Task("t-c", TaskState.Working), Ct);
+        await store.SaveTaskAsync("t-c", Task("t-c", TaskState.Canceled), Ct);
+
+        await store.SaveTaskAsync("t-c", Task("t-c", late), Ct);
+
+        Assert.Equal(TaskState.Canceled, (await store.GetTaskAsync("t-c", Ct))!.Status!.State);
+    }
+
+    [Fact]
+    public async Task A_running_task_still_finishes_and_its_end_can_be_saved_again()
+    {
+        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        var store = Store(api);
+        await store.SaveTaskAsync("t-w", Task("t-w", TaskState.Working), Ct);
+        await store.SaveTaskAsync("t-w", Task("t-w", TaskState.Completed), Ct);
+        var done = Task("t-w", TaskState.Completed);
+        done.Artifacts = [new Artifact { ArtifactId = "a-1", Parts = [new Part { Text = "completed" }] }];
+
+        await store.SaveTaskAsync("t-w", done, Ct);
+
+        var read = await store.GetTaskAsync("t-w", Ct);
+        Assert.Equal(TaskState.Completed, read!.Status!.State);
+        Assert.Single(read.Artifacts!);
+    }
+
     [Fact]
     public async Task A_task_round_trips_with_its_history_and_artifacts()
     {

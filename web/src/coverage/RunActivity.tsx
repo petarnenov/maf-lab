@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { RunSummary } from '../api/types';
 import { useApi } from '../auth/useAuth';
+import { StopHint } from '../components/StopHint';
 import { describeBudget } from './budget';
 import { instant, pct, reasonLabel, RUN_LABELS, stopSentence, usd } from './format';
 import { LiveMarker } from './LiveMarker';
@@ -59,9 +60,25 @@ export function RunActivityDialog({ run, canCancel, onClose }: { run: RunSummary
     if (list.current) list.current.scrollTop = list.current.scrollHeight;
   };
 
+  const agentWorking = !ended && summary.active && summary.state !== 'candidate';
+  // Esc stops the run for someone who may (stop-anything); for anyone else it closes the dialog. The close button
+  // always only closes it.
+  const api = useApi();
+  const client = useQueryClient();
+  const cancel = useMutation({
+    mutationFn: () => api(`/api/coverage/runs/${encodeURIComponent(run.id)}/cancel`, { method: 'POST' }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: coverageKeys.all }),
+  });
+  const stoppable = canCancel && agentWorking;
+  const stopping = cancel.isPending || cancel.isSuccess;
+
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape') {
       e.stopPropagation();
+      if (stoppable) {
+        if (!stopping) cancel.mutate();
+        return;
+      }
       onClose();
       return;
     }
@@ -78,8 +95,6 @@ export function RunActivityDialog({ run, canCancel, onClose }: { run: RunSummary
       first.focus();
     }
   };
-
-  const agentWorking = !ended && summary.active && summary.state !== 'candidate';
 
   return (
     <div className={styles.backdrop}>
@@ -115,7 +130,15 @@ export function RunActivityDialog({ run, canCancel, onClose }: { run: RunSummary
           )}
         </div>
         <div className={styles.dialogActions}>
-          {canCancel && agentWorking && <CancelRun runId={run.id} />}
+          {stoppable && <StopHint stopping={stopping} className={styles.activityStopHint} />}
+          {stoppable && (
+            <CancelRun
+              pending={cancel.isPending}
+              done={cancel.isSuccess}
+              failed={cancel.isError}
+              onCancel={() => cancel.mutate()}
+            />
+          )}
           <button type="button" onClick={onClose}>
             Close
           </button>
@@ -233,22 +256,26 @@ function TimelineRow({ item }: { item: TimelineItem }) {
   }
 }
 
-function CancelRun({ runId }: { runId: string }) {
-  const api = useApi();
-  const client = useQueryClient();
-  const cancel = useMutation({
-    mutationFn: () => api(`/api/coverage/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST' }),
-    onSuccess: () => void client.invalidateQueries({ queryKey: coverageKeys.all }),
-  });
+function CancelRun({
+  pending,
+  done,
+  failed,
+  onCancel,
+}: {
+  pending: boolean;
+  done: boolean;
+  failed: boolean;
+  onCancel: () => void;
+}) {
   return (
     <>
-      {cancel.isError && (
+      {failed && (
         <span className={styles.errorText} role="alert">
           Could not cancel the run.
         </span>
       )}
-      <button type="button" onClick={() => cancel.mutate()} disabled={cancel.isPending || cancel.isSuccess}>
-        {cancel.isPending ? 'Cancelling…' : 'Cancel run'}
+      <button type="button" onClick={onCancel} disabled={pending || done}>
+        {pending ? 'Cancelling…' : 'Cancel run'}
       </button>
     </>
   );

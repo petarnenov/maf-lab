@@ -30,6 +30,11 @@
   background: var(--ok);
 }
 
+/* Stopped with the run: not a failure, so no alarm — the indicator keeps its quiet base colour. */
+.stopped {
+  border-style: dashed;
+}
+
 .error {
   border-color: var(--danger);
 }

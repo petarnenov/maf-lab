@@ -347,9 +347,9 @@ describe('Run activity', () => {
     expect(within(dialog).queryByRole('button', { name: 'Cancel run' })).toBeNull();
   });
 
-  it('closes with Escape, leaves the run alone, and gives focus back to the button', async () => {
+  it('closes with Escape for someone who may not stop the run, leaves it alone, and gives focus back', async () => {
     const calls = stubApi(run(), () => liveStream().response);
-    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
+    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs' });
 
     const dialog = await openActivity();
     expect(dialog).toHaveFocus();
@@ -358,6 +358,27 @@ describe('Run activity', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.getByRole('button', { name: 'Activity' })).toHaveFocus();
     expect(calls.some((c) => c.url.endsWith('/cancel'))).toBe(false);
+  });
+
+  it('stops the run with Escape for an administrator, once, and says it is stopping', async () => {
+    const calls = stubApi(run(), () => liveStream().response);
+    renderWithProviders(<CoveragePage />, { route: '/coverage?file=src%2FLab%2FBeta.cs', session: makeSession('FIRM_ADMIN') });
+
+    const dialog = await openActivity();
+    expect(within(dialog).getByTestId('stop-hint')).toHaveTextContent('Esc to stop');
+    await userEvent.keyboard('{Escape}');
+
+    await vi.waitFor(() =>
+      expect(calls.filter((c) => c.url === '/api/coverage/runs/r_1/cancel' && c.method === 'POST')).toHaveLength(1),
+    );
+    expect(within(dialog).getByTestId('stop-hint')).toHaveTextContent('Stopping…');
+    // The dialog stays to show the run end; a second Escape sends no second cancel.
+    await userEvent.keyboard('{Escape}');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(calls.filter((c) => c.url.endsWith('/cancel'))).toHaveLength(1);
+    // Its close button still only closes it.
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('stays where the user scrolled, and offers the way back to the newest entry', async () => {

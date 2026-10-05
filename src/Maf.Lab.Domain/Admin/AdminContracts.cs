@@ -39,4 +39,6 @@ public static class AdminJobStates
     public const string Running = "running";
     public const string Succeeded = "succeeded";
     public const string Failed = "failed";
+    /// <summary>Stopped by an administrator (stop-anything): ended, like succeeded and failed.</summary>
+    public const string Canceled = "canceled";
 }

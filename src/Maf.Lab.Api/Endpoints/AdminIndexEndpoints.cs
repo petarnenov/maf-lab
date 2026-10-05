@@ -15,6 +15,20 @@ public static class AdminIndexEndpoints
 {
     public sealed record MigrateRequest(string? TargetModel);
 
+    /// <summary>Progress reported as it happens, on the reporting thread: the job keeps only the latest.</summary>
+    private sealed class Reported<T>(Action<T> report) : IProgress<T>
+    {
+        public void Report(T value) => report(value);
+    }
+
+    /// <summary>What a cancel says back: the job while it stops, a conflict when it had already ended.</summary>
+    public static IResult Canceled((AdminJobCancel Outcome, AdminJob? Job) cancel) => cancel.Outcome switch
+    {
+        AdminJobCancel.Canceling => Results.Accepted(null, cancel.Job),
+        AdminJobCancel.AlreadyEnded => Results.Conflict(cancel.Job),
+        _ => Results.NotFound(),
+    };
+
     public static IEndpointRouteBuilder MapAdminIndex(this IEndpointRouteBuilder app)
     {
         var admin = app.MapGroup("/api/admin").RequireAuthorization(AuthPolicies.FirmAdmin);
@@ -42,9 +56,16 @@ public static class AdminIndexEndpoints
         admin.MapPost("/index/run", async (IPrincipalAccessor principals, IndexingPipeline pipeline, AdminJobRunner jobs, CancellationToken requestCt) =>
         {
             var principal = principals.Current;
-            var job = await jobs.StartAsync(principal.FirmId.Value, "index", async ct =>
+            var job = await jobs.StartAsync(principal.FirmId.Value, "index", async (progress, ct) =>
             {
-                var summary = await pipeline.RunAsync(new IndexRequest { Tenants = Scope(principal) }, ct);
+                var summary = await pipeline.RunAsync(new IndexRequest
+                {
+                    Tenants = Scope(principal),
+                    // How far it got, for a job that is stopped part-way.
+                    Progress = new Reported<IndexProgress>(p => progress.Report(p.Total is { } total
+                        ? $"indexed {p.Done} of {total} documents"
+                        : p.Stage)),
+                }, ct);
                 return $"indexed {summary.DocumentsIndexed}, unchanged {summary.DocumentsUnchanged}, chunks written {summary.ChunksWritten}, " +
                        $"deleted {summary.ChunksDeleted}, rejected {summary.Rejected.Count}";
             }, requestCt);
@@ -61,9 +82,13 @@ public static class AdminIndexEndpoints
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["targetModel"] = ["Unknown target; use a configured dense vector name or model."] });
             }
-            var job = await jobs.StartAsync(principal.FirmId.Value, "migrate", async ct =>
+            var job = await jobs.StartAsync(principal.FirmId.Value, "migrate", async (progress, ct) =>
             {
-                var summary = await migration.RunAsync(Scope(principal), target, 64, ct);
+                var summary = await migration.RunAsync(Scope(principal), target, 64, ct, batch =>
+                {
+                    progress.Report($"migrated {batch} batch(es)");
+                    return Task.CompletedTask;
+                });
                 return $"migrated {summary.Migrated} chunk(s) to {summary.TargetModelVersion}; {summary.AlreadyCurrent} already current";
             }, requestCt);
             return Results.Accepted($"/api/admin/jobs/{job.JobId}", job);
@@ -71,6 +96,11 @@ public static class AdminIndexEndpoints
 
         admin.MapGet("/jobs/{jobId}", async (string jobId, IPrincipalAccessor principals, AdminJobRunner jobs, CancellationToken ct) =>
             await jobs.GetAsync(principals.Current.FirmId.Value, jobId, ct) is { } job ? Results.Ok(job) : Results.NotFound());
+
+        // Stops a running job of the admin's firm (stop-anything), whichever replica runs it: 202 with the job while it
+        // stops, 409 when it had already ended.
+        admin.MapPost("/jobs/{jobId}/cancel", async (string jobId, IPrincipalAccessor principals, AdminJobRunner jobs, CancellationToken ct) =>
+            Canceled(await jobs.CancelAsync(principals.Current.FirmId.Value, jobId, ct)));
 
         return app;
     }

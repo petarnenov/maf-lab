@@ -53,6 +53,29 @@ export function streamResponse(chunks: string[], status = 200): Response {
   return new Response(body, { status, headers: { 'Content-Type': 'text/event-stream' } });
 }
 
+/** A Response whose body stays open: the test pushes chunks into it as the run goes, and closes it when it likes. */
+export function controlledStreamResponse(status = 200) {
+  const encoder = new TextEncoder();
+  let controller!: ReadableStreamDefaultController<Uint8Array>;
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      start(next) {
+        controller = next;
+      },
+    }),
+    { status, headers: { 'Content-Type': 'text/event-stream' } },
+  );
+  return {
+    response,
+    push(...chunks: string[]) {
+      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+    },
+    close() {
+      controller.close();
+    },
+  };
+}
+
 export const sse = (event: EventType, data: Record<string, unknown>) =>
   `event: ${event}\ndata: ${JSON.stringify({ type: event, ...data })}\n\n`;
 

@@ -20,7 +20,7 @@ export function CandidatePanel({ run, canDecide }: { run: RunSummary; canDecide:
   const [confirming, setConfirming] = useState<Decision | null>(null);
   const detail = useQuery({
     queryKey: [...coverageKeys.runs(run.path), run.id],
-    queryFn: () => api<RunDetail>(`/api/coverage/runs/${encodeURIComponent(run.id)}`),
+    queryFn: ({ signal }) => api<RunDetail>(`/api/coverage/runs/${encodeURIComponent(run.id)}`, { signal }),
   });
   const decide = useMutation({
     mutationFn: (decision: Decision) =>

@@ -8,6 +8,14 @@ Non-negotiables while editing:
 - TOP PRIORITY: every CLI tool shows a progress bar for the work it does, and
   every UI-started process that can take longer than 3 seconds shows progress
   in the page's theme and design (spec: `progress-feedback`).
+- TOP PRIORITY: everything can be stopped — Esc on the page that started it,
+  Ctrl+C (and SIGTERM) in a terminal (exit 130, at a safe point, cancelling any
+  server work it started). A stop travels only by the protocols' own means
+  (CopilotKit stop, an aborted request, MCP's transport, A2A `tasks/cancel`);
+  work that outlives its request is stopped through the store that owns its
+  state, atomically, and its worker watches that store — any replica takes the
+  stop, no sticky routing. A stop is shown only once the work's own state says
+  so (spec: `stop-anything`).
 - Tenant (firm_id) comes from the principal only. Never add a tenant
   parameter to a tool, an endpoint, or a query builder.
 - One method builds Qdrant queries and applies the tenant filter. Do not

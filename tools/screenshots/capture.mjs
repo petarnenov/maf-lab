@@ -79,6 +79,19 @@ async function capture(page, shot) {
   }
 }
 
+// Ctrl+C and SIGTERM (stop-anything): close the browser, keep what was written, and say so. Node's default exit on a
+// signal would skip every `finally` below and leave the browser running.
+let browser;
+let stopping = false;
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.once(signal, async () => {
+    stopping = true;
+    console.error('Cancelled. The screenshots already written are kept; run `make screenshots` again for the rest.');
+    await browser?.close().catch(() => {});
+    process.exit(130);
+  });
+}
+
 async function main() {
   const wanted = (process.env.SHOTS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
   const unknown = wanted.filter((w) => !SHOTS.some((s) => s.name === w));
@@ -87,7 +100,8 @@ async function main() {
 
   await mkdir(OUT, { recursive: true });
   const session = await devSession();
-  const browser = await chromium.launch();
+  // This script closes the browser on a signal itself (above), so Playwright's own handlers stay out of the way.
+  browser = await chromium.launch({ handleSIGINT: false, handleSIGTERM: false });
   const failed = [];
   try {
     for (const shot of shots) {
@@ -107,6 +121,8 @@ async function main() {
         await page.waitForLoadState('networkidle');
         await capture(page, shot);
       } catch (err) {
+        // Stopped: the page went with the browser, which is not this shot failing.
+        if (stopping) return;
         failed.push(shot.name);
         console.error(`  ${shot.name} failed: ${err.message.split('\n')[0]}`);
       } finally {
@@ -123,6 +139,8 @@ async function main() {
 }
 
 main().catch((err) => {
+  // A run being stopped fails its page calls; the signal handler says so and exits.
+  if (stopping) return;
   console.error(err.message);
   process.exit(1);
 });

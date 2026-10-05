@@ -259,7 +259,7 @@ export interface ModelVersionCount {
   chunks: number;
 }
 
-export type AdminJobState = 'queued' | 'running' | 'succeeded' | 'failed';
+export type AdminJobState = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
 
 export interface AdminJob {
   jobId: string;

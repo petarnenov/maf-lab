@@ -23,6 +23,10 @@ public sealed class SqliteTaskStore(
 {
     private static readonly JsonSerializerOptions Json = A2AJsonUtilities.DefaultOptions;
 
+    /// <summary>The states a task does not leave, as this store writes them.</summary>
+    private static readonly string[] Terminal =
+        [.. new[] { TaskState.Completed, TaskState.Canceled, TaskState.Failed, TaskState.Rejected }.Select(s => s.ToString())];
+
     public async Task<AgentTask?> GetTaskAsync(string taskId, CancellationToken cancellationToken = default)
     {
         await using var ctx = await db.CreateDbContextAsync(cancellationToken);
@@ -55,14 +59,24 @@ public sealed class SqliteTaskStore(
             }
             else
             {
-                row.State = state;
-                row.Json = JsonSerializer.Serialize(task, Json);
-                row.UpdatedAt = time.GetUtcNow().UtcDateTime;
+                // One guarded statement (stop-anything): a task that has ended keeps its end, whichever replica — or
+                // whichever late step of its own run — writes after it. The same end saved again (more history) is kept.
+                var json = JsonSerializer.Serialize(task, Json);
+                var now = time.GetUtcNow().UtcDateTime;
+                var saved = await ctx.A2ATasks
+                    .Where(t => t.Id == taskId && (!Terminal.Contains(t.State) || t.State == state))
+                    .ExecuteUpdateAsync(u => u
+                        .SetProperty(t => t.State, state)
+                        .SetProperty(t => t.Json, json)
+                        .SetProperty(t => t.UpdatedAt, now), cancellationToken);
+                if (saved == 0 || !changed)
+                {
+                    return;
+                }
             }
-            await ctx.SaveChangesAsync(cancellationToken);
-            if (!changed)
+            if (row is null)
             {
-                return;
+                await ctx.SaveChangesAsync(cancellationToken);
             }
         }
         // Outside the write: a slow or failing webhook must never hold the task's own transaction.

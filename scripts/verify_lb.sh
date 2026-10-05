@@ -9,7 +9,7 @@ COMPOSE="docker compose -f $(dirname "$0")/../compose/docker-compose.yml"
 export BASE COMPOSE
 
 python3 - <<'PY'
-import json, os, subprocess, sys, time, urllib.request, urllib.error, socket, collections, uuid
+import json, os, signal, subprocess, sys, time, urllib.request, urllib.error, socket, collections, uuid
 
 BASE = os.environ["BASE"]
 COMPOSE = os.environ["COMPOSE"]
@@ -34,6 +34,22 @@ def req(path, method="GET", body=None, token=None, headers=None, timeout=30):
             return resp.status, dict(resp.headers), resp.read().decode()
     except urllib.error.HTTPError as e:
         return e.code, dict(e.headers), e.read().decode()
+
+# Ctrl+C and SIGTERM (stop-anything): any job this started is cancelled, and a replica it stopped is started again by
+# the `finally` below (sys.exit unwinds through it).
+started_jobs = []
+
+def stop(signum, frame):
+    for job_id, who in started_jobs:
+        try:
+            req(f"/api/admin/jobs/{job_id}/cancel", "POST", token=who)
+        except Exception:
+            pass
+    print("\n✗ Cancelled. Anything verification started was stopped; run `make verify` again.", flush=True)
+    sys.exit(130)
+
+signal.signal(signal.SIGINT, stop)
+signal.signal(signal.SIGTERM, stop)
 
 def token(user, firm, role):
     _, _, body = req("/dev/token", "POST", {"userId": user, "firmId": firm, "role": role})
@@ -140,6 +156,7 @@ finally:
 alice = token("alice", "firm-a", "FIRM_ADMIN")
 status, _, body = req("/api/admin/index/run", "POST", token=alice)
 job = json.loads(body)
+started_jobs.append((job["jobId"], alice))
 status2, _, body2 = req("/api/admin/index/run", "POST", token=alice)
 second = json.loads(body2)
 # A different id is only correct if the first job had already finished (dedup applies to *running* jobs).

@@ -1,9 +1,16 @@
 import { EventType } from '@ag-ui/core';
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { Route, Routes } from 'react-router';
-import { jsonResponse, renderWithProviders, run, sse, streamResponse } from '../test/render';
+import {
+  controlledStreamResponse,
+  jsonResponse,
+  renderWithProviders,
+  run,
+  sse,
+  streamResponse,
+} from '../test/render';
 import { agentFetch } from '../test/agentFetch';
 import { ChatPage } from './ChatPage';
 
@@ -65,28 +72,6 @@ async function propose(answer: string) {
   await userEvent.click(screen.getByRole('button', { name: 'Send' }));
   await screen.findByTestId('confirmation-card');
   return bodies;
-}
-
-function controlledStreamResponse(status = 200) {
-  const encoder = new TextEncoder();
-  let controller!: ReadableStreamDefaultController<Uint8Array>;
-  const response = new Response(
-    new ReadableStream<Uint8Array>({
-      start(next) {
-        controller = next;
-      },
-    }),
-    { status, headers: { 'Content-Type': 'text/event-stream' } },
-  );
-  return {
-    response,
-    push(...chunks: string[]) {
-      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
-    },
-    close() {
-      controller.close();
-    },
-  };
 }
 
 describe('ChatPage reopened with a write waiting', () => {
@@ -210,6 +195,40 @@ describe('ChatPage with a write waiting', () => {
     const card = await screen.findByTestId('confirmation-card');
     expect(card).toHaveAttribute('data-state', 'gone');
     expect(within(card).getByText(/no longer waiting/)).toBeInTheDocument();
+  });
+
+  it('stopping the answer puts the proposal back to waiting, and answering again sends the same key', async () => {
+    const resumes: ReturnType<typeof controlledStreamResponse>[] = [];
+    const bodies: string[] = [];
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.startsWith('/api/conversations')) return jsonResponse(emptyHistory);
+      if (url.startsWith('/api/turns')) return jsonResponse({ events: [] });
+      bodies.push(init!.body as string);
+      if (bodies.length === 1)
+        return streamResponse([run.started(), ...run.text('I have put it to you.'), paused()]);
+      const resume = controlledStreamResponse();
+      resumes.push(resume);
+      return resume.response;
+    });
+    vi.stubGlobal('fetch', agentFetch(fetchMock));
+    renderWithProviders(<ChatPage />);
+    await userEvent.type(screen.getByLabelText('Message'), 'credit 200 off A-1042');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByTestId('confirmation-card');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(resumes).toHaveLength(1));
+    await userEvent.keyboard('{Escape}');
+
+    expect(await screen.findByTestId('turn-stopped')).toBeInTheDocument();
+    const card = screen.getByTestId('confirmation-card');
+    expect(card).toHaveAttribute('data-state', 'waiting');
+
+    await userEvent.click(within(card).getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(resumes).toHaveLength(2));
+    const [first, second] = bodies.slice(1).map((b) => JSON.parse(b).resume[0].payload);
+    expect(second).toEqual(first);
+    expect(second).toEqual({ approve: true, idempotencyKey: 'adj_1:approve' });
   });
 
   it('monitor panel stays visible and receives streamed tool events while the answer runs', async () => {

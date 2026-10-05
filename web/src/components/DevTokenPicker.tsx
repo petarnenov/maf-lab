@@ -13,7 +13,7 @@ export function DevTokenPicker() {
   const [busy, setBusy] = useState(false);
   const users = useQuery({
     queryKey: ['dev', 'users'],
-    queryFn: () => apiRequest<DevUser[]>(null, '/dev/users'),
+    queryFn: ({ signal }) => apiRequest<DevUser[]>(null, '/dev/users', { signal }),
     staleTime: Infinity,
   });
 

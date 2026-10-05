@@ -83,6 +83,9 @@ public sealed partial class CoverageRunnerTests
     {
         private WebApplication? _app;
 
+        /// <summary>Where the runner checks out its workspaces: empty once no job is running.</summary>
+        public string WorkRoot { get; } = Directory.CreateTempSubdirectory("maf-runner-").FullName;
+
         public async Task<HttpClient> ClientAsync(string? partner = "maf-lab-test-agent")
         {
             if (_app is null)
@@ -93,7 +96,7 @@ public sealed partial class CoverageRunnerTests
                     builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
                     {
                         ["Runner:RepoRoot"] = repo.Root,
-                        ["Runner:WorkRoot"] = Directory.CreateTempSubdirectory("maf-runner-").FullName,
+                        ["Runner:WorkRoot"] = WorkRoot,
                         ["Runner:MaxConcurrent"] = "1",
                         ["Runner:DotnetTestProject"] = "tests/Lab.Tests",
                     });
@@ -228,6 +231,115 @@ public sealed partial class CoverageRunnerTests
 
         Assert.True(outcome.TimedOut);
         Assert.True(clock.Elapsed < TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public async Task A_cancelled_process_is_stopped_with_its_children()
+    {
+        // A marker no other process carries, so the check below finds only what this test started.
+        var marker = $"{31 + Random.Shared.Next(1000, 9000)}";
+        using var stop = new CancellationTokenSource();
+        var running = ChildProcess.RunAsync("sh", ["-c", $"sleep {marker} & sleep {marker}; wait"], Path.GetTempPath(),
+            TimeSpan.FromMinutes(5), stop.Token);
+        await Task.Delay(300, Ct);
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        await stop.CancelAsync();
+        await running.ContinueWith(_ => { }, Ct);
+
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(10));
+        var left = await ChildProcess.RunAsync("pgrep", ["-f", $"sleep {marker}"], Path.GetTempPath(), TimeSpan.FromSeconds(10), Ct);
+        Assert.Equal("", left.Output.Trim());
+    }
+
+    [Fact]
+    public async Task A_job_cancelled_mid_build_stops_leaves_no_workspace_and_is_not_reused()
+    {
+        var repo = await RepoAsync();
+        var toolchain = new FakeToolchain { Gate = new TaskCompletionSource() };
+        await using var runner = new Runner(repo, toolchain);
+        var client = await runner.ClientAsync();
+        var commit = await repo.HeadAsync(Ct);
+        var job = await (await client.PostAsJsonAsync("/runs", new RunnerRequest(commit, "dotnet"), Json, Ct)).Content.ReadFromJsonAsync<RunnerJob>(Json, Ct);
+        while (toolchain.SeenTestFiles.IsEmpty)
+        {
+            await Task.Delay(10, Ct);
+        }
+
+        var cancel = await client.PostAsync($"/runs/{job!.Id}/cancel", null, Ct);
+
+        Assert.Equal(HttpStatusCode.Accepted, cancel.StatusCode);
+        Assert.Equal(RunnerJobState.Canceled, (await cancel.Content.ReadFromJsonAsync<RunnerJob>(Json, Ct))!.State);
+        await WaitUntilAsync(() => Directory.GetDirectories(runner.WorkRoot).Length == 0);
+        Assert.Equal(RunnerJobState.Canceled, (await client.GetFromJsonAsync<RunnerJob>($"/runs/{job.Id}", Json, Ct))!.State);
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsync($"/runs/{job.Id}/cancel", null, Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsync("/runs/job_nope/cancel", null, Ct)).StatusCode);
+
+        // The same request again runs again: a cancelled run left nothing to reuse.
+        toolchain.Gate = null;
+        var again = await runner.RunAsync(new RunnerRequest(commit, "dotnet"));
+        Assert.Null(again.ReusedFrom);
+        Assert.Equal(2, toolchain.Plans.Count);
+    }
+
+    [Fact]
+    public async Task A_shared_job_goes_on_for_the_caller_still_waiting()
+    {
+        var repo = await RepoAsync();
+        var toolchain = new FakeToolchain { Gate = new TaskCompletionSource() };
+        await using var runner = new Runner(repo, toolchain);
+        var client = await runner.ClientAsync();
+        var commit = await repo.HeadAsync(Ct);
+        var first = await (await client.PostAsJsonAsync("/runs", new RunnerRequest(commit, "dotnet"), Json, Ct)).Content.ReadFromJsonAsync<RunnerJob>(Json, Ct);
+        while (toolchain.SeenTestFiles.IsEmpty)
+        {
+            await Task.Delay(10, Ct);
+        }
+        var second = await (await client.PostAsJsonAsync("/runs", new RunnerRequest(commit, "dotnet"), Json, Ct)).Content.ReadFromJsonAsync<RunnerJob>(Json, Ct);
+
+        await client.PostAsync($"/runs/{first!.Id}/cancel", null, Ct);
+        toolchain.Gate.SetResult();
+
+        await WaitUntilAsync(async () => (await client.GetFromJsonAsync<RunnerJob>($"/runs/{second!.Id}", Json, Ct))!.State == RunnerJobState.Done);
+        Assert.NotNull((await client.GetFromJsonAsync<RunnerJob>($"/runs/{second!.Id}", Json, Ct))!.Result);
+        Assert.Equal(RunnerJobState.Canceled, (await client.GetFromJsonAsync<RunnerJob>($"/runs/{first.Id}", Json, Ct))!.State);
+        Assert.Single(toolchain.Plans);
+    }
+
+    [Fact]
+    public async Task A_caller_that_stops_cancels_its_job_on_the_runner()
+    {
+        var repo = await RepoAsync();
+        var toolchain = new FakeToolchain { Gate = new TaskCompletionSource() };
+        await using var runner = new Runner(repo, toolchain);
+        var http = await runner.ClientAsync();
+        var token = http.DefaultRequestHeaders.Authorization!.Parameter!;
+        var seen = new List<RunnerJob>();
+        using var stop = new CancellationTokenSource();
+        var commit = await repo.HeadAsync(Ct);
+
+        var waiting = new CoverageRunnerClient(http, _ => Task.FromResult(token), TimeSpan.FromMilliseconds(20))
+            .RunAsync(new RunnerRequest(commit, "dotnet"), stop.Token, seen.Add);
+        while (toolchain.SeenTestFiles.IsEmpty)
+        {
+            await Task.Delay(10, Ct);
+        }
+        await stop.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting);
+        var id = seen[0].Id;
+        Assert.Equal(RunnerJobState.Canceled, (await http.GetFromJsonAsync<RunnerJob>($"/runs/{id}", Json, Ct))!.State);
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition) => await WaitUntilAsync(() => Task.FromResult(condition()));
+
+    private static async Task WaitUntilAsync(Func<Task<bool>> condition)
+    {
+        for (var i = 0; i < 200 && !await condition(); i++)
+        {
+            await Task.Delay(25, Ct);
+        }
+        Assert.True(await condition());
     }
 
     [Fact]

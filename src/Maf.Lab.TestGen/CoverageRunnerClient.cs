@@ -20,19 +20,54 @@ public sealed class CoverageRunnerClient(HttpClient http, Func<CancellationToken
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private readonly TimeSpan _poll = pollEvery ?? TimeSpan.FromSeconds(2);
 
-    /// <summary>Runs a job to completion. <paramref name="onProgress"/> sees every poll's state and queue position.</summary>
+    /// <summary>How long the cancel of a job may take: the work that asked for it has already stopped.</summary>
+    public static readonly TimeSpan CancelWithin = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Runs a job to completion. <paramref name="onProgress"/> sees every poll's state and queue position. When
+    /// <paramref name="ct"/> fires, the job is cancelled on the runner too (stop-anything): the caller stopping does
+    /// not leave a build running for nobody.
+    /// </summary>
     public async Task<RunnerResult> RunAsync(RunnerRequest request, CancellationToken ct, Action<RunnerJob>? onProgress = null)
     {
         var job = await SendAsync(HttpMethod.Post, "runs", request, ct);
-        while (true)
+        try
         {
-            onProgress?.Invoke(job);
-            if (job is { State: RunnerJobState.Done, Result: { } result })
+            while (true)
             {
-                return result;
+                onProgress?.Invoke(job);
+                if (job is { State: RunnerJobState.Done, Result: { } result })
+                {
+                    return result;
+                }
+                if (job.State == RunnerJobState.Canceled)
+                {
+                    throw new OperationCanceledException("The runner job was cancelled.");
+                }
+                await Task.Delay(_poll, ct);
+                job = await SendAsync(HttpMethod.Get, $"runs/{Uri.EscapeDataString(job.Id)}", null, ct);
             }
-            await Task.Delay(_poll, ct);
-            job = await SendAsync(HttpMethod.Get, $"runs/{Uri.EscapeDataString(job.Id)}", null, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            await CancelAsync(job.Id);
+            throw;
+        }
+    }
+
+    /// <summary>Cancels a job on the runner, within <see cref="CancelWithin"/>; a cancel that fails goes no further.</summary>
+    private async Task CancelAsync(string jobId)
+    {
+        using var within = new CancellationTokenSource(CancelWithin);
+        try
+        {
+            using var message = new HttpRequestMessage(HttpMethod.Post, $"runs/{Uri.EscapeDataString(jobId)}/cancel");
+            message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await token(within.Token));
+            using var response = await http.SendAsync(message, within.Token);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
+        {
+            // The runner is gone or slow: its own time limit still ends the job.
         }
     }
 

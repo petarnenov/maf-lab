@@ -42,7 +42,10 @@ public static class Program
         using var host = builder.Build();
         var services = host.Services;
         using var cts = new CancellationTokenSource();
+        // Ctrl+C and SIGTERM stop the run at its next safe point (stop-anything): the item in hand is finished first.
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
+        using var sigterm = System.Runtime.InteropServices.PosixSignalRegistration.Create(
+            System.Runtime.InteropServices.PosixSignal.SIGTERM, signal => { signal.Cancel = true; cts.Cancel(); });
 
         var tenants = flags.TryGetValue("tenants", out var t)
             ? t.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(ParseTenant).ToHashSet()
@@ -164,7 +167,7 @@ public static class Program
         }
         catch (OperationCanceledException)
         {
-            Console.Error.WriteLine("Cancelled.");
+            Console.Error.WriteLine($"Cancelled. {AfterCancel(command)}");
             return 130;
         }
         catch (Exception ex) when (UnreachableService.Describe(ex,
@@ -181,6 +184,17 @@ public static class Program
     /// Runs the pipeline under a progress bar on stderr (stdout keeps the JSON summary), ending in one line that says
     /// whether it succeeded, failed or was cancelled. A failure names the exception type only, never its message.
     /// </summary>
+    /// <summary>What a stopped command left, and what to run to finish it.</summary>
+    internal static string AfterCancel(string command) => command switch
+    {
+        "index" => "The documents indexed so far are kept; run `make index` again to finish.",
+        "rebuild" => "The collection is partial; run `make rebuild-index FORCE=1` again.",
+        "graph" => "Stale nodes were not removed; run `make graph` again.",
+        "neo4j-chunks" => "Stale chunks were not removed; run `make neo4j-chunks` again.",
+        "migrate" => "The batches migrated so far are kept; run the migration again to continue where it stopped.",
+        _ => "Nothing was left half-written; run it again.",
+    };
+
     private static async Task<IndexRunSummary> IndexWithProgressAsync(IServiceProvider services, IndexRequest request, CancellationToken ct)
     {
         var collection = services.GetRequiredService<IOptions<Retrieval.Configuration.QdrantOptions>>().Value.Collection;

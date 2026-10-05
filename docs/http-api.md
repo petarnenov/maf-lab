@@ -249,6 +249,7 @@ summary a person was asked to approve, so the UI offers it only on a turn that a
 | POST | `/api/admin/index/run` | — | `202 AdminJob` |
 | POST | `/api/admin/index/migrate` | `{ targetModel? }` | `202 AdminJob` |
 | GET | `/api/admin/jobs/{jobId}` | — | `AdminJob` |
+| POST | `/api/admin/jobs/{jobId}/cancel` | — | `202` with the `AdminJob`, now `canceled`, while it stops; `409` when it had already ended; `404` for a job not of the admin's firm. Any replica takes it: the job's row is the stop, and the replica running the job watches it (stop-anything). Once the work has stopped, its `summary` says how far it got |
 | GET | `/api/admin/intent-stats?window=1h\|24h\|7d` | — | `IntentStatsReport` for the caller's firm (default `24h`; another window is `400`) |
 | GET | `/api/admin/jev-stats?window=1h\|24h\|7d` | — | `JevStatsReport` for the caller's firm, same windows |
 
@@ -392,7 +393,8 @@ lifecycle is `submitted → working → verifying → candidate → accepted | d
 | POST | `/api/coverage/runs/{id}/accept` | — | `200 { run, gitHubProblems }` merged into main; `409 merge_conflict \| main_dirty \| branch_missing \| not_candidate`. Admin |
 | POST | `/api/coverage/runs/{id}/discard` | — | `200 { run, gitHubProblems }`, branch deleted, issues closed. Admin |
 | POST | `/api/coverage/refresh` | — | `202` admin job (one at a time: a second answers with the first). Admin |
-| GET | `/api/coverage/refresh` · `/api/coverage/refresh/{jobId}` | — | the current or named refresh job, `204` when there is none. A failed job's `summary` names why: interrupted (the service stopped), the coverage runner could not be reached, neither toolchain produced a report, or the main branch has no commit |
+| POST | `/api/coverage/refresh/{jobId}/cancel` | — | `202` with the refresh job, now `canceled`; the coverage runner job it waits on is cancelled with it; `409` when it had already ended. Admin |
+| GET | `/api/coverage/refresh` · `/api/coverage/refresh/{jobId}` | — | the current or named refresh job, `204` when there is none. A `canceled` job was stopped by an administrator; a failed job's `summary` names why: interrupted (the service stopped), the coverage runner could not be reached, neither toolchain produced a report, or the main branch has no commit |
 | POST | `/api/coverage/reports` | multipart `commit`, `toolchain`, `report`, `root?`, `dirty?` | `200 { snapshotId, files, dropped }`; `400` for a report that is not Cobertura. Admin |
 
 ## Evals (any authenticated role)
@@ -474,4 +476,7 @@ audiences differ, so a token for `/a2a` is refused at `/compliance/a2a` and the 
 found by fetching its card from `Compliance:BaseUrl` — the card says where it answers, and nothing else is
 hard-coded. A consultation ends as a verdict, a question, a timeout (`Compliance:Deadline`), an unreachable agent
 or a failure, and each one is written to the audit record as `a2a.consultation` — agent, adjustment id, task id,
-outcome and duration, never the content.
+outcome and duration, never the content. When the chat run that asked is stopped while a review is in flight, the review is
+cancelled with A2A `tasks/cancel` (not on the deadline, which keeps the task to collect later), recorded the same way
+as `a2a.consult.cancel`; the cancel stops the review whichever reviewer replica runs it, because the replicas' shared
+task store is where it is recorded.

@@ -430,6 +430,26 @@ public sealed class RunVerificationTests
     }
 
     [Fact]
+    public async Task A_decision_stopped_before_its_step_changes_nothing()
+    {
+        using var h = await HarnessAsync();
+        var run = await CandidateAsync(h);
+        var main = await h.Repo.HeadAsync(Ct, "main");
+        using var stopped = new CancellationTokenSource();
+        await stopped.CancelAsync();
+        var decisions = h.Get<CandidateDecisions>();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => decisions.AcceptAsync(run.Id, stopped.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => decisions.DiscardAsync(run.Id, stopped.Token));
+
+        // Stopped before the merge or the branch removal began: main, the branch and the run are as they were.
+        Assert.Equal(main, await h.Repo.HeadAsync(Ct, "main"));
+        Assert.Equal(TestGenRunState.Candidate, (await h.Get<TestGenRuns>().GetAsync(run.Id, Ct))!.State);
+        var response = await Admin(h).PostAsync($"/api/coverage/runs/{run.Id}/accept", null, Ct);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Accept_refuses_a_dirty_checkout_of_main_and_writes_nothing()
     {
         using var h = await HarnessAsync();

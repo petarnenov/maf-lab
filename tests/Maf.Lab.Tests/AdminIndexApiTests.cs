@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Maf.Lab.Domain.Admin;
 using Maf.Lab.Domain.Tenancy;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Maf.Lab.Tests;
 
@@ -35,6 +36,25 @@ public sealed class AdminIndexApiTests
         var response = await api.ClientFor("bob", "firm-a", Role.ADVISOR).GetAsync("/api/admin/index/status", Ct);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_running_job_is_stopped_through_its_cancel_route()
+    {
+        using var api = AdminApi();
+        var admin = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var runner = api.Services.GetRequiredService<Maf.Lab.Api.Admin.AdminJobRunner>();
+        var job = await runner.StartAsync("firm-a", "index", async ct => { await Task.Delay(Timeout.Infinite, ct); return "never"; }, Ct);
+
+        var response = await admin.PostAsync($"/api/admin/jobs/{job.JobId}/cancel", null, Ct);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Equal(AdminJobStates.Canceled, (await response.Content.ReadFromJsonAsync<AdminJob>(Json, Ct))!.State);
+        // Once ended, a second cancel is a conflict; an unknown job is not found; a non-admin may not.
+        Assert.Equal(HttpStatusCode.Conflict, (await admin.PostAsync($"/api/admin/jobs/{job.JobId}/cancel", null, Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await admin.PostAsync("/api/admin/jobs/j_nope/cancel", null, Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await api.ClientFor("bob", "firm-a", Role.ADVISOR)
+            .PostAsync($"/api/admin/jobs/{job.JobId}/cancel", null, Ct)).StatusCode);
     }
 
     [Fact]

@@ -95,6 +95,107 @@ public class ReplicaStateTests
     }
 
     [Fact]
+    public async Task A_job_cancelled_through_the_other_replica_stops_and_says_how_far_it_got()
+    {
+        var db = await NewDatabaseAsync();
+        var a = Runner(db, "replica-a");
+        var b = Runner(db, "replica-b");
+        var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var job = await a.StartAsync("firm-a", "index", async (progress, ct) =>
+        {
+            progress.Report("indexed 3 of 10 documents");
+            try
+            {
+                await Task.Delay(Timeout.Infinite, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                stopped.TrySetResult();
+                throw;
+            }
+            return "never";
+        }, Ct);
+
+        var (outcome, canceling) = await b.CancelAsync("firm-a", job.JobId, Ct);
+
+        Assert.Equal(AdminJobCancel.Canceling, outcome);
+        Assert.Equal(AdminJobStates.Canceled, canceling!.State);
+        await stopped.Task.WaitAsync(TimeSpan.FromSeconds(5), Ct);
+        var ended = await WaitForSummaryAsync(b, "firm-a", job.JobId, "It had indexed 3 of 10 documents");
+        Assert.Equal(AdminJobStates.Canceled, ended.State);
+        // It no longer holds the one-running-job lock.
+        var next = await b.StartAsync("firm-a", "index", _ => Task.FromResult("again"), Ct);
+        Assert.NotEqual(job.JobId, next.JobId);
+    }
+
+    [Fact]
+    public async Task A_late_end_does_not_undo_a_cancel()
+    {
+        var db = await NewDatabaseAsync();
+        var a = Runner(db, "replica-a");
+        var release = new TaskCompletionSource();
+        // Work that does not look at its token: it finishes after the cancel, and its end must not count.
+        var job = await a.StartAsync("firm-a", "migrate", async _ => { await release.Task; return "migrated everything"; }, Ct);
+
+        await a.CancelAsync("firm-a", job.JobId, Ct);
+        release.SetResult();
+        await Task.Delay(300, Ct);
+
+        var after = await a.GetAsync("firm-a", job.JobId, Ct);
+        Assert.Equal((AdminJobStates.Canceled, AdminJobRunner.CanceledSummary), (after!.State, after.Summary));
+    }
+
+    [Fact]
+    public async Task Cancelling_an_ended_or_unknown_job_says_so()
+    {
+        var db = await NewDatabaseAsync();
+        var runner = Runner(db, "replica-a");
+        var done = await runner.StartAsync("firm-a", "index", _ => Task.FromResult("indexed 1"), Ct);
+        await WaitAsync(runner, "firm-a", done.JobId);
+
+        Assert.Equal(AdminJobCancel.AlreadyEnded, (await runner.CancelAsync("firm-a", done.JobId, Ct)).Outcome);
+        Assert.Equal(AdminJobStates.Succeeded, (await runner.GetAsync("firm-a", done.JobId, Ct))!.State);
+        Assert.Equal(AdminJobCancel.NotFound, (await runner.CancelAsync("firm-a", "j_nope", Ct)).Outcome);
+        // Another firm's job is not this admin's to see, let alone stop.
+        Assert.Equal(AdminJobCancel.NotFound, (await runner.CancelAsync("firm-b", done.JobId, Ct)).Outcome);
+    }
+
+    [Theory]
+    [InlineData(AdminJobStates.Canceled, true)]
+    [InlineData(AdminJobStates.Running, false)]
+    [InlineData(AdminJobStates.Succeeded, false)]
+    public async Task The_job_watch_fires_only_on_a_recorded_cancel(string state, bool fires)
+    {
+        var db = await NewDatabaseAsync();
+        await using (var ctx = await db.CreateDbContextAsync(Ct))
+        {
+            ctx.AdminJobs.Add(new AdminJobRow
+            {
+                Id = "j_w", FirmId = "firm-a", Kind = "index", State = state, OwnerInstance = "replica-a",
+                StartedAt = DateTime.UtcNow, HeartbeatAt = DateTime.UtcNow,
+            });
+            await ctx.SaveChangesAsync(Ct);
+        }
+
+        await using var watch = JobCancelWatch.Start(db, "j_w", TimeSpan.FromMilliseconds(20), TimeProvider.System);
+        await Task.Delay(300, Ct);
+
+        Assert.Equal(fires, watch.Canceled);
+    }
+
+    [Fact]
+    public async Task A_disposed_job_watch_stops_reading()
+    {
+        var db = await NewDatabaseAsync();
+        var watch = JobCancelWatch.Start(db, "j_none", TimeSpan.FromMilliseconds(20), TimeProvider.System);
+
+        // Disposing waits for the loop to end: nothing is left polling the database afterwards.
+        await watch.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2), Ct);
+
+        Assert.False(watch.Canceled);
+    }
+
+    [Fact]
     public async Task Running_job_keeps_its_heartbeat_fresh()
     {
         var db = await NewDatabaseAsync();
@@ -241,9 +342,27 @@ public class ReplicaStateTests
 
     private static AdminJobRunner Runner(IDbContextFactory<MafDbContext> db, string instance, TimeSpan? heartbeat = null, TimeSpan? staleAfter = null,
         ApplicationLifetime? lifetime = null) =>
-        new(db, Options.Create(new AdminJobOptions { HeartbeatInterval = heartbeat ?? TimeSpan.FromSeconds(10), StaleAfter = staleAfter ?? TimeSpan.FromSeconds(60) }),
+        new(db, Options.Create(new AdminJobOptions
+        {
+            HeartbeatInterval = heartbeat ?? TimeSpan.FromSeconds(10), StaleAfter = staleAfter ?? TimeSpan.FromSeconds(60),
+            CancelPollEvery = TimeSpan.FromMilliseconds(20),
+        }),
             NullLogger<AdminJobRunner>.Instance, TimeProvider.System, lifetime ?? new ApplicationLifetime(NullLogger<ApplicationLifetime>.Instance))
         { Instance = instance };
+
+    private static async Task<AdminJob> WaitForSummaryAsync(AdminJobRunner runner, string firm, string jobId, string part)
+    {
+        for (var i = 0; i < 100; i++)
+        {
+            var job = await runner.GetAsync(firm, jobId, Ct);
+            if (job!.Summary?.Contains(part, StringComparison.Ordinal) == true)
+            {
+                return job;
+            }
+            await Task.Delay(50, Ct);
+        }
+        throw new TimeoutException(jobId);
+    }
 
     private static async Task<AdminJob> WaitAsync(AdminJobRunner runner, string firm, string jobId)
     {

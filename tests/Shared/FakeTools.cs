@@ -11,6 +11,8 @@ public sealed class FakeToolSource : IToolSource
     /// <summary>Optional MCP result _meta for search_documents (e.g. retrieval diagnostics).</summary>
     public string? SearchMetaJson { get; set; }
     public Func<Task>? BeforeSearchExecutes { get; set; }
+    /// <summary>Runs inside search_documents with the call's own token: a test can hold the call until it is cancelled.</summary>
+    public Func<CancellationToken, Task>? WhileSearching { get; set; }
     public string SearchPayloadJson { get; set; } = """
         {"results":[
           {"snippet":"When a run fails with FS-REQUIRED, assign the missing fee schedule and re-run.","sourcePath":"procedures/missing-fee-schedule.txt","sectionPath":"Procedure: Missing fee schedule > Section 2: Fix > Step 1","score":0.9,"updatedAt":"2026-09-01T00:00:00Z","docId":"shared/procedures/missing-fee-schedule.txt"},
@@ -85,12 +87,17 @@ public sealed class FakeToolSource : IToolSource
 
     private ToolSet AllTools(ConfirmationSink? confirmations)
     {
-        var search = AIFunctionFactory.Create(async (string query, string[]? sourceTypes = null, int? maxResults = null) =>
+        var search = AIFunctionFactory.Create(async (string query, string[]? sourceTypes = null, int? maxResults = null,
+            CancellationToken cancellationToken = default) =>
         {
             Invocations.Add("search_documents");
             if (BeforeSearchExecutes is not null)
             {
                 await BeforeSearchExecutes();
+            }
+            if (WhileSearching is not null)
+            {
+                await WhileSearching(cancellationToken);
             }
             return Mcp(SearchPayloadJson, SearchMetaJson);
         }, "search_documents", "Searches documentation. Use when how/why/procedure. Do not use for run status.");

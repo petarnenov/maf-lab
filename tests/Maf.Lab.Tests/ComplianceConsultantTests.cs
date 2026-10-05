@@ -36,6 +36,20 @@ internal sealed class CountingHandler : DelegatingHandler
     }
 }
 
+/// <summary>A reviewer that cannot be reached for a cancel: every A2A cancel fails on the way out.</summary>
+internal sealed class RefuseCancel : DelegatingHandler
+{
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var body = request.Content is null ? "" : await request.Content.ReadAsStringAsync(cancellationToken);
+        if (body.Contains("\"CancelTask\"", StringComparison.Ordinal) || body.Contains("\"tasks/cancel\"", StringComparison.Ordinal))
+        {
+            throw new HttpRequestException("The compliance agent cannot be reached.");
+        }
+        return await base.SendAsync(request, cancellationToken);
+    }
+}
+
 /// <summary>
 /// Consulting the reviewer over a real socket: a verdict, a refusal, a question back, a deadline that passes, and
 /// an agent that is not there. Every one of them is a value the caller gets, and a record in the audit chain.
@@ -171,6 +185,94 @@ public class ComplianceConsultantTests
         // The review is still running over there, and that id reaches it.
         var answered = await Consultant(api).AnswerAsync(Adjustment, timedOut.TaskId, "the client agreed in writing", Ct);
         Assert.IsNotType<ConsultationResult.Unreachable>(answered);
+    }
+
+    /// <summary>The cancel row the consultant left, once it has left one.</summary>
+    private static async Task<Maf.Lab.Api.Storage.AuditRow> CancelRowAsync(ApiFactory api)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            await using var db = ChatApiTests.Db(api);
+            var row = await db.Audit.SingleOrDefaultAsync(a => a.ToolName == ComplianceConsultant.CancelOperation, Ct);
+            if (row is not null || attempt == 50)
+            {
+                return Assert.IsType<Maf.Lab.Api.Storage.AuditRow>(row);
+            }
+            await Task.Delay(100, Ct);
+        }
+    }
+
+    [Fact]
+    public async Task A_review_whose_run_is_stopped_is_cancelled_over_there()
+    {
+        var (agent, url) = await ReviewerAsync(reviewMs: 3_000);
+        await using var _ = agent;
+        using var api = ApiFor(url);
+        using var run = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        var review = Consultant(api).ReviewAsync(Adjustment, run.Token);
+
+        // The review is under way over there (its first update carries the task id), and then the run is stopped.
+        await Task.Delay(800, Ct);
+        await run.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => review);
+        var row = await CancelRowAsync(api);
+        Assert.Equal("cancelled", row.Outcome);
+        Assert.Equal(AuditKinds.A2AConsultation, row.Kind);
+        Assert.Contains("adjustmentId=ADJ-77", row.Arguments);
+        Assert.DoesNotContain("Overcharged", row.Arguments);
+        var taskId = row.Arguments.Split("taskId=")[1];
+        var task = await agent.Tasks.GetTaskAsync(taskId, Ct);
+        Assert.Equal(global::A2A.TaskState.Canceled, task!.Status!.State);
+
+        // And it stays cancelled: the review that was under way does not finish it after all.
+        await Task.Delay(3_500, Ct);
+        task = await agent.Tasks.GetTaskAsync(taskId, Ct);
+        Assert.Equal(global::A2A.TaskState.Canceled, task!.Status!.State);
+    }
+
+    [Fact]
+    public async Task A_passed_deadline_cancels_nothing()
+    {
+        var (agent, url) = await ReviewerAsync(reviewMs: 5_000);
+        await using var _ = agent;
+        using var api = ApiFor(url, s => s["Compliance:Deadline"] = "00:00:00.300");
+
+        var timedOut = Assert.IsType<ConsultationResult.TimedOut>(await Consultant(api).ReviewAsync(Adjustment, Ct));
+
+        await using var db = ChatApiTests.Db(api);
+        Assert.False(await db.Audit.AnyAsync(a => a.ToolName == ComplianceConsultant.CancelOperation, Ct));
+        var task = await agent.Tasks.GetTaskAsync(timedOut.TaskId, Ct);
+        Assert.NotEqual(global::A2A.TaskState.Canceled, task!.Status!.State);
+    }
+
+    [Fact]
+    public async Task A_cancel_that_fails_is_recorded_and_the_run_still_ends()
+    {
+        var (agent, url) = await ReviewerAsync(reviewMs: 10_000);
+        await using var _ = agent;
+        using var api = new ApiFactory(ApiFactory.ProceduralModel())
+        {
+            ExtraSettings = new Dictionary<string, string?>
+            {
+                ["Compliance:BaseUrl"] = url,
+                ["Compliance:ClientId"] = "maf-lab-assistant",
+                ["Compliance:ClientSecret"] = "assistant-secret",
+                ["Compliance:Deadline"] = "00:00:10",
+            },
+            ConfigureTestServices = services =>
+                services.AddHttpClient("a2a-consult").AddHttpMessageHandler(() => new RefuseCancel()),
+        };
+        using var run = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        var review = Consultant(api).ReviewAsync(Adjustment, run.Token);
+        await Task.Delay(800, Ct);
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        await run.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => review);
+
+        Assert.True(watch.Elapsed < ComplianceConsultant.CancelWithin + TimeSpan.FromSeconds(1));
+        Assert.Equal("cancel_failed", (await CancelRowAsync(api)).Outcome);
     }
 
     [Fact]

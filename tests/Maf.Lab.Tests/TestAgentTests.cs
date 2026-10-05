@@ -335,6 +335,50 @@ public sealed class TestAgentTests
     }
 
     [Fact]
+    public async Task A_cancel_through_the_other_replica_stops_the_run_and_lets_go_of_it()
+    {
+        var repo = await RepoAsync();
+        var third = new TaskCompletionSource();
+        var model = new AttemptModel(n => Writes(n) with
+        {
+            Before = async ct =>
+            {
+                if (n == 3)
+                {
+                    third.TrySetResult();
+                    await Task.Delay(Timeout.Infinite, ct);
+                }
+            },
+        });
+        var runner = Runner(_ => 50);
+        // Two replicas of one agent: the same task and checkpoint stores, as Redis is shared in the stack.
+        await using var working = new TestAgentFactory(repo, model, runner);
+        await using var other = new TestAgentFactory(repo, model, runner, tasks: working.Tasks, checkpoints: working.Checkpoints);
+        var onWorking = await working.ClientAsync();
+        var onOther = await other.ClientAsync();
+
+        var sending = TestAgentFactory.RpcAsync(onWorking, "message/send", TestAgentFactory.Send(TestAgentFactory.Request(await repo.HeadAsync(Ct))), Ct);
+        await third.Task.WaitAsync(TimeSpan.FromSeconds(30), Ct);
+        var runnerCalls = runner.Requests.Count;
+        var taskId = working.Tasks.Seen.Single();
+        await TestAgentFactory.RpcAsync(onOther, "tasks/cancel", new { id = taskId }, Ct);
+        await sending.ContinueWith(_ => { }, Ct).WaitAsync(TimeSpan.FromSeconds(10), Ct);
+
+        var task = await TestAgentFactory.RpcAsync(onWorking, "tasks/get", new { id = taskId }, Ct);
+        Assert.Equal("canceled", task.GetProperty("status").GetProperty("state").GetString());
+        Assert.Equal(runnerCalls, runner.Requests.Count);
+        Assert.Equal(3, model.Prompts.Count);
+        // It let go: no checkpoint to resume from, and no one holds its lease.
+        Assert.Null(await working.Checkpoints.GetAsync(taskId, Ct));
+        Assert.True(await working.Checkpoints.TakeLeaseAsync(taskId, "probe", TimeSpan.FromSeconds(1), Ct));
+        // And it stays canceled: nothing resumes it afterwards.
+        await Task.Delay(500, Ct);
+        task = await TestAgentFactory.RpcAsync(onOther, "tasks/get", new { id = taskId }, Ct);
+        Assert.Equal("canceled", task.GetProperty("status").GetProperty("state").GetString());
+        Assert.Equal(3, model.Prompts.Count);
+    }
+
+    [Fact]
     public async Task A_model_the_provider_refuses_fails_the_run()
     {
         var repo = await RepoAsync();

@@ -1,9 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import type { TopologyNode, TopologyReport } from '../api/types';
 import { apiText } from '../api/client';
 import { useApi, useAuth } from '../auth/useAuth';
 import page from '../components/Page.module.css';
+import { StopHint } from '../components/StopHint';
+import { useEscToStop } from '../components/useEscToStop';
 import { formatDate } from '../evals/format';
 import { TopologyDiagram } from './TopologyDiagram';
 import { HEALTH_MARK } from './health';
@@ -20,8 +22,8 @@ export function TopologyPage() {
   // The drawing changes only when someone edits it, so it is fetched once and kept.
   const diagram = useQuery({
     queryKey: ['topology', 'diagram'],
-    queryFn: async () =>
-      parseDiagram(await apiText(session?.token ?? null, '/api/topology/diagram')),
+    queryFn: async ({ signal }) =>
+      parseDiagram(await apiText(session?.token ?? null, '/api/topology/diagram', signal)),
     enabled: !!session,
     staleTime: Infinity,
     retry: false,
@@ -29,10 +31,17 @@ export function TopologyPage() {
 
   const state = useQuery({
     queryKey: ['topology', 'state', session?.token],
-    queryFn: () => api<TopologyReport>('/api/topology'),
+    queryFn: ({ signal }) => api<TopologyReport>('/api/topology', { signal }),
     enabled: !!session,
     refetchInterval: REFRESH_MS,
   });
+
+  // A probe still running stops on Esc (stop-anything); the state on screen stays the last one read.
+  const queryClient = useQueryClient();
+  useEscToStop(
+    state.isFetching,
+    () => void queryClient.cancelQueries({ queryKey: ['topology', 'state', session?.token] }),
+  );
 
   const byId = useMemo(
     () => new Map((state.data?.nodes ?? []).map((node) => [node.id, node])),
@@ -65,6 +74,7 @@ export function TopologyPage() {
             ? `State from ${formatDate(state.data.generatedAt)} · reported by ${state.data.reportedBy} · refreshes every ${REFRESH_MS / 1000}s`
             : 'State not loaded yet'}
         </span>
+        {state.isFetching && <StopHint stopping={false} />}
         {state.data && !state.data.discoveryAvailable && (
           <span className={page.tag}>replica discovery unavailable</span>
         )}

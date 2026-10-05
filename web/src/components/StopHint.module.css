@@ -1,0 +1,14 @@
+/* How to stop the work in progress (Esc), quieter than the progress it sits under. */
+.hint {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.8em;
+}
+
+.hint kbd {
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-2);
+  font-family: inherit;
+}

@@ -20,6 +20,8 @@ public sealed class RedisTaskStoreTests
     private readonly Dictionary<string, string> _tasks = new();
     private readonly SortedDictionary<string, double> _index = new();
     private readonly RedisTaskStore _store;
+    /// <summary>What each accepted save wrote: key, task, life in ms.</summary>
+    private List<(string Key, string Json, long LifeMs)> Saves { get; } = [];
 
     public RedisTaskStoreTests()
     {
@@ -41,11 +43,25 @@ public sealed class RedisTaskStoreTests
         // Just enough Redis to stand in for the shared volume: strings by task id, one sorted set as the index.
         _db.StringGetAsync(Arg.Any<RedisKey>()).Returns(call =>
             _tasks.TryGetValue(Id(call.Arg<RedisKey>()), out var json) ? (RedisValue)json : RedisValue.Null);
-        _db.StringSetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<Expiration>()).Returns(call =>
-        {
-            _tasks[Id(call.Arg<RedisKey>())] = call.Arg<RedisValue>().ToString();
-            return true;
-        });
+        // The save script, in C#: keep a stored terminal state against a different incoming one (the script itself is
+        // run against a real Redis in the integration tests).
+        _db.ScriptEvaluateAsync(Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns(call =>
+            {
+                var id = Id(call.Arg<RedisKey[]>()[0]);
+                var args = call.Arg<RedisValue[]>();
+                if (_tasks.TryGetValue(id, out var current))
+                {
+                    var stored = JsonDocument.Parse(current).RootElement.GetProperty("status").GetProperty("state").GetString();
+                    if (stored != args[2].ToString() && args.Skip(3).Any(t => t.ToString() == stored))
+                    {
+                        return RedisResult.Create((RedisValue)0);
+                    }
+                }
+                Saves.Add((call.Arg<RedisKey[]>()[0].ToString(), args[0].ToString(), (long)args[1]));
+                _tasks[id] = args[0].ToString();
+                return RedisResult.Create((RedisValue)1);
+            });
         _db.KeyDeleteAsync(Arg.Any<RedisKey>()).Returns(call => _tasks.Remove(Id(call.Arg<RedisKey>())));
         _db.SortedSetAddAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<double>()).Returns(call =>
         {
@@ -76,11 +92,34 @@ public sealed class RedisTaskStoreTests
 
         await _store.SaveTaskAsync("t-1", task, Ct);
 
-        await _db.Received(1).StringSetAsync(
-            (RedisKey)"task:compliance:t-1", JsonSerializer.Serialize(task, Json), (Expiration)TimeSpan.FromDays(7));
+        Assert.Equal(
+            [("task:compliance:t-1", JsonSerializer.Serialize(task, Json), (long)TimeSpan.FromDays(7).TotalMilliseconds)],
+            Saves);
         await _db.Received(1).SortedSetAddAsync(
             (RedisKey)"task:compliance:index", (RedisValue)"t-1",
             new DateTimeOffset(2024, 6, 1, 12, 0, 0, TimeSpan.Zero).ToUnixTimeMilliseconds());
+    }
+
+    [Theory]
+    [InlineData(TaskState.Working)]
+    [InlineData(TaskState.Completed)]
+    public async Task A_cancelled_task_is_not_written_over(TaskState late)
+    {
+        await _store.SaveTaskAsync("t-1", Task("t-1", TaskState.Canceled), Ct);
+
+        await _store.SaveTaskAsync("t-1", Task("t-1", late), Ct);
+
+        Assert.Equal(TaskState.Canceled, (await _store.GetTaskAsync("t-1", Ct))!.Status!.State);
+    }
+
+    [Fact]
+    public async Task A_running_task_can_still_finish()
+    {
+        await _store.SaveTaskAsync("t-1", Task("t-1", TaskState.Working), Ct);
+
+        await _store.SaveTaskAsync("t-1", Task("t-1", TaskState.Completed), Ct);
+
+        Assert.Equal(TaskState.Completed, (await _store.GetTaskAsync("t-1", Ct))!.Status!.State);
     }
 
     [Fact]

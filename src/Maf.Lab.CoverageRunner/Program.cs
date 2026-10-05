@@ -54,6 +54,13 @@ public partial class Program
             return Results.Accepted($"/runs/{job.Id}", job);
         });
         runs.MapGet("/{id}", (string id, JobQueue queue) => queue.Get(id) is { } job ? Results.Ok(job) : Results.NotFound());
+        // The caller stopped (stop-anything): 202 with the job reading canceled, 409 when it had already ended.
+        runs.MapPost("/{id}/cancel", (string id, JobQueue queue) => queue.Cancel(id) switch
+        {
+            (JobQueue.CancelOutcome.Canceled, var job) => Results.Accepted($"/runs/{id}", job),
+            (JobQueue.CancelOutcome.AlreadyEnded, var job) => Results.Conflict(job),
+            _ => Results.NotFound(),
+        });
         return app;
     }
 

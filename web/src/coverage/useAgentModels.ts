@@ -8,6 +8,6 @@ export function useAgentModels(path: string) {
   const api = useApi();
   return useQuery({
     queryKey: coverageKeys.models(path),
-    queryFn: () => api<AgentModels>(`/api/coverage/models?path=${encodeURIComponent(path)}`),
+    queryFn: ({ signal }) => api<AgentModels>(`/api/coverage/models?path=${encodeURIComponent(path)}`, { signal }),
   });
 }

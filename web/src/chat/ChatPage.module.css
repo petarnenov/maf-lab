@@ -220,6 +220,13 @@
   font-style: italic;
 }
 
+/* A turn the person stopped: said once, quietly; what it had so far stays above. */
+.stopped {
+  margin-top: 6px;
+  color: var(--muted);
+  font-style: italic;
+}
+
 /* The model's own thinking: set apart, quieter than anything it actually said. */
 .reasoning {
   margin: 0 0 8px 0;

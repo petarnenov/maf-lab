@@ -73,6 +73,43 @@ public class IndexingPipelineTests(QdrantFixture qdrant)
     }
 
     [Fact]
+    public async Task A_stopped_run_leaves_no_document_half_written()
+    {
+        using var corpus = TempCorpus.Small();
+        // What each document is, whole: a run nobody stops.
+        await using var whole = qdrant.Services(Name(), corpus.Root);
+        await whole.GetRequiredService<IndexingPipeline>().RunAsync(new IndexRequest(), Ct);
+        var expected = (await AllChunksAsync(whole, "shared", "firm-a", "firm-b", "firm-c"))
+            .GroupBy(c => c.DocId).ToDictionary(g => g.Key, g => g.Count());
+
+        // The same corpus into a fresh collection, stopped while the third document is being written.
+        await using var services = qdrant.Services(Name(), corpus.Root);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        var started = 0;
+        var progress = new StopAt(p =>
+        {
+            if (p.Current is not null && ++started == 3)
+            {
+                stop.Cancel();
+            }
+        });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            services.GetRequiredService<IndexingPipeline>().RunAsync(new IndexRequest { Progress = progress }, stop.Token));
+
+        var written = (await AllChunksAsync(services, "shared", "firm-a", "firm-b", "firm-c"))
+            .GroupBy(c => c.DocId).ToDictionary(g => g.Key, g => g.Count());
+        // The document in hand was finished, nothing after it was started, and every one written is whole.
+        Assert.Equal(3, written.Count);
+        Assert.All(written, d => Assert.Equal(expected[d.Key], d.Value));
+    }
+
+    private sealed class StopAt(Action<IndexProgress> report) : IProgress<IndexProgress>
+    {
+        public void Report(IndexProgress value) => report(value);
+    }
+
+    [Fact]
     public async Task Points_have_dense_and_sparse_vectors()
     {
         using var corpus = TempCorpus.Small();

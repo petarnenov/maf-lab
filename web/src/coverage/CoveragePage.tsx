@@ -3,6 +3,8 @@ import { useEffect } from 'react';
 import { useSearchParams } from 'react-router';
 import { ApiError } from '../api/client';
 import type { AdminJob, CoverageFileDetail, CoverageTree as Tree, RunSummary } from '../api/types';
+import { StopHint } from '../components/StopHint';
+import { useEscToStop } from '../components/useEscToStop';
 import { useApi, useAuth } from '../auth/useAuth';
 import page from '../components/Page.module.css';
 import { CandidatePanel } from './CandidatePanel';
@@ -27,7 +29,7 @@ export function CoveragePage() {
 
   const tree = useQuery({
     queryKey: coverageKeys.tree,
-    queryFn: () => api<Tree>('/api/coverage/tree'),
+    queryFn: ({ signal }) => api<Tree>('/api/coverage/tree', { signal }),
     enabled: !!session,
     // Rows beyond the few followed live still move while the agent works.
     refetchInterval: (q) => (q.state.data?.files.some((f) => agentHas(f.run)) ? 10_000 : false),
@@ -35,7 +37,7 @@ export function CoveragePage() {
 
   const file = useQuery({
     queryKey: coverageKeys.file(selected ?? ''),
-    queryFn: () => api<CoverageFileDetail>(`/api/coverage/files?path=${encodeURIComponent(selected!)}`),
+    queryFn: ({ signal }) => api<CoverageFileDetail>(`/api/coverage/files?path=${encodeURIComponent(selected!)}`, { signal }),
     enabled: !!session && !!selected,
   });
 
@@ -125,7 +127,7 @@ function RefreshControl({ latest }: { latest?: string | null }) {
   const client = useQueryClient();
   const current = useQuery({
     queryKey: coverageKeys.refresh,
-    queryFn: () => api<AdminJob | undefined>('/api/coverage/refresh'),
+    queryFn: ({ signal }) => api<AdminJob | undefined>('/api/coverage/refresh', { signal }),
     refetchInterval: (q) => (q.state.data?.state === 'running' ? 2000 : false),
   });
   const start = useMutation({
@@ -136,6 +138,18 @@ function RefreshControl({ latest }: { latest?: string | null }) {
   const job = current.data;
   const running = job?.state === 'running';
   const finishedAt = job?.finishedAt;
+
+  // Esc stops a refresh in progress (stop-anything): its job and the runner job it waits on are cancelled, and the
+  // control says "Stopping…" until the job's own state says it has ended.
+  const cancel = useMutation({
+    mutationFn: (jobId: string) =>
+      api<AdminJob>(`/api/coverage/refresh/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' }),
+    onSettled: () => void client.invalidateQueries({ queryKey: coverageKeys.refresh }),
+  });
+  const stopping = running && cancel.variables === job?.jobId && !cancel.isError;
+  useEscToStop(running, () => {
+    if (job && !stopping) cancel.mutate(job.jobId);
+  });
   useEffect(() => {
     if (finishedAt) void client.invalidateQueries({ queryKey: coverageKeys.all });
   }, [finishedAt, client]);
@@ -145,6 +159,13 @@ function RefreshControl({ latest }: { latest?: string | null }) {
       <button type="button" onClick={() => start.mutate()} disabled={running || start.isPending}>
         {running ? 'Measuring…' : 'Refresh coverage'}
       </button>
+      {running && <StopHint stopping={stopping} />}
+      {job?.state === 'canceled' && (
+        <span className={page.muted} role="status" data-testid="refresh-stopped">
+          The refresh was stopped.
+          {latest && ` Current coverage was measured at ${when(latest)}.`}
+        </span>
+      )}
       {job?.state === 'failed' && (
         <span className={page.error} role="alert">
           The last refresh failed{job.finishedAt ? ` at ${when(job.finishedAt)}` : ''}

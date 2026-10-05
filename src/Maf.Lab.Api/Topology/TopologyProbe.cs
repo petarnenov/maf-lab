@@ -53,7 +53,7 @@ public sealed class TopologyProbe(
     IOptions<Coverage.TestAgentOptions> testAgent,
     IToolSource tools,
     QdrantClient qdrantClient,
-    Neo4j.Driver.IDriver graphDriver,
+    Maf.Lab.Retrieval.Graph.TenantScopedGraphMaintenance graph,
     IOptions<Maf.Lab.Retrieval.Graph.GraphOptions> graphOptions,
     IHttpClientFactory http,
     IMemoryCache cache,
@@ -389,7 +389,7 @@ public sealed class TopologyProbe(
         try
         {
             using var cts = Linked(timeout, ct);
-            await graphDriver.VerifyConnectivityAsync().WaitAsync(cts.Token);
+            await graph.VerifyConnectivityAsync(cts.Token);
             return new TopologyNode("neo4j", "neo4j", NodeHealth.Healthy, [], facts, null);
         }
         catch (Exception ex)

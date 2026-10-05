@@ -16,6 +16,17 @@ const checks = [];
 const check = (name, run) => checks.push({ name, run });
 const failures = [];
 
+// Ctrl+C and SIGTERM (stop-anything): every run in flight is stopped the protocol's own way — the client aborts it,
+// which ends its request, and the agent stops — then the check says so and exits.
+const inFlight = new Set();
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.once(signal, () => {
+    for (const agent of inFlight) agent.abortRun();
+    console.error(`Cancelled with ${inFlight.size} run(s) in flight, stopped; nothing was changed. Run \`make verify\` again.`);
+    process.exit(130);
+  });
+}
+
 const token = async (userId, firmId, role) =>
   (
     await (
@@ -40,15 +51,20 @@ async function run(url, { threadId, message, resume, onEvent } = {}) {
   if (message) agent.addMessage({ id: `u_${Date.now()}`, role: 'user', content: message });
   const events = [];
   const runId = `r_${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`;
-  await agent.runAgent(
-    { runId, ...(resume ? { resume } : {}) },
-    {
-      onEvent: ({ event }) => {
-        events.push(event);
-        onEvent?.(event, agent);
+  inFlight.add(agent);
+  try {
+    await agent.runAgent(
+      { runId, ...(resume ? { resume } : {}) },
+      {
+        onEvent: ({ event }) => {
+          events.push(event);
+          onEvent?.(event, agent);
+        },
       },
-    },
-  );
+    );
+  } finally {
+    inFlight.delete(agent);
+  }
   return { events, runId };
 }
 

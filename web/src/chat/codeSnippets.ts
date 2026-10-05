@@ -26,8 +26,8 @@ export function useCodeSnippets(question: string, enabled: boolean) {
   const api = useApi();
   return useQuery({
     queryKey: ['code-snippets', question],
-    queryFn: () =>
-      api<CodeSearchResult>('/api/code/snippets', { method: 'POST', body: { question } }),
+    queryFn: ({ signal }) =>
+      api<CodeSearchResult>('/api/code/snippets', { method: 'POST', body: { question }, signal }),
     enabled: enabled && question.trim().length > 0,
     // The repository does not change under a conversation; a question asked again is the same answer.
     staleTime: 5 * 60_000,

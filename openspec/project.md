@@ -98,6 +98,16 @@ maf-lab/
   for the work it does, and every process started from the UI that can take
   longer than 3 seconds shows progress that matches the page's theme and
   design. No work runs silently. Details: the `progress-feedback` spec.
+- **Everything can be stopped (top priority).** Esc on the page that started
+  the work stops it; Ctrl+C or SIGTERM stops a CLI tool at a safe point (exit
+  130), cancelling the server work it started. A stop uses only the protocols'
+  own means — CopilotKit's stop, an aborted request (and from it the
+  CancellationToken into MCP, Qdrant and Neo4j), A2A `tasks/cancel`, this
+  system's own cancel routes. Work that outlives its request is stopped through
+  the store that owns its state (Redis for agent tasks, the api's SQLite for its
+  jobs and tasks): a terminal state written atomically and never overwritten,
+  watched by the worker, taken by any replica. A page says "Stopping…" until the
+  work's own state says it stopped. Details: the `stop-anything` spec.
 - Tenant is `firm_id`. It is derived from the caller's token, never from a
   request parameter, tool argument, or model output.
 - Every Qdrant query goes through exactly one method that takes a

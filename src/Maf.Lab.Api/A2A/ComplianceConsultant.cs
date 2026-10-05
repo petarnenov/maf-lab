@@ -31,6 +31,12 @@ public sealed class ComplianceConsultant(
     /// <summary>The audited action's name; the kind it is filed under is the sub-agent kind.</summary>
     public const string Operation = "a2a.consult";
 
+    /// <summary>The audited name of cancelling a review over there because the run that asked for it was stopped.</summary>
+    public const string CancelOperation = "a2a.consult.cancel";
+
+    /// <summary>How long a cancel may take: the run it belongs to has already stopped and is waiting to end.</summary>
+    internal static readonly TimeSpan CancelWithin = TimeSpan.FromSeconds(5);
+
     private readonly SemaphoreSlim discovery = new(1, 1);
     private IA2AClient? client;
     private DateTimeOffset cardFetchedAt;
@@ -88,6 +94,20 @@ public sealed class ComplianceConsultant(
             }
             return Read(seen, adjustment);
         }
+        catch (Exception ex) when (ct.IsCancellationRequested)
+        {
+            // The run that asked was stopped. Closing the stream does not cancel an A2A task, so the review is told
+            // to stop the way A2A says: tasks/cancel. A deadline is not a stop — that case below keeps the task.
+            if (seen.TaskId is { Length: > 0 } stoppedTask)
+            {
+                await CancelAsync(remote, adjustment, stoppedTask);
+            }
+            if (ex is OperationCanceledException)
+            {
+                throw;
+            }
+            throw new OperationCanceledException("The run that asked for the review was stopped.", ex, ct);
+        }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             // The review is still running over there; its id is how the answer is collected later.
@@ -102,6 +122,27 @@ public sealed class ComplianceConsultant(
             Forget();
             return new ConsultationResult.Unreachable(ex.GetType().Name);
         }
+    }
+
+    /// <summary>
+    /// Cancels the review over there, within <see cref="CancelWithin"/> of its own — the run's token is already
+    /// cancelled. A cancel that fails is recorded and goes no further: the run is ending either way.
+    /// </summary>
+    private async Task CancelAsync(IA2AClient remote, FeeAdjustment adjustment, string taskId)
+    {
+        var watch = Stopwatch.StartNew();
+        var outcome = "cancelled";
+        using var within = new CancellationTokenSource(CancelWithin, time);
+        try
+        {
+            await remote.CancelTaskAsync(new CancelTaskRequest { Id = taskId }, within.Token);
+        }
+        catch (Exception ex)
+        {
+            outcome = "cancel_failed";
+            logger.LogWarning("compliance review cancel failed ({ErrorType}) task={TaskId}", ex.GetType().Name, taskId);
+        }
+        await RecordAsync(CancelOperation, adjustment, taskId, outcome, watch.Elapsed, CancellationToken.None);
     }
 
     /// <summary>
@@ -308,16 +349,20 @@ public sealed class ComplianceConsultant(
     /// The same record every other action leaves: who, what, which task, the outcome, how long — no content. It is
     /// filed under the firm whose adjustment was reviewed, so that firm's compliance export contains it.
     /// </summary>
-    private async Task RecordAsync(FeeAdjustment adjustment, ConsultationResult result, TimeSpan took, CancellationToken ct)
+    private Task RecordAsync(FeeAdjustment adjustment, ConsultationResult result, TimeSpan took, CancellationToken ct) =>
+        RecordAsync(Operation, adjustment, result.TaskIdOrNull, result.Outcome, took, ct);
+
+    private async Task RecordAsync(
+        string operation, FeeAdjustment adjustment, string? taskId, string outcome, TimeSpan took, CancellationToken ct)
     {
         try
         {
             var firm = TenantId.TryParse(adjustment.FirmId, out var parsed) ? parsed : TenantId.Shared;
             await audit.RecordAsync(new AuditEntry(
                 new Principal("maf-lab-assistant", firm, UserRole.READ_ONLY, []),
-                null, null, Operation,
-                $"agent=compliance adjustmentId={adjustment.AdjustmentId} taskId={result.TaskIdOrNull ?? "-"}",
-                result.Outcome, (long)took.TotalMilliseconds, Compliance.AuditKinds.A2AConsultation), ct);
+                null, null, operation,
+                $"agent=compliance adjustmentId={adjustment.AdjustmentId} taskId={taskId ?? "-"}",
+                outcome, (long)took.TotalMilliseconds, Compliance.AuditKinds.A2AConsultation), ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

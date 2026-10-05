@@ -4,6 +4,8 @@ import type { AdminJob, DriftReport, IndexStatus } from '../api/types';
 import { useApi, useAuth } from '../auth/useAuth';
 import styles from '../components/Page.module.css';
 import { Progress } from '../components/Progress';
+import { StopHint } from '../components/StopHint';
+import { useEscToStop } from '../components/useEscToStop';
 import { formatDate } from '../evals/format';
 import { isJobActive } from './jobs';
 
@@ -17,18 +19,20 @@ export function IndexAdminPage() {
 
   const status = useQuery({
     queryKey: ['admin', 'index', 'status', token],
-    queryFn: () => api<IndexStatus>('/api/admin/index/status'),
+    queryFn: ({ signal }) => api<IndexStatus>('/api/admin/index/status', { signal }),
   });
+  const driftKey = ['admin', 'index', 'drift', token];
   const drift = useQuery({
-    queryKey: ['admin', 'index', 'drift', token],
-    queryFn: () => api<DriftReport>('/api/admin/index/drift'),
+    queryKey: driftKey,
+    queryFn: ({ signal }) => api<DriftReport>('/api/admin/index/drift', { signal }),
   });
 
   const trackedJobId =
     jobId ?? (isJobActive(status.data?.currentJob) ? status.data!.currentJob!.jobId : null);
   const job = useQuery({
     queryKey: ['admin', 'jobs', trackedJobId, token],
-    queryFn: () => api<AdminJob>(`/api/admin/jobs/${encodeURIComponent(trackedJobId!)}`),
+    queryFn: ({ signal }) =>
+      api<AdminJob>(`/api/admin/jobs/${encodeURIComponent(trackedJobId!)}`, { signal }),
     enabled: !!trackedJobId,
     refetchInterval: (query) => (isJobActive(query.state.data) || !query.state.data ? 1500 : false),
   });
@@ -55,6 +59,26 @@ export function IndexAdminPage() {
 
   const busy = jobActive || runIndex.isPending || migrate.isPending;
 
+  // Stopping (stop-anything): the job is asked through its cancel route, and the page says "Stopping…" until the job's
+  // own state says it has ended; a drift report still loading is aborted, request and all.
+  const [stoppingJob, setStoppingJob] = useState<string | null>(null);
+  const [driftStopped, setDriftStopped] = useState(false);
+  const cancelJob = useMutation({
+    mutationFn: (id: string) =>
+      api<AdminJob>(`/api/admin/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ['admin', 'jobs'] }),
+  });
+  const stopping = jobActive && stoppingJob === job.data?.jobId;
+  useEscToStop(jobActive || drift.isFetching, () => {
+    if (jobActive && job.data && !stopping) {
+      setStoppingJob(job.data.jobId);
+      cancelJob.mutate(job.data.jobId);
+    } else if (!jobActive && drift.isFetching) {
+      setDriftStopped(true);
+      void queryClient.cancelQueries({ queryKey: driftKey });
+    }
+  });
+
   return (
     <div className={styles.page}>
       <h1 className={styles.heading}>Index administration</h1>
@@ -63,7 +87,26 @@ export function IndexAdminPage() {
         <div className={styles.card}>
           <div className={styles.muted}>Drift (stale documents)</div>
           {/* With Neo4j down the graph half waits for its connect timeout (~5-8 s): progress-feedback. */}
-          {drift.isLoading && <Progress label="Checking the index and the graph…" />}
+          {drift.isLoading && (
+            <>
+              <Progress label="Checking the index and the graph…" />
+              {!jobActive && <StopHint stopping={false} />}
+            </>
+          )}
+          {driftStopped && !drift.data && !drift.isFetching && (
+            <div className={styles.muted} data-testid="drift-stopped" role="status">
+              Stopped.{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setDriftStopped(false);
+                  void drift.refetch();
+                }}
+              >
+                Check again
+              </button>
+            </div>
+          )}
           {drift.isError && <div className={styles.error}>Unavailable</div>}
           {drift.data && (
             <>
@@ -115,6 +158,14 @@ export function IndexAdminPage() {
           Job <code>{job.data.kind}</code>: <strong>{job.data.state}</strong>
           {job.data.summary ? ` — ${job.data.summary}` : ''}
         </p>
+      )}
+      {jobActive && (
+        <>
+          <Progress
+            label={stopping ? 'Stopping the job…' : `Running ${job.data?.kind ?? 'the job'}…`}
+          />
+          <StopHint stopping={stopping} />
+        </>
       )}
 
       <h2 className={styles.subheading}>Chunks by model_version</h2>

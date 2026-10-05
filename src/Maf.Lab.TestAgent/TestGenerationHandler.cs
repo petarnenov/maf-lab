@@ -26,6 +26,7 @@ public sealed class TestGenerationHandler(
     ITaskStore tasks,
     ChannelEventNotifier notifier,
     IOptions<TestAgentOptions> options,
+    IOptions<Maf.Lab.A2A.A2AOptions> a2a,
     IHostEnvironment environment,
     IHostApplicationLifetime lifetime,
     ILoggerFactory loggers) : IAgentHandler
@@ -116,6 +117,14 @@ public sealed class TestGenerationHandler(
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopping);
         _running[taskId] = cts;
+        // A cancel may reach the other replica; the shared store records it, and the run watches the store for it
+        // (stop-anything). Seen there, it is this run's cancel: the run stops and its checkpoint and lease go.
+        await using var watch = Maf.Lab.A2A.TaskCancelWatch.Start(tasks, taskId, TimeSpan.FromMilliseconds(a2a.Value.CancelPollMs));
+        using var canceledElsewhere = watch.Token.Register(() =>
+        {
+            _canceled[taskId] = true;
+            cts.Cancel();
+        });
         using var keeping = new CancellationTokenSource();
         var lease = KeepLeaseAsync(taskId, cts, keeping.Token);
         var ended = false;

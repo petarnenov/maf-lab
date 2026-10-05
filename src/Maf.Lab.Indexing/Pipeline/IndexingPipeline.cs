@@ -82,6 +82,8 @@ public sealed class IndexingPipeline(
 
             foreach (var doc in docs)
             {
+                // The safe point (stop-anything): a stop takes effect between documents, never inside one.
+                ct.ThrowIfCancellationRequested();
                 if (!request.Force && existing.TryGetValue(doc.DocId, out var current)
                     && current.ContentHash == doc.ContentHash && current.UpdatedAt == doc.UpdatedAt && current.ModelVersion == modelVersion
                     && vectorModels.All(v => current.DenseModelVersions?.GetValueOrDefault(v.Key) == v.Value))
@@ -94,7 +96,9 @@ public sealed class IndexingPipeline(
                 progress?.Report(new IndexProgress("indexing", done, total, doc.DocId));
 
                 var writes = await EncodeAsync(prepared[doc.DocId], model, enricher, modelVersion, vectorModels, ct);
-                var (w, d) = await store.ReplaceDocumentAsync(tenant, doc.DocId, writes, ct);
+                // Replacing a document is delete-then-upsert: once begun it runs to the end, so a stop never leaves one
+                // half-written.
+                var (w, d) = await store.ReplaceDocumentAsync(tenant, doc.DocId, writes, CancellationToken.None);
                 written += w;
                 deleted += d;
                 indexed++;

@@ -47,6 +47,8 @@ public static class RunnerJobState
     public const string Queued = "queued";
     public const string Running = "running";
     public const string Done = "done";
+    /// <summary>Its caller stopped it (stop-anything): ended, with no result.</summary>
+    public const string Canceled = "canceled";
 }
 
 /// <summary>

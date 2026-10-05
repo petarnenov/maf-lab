@@ -53,6 +53,20 @@ public sealed class JobQueue(JobExecutor executor, IOptions<RunnerOptions> optio
         /// <summary>The identical job this one waits for, while it does; guarded by the queue's gate.</summary>
         public Job? Leader;
         public List<Job> Followers { get; } = [];
+
+        /// <summary>Its caller cancelled it; its run goes on only while another caller still waits for it.</summary>
+        public bool CallerCanceled;
+
+        /// <summary>Stops the run itself: cancelled once no caller is left waiting for it.</summary>
+        public CancellationTokenSource Stop { get; } = new();
+    }
+
+    /// <summary>What a cancel found.</summary>
+    public enum CancelOutcome
+    {
+        Canceled,
+        AlreadyEnded,
+        NotFound,
     }
 
     private sealed record Kept(string JobId, DateTimeOffset At, RunnerResult Result);
@@ -118,6 +132,48 @@ public sealed class JobQueue(JobExecutor executor, IOptions<RunnerOptions> optio
 
     public RunnerJob? Get(string id) => _jobs.TryGetValue(id, out var job) ? View(job) : null;
 
+    /// <summary>
+    /// Cancels a caller's job (stop-anything). A job that waits for an identical one just stops waiting. A job others
+    /// wait for goes on for them, and stops — process tree and all — only once nobody is left waiting for it.
+    /// </summary>
+    public (CancelOutcome Outcome, RunnerJob? Job) Cancel(string id)
+    {
+        if (!_jobs.TryGetValue(id, out var job))
+        {
+            return (CancelOutcome.NotFound, null);
+        }
+        Job? stop = null;
+        lock (_gate)
+        {
+            if (job.CallerCanceled || job.State is RunnerJobState.Done or RunnerJobState.Canceled)
+            {
+                return (CancelOutcome.AlreadyEnded, ViewLocked(job));
+            }
+            job.CallerCanceled = true;
+            if (job.Leader is { } leader)
+            {
+                leader.Followers.Remove(job);
+                job.Leader = null;
+                job.State = RunnerJobState.Canceled;
+                job.DoneAt = time.GetUtcNow();
+                if (leader.CallerCanceled && leader.Followers.Count == 0)
+                {
+                    stop = leader;
+                }
+            }
+            else if (job.Followers.Count == 0)
+            {
+                stop = job;
+            }
+        }
+        if (stop is not null)
+        {
+            logger.LogInformation("runner job canceled job={JobId}", stop.Id);
+            stop.Stop.Cancel();
+        }
+        return (CancelOutcome.Canceled, View(job));
+    }
+
     protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
         Task.WhenAll(Enumerable.Range(0, Math.Max(1, options.Value.MaxConcurrent)).Select(_ => WorkAsync(stoppingToken)));
 
@@ -147,13 +203,28 @@ public sealed class JobQueue(JobExecutor executor, IOptions<RunnerOptions> optio
     {
         await foreach (var job in _queue.Reader.ReadAllAsync(ct))
         {
+            if (job.Stop.IsCancellationRequested)
+            {
+                // Cancelled while it was queued: it never starts.
+                Finish(job, RunnerResult.Failed(RunnerStatus.Error, 0), canceled: true);
+                continue;
+            }
             job.State = RunnerJobState.Running;
             using var span = LabTelemetry.Source.StartActivity("runner.run", System.Diagnostics.ActivityKind.Internal, job.Parent);
             span?.SetTag("runner.toolchain", job.Request.Toolchain);
             RunnerResult result;
+            var canceled = false;
+            using var run = CancellationTokenSource.CreateLinkedTokenSource(ct, job.Stop.Token);
             try
             {
-                result = await executor.RunAsync(job.Request, ct);
+                result = await executor.RunAsync(job.Request, run.Token);
+                // A run cut short by its cancel is not a result, whatever it managed to report.
+                canceled = job.Stop.IsCancellationRequested;
+            }
+            catch (OperationCanceledException) when (job.Stop.IsCancellationRequested && !ct.IsCancellationRequested)
+            {
+                result = RunnerResult.Failed(RunnerStatus.Error, 0);
+                canceled = true;
             }
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
@@ -166,7 +237,8 @@ public sealed class JobQueue(JobExecutor executor, IOptions<RunnerOptions> optio
             span?.SetTag("runner.tests.failed", result.Tests.Failed);
             span?.SetTag("runner.duration_ms", result.DurationMs);
             span?.SetTag("runner.followers", job.Followers.Count);
-            Finish(job, result);
+            span?.SetTag("runner.canceled", canceled);
+            Finish(job, result, canceled);
         }
     }
 
@@ -174,15 +246,15 @@ public sealed class JobQueue(JobExecutor executor, IOptions<RunnerOptions> optio
     /// The job is done. A complete result is kept and answers every job that waited for it; otherwise the first of
     /// those is queued to run on its own and the rest wait for it in turn.
     /// </summary>
-    private void Finish(Job job, RunnerResult result)
+    private void Finish(Job job, RunnerResult result, bool canceled = false)
     {
         Job? next = null;
         lock (_gate)
         {
             var now = time.GetUtcNow();
-            job.Result = result;
+            job.Result = canceled ? null : result;
             job.DoneAt = now;
-            job.State = RunnerJobState.Done;
+            job.State = canceled ? RunnerJobState.Canceled : RunnerJobState.Done;
             if (job.Key is not { } key)
             {
                 return;
@@ -190,6 +262,12 @@ public sealed class JobQueue(JobExecutor executor, IOptions<RunnerOptions> optio
             if (_inFlight.TryGetValue(key, out var leader) && leader == job)
             {
                 _inFlight.Remove(key);
+            }
+            // A cancelled run is never kept for reuse; it had nobody left waiting, so there is nobody to hand on to.
+            if (canceled)
+            {
+                job.Followers.Clear();
+                return;
             }
             if (result.Reusable)
             {
@@ -236,14 +314,24 @@ public sealed class JobQueue(JobExecutor executor, IOptions<RunnerOptions> optio
     {
         lock (_gate)
         {
-            // A job that waits for an identical one shows that job's state and place.
-            var shown = job.Leader ?? job;
-            var position = shown.State == RunnerJobState.Queued
-                ? _jobs.Values.Count(j => j.Leader is null && j.State == RunnerJobState.Queued && j.Order < shown.Order) + 1
-                : 0;
-            // A leader and its followers finish under the same lock, so a follower never shows a finished leader.
-            return new RunnerJob(job.Id, shown.State, position, job.State == RunnerJobState.Done ? job.Result : null);
+            return ViewLocked(job);
         }
+    }
+
+    private RunnerJob ViewLocked(Job job)
+    {
+        // A job its caller cancelled reads canceled to that caller, even while it runs on for another.
+        if (job.CallerCanceled || job.State == RunnerJobState.Canceled)
+        {
+            return new RunnerJob(job.Id, RunnerJobState.Canceled, 0, null);
+        }
+        // A job that waits for an identical one shows that job's state and place.
+        var shown = job.Leader ?? job;
+        var position = shown.State == RunnerJobState.Queued
+            ? _jobs.Values.Count(j => j.Leader is null && j.State == RunnerJobState.Queued && j.Order < shown.Order) + 1
+            : 0;
+        // A leader and its followers finish under the same lock, so a follower never shows a finished leader.
+        return new RunnerJob(job.Id, shown.State, position, job.State == RunnerJobState.Done ? job.Result : null);
     }
 
     private void Forget()

@@ -114,12 +114,68 @@ public class RunProtocolTests
         await reached.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
         await stop.CancelAsync();
         release.TrySetResult();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run.WaitAsync(TimeSpan.FromSeconds(10), Ct));
+        // The client walked away; the test host reports that as a cancellation, an aborted read or a failed request,
+        // whichever lands first. What the server did about it is what is asserted below.
+        var walkedAway = await Assert.ThrowsAnyAsync<Exception>(() => run.WaitAsync(TimeSpan.FromSeconds(10), Ct));
+        Assert.True(walkedAway is OperationCanceledException or IOException or HttpRequestException, walkedAway.GetType().Name);
 
         // The turn stopped where it was: one tool had begun, nothing was invoked after the stop, and the run is kept as
         // cancelled rather than answered.
         await WaitUntil(async () => (await api.Runs.GetAsync("r_stop", Ct))?.Outcome == Maf.Lab.Domain.SharedState.RunOutcomes.Cancelled);
         Assert.Equal(["search_documents"], tools.Invocations);
+    }
+
+    [Fact]
+    public async Task A_tool_call_a_stop_interrupts_is_cancelled_and_audited_and_records_no_turn()
+    {
+        var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tools = new FakeToolSource
+        {
+            WhileSearching = async ct =>
+            {
+                reached.TrySetResult();
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    cancelled.TrySetResult();
+                    throw;
+                }
+            },
+        };
+        using var api = new ApiFactory(ApiFactory.ProceduralModel(), tools);
+        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        using var stop = new CancellationTokenSource();
+
+        var run = ApiFactory.ChatAsync(client, "what is the procedure when a fee schedule is missing", runId: "r_held", cancel: stop.Token);
+        await reached.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        await stop.CancelAsync();
+        // The client walked away; the test host reports that as a cancellation, an aborted read or a failed request,
+        // whichever lands first. What the server did about it is what is asserted below.
+        var walkedAway = await Assert.ThrowsAnyAsync<Exception>(() => run.WaitAsync(TimeSpan.FromSeconds(10), Ct));
+        Assert.True(walkedAway is OperationCanceledException or IOException or HttpRequestException, walkedAway.GetType().Name);
+
+        // The call itself saw the stop: it was cancelled, not left to finish for nobody.
+        await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        // The audit says what became of it, without the query; and the stopped run recorded no turn.
+        Maf.Lab.Api.Storage.AuditRow? row = null;
+        await WaitUntil(async () =>
+        {
+            await using var db = ChatApiTests.Db(api);
+            row = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.SingleOrDefaultAsync(
+                db.Audit.Where(a => a.ToolName == "search_documents"), Ct);
+            return row is not null;
+        });
+        Assert.Equal("cancelled", row!.Outcome);
+        Assert.True(row.DurationMs >= 0);
+        Assert.DoesNotContain("fee schedule", row.Arguments);
+        await using (var db = ChatApiTests.Db(api))
+        {
+            Assert.Equal(0, await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(db.Turns, Ct));
+        }
     }
 
     [Fact]

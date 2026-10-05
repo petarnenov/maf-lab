@@ -1,8 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
 import type { ActionPage, AuditAction, ChainReport, ExportManifest } from '../api/types';
 import { useApi, useAuth } from '../auth/useAuth';
 import page from '../components/Page.module.css';
+import { StopHint } from '../components/StopHint';
+import { useEscToStop } from '../components/useEscToStop';
 import { formatDate } from '../evals/format';
 import styles from './Compliance.module.css';
 
@@ -38,16 +40,43 @@ export function CompliancePage() {
 function ChainPanel() {
   const api = useApi();
   const { session } = useAuth();
+  const chainKey = ['compliance', 'chain', session?.token];
   const chain = useQuery({
-    queryKey: ['compliance', 'chain', session?.token],
-    queryFn: () => api<ChainReport>('/api/admin/compliance/verify'),
+    queryKey: chainKey,
+    queryFn: ({ signal }) => api<ChainReport>('/api/admin/compliance/verify', { signal }),
     enabled: !!session,
+  });
+  // A check still running stops on Esc (stop-anything): the request is aborted, and the server stops reading.
+  const queryClient = useQueryClient();
+  const [stopped, setStopped] = useState(false);
+  useEscToStop(chain.isFetching, () => {
+    setStopped(true);
+    void queryClient.cancelQueries({ queryKey: chainKey });
   });
 
   return (
     <section className={styles.panel} aria-label="Audit chain">
       <h2 className={styles.panelHeading}>Audit chain</h2>
-      {chain.isLoading && <p className={page.muted}>Checking…</p>}
+      {chain.isLoading && (
+        <>
+          <p className={page.muted}>Checking…</p>
+          <StopHint stopping={false} />
+        </>
+      )}
+      {stopped && !chain.data && !chain.isFetching && (
+        <p className={page.muted} role="status" data-testid="chain-stopped">
+          Stopped.{' '}
+          <button
+            type="button"
+            onClick={() => {
+              setStopped(false);
+              void chain.refetch();
+            }}
+          >
+            Check again
+          </button>
+        </p>
+      )}
       {chain.isError && (
         <p className={page.error} role="alert">
           Could not check the chain.
@@ -112,7 +141,7 @@ function ActionLog() {
 
   const first = useQuery({
     queryKey: ['compliance', 'actions', query, session?.token],
-    queryFn: () => api<ActionPage>(`/api/admin/compliance/actions?${query}`),
+    queryFn: ({ signal }) => api<ActionPage>(`/api/admin/compliance/actions?${query}`, { signal }),
     enabled: !!session,
   });
 
@@ -233,10 +262,21 @@ function ExportPanel({ api }: { api: ReturnType<typeof useApi> }) {
   const [manifest, setManifest] = useState<ExportManifest | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stopped, setStopped] = useState(false);
+  // The export in progress: Esc or leaving the page aborts its request (stop-anything).
+  const running = useRef<AbortController | null>(null);
+  useEffect(() => () => running.current?.abort(), []);
+  useEscToStop(busy, () => {
+    setStopped(true);
+    running.current?.abort();
+  });
 
   async function exportPackage() {
+    const controller = new AbortController();
+    running.current = controller;
     setBusy(true);
     setError(null);
+    setStopped(false);
     try {
       const params = new URLSearchParams();
       if (from) params.set('from', new Date(from).toISOString());
@@ -245,6 +285,7 @@ function ExportPanel({ api }: { api: ReturnType<typeof useApi> }) {
       const query = params.toString();
       const pkg = await api<{ manifest: ExportManifest }>(
         `/api/admin/compliance/export${query ? `?${query}` : ''}`,
+        { signal: controller.signal },
       );
       download(
         pkg,
@@ -252,8 +293,9 @@ function ExportPanel({ api }: { api: ReturnType<typeof useApi> }) {
       );
       setManifest(pkg.manifest);
     } catch {
-      setError('Could not produce the export.');
+      if (!controller.signal.aborted) setError('Could not produce the export.');
     } finally {
+      running.current = null;
       setBusy(false);
     }
   }
@@ -293,6 +335,12 @@ function ExportPanel({ api }: { api: ReturnType<typeof useApi> }) {
         <button type="button" onClick={exportPackage} disabled={busy}>
           {busy ? 'Producing…' : 'Download package'}
         </button>
+        {busy && <StopHint stopping={stopped} />}
+        {stopped && !busy && (
+          <span className={page.muted} role="status" data-testid="export-stopped">
+            Export stopped; nothing was downloaded.
+          </span>
+        )}
       </div>
       {error && (
         <p className={page.error} role="alert">

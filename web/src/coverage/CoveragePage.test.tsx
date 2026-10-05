@@ -232,6 +232,38 @@ describe('CoveragePage', () => {
     expect(alert).not.toHaveTextContent('/app-data');
   });
 
+  it('stops a refresh in progress with Escape and keeps the coverage on screen', async () => {
+    let canceled = false;
+    const job = (state: string) => ({
+      jobId: 'j1',
+      kind: 'coverage.refresh',
+      state,
+      startedAt: '2026-10-04T10:00:00Z',
+      finishedAt: state === 'running' ? null : '2026-10-04T10:00:05Z',
+      summary: state === 'canceled' ? 'Canceled by an administrator.' : null,
+    });
+    const calls = stubCoverageApi({
+      '/api/coverage/tree': () => jsonResponse(sampleTree),
+      '/api/coverage/refresh/j1/cancel': () => {
+        canceled = true;
+        return jsonResponse(job('canceled'), 202);
+      },
+      '/api/coverage/refresh': () => jsonResponse(job(canceled ? 'canceled' : 'running')),
+    });
+    renderWithProviders(<CoveragePage />, { session: makeSession('FIRM_ADMIN') });
+    expect(await screen.findByRole('button', { name: 'Measuring…' })).toBeDisabled();
+    expect(screen.getByTestId('stop-hint')).toHaveTextContent('Esc to stop');
+
+    await userEvent.keyboard('{Escape}');
+
+    await vi.waitFor(() =>
+      expect(calls.filter((c) => c.url === '/api/coverage/refresh/j1/cancel' && c.method === 'POST')).toHaveLength(1),
+    );
+    expect(await screen.findByTestId('refresh-stopped')).toHaveTextContent('The refresh was stopped.');
+    expect(screen.getByRole('button', { name: 'Refresh coverage' })).toBeEnabled();
+    expect(screen.queryByTestId('stop-hint')).toBeNull();
+  });
+
   it('shows no refresh failure once a later refresh succeeded', async () => {
     stubCoverageApi({
       '/api/coverage/tree': () => jsonResponse(sampleTree),

@@ -25,6 +25,7 @@ public sealed partial class BillingAgentHandler(
     IOptions<A2AOptions> options,
     ToolAudit audit,
     AssistantBridge assistant,
+    ITaskStore tasks,
     IHostApplicationLifetime lifetime,
     TimeProvider time,
     ILogger<BillingAgentHandler> logger) : IAgentHandler
@@ -166,8 +167,11 @@ public sealed partial class BillingAgentHandler(
         // From here the run belongs to the task, not to the connection that asked for it. A caller whose stream
         // drops must be able to resubscribe and find the run where it left it — which cannot happen if the run
         // died with the request. It stops for the host shutting down, and for an explicit cancel, and for nothing
-        // else.
-        var work = lifetime.ApplicationStopping;
+        // else. The cancel may reach either replica; the shared task store records it, and the run watches it there
+        // (stop-anything).
+        await using var watch = TaskCancelWatch.Start(tasks, context.TaskId, TimeSpan.FromMilliseconds(options.Value.CancelPollMs), time);
+        using var run = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopping, watch.Token);
+        var work = run.Token;
         await updater.StartWorkAsync(Say($"Starting the billing run for {scope.Value}, period {period}."), work);
         foreach (var step in new[] { "Loading accounts", "Applying fee schedules", "Producing invoices" })
         {

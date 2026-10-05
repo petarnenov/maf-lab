@@ -55,6 +55,29 @@ public static class Program
 
     public static async Task<int> Main(string[] args)
     {
+        // Ctrl+C and SIGTERM stop the run (stop-anything): the suite in hand ends at its next item, and what the suites
+        // that finished wrote stays.
+        using var cts = new CancellationTokenSource();
+        Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
+        using var sigterm = System.Runtime.InteropServices.PosixSignalRegistration.Create(
+            System.Runtime.InteropServices.PosixSignal.SIGTERM, signal => { signal.Cancel = true; cts.Cancel(); });
+        try
+        {
+            return await RunAsync(args, cts.Token);
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            Console.Error.WriteLine(AfterCancel);
+            return 130;
+        }
+    }
+
+    /// <summary>What a stopped run says: what it kept, and what to run again.</summary>
+    internal const string AfterCancel =
+        "Cancelled. The reports of the suites that finished are kept; the suite in progress wrote nothing. Run it again for the rest.";
+
+    private static async Task<int> RunAsync(string[] args, CancellationToken ct)
+    {
         var flags = ParseFlags(args);
         var configuration = new ConfigurationBuilder()
             .AddJsonFile(Path.Combine(AppContext.BaseDirectory, "eval.json"), optional: true)
@@ -62,9 +85,6 @@ public static class Program
             .Build();
         var options = configuration.GetSection(EvalOptions.Section).Get<EvalOptions>() ?? new EvalOptions();
         var root = DatasetWriter.ResolveRoot(string.IsNullOrWhiteSpace(options.Root) ? null : options.Root);
-        using var cts = new CancellationTokenSource();
-        Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
-        var ct = cts.Token;
 
         if (flags.ContainsKey("import-feedback"))
         {

@@ -33,6 +33,8 @@ export interface ToolCallView {
   resultSummary?: string;
   sourceCount?: number;
   isError?: boolean;
+  /** The run was stopped while the call was going: its result said so, or the run ended before it came. */
+  stopped?: boolean;
 }
 
 export interface UserTurn {
@@ -67,6 +69,10 @@ export interface AssistantTurn {
   /** The turn this run recorded, known once it finished: its run id. Feedback needs it. */
   turnId?: string;
   error?: string;
+  /** The person asked for the run to stop (Esc); the run's own terminal event says when it has. */
+  stopping?: boolean;
+  /** The run ended stopped, as its terminal event said: the turn keeps what it had and says it was stopped. */
+  stopped?: boolean;
   /** Which of the three faces this error wears. */
   errorKind?: FailureKind;
   /** Restored turns: false once the stored trace has passed its retention period. */
@@ -119,6 +125,8 @@ export type ChatAction =
   /** The run's trace as written so far, read from the trace API while the run is live. */
   | { type: 'live_trace'; turnKey: string; events: TraceEvent[] }
   | { type: 'stream_error'; message: string; kind?: FailureKind }
+  /** The person asked for the run in progress to stop; only the run's own terminal event ends it. */
+  | { type: 'stop_requested' }
   | { type: 'reset' }
   | { type: 'hydrate'; conversationId: string; turns: HistoryTurn[]; focus?: FocusAccount | null }
   /** The user chose an account to focus on, or cleared it; nothing runs until they send. */
@@ -194,6 +202,9 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
     case 'stream_error':
       return failed(state, action.message, action.kind ?? 'unexpected');
+
+    case 'stop_requested':
+      return updateActiveTurn(state, (turn) => ({ ...turn, stopping: true }));
 
     case 'reset':
       return initialChatState;
@@ -430,6 +441,7 @@ function applyEvent(state: ChatState, event: BaseEvent): ChatState {
           resultSummary: read.summary,
           sourceCount: read.sourceCount,
           isError: read.isError,
+          ...(read.stopped ? { stopped: true } : {}),
         };
         return {
           ...turn,
@@ -460,13 +472,17 @@ function applyEvent(state: ChatState, event: BaseEvent): ChatState {
       });
     }
 
+    // A run CopilotKit's runtime stopped ends cancelled.
     case EventType.RUN_FINISHED:
+      if ((event as RunFinishedEvent).outcome?.type === 'cancelled') return stopped(state);
       return finished(state, event as RunFinishedEvent);
 
     // A run refused or lost on its way to the agent says so with an HTTP status: it gets the face that status deserves,
     // never the status itself. Any other error is the agent's own short text.
     case EventType.RUN_ERROR: {
       const { message, code } = event as RunErrorEvent;
+      // An aborted run, as `@ag-ui/client` reports it: what a stop does to the run's request to its agent.
+      if (code === 'abort') return stopped(state);
       const status = /\bHTTP (\d{3})\b/.exec(message);
       if (status) return failed(state, ...faceOf(Number(status[1])));
       // The stream ended before the run did: worth sending again.
@@ -535,6 +551,34 @@ export function failed(state: ChatState, message: string, kind: FailureKind): Ch
 }
 
 /**
+ * The run ended stopped, as its terminal event said: the turn keeps what it had, its open steps end, and an answer
+ * that was on its way is waiting again — answering it once more carries the same idempotency key, so nothing is
+ * applied twice. The server recorded no turn for it, so it has no turn id.
+ */
+function stopped(state: ChatState): ChatState {
+  if (!activeTurn(state)) return state;
+  const next = updateActiveTurn({ ...state, streaming: false }, (turn) => ({
+    ...turn,
+    ...stopThinking(turn),
+    step: undefined,
+    status: 'done',
+    stopping: undefined,
+    stopped: true,
+    toolCalls: turn.toolCalls.map((c) =>
+      c.status === 'running' ? { ...c, status: 'finished', stopped: true } : c,
+    ),
+  }));
+  return {
+    ...next,
+    turns: next.turns.map((turn) =>
+      turn.role === 'assistant' && turn.confirmationState === 'answering'
+        ? { ...turn, confirmationState: 'waiting' }
+        : turn,
+    ),
+  };
+}
+
+/**
  * The question a paused run put to a person, as the protocol's interrupt carries it. What it is about travels in the
  * interrupt's metadata; an interrupt without it is still a question this screen can show and answer.
  */
@@ -580,6 +624,8 @@ interface ReadResult {
   summary: string;
   sourceCount?: number;
   isError: boolean;
+  /** CopilotKit's runtime closed the call when the run was stopped: `{ status: "stopped" }`. */
+  stopped?: boolean;
   sources: SourceRef[];
 }
 
@@ -589,11 +635,13 @@ function readResult(content: string): ReadResult {
     const value: unknown = JSON.parse(content);
     if (value && typeof value === 'object' && !Array.isArray(value)) {
       const r = value as Record<string, unknown>;
+      const stopped = r.status === 'stopped';
       return {
         tool: typeof r.tool === 'string' ? r.tool : undefined,
-        summary: typeof r.summary === 'string' ? r.summary : 'done',
+        summary: typeof r.summary === 'string' ? r.summary : stopped ? 'stopped' : 'done',
         sourceCount: typeof r.sourceCount === 'number' ? r.sourceCount : undefined,
         isError: r.isError === true,
+        ...(stopped ? { stopped } : {}),
         sources: Array.isArray(r.sources) ? (r.sources as SourceRef[]) : [],
       };
     }

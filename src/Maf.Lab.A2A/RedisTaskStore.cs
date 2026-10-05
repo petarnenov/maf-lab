@@ -21,6 +21,32 @@ public sealed class RedisTaskStore(IConnectionMultiplexer redis, TimeProvider ti
     /// <summary>Long enough to outlive any caller still following a review, and no longer.</summary>
     private static readonly TimeSpan Retention = TimeSpan.FromDays(7);
 
+    /// <summary>The states a task does not leave, as the SDK writes them.</summary>
+    internal static readonly string[] Terminal =
+        [.. new[] { TaskState.Completed, TaskState.Canceled, TaskState.Failed, TaskState.Rejected }.Select(StateName)];
+
+    /// <summary>
+    /// Saves a task unless the store already holds it in a terminal state the new copy would change: read and write are
+    /// one step in Redis, so a replica whose work is still winding down cannot write over a cancel another replica
+    /// recorded. ARGV: the task, its life in ms, its state, then the terminal states.
+    /// </summary>
+    internal const string SaveScript = """
+        local current = redis.call('GET', KEYS[1])
+        if current then
+          local ok, stored = pcall(cjson.decode, current)
+          if ok and type(stored) == 'table' and type(stored['status']) == 'table' then
+            local state = stored['status']['state']
+            if state ~= ARGV[3] then
+              for i = 4, #ARGV do
+                if ARGV[i] == state then return 0 end
+              end
+            end
+          end
+        end
+        redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[2])
+        return 1
+        """;
+
     /// <summary>The tasks, newest last, so a listing does not have to look at every key in the store.</summary>
     private RedisKey Index => $"task:{options.Value.StoreKeyspace}:index";
 
@@ -35,9 +61,22 @@ public sealed class RedisTaskStore(IConnectionMultiplexer redis, TimeProvider ti
     public async Task SaveTaskAsync(string taskId, AgentTask task, CancellationToken cancellationToken = default)
     {
         var database = redis.GetDatabase();
-        await database.StringSetAsync(Key(taskId), JsonSerializer.Serialize(task, Json), Retention);
-        await database.SortedSetAddAsync(Index, taskId, time.GetUtcNow().ToUnixTimeMilliseconds());
+        RedisValue[] args =
+        [
+            JsonSerializer.Serialize(task, Json),
+            (long)Retention.TotalMilliseconds,
+            task.Status?.State is { } state ? StateName(state) : "",
+            .. Terminal.Select(t => (RedisValue)t),
+        ];
+        var saved = (long)await database.ScriptEvaluateAsync(SaveScript, [Key(taskId)], args);
+        if (saved == 1)
+        {
+            await database.SortedSetAddAsync(Index, taskId, time.GetUtcNow().ToUnixTimeMilliseconds());
+        }
     }
+
+    /// <summary>A state's name exactly as the SDK serialises it into a stored task.</summary>
+    private static string StateName(TaskState state) => JsonSerializer.Serialize(state, Json).Trim('"');
 
     public async Task DeleteTaskAsync(string taskId, CancellationToken cancellationToken = default)
     {

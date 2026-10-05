@@ -22,7 +22,8 @@ namespace Maf.Lab.Tests;
 /// <summary>A task store that also remembers which tasks it has seen, so a test can find one that is still running.</summary>
 internal sealed class RecordingTaskStore : global::A2A.ITaskStore
 {
-    private readonly global::A2A.InMemoryTaskStore _inner = new();
+    // Keeps an ended task ended, as the shared Redis store does (stop-anything).
+    private readonly TerminalGuardTaskStore _inner = new();
 
     public ConcurrentQueue<string> Seen { get; } = new();
 

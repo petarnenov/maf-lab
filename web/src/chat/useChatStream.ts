@@ -55,14 +55,32 @@ export function useChatStream() {
 
   useEffect(() => stop, [stop]);
 
-  /** One run of the chat agent. Resolves with whether the run ended the way the protocol says a run ends. */
+  /** The agent whose stop was asked for: one stop per run. */
+  const stopAskedRef = useRef<AbstractAgent | null>(null);
+
+  /**
+   * The person asks for the run in progress to stop (Esc): CopilotKit's own stop for the run, and nothing else. The
+   * run goes on reaching its turn until its own terminal event says it has stopped (agui-protocol-only).
+   */
+  const cancel = useCallback(() => {
+    const agent = agentRef.current;
+    if (!agent?.isRunning || stopAskedRef.current === agent) return;
+    stopAskedRef.current = agent;
+    dispatch({ type: 'stop_requested' });
+    copilotkit.stopAgent({ agent });
+  }, [copilotkit]);
+
+  /**
+   * One run of the chat agent. Resolves with whether the run ended the way the protocol says a run ends, or with
+   * 'stopped' when its terminal event said it was stopped.
+   */
   const run = useCallback(
     async (
       assistantTurnId: string,
       prepare: (agent: AbstractAgent) => void,
       resume?: { interruptId: string; status: 'resolved'; payload: unknown }[],
       observe?: (event: BaseEvent) => void,
-    ): Promise<boolean> => {
+    ): Promise<boolean | 'stopped'> => {
       stop();
       // A run of its own: the run it replaces may still be winding down on the agent it used.
       const agent: AbstractAgent | undefined = (await agentNamed(copilotkit, CHAT_AGENT))?.clone();
@@ -81,13 +99,19 @@ export function useChatStream() {
       let seq = 0;
       const startedAt = performance.now();
       let ended = false;
+      let stoppedRun = false;
       let failure: [string, FailureKind] | null = null;
       const subscription = agent.subscribe({
         onEvent: ({ event }: { event: BaseEvent }) => {
+          // A run another one replaced may still be winding down; what it says now belongs to no turn on screen.
+          if (agentRef.current !== agent) return;
           dispatch({ type: 'frame', frame: frameOf(++seq, performance.now() - startedAt, event) });
           dispatch({ type: 'event', event });
           observe?.(event);
-          if (event.type === 'RUN_FINISHED' || event.type === 'RUN_ERROR') ended = true;
+          if (event.type === 'RUN_FINISHED' || event.type === 'RUN_ERROR') {
+            ended = true;
+            stoppedRun = isStop(event);
+          }
         },
         onRunFailed: ({ error }: { error: Error }) => {
           failure = failureOf(error);
@@ -102,8 +126,9 @@ export function useChatStream() {
         // The rest of the trace is read once more without holding up the turn.
         void trace.stop();
       }
-      if (agentRef.current !== agent) return ended;
+      if (agentRef.current !== agent) return 'stopped';
       agentRef.current = null;
+      if (stoppedRun) return 'stopped';
       if (!ended) {
         const [message, kind] = failure ?? [
           'The answer stopped part-way. Send it again.',
@@ -171,6 +196,8 @@ export function useChatStream() {
             said += (event as BaseEvent & { delta: string }).delta;
         },
       );
+      // A stopped answer is waiting again; the reducer already put it back.
+      if (ended === 'stopped') return;
       dispatch({
         type: 'answered',
         adjustmentId,
@@ -236,7 +263,7 @@ export function useChatStream() {
     [token],
   );
 
-  return { state, send, reset, hydrate, answer, loadPending, toggleReasoning, setFocus };
+  return { state, send, cancel, reset, hydrate, answer, loadPending, toggleReasoning, setFocus };
 }
 
 /**
@@ -245,6 +272,15 @@ export function useChatStream() {
  */
 function keyFor(adjustmentId: string, approve: boolean): string {
   return `${adjustmentId}:${approve ? 'approve' : 'decline'}`;
+}
+
+/**
+ * A terminal event that says the run was stopped: an aborted run as `@ag-ui/client` reports it, or the cancelled
+ * outcome CopilotKit's runtime gives a run it stopped.
+ */
+function isStop(event: BaseEvent): boolean {
+  if (event.type === 'RUN_ERROR') return (event as BaseEvent & { code?: string }).code === 'abort';
+  return (event as BaseEvent & { outcome?: { type?: string } }).outcome?.type === 'cancelled';
 }
 
 /** What the run said, read as what became of the proposal. The words are the server's own. */

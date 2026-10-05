@@ -16,6 +16,8 @@ namespace Maf.Lab.ComplianceAgent;
 public sealed class ReviewAgentHandler(
     IPartnerAccessor partners,
     IOptions<ReviewOptions> options,
+    ITaskStore tasks,
+    IOptions<A2AOptions> a2a,
     TimeProvider time,
     ILogger<ReviewAgentHandler> logger) : IAgentHandler
 {
@@ -61,6 +63,23 @@ public sealed class ReviewAgentHandler(
         }
 
         logger.LogInformation("review started partner={Partner} task={TaskId}", partner.PartnerId, context.TaskId);
+        // A cancel may arrive at the other replica; the shared store is where it is recorded, so the review watches it
+        // there (stop-anything) and stops at its next step, whichever replica took the cancel.
+        await using var watch = TaskCancelWatch.Start(tasks, context.TaskId, TimeSpan.FromMilliseconds(a2a.Value.CancelPollMs), time);
+        using var work = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, watch.Token);
+        try
+        {
+            await ReviewAsync(adjustment, updater, work.Token);
+        }
+        catch (OperationCanceledException) when (watch.Canceled)
+        {
+            logger.LogInformation("review canceled through the store task={TaskId}", context.TaskId);
+            throw;
+        }
+    }
+
+    private async Task ReviewAsync(Adjustment adjustment, TaskUpdater updater, CancellationToken cancellationToken)
+    {
         var step = TimeSpan.FromMilliseconds(Duration() / Stages.Length);
         foreach (var stage in Stages)
         {

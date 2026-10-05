@@ -203,16 +203,29 @@ public sealed class TenantScopedGraphMaintenance(IDriver driver, IOptions<GraphO
         return rows[0]["c"].As<long>();
     }
 
-    public Task VerifyConnectivityAsync() => driver.VerifyConnectivityAsync();
+    /// <summary>
+    /// Whether the graph store answers, as a query the caller can cancel (stop-anything): the driver's own
+    /// connectivity check takes no token, so a stopped caller would otherwise only abandon it.
+    /// </summary>
+    public async Task VerifyConnectivityAsync(CancellationToken ct) => await RunAsync("RETURN 1 AS ok", null, ct, read: true);
+
+    /// <summary>Ends the query whose transaction carries <paramref name="stopId"/> (stop-anything); how many it ended.</summary>
+    private async Task<long> TerminateAsync(string stopId, CancellationToken ct)
+    {
+        var result = await driver.ExecutableQuery(GraphStop.Terminate).WithParameters(new { stopId }).ExecuteAsync(ct);
+        return result.Result.Count > 0 ? result.Result[0]["terminated"].As<long>() : 0;
+    }
 
     private async Task<IReadOnlyList<IRecord>> RunAsync(string cypher, Dictionary<string, object?>? parameters, CancellationToken ct, bool read = false)
     {
         using var span = LabTelemetry.Source.StartActivity(read ? "graph.maintenance_read" : "graph.write");
         var started = Stopwatch.GetTimestamp();
-        var result = await driver.ExecutableQuery(cypher)
-            .WithParameters(parameters?.ToDictionary(p => p.Key, p => p.Value!) ?? [])
-            .WithConfig(new QueryConfig(read ? RoutingControl.Readers : RoutingControl.Writers, _database))
-            .ExecuteAsync(ct);
+        // Stoppable on the server, not just abandoned (stop-anything).
+        var result = await GraphStop.RunAsync(read ? RoutingControl.Readers : RoutingControl.Writers, _database, config =>
+            driver.ExecutableQuery(cypher)
+                .WithParameters(parameters?.ToDictionary(p => p.Key, p => p.Value!) ?? [])
+                .WithConfig(config)
+                .ExecuteAsync(ct), TerminateAsync, ct);
         span?.SetTag("graph.rows", result.Result.Count);
         span?.SetTag("graph.duration_ms", Math.Round(Stopwatch.GetElapsedTime(started).TotalMilliseconds, 1));
         return result.Result;

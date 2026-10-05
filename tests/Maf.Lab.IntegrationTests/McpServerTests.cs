@@ -211,7 +211,8 @@ public sealed class McpServerTests(CorpusIndexFixture corpus) : IAsyncDisposable
         Assert.True(search.StructuredContent!.Value.GetProperty("results").GetArrayLength() > 0);
     }
 
-    private WebApplicationFactory<Maf.Lab.Retrieval.Program> Factory(Action<Dictionary<string, string?>>? configure = null)
+    private WebApplicationFactory<Maf.Lab.Retrieval.Program> Factory(
+        Action<Dictionary<string, string?>>? configure = null, IDenseEncoder? encoder = null)
     {
         var values = corpus.Qdrant.Config(corpus.Collection, corpus.CorpusRoot);
         values["Billing:SeedPath"] = Path.Combine(CorpusIndexFixture.RepoRoot(), "compose", "seed", "billing-runs.json");
@@ -230,18 +231,19 @@ public sealed class McpServerTests(CorpusIndexFixture corpus) : IAsyncDisposable
             b.ConfigureTestServices(s =>
             {
                 s.RemoveAll<IDenseEncoder>();
-                s.AddSingleton<IDenseEncoder>(FakeDenseEncoder.Default());
+                s.AddSingleton<IDenseEncoder>(encoder ?? FakeDenseEncoder.Default());
             });
         });
         _owned.Add(factory);
         return factory;
     }
 
-    private async Task<McpClient> ClientAsync(string user, string firm, Role role, WebApplicationFactory<Maf.Lab.Retrieval.Program>? factory = null)
+    private async Task<McpClient> ClientAsync(string user, string firm, Role role,
+        WebApplicationFactory<Maf.Lab.Retrieval.Program>? factory = null, params DelegatingHandler[] handlers)
     {
         factory ??= Factory();
         var (token, _) = DevJwt.Issue(new AuthOptions(), user, TenantId.Firm(firm), role, []);
-        var http = factory.CreateDefaultClient();
+        var http = factory.CreateDefaultClient(handlers);
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         var transport = new HttpClientTransport(new HttpClientTransportOptions
         {
@@ -251,6 +253,87 @@ public sealed class McpServerTests(CorpusIndexFixture corpus) : IAsyncDisposable
         var client = await McpClient.CreateAsync(transport, cancellationToken: Ct);
         _owned.Add(client);
         return client;
+    }
+
+    [Fact]
+    public async Task A_tool_call_cancelled_by_its_caller_is_cancelled_on_the_server()
+    {
+        // A stopped chat run cancels its tool calls; the server must stop the search, not finish it for nobody.
+        var encoder = new HeldEncoder();
+        var wire = new MethodsSent();
+        var client = await ClientAsync("adam", "firm-a", Role.ADVISOR, Factory(encoder: encoder), wire);
+        using var run = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+
+        var call = client.CallToolAsync("search_documents",
+            new Dictionary<string, object?> { ["query"] = "missing fee schedule" }, cancellationToken: run.Token).AsTask();
+        await encoder.Started.Task.WaitAsync(TimeSpan.FromSeconds(30), Ct);
+        await run.CancelAsync();
+
+        // The caller gave up; how its side reports that is the test host's business (an in-memory server answers 499).
+        await Assert.ThrowsAnyAsync<Exception>(() => call);
+        // The search on the server saw its own token cancelled, by the SDK's own means.
+        await encoder.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        Assert.False(encoder.Completed);
+        // Carried by the stateless transport itself: the tools/call request ended. Nothing of ours went on the wire.
+        Assert.All(wire.Methods, m => Assert.Contains(m, new[] { "server/discover", "tools/call", NotificationMethods.CancelledNotification }));
+    }
+
+    /// <summary>An encoder that holds every query until its caller gives up, and says what became of it.</summary>
+    private sealed class HeldEncoder : IDenseEncoder
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Cancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool Completed { get; private set; }
+
+        public async Task<float[]> EmbedQueryAsync(string vectorName, string text, CancellationToken ct)
+        {
+            Started.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                Cancelled.TrySetResult();
+                throw;
+            }
+            Completed = true;
+            return [];
+        }
+
+        public Task<IReadOnlyList<float[]>> EmbedDocumentsAsync(string vectorName, IReadOnlyList<string> texts, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public string ModelVersion(string vectorName) => FakeDenseEncoder.Default().ModelVersion(vectorName);
+    }
+
+    /// <summary>The JSON-RPC methods the client sent, as they went on the wire.</summary>
+    private sealed class MethodsSent : DelegatingHandler
+    {
+        private readonly System.Collections.Concurrent.ConcurrentQueue<string> methods = new();
+
+        public IReadOnlyCollection<string> Methods => methods;
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.Content is not null)
+            {
+                var body = await request.Content.ReadAsStringAsync(cancellationToken);
+                try
+                {
+                    using var json = JsonDocument.Parse(body);
+                    if (json.RootElement.ValueKind == JsonValueKind.Object && json.RootElement.TryGetProperty("method", out var m))
+                    {
+                        methods.Enqueue(m.GetString() ?? "");
+                    }
+                }
+                catch (JsonException)
+                {
+                    // Not JSON-RPC: nothing to note.
+                }
+            }
+            return await base.SendAsync(request, cancellationToken);
+        }
     }
 
     public async ValueTask DisposeAsync()

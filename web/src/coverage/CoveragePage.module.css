@@ -679,3 +679,9 @@
   border: 1px solid var(--border);
   color: var(--muted);
 }
+
+/* The Activity dialog's "Esc to stop", beside its actions. */
+.activityStopHint {
+  margin: 0 auto 0 0;
+  align-self: center;
+}

@@ -41,7 +41,8 @@ export function JevPage() {
 
   const stats = useQuery({
     queryKey: ['admin', 'jev-stats', window, session?.token],
-    queryFn: () => api<JevStatsReport>(`/api/admin/jev-stats?window=${window}`),
+    queryFn: ({ signal }) =>
+      api<JevStatsReport>(`/api/admin/jev-stats?window=${window}`, { signal }),
     enabled: !!session,
     refetchInterval: 60_000,
   });

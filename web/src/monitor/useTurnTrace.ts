@@ -11,7 +11,8 @@ export function useTurnTrace(
   const placeholder = options.placeholder;
   return useQuery({
     queryKey: ['turn-trace', turnId],
-    queryFn: () => api<TurnTraceDocument>(`/api/turns/${encodeURIComponent(turnId ?? '')}/trace`),
+    queryFn: ({ signal }) =>
+      api<TurnTraceDocument>(`/api/turns/${encodeURIComponent(turnId ?? '')}/trace`, { signal }),
     enabled: Boolean(turnId) && (options.enabled ?? true),
     staleTime: 60_000,
     placeholderData:

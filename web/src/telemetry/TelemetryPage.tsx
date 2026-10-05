@@ -21,7 +21,7 @@ export function TelemetryPage() {
 
   const report = useQuery({
     queryKey: ['telemetry', window, session?.token],
-    queryFn: () => api<TelemetryReport>(`/api/telemetry?window=${window}`),
+    queryFn: ({ signal }) => api<TelemetryReport>(`/api/telemetry?window=${window}`, { signal }),
     enabled: !!session,
     refetchInterval: 15_000,
   });

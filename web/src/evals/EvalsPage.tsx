@@ -14,7 +14,7 @@ export function EvalsPage() {
 
   const reports = useQuery({
     queryKey: ['evals', 'reports', session?.token],
-    queryFn: () => api<EvalReportSummary[]>('/api/evals/reports'),
+    queryFn: ({ signal }) => api<EvalReportSummary[]>('/api/evals/reports', { signal }),
     enabled: !!session,
   });
 
@@ -100,7 +100,8 @@ function ReportDetail({ runId }: { runId: string }) {
   const api = useApi();
   const report = useQuery({
     queryKey: ['evals', 'report', runId, session?.token],
-    queryFn: () => api<EvalReport>(`/api/evals/reports/${encodeURIComponent(runId)}`),
+    queryFn: ({ signal }) =>
+      api<EvalReport>(`/api/evals/reports/${encodeURIComponent(runId)}`, { signal }),
   });
 
   if (report.isLoading) return <p className={styles.muted}>Loading report…</p>;

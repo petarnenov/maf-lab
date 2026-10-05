@@ -10,7 +10,7 @@ if ! curl -sf "$BASE_URL/lb-health" >/dev/null 2>&1; then
 fi
 
 python3 - "$BASE_URL" <<'PY'
-import json, sys, time, urllib.request
+import json, signal, sys, time, urllib.request
 
 base = sys.argv[1]
 
@@ -26,6 +26,18 @@ def req(path, method="GET", body=None, token=None):
 
 token = req("/dev/token", "POST", {"userId": "alice", "firmId": "firm-a", "role": "FIRM_ADMIN"})["token"]
 job = req("/api/coverage/refresh", "POST", {}, token)
+
+# Ctrl+C and SIGTERM (stop-anything): the refresh this started is cancelled on the way out, not left running.
+def stop(signum, frame):
+    try:
+        req(f"/api/coverage/refresh/{job['jobId']}/cancel", "POST", {}, token)
+    except Exception:
+        pass
+    print(f"\n✗ Cancelled. The coverage refresh (job {job['jobId']}) was stopped; run `make coverage` again.", flush=True)
+    sys.exit(130)
+
+signal.signal(signal.SIGINT, stop)
+signal.signal(signal.SIGTERM, stop)
 print(f"… measuring coverage at main (job {job['jobId']})", flush=True)
 deadline = time.time() + 30 * 60
 while job["state"] == "running" and time.time() < deadline:

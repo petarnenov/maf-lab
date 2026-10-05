@@ -747,6 +747,16 @@ public sealed partial class ChatTurnRunner(
         {
             result = await next(context, ct);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The run was stopped while the call was going: the MCP SDK has cancelled it on its server. The audit
+            // still says so — with CancellationToken.None, since the run's own token is the one that fired.
+            await audit.RecordAsync(new AuditEntry(state.Principal, state.ConversationId, state.TurnId, name, args, "cancelled", sw.ElapsedMilliseconds), CancellationToken.None);
+            LabTelemetry.Instruments.ToolCalls.Add(1,
+                new KeyValuePair<string, object?>("tool.name", name),
+                new KeyValuePair<string, object?>("outcome", "cancelled"));
+            throw;
+        }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogWarning("tool {Tool} threw {ErrorType}", name, ex.GetType().Name);

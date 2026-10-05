@@ -70,6 +70,12 @@ internal sealed class FakeCoverageRunner : HttpMessageHandler
     /// <summary>Set to make every request fail as if the runner were down.</summary>
     public bool Down { get; set; }
 
+    /// <summary>Jobs stay running until cancelled, so a test can stop the work waiting on one.</summary>
+    public bool KeepRunning { get; set; }
+
+    /// <summary>The jobs a caller cancelled, in order.</summary>
+    public ConcurrentQueue<string> Cancels { get; } = new();
+
     public const string EmptyReport = "<coverage><packages/></coverage>";
 
     public static RunnerResult Result(string cobertura, int failed = 0, string root = "/work/job", double? targetPct = null,
@@ -112,9 +118,21 @@ internal sealed class FakeCoverageRunner : HttpMessageHandler
             {
                 await gate.Task.WaitAsync(ct);
             }
-            var job = new RunnerJob($"job_{Guid.NewGuid():N}", RunnerJobState.Done, 0, Answer(body));
+            var job = KeepRunning
+                ? new RunnerJob($"job_{Guid.NewGuid():N}", RunnerJobState.Running, 0, null)
+                : new RunnerJob($"job_{Guid.NewGuid():N}", RunnerJobState.Done, 0, Answer(body));
             _jobs[job.Id] = job;
             return new HttpResponseMessage(HttpStatusCode.Accepted) { Content = JsonContent.Create(job, options: Json) };
+        }
+        if (request.Method == HttpMethod.Post && path.EndsWith("/cancel"))
+        {
+            var canceled = path.Split('/')[^2];
+            Cancels.Enqueue(canceled);
+            if (_jobs.TryGetValue(canceled, out var running))
+            {
+                _jobs[canceled] = running with { State = RunnerJobState.Canceled, Result = null };
+            }
+            return new HttpResponseMessage(HttpStatusCode.Accepted);
         }
         var id = path.Split('/').Last();
         return _jobs.TryGetValue(id, out var found)

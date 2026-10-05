@@ -627,3 +627,140 @@ describe('a write waiting for a person', () => {
     expect(chatReducer(restored, { type: 'reset' }).focus).toBeNull();
   });
 });
+
+describe('a run the person stopped', () => {
+  const aborted = {
+    type: EventType.RUN_ERROR,
+    message: 'Request aborted',
+    code: 'abort',
+  } as BaseEvent;
+  const cancelled = {
+    type: EventType.RUN_FINISHED,
+    threadId: 'conv-1',
+    runId: 'r1',
+    outcome: { type: 'cancelled' },
+  } as BaseEvent;
+  const event = (state: ChatState, e: BaseEvent) => chatReducer(state, { type: 'event', event: e });
+
+  it('asking to stop marks the turn and ends nothing', () => {
+    const state = apply(send(), { type: 'text_delta', data: { text: 'The fee' } });
+    const asked = chatReducer(state, { type: 'stop_requested' });
+    expect(asked.streaming).toBe(true);
+    expect(assistant(asked)).toMatchObject({
+      status: 'streaming',
+      stopping: true,
+      text: 'The fee',
+    });
+    expect(assistant(asked).stopped).toBeUndefined();
+    // The run's own events still reach its turn until it says it has stopped.
+    const more = apply(asked, { type: 'text_delta', data: { text: ' schedule' } });
+    expect(assistant(more).text).toBe('The fee schedule');
+  });
+
+  it('asking to stop with nothing running changes nothing', () => {
+    const state = apply(send(), { type: 'text_delta', data: { text: 'all' } }, done);
+    expect(chatReducer(state, { type: 'stop_requested' })).toBe(state);
+  });
+
+  it.each([
+    ['an aborted run', aborted],
+    ['a cancelled outcome', cancelled],
+  ])('%s ends the turn stopped, keeping what it had, with no error', (_, terminal) => {
+    vi.useFakeTimers();
+    let state = apply(send(), { type: 'reasoning_delta', data: { text: 'Looking' } }, started);
+    state = apply(state, { type: 'text_delta', data: { text: 'The fee schedule' } });
+    state = chatReducer(state, { type: 'stop_requested' });
+    vi.advanceTimersByTime(1_500);
+
+    state = event(state, terminal);
+
+    const turn = assistant(state);
+    expect(state.streaming).toBe(false);
+    expect(turn).toMatchObject({ status: 'done', stopped: true, text: 'The fee schedule' });
+    expect(turn.stopping).toBeUndefined();
+    expect(turn.reasoning).toBe('Looking');
+    expect(turn.reasoningSince).toBeUndefined();
+    expect(turn.step).toBeUndefined();
+    expect(turn.error).toBeUndefined();
+    expect(turn.errorKind).toBeUndefined();
+    expect(turn.turnId).toBeUndefined();
+    expect(turn.toolCalls).toEqual([
+      expect.objectContaining({ callId: 'c1', status: 'finished', stopped: true }),
+    ]);
+    expect(turn.toolCalls[0].isError).toBeUndefined();
+  });
+
+  it('closes a tool card the runtime reports stopped as stopped, not failed', () => {
+    const state = event(apply(send(), started), {
+      type: EventType.TOOL_CALL_RESULT,
+      toolCallId: 'c1',
+      messageId: 'c1-result',
+      role: 'tool',
+      content: JSON.stringify({
+        status: 'stopped',
+        reason: 'stop_requested',
+        message: 'Run stopped by user',
+      }),
+    } as BaseEvent);
+    expect(assistant(state).toolCalls).toEqual([
+      expect.objectContaining({
+        callId: 'c1',
+        status: 'finished',
+        stopped: true,
+        resultSummary: 'stopped',
+      }),
+    ]);
+    expect(assistant(state).toolCalls[0].isError).toBe(false);
+  });
+
+  it('any other run error is still a failure with its face', () => {
+    const state = event(apply(send(), started), {
+      type: EventType.RUN_ERROR,
+      message: 'Run ended without a terminal event',
+      code: 'INCOMPLETE_STREAM',
+    } as BaseEvent);
+    expect(assistant(state)).toMatchObject({ status: 'error', errorKind: 'unavailable' });
+    expect(assistant(state).stopped).toBeUndefined();
+  });
+
+  it('puts an answer that was on its way back to waiting', () => {
+    let state = chatReducer(initialChatState, {
+      type: 'send',
+      userTurnId: 'u1',
+      assistantTurnId: 'a1',
+      text: 'adjust the fee',
+    });
+    state = apply(state, {
+      type: 'confirmation_required',
+      data: {
+        callId: 'c1',
+        toolName: 'propose_fee_adjustment',
+        adjustmentId: 'adj_1',
+        adjustment: {
+          adjustmentId: 'adj_1',
+          accountId: 'A-1042',
+          accountName: 'Ridgeline Family Trust',
+          currentFee: 1200,
+          amount: -200,
+          resultingFee: 1000,
+          currency: 'USD',
+          periodStart: '2026-10-01',
+          periodEnd: '2026-10-31',
+        },
+        question: 'Apply a fee adjustment of -200.00 USD to A-1042?',
+        state: 'opaque',
+        expiresAt: null,
+      },
+    });
+    state = chatReducer(state, { type: 'start_answer', assistantTurnId: 'a2' });
+    state = chatReducer(state, { type: 'answering', adjustmentId: 'adj_1' });
+
+    state = event(chatReducer(state, { type: 'stop_requested' }), aborted);
+
+    const proposal = state.turns.find(
+      (t) => t.role === 'assistant' && t.confirmation,
+    ) as AssistantTurn;
+    expect(proposal.confirmationState).toBe('waiting');
+    expect(assistant(state)).toMatchObject({ id: 'a2', stopped: true, status: 'done' });
+  });
+});

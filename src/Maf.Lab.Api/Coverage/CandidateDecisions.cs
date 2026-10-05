@@ -32,8 +32,11 @@ public sealed class CandidateDecisions(
         {
             return new DecisionOutcome.NotCandidate();
         }
+        // The last moment a stop counts (stop-anything): from here the merge and the record of it are one step, run to
+        // the end, so a stop never leaves main half-merged or a merged run still a candidate.
+        ct.ThrowIfCancellationRequested();
         var outcome = await repo.MergeAsync(branch, options.Value.MainBranch,
-            $"Merge {branch}: tests for {run.Path} (test-agent run {runId})", ct);
+            $"Merge {branch}: tests for {run.Path} (test-agent run {runId})", CancellationToken.None);
         switch (outcome)
         {
             case MergeOutcome.Conflict:
@@ -45,8 +48,8 @@ public sealed class CandidateDecisions(
                 return new DecisionOutcome.Refused("branch_missing", "The run's branch no longer exists.");
         }
         var merge = ((MergeOutcome.Merged)outcome).Commit;
-        await store.PromoteAsync(runId, merge, ct);
-        var accepted = await runs.FinishAsync(runId, TestGenRunState.Accepted, null, ct, r => r.MergeCommit = merge);
+        await store.PromoteAsync(runId, merge, CancellationToken.None);
+        var accepted = await runs.FinishAsync(runId, TestGenRunState.Accepted, null, CancellationToken.None, r => r.MergeCommit = merge);
         var problems = await TellIssuesAsync(runId, close: false,
             $"The tests that found this were accepted into main in {merge[..12]}. The test stays skipped until the code is fixed.", ct);
         return new DecisionOutcome.Done(accepted!, problems);
@@ -58,11 +61,13 @@ public sealed class CandidateDecisions(
         {
             return new DecisionOutcome.NotCandidate();
         }
+        // As for accept: a stop counts up to here, and the branch's removal and its record are then one step.
+        ct.ThrowIfCancellationRequested();
         if (run.Branch is { } branch)
         {
-            await repo.DeleteBranchAsync(branch, ct);
+            await repo.DeleteBranchAsync(branch, CancellationToken.None);
         }
-        var discarded = await runs.FinishAsync(runId, TestGenRunState.Discarded, null, ct);
+        var discarded = await runs.FinishAsync(runId, TestGenRunState.Discarded, null, CancellationToken.None);
         var problems = await TellIssuesAsync(runId, close: true,
             "The run that found this was discarded, so its test was not kept. Reopen this issue if the bug is real.", ct);
         return new DecisionOutcome.Done(discarded!, problems);

@@ -21,79 +21,112 @@ var dataset = Path.Combine(evalsRoot, "a2a-conformance.jsonl");
 // not, so it is the container's name for the host — overridable for a local run, where it is just localhost.
 var pushHost = Environment.GetEnvironmentVariable("MAF_PUSH_HOST") ?? "host.docker.internal";
 
-using var anonymous = new HttpClient { BaseAddress = new Uri(baseUrl) };
+// Ctrl+C and SIGTERM stop the probe between scenarios (stop-anything); a stopped run writes no partial report.
+using var cts = new CancellationTokenSource();
+Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
+using var sigterm = System.Runtime.InteropServices.PosixSignalRegistration.Create(
+    System.Runtime.InteropServices.PosixSignal.SIGTERM, signal => { signal.Cancel = true; cts.Cancel(); });
 
-// Discovery first: the card is how a partner learns where to talk and how to authenticate.
-var card = await new A2ACardResolver(new Uri(baseUrl), anonymous).GetAgentCardAsync();
-
-// …and the card's security scheme is client credentials, so that is what this client does.
-var issued = await anonymous.PostAsJsonAsync("/a2a/token", new { clientId, clientSecret = secret });
-issued.EnsureSuccessStatusCode();
-var token = (await issued.Content.ReadFromJsonAsync<TokenResponse>())!.AccessToken;
-
-using var authenticated = new HttpClient { BaseAddress = new Uri(baseUrl), Timeout = TimeSpan.FromMinutes(5) };
-authenticated.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-
-var endpoint = card.SupportedInterfaces?.FirstOrDefault(i => i.ProtocolBinding == ProtocolBindingNames.JsonRpc)?.Url
-    ?? $"{baseUrl.TrimEnd('/')}/a2a";
-using var client = new A2AClient(new Uri(endpoint), authenticated);
-
-var context = new ProbeContext
+try
 {
-    BaseUri = new Uri(baseUrl),
-    Anonymous = anonymous,
-    Authenticated = authenticated,
-    Client = client,
-    PublicCard = card,
-    PushHost = pushHost,
-    ReviewerUrl = reviewerUrl,
-    ReviewerSecret = reviewerSecret,
-};
-
-var rows = Conformance.Load(dataset);
-Console.WriteLine($"{rows.Count} scenario(s) from {dataset}");
-Console.WriteLine($"against {endpoint} as {clientId}");
-Console.WriteLine();
-
-var startedAt = DateTimeOffset.UtcNow;
-var outcomes = new List<ConformanceOutcome>();
-foreach (var row in rows)
+    return await ProbeAsync(cts.Token);
+}
+catch (OperationCanceledException) when (cts.IsCancellationRequested)
 {
-    outcomes.Add(await Scenarios.RunAsync(context, row, CancellationToken.None));
-    var last = outcomes[^1];
-    Console.WriteLine($"{(last.Passed ? "  ok " : "FAIL")}  {row.Id} {row.Scenario} — {row.What}");
-    if (last.Detail is { Length: > 0 })
-    {
-        Console.WriteLine($"          {Scenarios.Trim(last.Detail)}");
-    }
-    if (!last.Passed)
-    {
-        Console.WriteLine($"          {last.Reason}");
-    }
+    Console.Error.WriteLine("Cancelled before every scenario ran; no report was written. Run `make eval-a2a` again.");
+    return 130;
 }
 
-var report = Conformance.Build(outcomes, new Dictionary<string, string>
+async Task<int> ProbeAsync(CancellationToken ct)
 {
-    ["baseUrl"] = baseUrl,
-    ["partner"] = clientId,
-    ["reviewer"] = reviewerUrl,
-    ["agentVersion"] = card.Version ?? "",
-    ["dataset"] = Path.GetFileName(dataset),
-}, startedAt, DateTimeOffset.UtcNow);
+    using var anonymous = new HttpClient { BaseAddress = new Uri(baseUrl) };
 
-var written = await Conformance.WriteAsync(evalsRoot, report, CancellationToken.None);
-Console.WriteLine();
-Console.WriteLine($"report: {written}");
+    // Discovery first: the card is how a partner learns where to talk and how to authenticate.
+    var card = await new A2ACardResolver(new Uri(baseUrl), anonymous).GetAgentCardAsync(ct);
 
-var failed = outcomes.Where(o => !o.Passed).ToList();
-if (failed.Count > 0)
-{
-    Console.WriteLine($"{failed.Count} scenario(s) failed:");
-    failed.ForEach(f => Console.WriteLine($"  - {f.Id} {f.Scenario}: {f.Reason}"));
-    return 1;
+    // …and the card's security scheme is client credentials, so that is what this client does.
+    var issued = await anonymous.PostAsJsonAsync("/a2a/token", new { clientId, clientSecret = secret }, ct);
+    issued.EnsureSuccessStatusCode();
+    var token = (await issued.Content.ReadFromJsonAsync<TokenResponse>(ct))!.AccessToken;
+
+    using var authenticated = new HttpClient { BaseAddress = new Uri(baseUrl), Timeout = TimeSpan.FromMinutes(5) };
+    authenticated.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+    var endpoint = card.SupportedInterfaces?.FirstOrDefault(i => i.ProtocolBinding == ProtocolBindingNames.JsonRpc)?.Url
+        ?? $"{baseUrl.TrimEnd('/')}/a2a";
+    using var client = new A2AClient(new Uri(endpoint), authenticated);
+
+    var context = new ProbeContext
+    {
+        BaseUri = new Uri(baseUrl),
+        Anonymous = anonymous,
+        Authenticated = authenticated,
+        Client = client,
+        PublicCard = card,
+        PushHost = pushHost,
+        ReviewerUrl = reviewerUrl,
+        ReviewerSecret = reviewerSecret,
+    };
+
+    var rows = Conformance.Load(dataset);
+    Console.WriteLine($"{rows.Count} scenario(s) from {dataset}");
+    Console.WriteLine($"against {endpoint} as {clientId}");
+    Console.WriteLine();
+
+    var startedAt = DateTimeOffset.UtcNow;
+    var outcomes = new List<ConformanceOutcome>();
+    foreach (var row in rows)
+    {
+        try
+        {
+            outcomes.Add(await Scenarios.RunAsync(context, row, ct));
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            break;
+        }
+        var last = outcomes[^1];
+        Console.WriteLine($"{(last.Passed ? "  ok " : "FAIL")}  {row.Id} {row.Scenario} — {row.What}");
+        if (last.Detail is { Length: > 0 })
+        {
+            Console.WriteLine($"          {Scenarios.Trim(last.Detail)}");
+        }
+        if (!last.Passed)
+        {
+            Console.WriteLine($"          {last.Reason}");
+        }
+    }
+
+    if (cts.IsCancellationRequested)
+    {
+        Console.Error.WriteLine(
+            $"Cancelled after {outcomes.Count} of {rows.Count} scenario(s); no report was written. Run `make eval-a2a` again.");
+        return 130;
+    }
+
+    var report = Conformance.Build(outcomes, new Dictionary<string, string>
+    {
+        ["baseUrl"] = baseUrl,
+        ["partner"] = clientId,
+        ["reviewer"] = reviewerUrl,
+        ["agentVersion"] = card.Version ?? "",
+        ["dataset"] = Path.GetFileName(dataset),
+    }, startedAt, DateTimeOffset.UtcNow);
+
+    var written = await Conformance.WriteAsync(evalsRoot, report, CancellationToken.None);
+    Console.WriteLine();
+    Console.WriteLine($"report: {written}");
+
+    var failed = outcomes.Where(o => !o.Passed).ToList();
+    if (failed.Count > 0)
+    {
+        Console.WriteLine($"{failed.Count} scenario(s) failed:");
+        failed.ForEach(f => Console.WriteLine($"  - {f.Id} {f.Scenario}: {f.Reason}"));
+        return 1;
+    }
+    Console.WriteLine("every scenario passed");
+    return 0;
 }
-Console.WriteLine("every scenario passed");
-return 0;
 
 string Arg(int index, string fallback) => args.Length > index ? args[index] : fallback;
 

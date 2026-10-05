@@ -1,4 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
+import { StopHint } from '../components/StopHint';
+import { useEscToStop } from '../components/useEscToStop';
 import type { CodeSnippet } from '../api/types';
 import { groupByFile, snippetKey, useCodeSnippets } from './codeSnippets';
 import styles from './CodeSnippetsPanel.module.css';
@@ -26,6 +29,13 @@ export function CodeSnippetsPanel({
 }: CodeSnippetsPanelProps) {
   const answered = used.length > 0;
   const query = useCodeSnippets(question, active && !answered);
+  // A search still running stops on Esc (stop-anything): the request is aborted, and the code server stops searching.
+  const queryClient = useQueryClient();
+  const [stopped, setStopped] = useState(false);
+  useEscToStop(active && query.isFetching, () => {
+    setStopped(true);
+    void queryClient.cancelQueries({ queryKey: ['code-snippets', question] });
+  });
 
   let body;
   let label: string | null = null;
@@ -35,7 +45,27 @@ export function CodeSnippetsPanel({
   } else if (!question.trim()) {
     body = <p className={styles.note}>Ask a question to see the code that answers it.</p>;
   } else if (query.isPending && query.fetchStatus !== 'idle') {
-    body = <p className={styles.note}>Searching the codebase…</p>;
+    body = (
+      <>
+        <p className={styles.note}>Searching the codebase…</p>
+        <StopHint stopping={false} />
+      </>
+    );
+  } else if (stopped && !query.data) {
+    body = (
+      <p className={styles.note} role="status" data-testid="snippets-stopped">
+        Stopped.{' '}
+        <button
+          type="button"
+          onClick={() => {
+            setStopped(false);
+            void query.refetch();
+          }}
+        >
+          Search again
+        </button>
+      </p>
+    );
   } else if (query.isError) {
     body = (
       <p className={styles.error} role="alert">

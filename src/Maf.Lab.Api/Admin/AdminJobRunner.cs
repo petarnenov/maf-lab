@@ -10,6 +10,16 @@ public sealed class AdminJobOptions
     public TimeSpan HeartbeatInterval { get; set; } = TimeSpan.FromSeconds(10);
     /// <summary>A running job whose heartbeat is older than this is considered interrupted (its replica died).</summary>
     public TimeSpan StaleAfter { get; set; } = TimeSpan.FromSeconds(60);
+    /// <summary>How often a running job looks at its row for a cancel another replica recorded (stop-anything).</summary>
+    public TimeSpan CancelPollEvery { get; set; } = TimeSpan.FromSeconds(1);
+}
+
+/// <summary>What a cancel found: the job stopping, a job that had already ended, or none at all.</summary>
+public enum AdminJobCancel
+{
+    Canceling,
+    AlreadyEnded,
+    NotFound,
 }
 
 /// <summary>A job that failed for a reason its summary may name: the message is shown to the administrator.</summary>
@@ -19,6 +29,10 @@ public sealed class AdminJobFailure(string reason, Exception? inner = null) : Ex
 /// Runs admin jobs (index, migrate) with their state in the shared database, so any api replica can report a job's
 /// status and at most one job per firm and kind runs at a time across replicas. The replica that starts a job runs it
 /// and keeps its heartbeat fresh; a job whose heartbeat goes stale is reported failed ("interrupted").
+///
+/// A job can be stopped (stop-anything) through any replica: the cancel is the job's row moving to canceled, and the
+/// replica running the job watches its row and stops the work. Every state change is one statement guarded on the job
+/// still running, so nothing written later — the work's own end, a stale-heartbeat sweep — undoes a cancel.
 /// </summary>
 public sealed class AdminJobRunner(
     IDbContextFactory<MafDbContext> db,
@@ -28,11 +42,17 @@ public sealed class AdminJobRunner(
     IHostApplicationLifetime lifetime)
 {
     public const string Interrupted = "The job was interrupted (its server instance stopped); start it again.";
+    public const string CanceledSummary = "Canceled by an administrator.";
     private readonly AdminJobOptions _options = options.Value;
 
     public string Instance { get; init; } = Environment.MachineName;
 
-    public async Task<AdminJob> StartAsync(string firmId, string kind, Func<CancellationToken, Task<string>> work, CancellationToken ct)
+    public Task<AdminJob> StartAsync(string firmId, string kind, Func<CancellationToken, Task<string>> work, CancellationToken ct) =>
+        StartAsync(firmId, kind, (_, token) => work(token), ct);
+
+    /// <summary>Starts a job whose work reports how far it has got, so a canceled job can say so.</summary>
+    public async Task<AdminJob> StartAsync(string firmId, string kind, Func<IProgress<string>, CancellationToken, Task<string>> work,
+        CancellationToken ct)
     {
         await using var ctx = await db.CreateDbContextAsync(ct);
         await ExpireStaleAsync(ctx, firmId, ct);
@@ -74,6 +94,28 @@ public sealed class AdminJobRunner(
         return row is null ? null : ToContract(row);
     }
 
+    /// <summary>
+    /// Cancels a running job of the firm, whichever replica runs it: one guarded update moves its row to canceled, and
+    /// the replica running it stops the work when it sees that.
+    /// </summary>
+    public async Task<(AdminJobCancel Outcome, AdminJob? Job)> CancelAsync(string firmId, string jobId, CancellationToken ct)
+    {
+        await using var ctx = await db.CreateDbContextAsync(ct);
+        var now = time.GetUtcNow().UtcDateTime;
+        var canceled = await ctx.AdminJobs
+            .Where(j => j.Id == jobId && j.FirmId == firmId && j.State == AdminJobStates.Running)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(j => j.State, AdminJobStates.Canceled)
+                .SetProperty(j => j.Summary, CanceledSummary)
+                .SetProperty(j => j.FinishedAt, now), ct);
+        var row = await ctx.AdminJobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == jobId && j.FirmId == firmId, ct);
+        if (row is null)
+        {
+            return (AdminJobCancel.NotFound, null);
+        }
+        return (canceled == 1 ? AdminJobCancel.Canceling : AdminJobCancel.AlreadyEnded, ToContract(row));
+    }
+
     public async Task<AdminJob?> CurrentAsync(string firmId, CancellationToken ct)
     {
         await using var ctx = await db.CreateDbContextAsync(ct);
@@ -82,16 +124,26 @@ public sealed class AdminJobRunner(
         return row is null ? null : ToContract(row);
     }
 
-    private async Task RunAsync(string jobId, string kind, Func<CancellationToken, Task<string>> work)
+    private async Task RunAsync(string jobId, string kind, Func<IProgress<string>, CancellationToken, Task<string>> work)
     {
         var stopping = lifetime.ApplicationStopping;
         using var heartbeatStop = CancellationTokenSource.CreateLinkedTokenSource(stopping);
         var heartbeat = HeartbeatAsync(jobId, heartbeatStop.Token);
+        // The cancel is the row; this replica learns of it there, whichever replica took it.
+        await using var watch = JobCancelWatch.Start(db, jobId, _options.CancelPollEvery, time);
+        using var run = CancellationTokenSource.CreateLinkedTokenSource(stopping, watch.Token);
+        var progress = new LatestProgress();
         string state, summary;
         try
         {
-            summary = await work(stopping);
+            summary = await work(progress, run.Token);
             state = AdminJobStates.Succeeded;
+        }
+        catch (OperationCanceledException) when (watch.Canceled)
+        {
+            logger.LogInformation("admin job {Kind} canceled", kind);
+            (state, summary) = (AdminJobStates.Canceled,
+                progress.Latest is { } reached ? $"{CanceledSummary} It had {reached}." : CanceledSummary);
         }
         catch (Exception ex)
         {
@@ -111,12 +163,23 @@ public sealed class AdminJobRunner(
         {
         }
 
+        // Guarded like every change: a job canceled meanwhile keeps its cancel; its own end only adds how far it got.
         await using var ctx = await db.CreateDbContextAsync(CancellationToken.None);
-        var row = await ctx.AdminJobs.FirstAsync(j => j.Id == jobId);
-        row.State = state;
-        row.Summary = summary;
-        row.FinishedAt = time.GetUtcNow().UtcDateTime;
-        await ctx.SaveChangesAsync();
+        var now = time.GetUtcNow().UtcDateTime;
+        var from = state == AdminJobStates.Canceled ? AdminJobStates.Canceled : AdminJobStates.Running;
+        await ctx.AdminJobs.Where(j => j.Id == jobId && (j.State == AdminJobStates.Running || j.State == from))
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(j => j.State, state)
+                .SetProperty(j => j.Summary, summary)
+                .SetProperty(j => j.FinishedAt, j => j.FinishedAt ?? now));
+    }
+
+    /// <summary>The last thing the work said about how far it has got.</summary>
+    private sealed class LatestProgress : IProgress<string>
+    {
+        private string? latest;
+        public string? Latest => Volatile.Read(ref latest);
+        public void Report(string value) => Volatile.Write(ref latest, value);
     }
 
     private async Task HeartbeatAsync(string jobId, CancellationToken ct)

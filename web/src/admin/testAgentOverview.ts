@@ -12,6 +12,6 @@ export function useTestAgentOverview() {
   const api = useApi();
   return useQuery({
     queryKey: testAgentKey(session?.token),
-    queryFn: () => api<TestAgentOverview>('/api/admin/a2a/test-agent'),
+    queryFn: ({ signal }) => api<TestAgentOverview>('/api/admin/a2a/test-agent', { signal }),
   });
 }

@@ -429,7 +429,7 @@ export function EvalHistory() {
   const api = useApi();
   const reports = useQuery({
     queryKey: ['evals', 'reports', session?.token],
-    queryFn: () => api<EvalReportSummary[]>('/api/evals/reports'),
+    queryFn: ({ signal }) => api<EvalReportSummary[]>('/api/evals/reports', { signal }),
     enabled: !!session,
   });
 

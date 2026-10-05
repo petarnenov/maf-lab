@@ -3,7 +3,14 @@ import styles from './ToolCallCard.module.css';
 import { toolCallLabel } from './toolLabels';
 
 export function ToolCallCard({ call }: { call: ToolCallView }) {
-  const state = call.status === 'running' ? 'running' : call.isError ? 'error' : 'finished';
+  const state =
+    call.status === 'running'
+      ? 'running'
+      : call.isError
+        ? 'error'
+        : call.stopped
+          ? 'stopped'
+          : 'finished';
   return (
     <div
       className={`${styles.card} ${styles[state]}`}
@@ -20,6 +27,7 @@ export function ToolCallCard({ call }: { call: ToolCallView }) {
       {call.argumentSummary && <div className={styles.args}>{call.argumentSummary}</div>}
       {call.status === 'finished' && (
         <div className={styles.result}>
+          {call.stopped && !call.resultSummary && <span>stopped</span>}
           {call.resultSummary && <span>{call.resultSummary}</span>}
           {call.sourceCount !== undefined && (
             <span className={styles.count}>

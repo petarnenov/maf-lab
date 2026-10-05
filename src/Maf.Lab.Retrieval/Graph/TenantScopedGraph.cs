@@ -24,6 +24,13 @@ public sealed class TenantScopedGraph(IDriver driver, IOptions<GraphOptions> opt
 
     private readonly string _database = options.Value.Database;
 
+    /// <summary>Ends the query whose transaction carries <paramref name="stopId"/> (stop-anything); how many it ended.</summary>
+    private async Task<long> TerminateAsync(string stopId, CancellationToken ct)
+    {
+        var result = await driver.ExecutableQuery(GraphStop.Terminate).WithParameters(new { stopId }).ExecuteAsync(ct);
+        return result.Result.Count > 0 ? result.Result[0]["terminated"].As<long>() : 0;
+    }
+
     public async Task<TResult> ReadAsync<TResult>(Principal principal, GraphQuery<TResult> query, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(principal);
@@ -39,10 +46,9 @@ public sealed class TenantScopedGraph(IDriver driver, IOptions<GraphOptions> opt
         Exception? failure = null;
         try
         {
-            var result = await driver.ExecutableQuery(query.Cypher)
-                .WithParameters(parameters)
-                .WithConfig(new QueryConfig(RoutingControl.Readers, _database))
-                .ExecuteAsync(ct);
+            // Stoppable on the server, not just abandoned (stop-anything).
+            var result = await GraphStop.RunAsync(RoutingControl.Readers, _database, config =>
+                driver.ExecutableQuery(query.Cypher).WithParameters(parameters).WithConfig(config).ExecuteAsync(ct), TerminateAsync, ct);
             var rows = result.Result.Select(r => (IGraphRow)new RecordRow(r)).ToList();
             truncated = rows.Count > query.Limit;
             if (truncated)

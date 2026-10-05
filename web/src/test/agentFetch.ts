@@ -3,6 +3,13 @@ import { jsonResponse } from './render';
 
 type Handler = (url: string, init?: RequestInit) => Response | Promise<Response>;
 
+/**
+ * How the test runtime answers a stop. `abort` does what CopilotKit's runtime does on this stack: its runner aborts the
+ * run's request to the agent, `@ag-ui/client` reports that as `RUN_ERROR { code: "abort" }`, and the run's stream ends.
+ * `hold` answers the stop and leaves the run's stream to the test, which then says itself how the run ends.
+ */
+export type StopBehaviour = 'abort' | 'hold';
+
 /** What CopilotKit's runtime says about itself: the two agents this system has. */
 const INFO = {
   version: '1.76.0',
@@ -26,13 +33,22 @@ const traces = new Map<string, unknown[]>();
  *   made a well-formed run (it starts with RUN_STARTED, a message opens before its content, it ends once);
  * - what tests declare with `run.trace` leaves the stream and is served by the trace API, and `run.sources` joins the
  *   tool result before it, which is where the server carries sources;
- * - a stop is accepted.
+ * - a stop is accepted, and by default ends the thread's run as the runtime does (see `StopBehaviour`).
  * Every other request goes to the handler unchanged.
  */
-export function agentFetch(handler: Handler): Handler {
+export function agentFetch(
+  handler: Handler,
+  { stop = 'abort' }: { stop?: StopBehaviour } = {},
+): Handler {
+  /** The runs still streaming, by thread: a stop for the thread ends its run. */
+  const open = new Map<string, () => void>();
   return async (url: string, init?: RequestInit) => {
     if (url.endsWith('/copilotkit/info')) return jsonResponse(INFO);
-    if (/\/copilotkit\/agent\/[^/]+\/stop\//.test(url)) return jsonResponse({ stopped: true });
+    const stopped = /\/copilotkit\/agent\/[^/]+\/stop\/([^/?]+)/.exec(url);
+    if (stopped) {
+      if (stop === 'abort') open.get(decodeURIComponent(stopped[1]))?.();
+      return jsonResponse({ stopped: true });
+    }
     const live = /^\/api\/runs\/([^/?]+)\/trace(?:\?after=(\d+))?/.exec(url);
     if (live) {
       const after = Number(live[2] ?? 0);
@@ -54,9 +70,18 @@ export function agentFetch(handler: Handler): Handler {
     const normalize = wellFormed(input.threadId ?? '', input.runId ?? '', agent[1] === 'chat');
     const decoder = new TextDecoder();
     const encoder = new TextEncoder();
+    const threadId = input.threadId ?? '';
     let pending = '';
     const body = response.body.pipeThrough(
       new TransformStream<Uint8Array, Uint8Array>({
+        start(controller) {
+          open.set(threadId, () => {
+            open.delete(threadId);
+            const out = normalize.abort();
+            if (out.length > 0) controller.enqueue(encoder.encode(out.join('')));
+            controller.terminate();
+          });
+        },
         transform(chunk, controller) {
           pending += decoder.decode(chunk, { stream: true });
           const frames = pending.split('\n\n');
@@ -65,6 +90,7 @@ export function agentFetch(handler: Handler): Handler {
           if (out.length > 0) controller.enqueue(encoder.encode(out.join('')));
         },
         flush(controller) {
+          open.delete(threadId);
           const out = [...(pending ? normalize.frame(pending) : []), ...normalize.end()];
           if (out.length > 0) controller.enqueue(encoder.encode(out.join('')));
         },
@@ -179,6 +205,17 @@ function wellFormed(threadId: string, runId: string, endsByItself: boolean) {
         default:
           emit(event);
       }
+      return drain();
+    },
+    /** The runtime aborted the run: what is open closes, and the run ends as `@ag-ui/client` reports an abort. */
+    abort(): string[] {
+      if (ended) return [];
+      if (!started) {
+        started = true;
+        emit({ type: EventType.RUN_STARTED, threadId, runId });
+      }
+      close();
+      emit({ type: EventType.RUN_ERROR, message: 'Request aborted', code: 'abort' });
       return drain();
     },
     end(): string[] {

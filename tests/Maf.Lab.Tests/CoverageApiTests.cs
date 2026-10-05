@@ -267,6 +267,34 @@ public sealed class CoverageApiTests
     }
 
     [Fact]
+    public async Task A_refresh_stopped_by_an_admin_cancels_the_runner_job_it_waits_on()
+    {
+        var repo = await RepoAsync();
+        var runner = new FakeCoverageRunner { KeepRunning = true };
+        using var api = CoverageApi.Create(repo, runner, new Dictionary<string, string?> { ["AdminJobs:CancelPollEvery"] = "00:00:00.020" });
+        var admin = api.ClientFor("alice", "firm-a", Role.FIRM_ADMIN);
+        var started = await (await admin.PostAsync("/api/coverage/refresh", null, Ct)).Content.ReadFromJsonAsync<AdminJob>(Json, Ct);
+        while (runner.Requests.IsEmpty)
+        {
+            await Task.Delay(10, Ct);
+        }
+
+        // A viewer may not stop it; an administrator may.
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await api.ClientFor("bob", "firm-a", Role.ADVISOR).PostAsync($"/api/coverage/refresh/{started!.JobId}/cancel", null, Ct)).StatusCode);
+        var cancel = await admin.PostAsync($"/api/coverage/refresh/{started.JobId}/cancel", null, Ct);
+
+        Assert.Equal(HttpStatusCode.Accepted, cancel.StatusCode);
+        for (var i = 0; i < 200 && runner.Cancels.IsEmpty; i++)
+        {
+            await Task.Delay(25, Ct);
+        }
+        Assert.Single(runner.Cancels);
+        Assert.Equal(AdminJobStates.Canceled,
+            (await admin.GetFromJsonAsync<AdminJob>($"/api/coverage/refresh/{started.JobId}", Json, Ct))!.State);
+    }
+
+    [Fact]
     public async Task A_second_refresh_while_one_runs_is_answered_with_the_first()
     {
         var repo = await RepoAsync();

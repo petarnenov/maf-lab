@@ -67,7 +67,13 @@ public sealed class A2AOptions
     public int SimulatedStepMs { get; set; } = 1500;
     /// <summary>How often a resubscription looks at the shared store for the task's next change.</summary>
     public int SubscribePollMs { get; set; } = 250;
+    /// <summary>
+    /// How often a running task looks at the shared store for a cancel another replica recorded (stop-anything): the
+    /// store is where a cancel lives, so no request has to reach the replica doing the work.
+    /// </summary>
+    public int CancelPollMs { get; set; } = 1000;
     /// <summary>How long a resubscription follows a task before giving the connection back.</summary>
+
     public TimeSpan SubscribeTimeout { get; set; } = TimeSpan.FromMinutes(10);
     /// <summary>
     /// The prefix this agent's tasks and webhooks are kept under in the shared store. The default is the reviewer's,

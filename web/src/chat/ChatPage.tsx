@@ -33,6 +33,8 @@ import { TurnFeedback } from './TurnFeedback';
 import { useChatStream } from './useChatStream';
 import { stepLabel } from './runStep';
 import { Progress } from '../components/Progress';
+import { StopHint } from '../components/StopHint';
+import { useEscToStop } from '../components/useEscToStop';
 
 export const TRACE_EXPIRED = 'Trace expired (kept 7 days).';
 
@@ -49,7 +51,7 @@ export function ChatPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const userKey = useUserKey();
-  const { state, send, reset, hydrate, answer, loadPending, toggleReasoning, setFocus } =
+  const { state, send, cancel, reset, hydrate, answer, loadPending, toggleReasoning, setFocus } =
     useChatStream();
   const [draft, setDraft] = useState('');
   /** Assistant turn the monitor shows; null = follow the latest turn. */
@@ -140,6 +142,9 @@ export function ChatPage() {
   useEffect(() => {
     recall.current = idle;
   }, [state.conversationId, routeId]);
+
+  // Esc stops the answer in progress, wherever the focus is on this page (stop-anything).
+  useEscToStop(state.streaming, cancel);
 
   useLayoutEffect(() => {
     if (!caretToEnd.current) return;
@@ -591,6 +596,13 @@ function AssistantBubble({
       {turn.status === 'streaming' && !rewound && (!text || turn.step) && (
         <div className={styles.thinking} data-testid="run-progress">
           <Progress label={stepLabel(turn.step)} />
+        </div>
+      )}
+      {/* For as long as the run goes, however far its answer has got: Esc stops it — or the stop is on its way. */}
+      {turn.status === 'streaming' && !rewound && <StopHint stopping={Boolean(turn.stopping)} />}
+      {turn.stopped && (
+        <div className={styles.stopped} data-testid="turn-stopped" role="status">
+          Stopped.
         </div>
       )}
       {turn.error && (

@@ -9,7 +9,7 @@ TARGET="src/Maf.Lab.Api/Coverage/Fixtures/E2eTarget.cs"
 "$(dirname "$0")/coverage_refresh.sh" "$BASE_URL"
 
 python3 - "$BASE_URL" "$TARGET" <<'PY'
-import json, sys, time, urllib.error, urllib.parse, urllib.request
+import json, signal, sys, time, urllib.error, urllib.parse, urllib.request
 
 base, target = sys.argv[1], sys.argv[2]
 failures = []
@@ -43,6 +43,18 @@ status, run = req("/api/coverage/runs", "POST", {"path": target, "pct": 90, "mod
 check("a run starts on the test agent", status == 201, str(run)[:300])
 if status != 201:
     sys.exit(1)
+
+# Ctrl+C and SIGTERM (stop-anything): the run this started is cancelled on the way out, not left running.
+def stop(signum, frame):
+    try:
+        req(f"/api/coverage/runs/{run['id']}/cancel", "POST", {}, token)
+    except Exception:
+        pass
+    print(f"\n✗ Cancelled. The test-generation run {run['id']} was stopped; run `make ci-e2e` again.", flush=True)
+    sys.exit(130)
+
+signal.signal(signal.SIGINT, stop)
+signal.signal(signal.SIGTERM, stop)
 
 deadline = time.time() + 25 * 60
 state = run["state"]
