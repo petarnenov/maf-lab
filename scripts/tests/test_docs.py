@@ -167,6 +167,10 @@ None — a fixture: it runs nothing long.
 
 None — a fixture: it starts nothing.
 
+## Principles
+
+None — a fixture: it designs nothing.
+
 ## Documentation impact
 
 - README.md: a row.
@@ -535,7 +539,8 @@ class PageTests(DocsTestCase):
         self.assertCheckFails("page `/coverage` is not named")
 
 
-SHOWS_NOTHING = "## Progress\n\nNone — it runs nothing long.\n\n"
+PRINCIPLED = "## Principles\n\nNone — it designs nothing.\n\n"
+SHOWS_NOTHING = "## Progress\n\nNone — it runs nothing long.\n\n" + PRINCIPLED
 STOPS_NOTHING = SHOWS_NOTHING + "## Stopping\n\nNone — it starts nothing.\n\n"
 DOCUMENTED = "## Documentation impact\n\nNone: tests only.\n"
 
@@ -622,7 +627,7 @@ class StoppingTests(DocsTestCase):
 class ProgressTests(DocsTestCase):
     """How a proposal says what it adds shows progress (progress-feedback): None, how it shows, or not yet."""
 
-    STOPS = "## Stopping\n\nNone — it starts nothing.\n\n"
+    STOPS = "## Stopping\n\nNone — it starts nothing.\n\n" + PRINCIPLED
 
     def setUp(self):
         super().setUp()
@@ -685,6 +690,74 @@ class ProgressTests(DocsTestCase):
     def test_a_proposal_missing_both_rules_learns_both(self):
         self.fx.write("openspec/changes/add-thing/proposal.md", "# Proposal\n\n" + DOCUMENTED)
         self.assertCheckFails("has no `## Progress` section", "has no `## Stopping` section")
+
+
+class PrinciplesTests(DocsTestCase):
+    """What a proposal stands on (solid-and-standards): None, or SOLID and Standards; anything its own names a decision."""
+
+    REST = "## Progress\n\nNone — it runs nothing long.\n\n## Stopping\n\nNone — it starts nothing.\n\n" + DOCUMENTED
+
+    def setUp(self):
+        super().setUp()
+        self.generated()
+
+    def propose(self, principles: str) -> None:
+        # Every proposal here also says how it shows progress and stops: those rules are their own tests'.
+        self.fx.write("openspec/changes/add-thing/proposal.md",
+                      "# Proposal\n\n## Principles\n\n" + principles + "\n\n" + self.REST)
+
+    BOTH = ("- SOLID: one responsibility per plugin; the core depends on abstractions only\n"
+            "- Standards: microkernel (POSA), composition root, OAuth RFC 8707\n")
+
+    def test_solid_and_standards_pass(self):
+        self.propose(self.BOTH)
+        self.assertCheckPasses()
+
+    def test_bold_items_and_continuation_lines_pass(self):
+        self.propose("- **SOLID:**\n  open/closed through extension points\n- **Standards:** MCP, A2A")
+        self.assertCheckPasses()
+
+    def test_none_with_a_reason_passes(self):
+        self.propose("None — it only renames a document.")
+        self.assertCheckPasses()
+
+    def test_own_with_a_decision_passes(self):
+        self.propose(self.BOTH + "- Own: plugin.toml — no standard holds scope and environments; DECISIONS §81")
+        self.assertCheckPasses()
+
+    def test_a_missing_section_fails(self):
+        self.fx.write("openspec/changes/add-thing/proposal.md", "# Proposal\n\n" + self.REST)
+        self.assertCheckFails("change `add-thing` has no `## Principles` section", "solid-and-standards")
+
+    def test_an_empty_section_fails(self):
+        self.propose("<!-- later -->")
+        self.assertCheckFails("the `## Principles` section is empty")
+
+    def test_a_missing_fact_fails_by_name(self):
+        self.propose("- SOLID: single responsibility")
+        out = self.assertCheckFails("has no `Standards:`")
+        self.assertNotIn("has no `SOLID:`", out)
+
+    def test_an_empty_fact_fails_by_name(self):
+        self.propose("- SOLID: single responsibility\n- Standards:")
+        self.assertCheckFails("has an empty `Standards:`")
+
+    def test_none_without_a_reason_fails(self):
+        self.propose("None")
+        self.assertCheckFails("says `None` without a reason")
+
+    def test_own_without_a_decision_fails(self):
+        self.propose(self.BOTH + "- Own: a wire format of our own — it was quicker")
+        self.assertCheckFails("an `Own:` line of `add-thing` names no DECISIONS section", "DECISIONS §<n>")
+
+    def test_an_own_entry_may_go_on_over_indented_lines(self):
+        self.propose(self.BOTH + "- Own: plugin.toml — no standard holds\n  scope and environments; DECISIONS §81")
+        self.assertCheckPasses()
+
+    def test_every_own_line_is_checked(self):
+        self.propose(self.BOTH + "- Own: a — x; DECISIONS §3\n- Own: b — y")
+        out = self.assertCheckFails("names no DECISIONS section: b — y")
+        self.assertNotIn("section: a — x", out)
 
 
 if __name__ == "__main__":

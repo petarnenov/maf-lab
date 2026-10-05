@@ -19,6 +19,14 @@ Non-negotiables while editing:
   stop, no sticky routing. A stop is shown only once the work's own state says
   so (spec: `stop-anything`). Every proposal says how its work stops in a
   `## Stopping` section; `make docs-check` fails one without it.
+- TOP PRIORITY: follow SOLID and only established, widely adopted industry
+  standards and practices. Prefer a named standard, protocol, RFC or pattern
+  (official MCP/A2A/AG-UI, OAuth RFCs, OpenTelemetry, POSA/GoF patterns) over
+  a home-grown one; never invent a format, protocol or mechanism where an
+  established one exists; anything of the project's own is recorded in
+  DECISIONS.md with the alternatives rejected (spec: `solid-and-standards`).
+  Every proposal says what it stands on in a `## Principles` section; `make
+  docs-check` fails one without it.
 - Tenant (firm_id) comes from the principal only. Never add a tenant
   parameter to a tool, an endpoint, or a query builder.
 - One method builds Qdrant queries and applies the tenant filter. Do not

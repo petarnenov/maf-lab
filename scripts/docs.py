@@ -547,6 +547,7 @@ def check_change_proposals(repo: Repo) -> list[Finding]:
                                     "name each document the change affects, or say why none is"))
         findings += stopping_findings(rel, change.name, text)
         findings += progress_findings(rel, change.name, text)
+        findings += principles_findings(rel, change.name, text)
     return findings
 
 
@@ -651,6 +652,61 @@ def progress_findings(rel: str, change: str, text: str) -> list[Finding]:
                         "`Page:`", PROGRESS_FIX)]
     return [Finding(rel, None, "progress", f"the `## Progress` section of `{change}` has an empty `{fact}:`", PROGRESS_FIX)
             for fact in given if not found[fact]]
+
+
+# What a proposal stands on (solid-and-standards): how it keeps SOLID, and the established standards or patterns it uses.
+PRINCIPLES_FACTS = ("SOLID", "Standards")
+PRINCIPLES_FIX = ("write `None — <reason>`, or `SOLID:` and `Standards:` each with a value; anything of the project's own "
+                  "as `Own: <what> — <why no standard fits>; DECISIONS §<n>` (solid-and-standards)")
+OWN_LINE = re.compile(r"^\s*(?:[-*]\s+)?(?:\*\*)?Own(?:\*\*)?\s*(?::|—|-)\s*(?:\*\*)?\s*(.*)$")
+
+
+def principles_findings(rel: str, change: str, text: str) -> list[Finding]:
+    """
+    A proposal's `## Principles` section: `None` with a reason, or `SOLID:` and `Standards:` each with a value. Every
+    `Own:` line (a format, protocol or mechanism of the project's own) names the DECISIONS.md section that records why
+    no established one fits. Whether the answer is good is review's to judge; that it is given is checked here.
+    """
+    body = proposal_section(text, "Principles")
+    if body is None:
+        return [Finding(rel, None, "principles", f"change `{change}` has no `## Principles` section", PRINCIPLES_FIX)]
+    if not body.strip():
+        return [Finding(rel, None, "principles", "the `## Principles` section is empty", PRINCIPLES_FIX)]
+    found = labelled(body, ("None", *PRINCIPLES_FACTS))
+    if "None" in found:
+        return [] if found["None"] else [Finding(rel, None, "principles",
+                                                 "the `## Principles` section says `None` without a reason",
+                                                 "say why: `None — <reason>`")]
+    problems = []
+    for fact in PRINCIPLES_FACTS:
+        if fact not in found:
+            problems.append(Finding(rel, None, "principles",
+                                    f"the `## Principles` section of `{change}` has no `{fact}:`", PRINCIPLES_FIX))
+        elif not found[fact]:
+            problems.append(Finding(rel, None, "principles",
+                                    f"the `## Principles` section of `{change}` has an empty `{fact}:`", PRINCIPLES_FIX))
+    for own in own_entries(body):
+        if not re.search(r"DECISIONS(?:\.md)?\s*§\s*\d+", own):
+            problems.append(Finding(rel, None, "principles",
+                                    f"an `Own:` line of `{change}` names no DECISIONS section: {own or '(empty)'}",
+                                    "record why no established standard fits and add `; DECISIONS §<n>`"))
+    return problems
+
+
+def own_entries(body: str) -> list[str]:
+    """Every `Own:` entry of a section, each with the indented lines that continue it."""
+    entries: list[str] = []
+    current = False
+    for line in body.splitlines():
+        own = OWN_LINE.match(line)
+        if own:
+            entries.append(own[1].strip())
+            current = True
+        elif current and line.startswith((" ", "\t")) and line.strip():
+            entries[-1] = f"{entries[-1]} {line.strip()}".strip()
+        else:
+            current = False
+    return entries
 
 
 # ── commands ───────────────────────────────────────────────────────────────────────────────────────────────────────

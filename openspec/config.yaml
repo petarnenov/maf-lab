@@ -119,6 +119,20 @@ context: |
     stopped in a `## Stopping` section (`Key:`, `Stop:`, `Recorded in:`,
     `Shown:`, or `None — <reason>`); `make docs-check` fails one without it.
     Details: the `stop-anything` spec.
+  - **SOLID and established standards (top priority).** Code follows the SOLID
+    principles: single responsibility, open/closed, Liskov substitution,
+    interface segregation and dependency inversion. Designs use only established,
+    widely adopted industry standards and practices: official protocols (MCP,
+    A2A, AG-UI), RFCs (OAuth, JWT), OpenTelemetry, recognised patterns (POSA,
+    GoF, ports and adapters, composition root). A design names the standard or
+    pattern it relies on. A format, protocol or mechanism of this project's own is
+    added only where no established one fits, and that is recorded in
+    DECISIONS.md with the alternatives rejected. Rules that can be checked are
+    checked by architecture tests (fitness functions), not left to prose. Every
+    proposal says what it stands on in a `## Principles` section (`SOLID:` and
+    `Standards:`, an `Own: <what> — <why>; DECISIONS §<n>` line for anything of
+    its own, or `None — <reason>`); `make docs-check` fails one without it.
+    Details: the `solid-and-standards` spec.
   - Tenant is `firm_id`. It is derived from the caller's token, never from a
     request parameter, tool argument, or model output.
   - Every Qdrant query goes through exactly one method that takes a
