@@ -188,6 +188,8 @@ function HistoryItem({
   const rename = useRenameConversation();
 
   function save() {
+    // One rename at a time: a second Enter while the first is on its way sends nothing.
+    if (rename.isPending) return;
     const problem = titleError(draft);
     if (problem) {
       setError(problem);

@@ -11,6 +11,23 @@ public sealed class ScriptedChatClient(Func<IReadOnlyList<ChatMessage>, ChatOpti
 {
     public List<(List<ChatMessage> Messages, ChatOptions? Options)> Requests { get; } = [];
 
+    /// <summary>
+    /// When set, a streamed answer stops after this many words of text and waits until its call is cancelled — a paid
+    /// model still answering when the person stops the run (stop-anything).
+    /// </summary>
+    public int? HoldAfterWords { get; set; }
+
+    /// <summary>Set once a call is being held.</summary>
+    public TaskCompletionSource Holding { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>Set once a held call's token fired: the caller cancelled the call rather than waiting for it.</summary>
+    public TaskCompletionSource Cancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>How many updates every call has yielded so far.</summary>
+    public int Yielded => yielded;
+
+    private int yielded;
+
     public async Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
     {
         var updates = new List<ChatResponseUpdate>();
@@ -26,9 +43,24 @@ public sealed class ScriptedChatClient(Func<IReadOnlyList<ChatMessage>, ChatOpti
     {
         var list = messages.ToList();
         Requests.Add((list, options));
+        var words = 0;
         foreach (var update in script(list, options, Requests.Count))
         {
             await Task.Yield();
+            if (HoldAfterWords is { } hold && !string.IsNullOrEmpty(update.Text) && words++ == hold)
+            {
+                Holding.TrySetResult();
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    Cancelled.TrySetResult();
+                    throw;
+                }
+            }
+            Interlocked.Increment(ref yielded);
             yield return update;
         }
     }

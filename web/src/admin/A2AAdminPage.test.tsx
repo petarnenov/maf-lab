@@ -76,6 +76,37 @@ const serve = (body: A2AActivity) =>
   );
 
 describe('A2AAdminPage', () => {
+  it('stops a refresh still loading on Esc and keeps what it showed', async () => {
+    let refreshing = false;
+    const signals: AbortSignal[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (!refreshing)
+          return Promise.resolve(
+            jsonResponse(url === '/api/admin/a2a/test-agent' ? reachableAgent : activity),
+          );
+        if (init?.signal) signals.push(init.signal);
+        return new Promise<Response>((_, reject) =>
+          init?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('aborted', 'AbortError')),
+          ),
+        );
+      }),
+    );
+    renderWithProviders(<A2AAdminPage />);
+    expect(await screen.findByTestId('a2a-inbound')).toHaveTextContent('acme-portal');
+
+    refreshing = true;
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    expect(await screen.findByTestId('stop-hint')).toHaveTextContent('Esc to stop');
+    await userEvent.keyboard('{Escape}');
+
+    await waitFor(() => expect(signals.length > 0 && signals.every((s) => s.aborted)).toBe(true));
+    expect(screen.getByTestId('a2a-inbound')).toHaveTextContent('acme-portal');
+    await waitFor(() => expect(screen.queryByTestId('stop-hint')).toBeNull());
+  });
+
   it('shows what arrived, what was asked and what was delivered', async () => {
     vi.stubGlobal('fetch', serve(activity));
     renderWithProviders(<A2AAdminPage />);

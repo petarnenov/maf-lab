@@ -232,6 +232,61 @@ public class GraphStoreTests
         internal override int Map(IReadOnlyList<IGraphRow> rows, bool truncated) => 0;
     }
 
+    [Fact]
+    public void Every_graph_query_is_run_so_that_a_stop_ends_it_in_neo4j()
+    {
+        // The driver alone runs a cancelled query to its end; GraphStop ends it on the server (stop-anything). So a
+        // driver call in the graph classes must sit in the query handed to GraphStop — the terminate statement aside.
+        var violations = GraphStopViolations(Path.Combine(AppContext.BaseDirectory, "Maf.Lab.Retrieval.dll"),
+            [typeof(TenantScopedGraph).FullName!, typeof(TenantScopedGraphMaintenance).FullName!]);
+
+        Assert.True(violations.Count == 0, "Graph queries a stop would not end in Neo4j:\n" + string.Join("\n", violations));
+    }
+
+    /// <summary>
+    /// Every driver call in <paramref name="owners"/> that is neither the terminate statement nor inside a lambda whose
+    /// enclosing method hands it to <c>GraphStop.RunAsync</c>. A lambda is known by its compiler name (<c>&lt;M&gt;b__…</c>),
+    /// an async method's body by its state machine (<c>&lt;M&gt;d__…</c>).
+    /// </summary>
+    private static List<string> GraphStopViolations(string assemblyPath, string[] owners)
+    {
+        static string Enclosing(string name) => name.StartsWith('<') && name.IndexOf('>') > 1 ? name[1..name.IndexOf('>')] : name;
+        static bool Calls(MethodDefinition method, Func<MethodReference, bool> target) =>
+            method.HasBody && method.Body.Instructions.Any(i => (i.OpCode == OpCodes.Call || i.OpCode == OpCodes.Callvirt)
+                && i.Operand is MethodReference m && target(m));
+        static bool IsDriverCall(MethodReference m) =>
+            m.DeclaringType.FullName == "Neo4j.Driver.IDriver" && m.Name is "ExecutableQuery" or "AsyncSession" or "Session" or "RxSession";
+        static bool IsGraphStop(MethodReference m) =>
+            m.Name == "RunAsync" && m.DeclaringType.FullName == "Maf.Lab.Retrieval.Graph.GraphStop";
+
+        using var assembly = AssemblyDefinition.ReadAssembly(assemblyPath);
+        var violations = new List<string>();
+        foreach (var owner in assembly.MainModule.GetTypes().Where(t => owners.Contains(t.FullName)))
+        {
+            // Every method body of the class: its own, its async state machines' and its closures'.
+            var bodies = owner.Methods.Select(m => (Method: m, Name: m.Name))
+                .Concat(owner.NestedTypes.SelectMany(n => n.Methods.Select(m => (Method: m, Name: m.Name == "MoveNext" ? n.Name : m.Name))))
+                .ToList();
+            bool HandsToGraphStop(string method) =>
+                bodies.Any(b => Enclosing(b.Name) == method && !b.Name.Contains(">b__") && Calls(b.Method, IsGraphStop));
+            foreach (var (method, name) in bodies.Where(b => Calls(b.Method, IsDriverCall)))
+            {
+                var enclosing = Enclosing(name);
+                var inLambda = name.Contains(">b__");
+                if (enclosing == "TerminateAsync" && !inLambda)
+                {
+                    continue;
+                }
+                if (inLambda && HandsToGraphStop(enclosing))
+                {
+                    continue;
+                }
+                violations.Add($"{owner.Name}.{enclosing} calls the driver outside GraphStop");
+            }
+        }
+        return violations;
+    }
+
     private static IEnumerable<string> ProductAssemblies() =>
         new[] { "Maf.Lab.Domain", "Maf.Lab.Retrieval", "Maf.Lab.Api", "Maf.Lab.Indexing", "Maf.Lab.Eval", "Maf.Lab.CodeSearch", "Maf.Lab.Portfolio" }
             .Select(n => Path.Combine(AppContext.BaseDirectory, n + ".dll"));

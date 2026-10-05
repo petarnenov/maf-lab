@@ -179,6 +179,64 @@ public class RunProtocolTests
     }
 
     [Fact]
+    public async Task A_run_stopped_while_the_model_answers_cancels_the_model_call()
+    {
+        // Where the money is: a paid model still streaming its answer when the person stops the run.
+        var model = ApiFactory.ProceduralModel();
+        model.HoldAfterWords = 3;
+        using var api = new ApiFactory(model);
+        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        using var stop = new CancellationTokenSource();
+
+        var run = ApiFactory.ChatAsync(client, "what is the procedure when a fee schedule is missing", runId: "r_model", cancel: stop.Token);
+        await model.Holding.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        var yielded = model.Yielded;
+        var calls = model.Requests.Count;
+        await stop.CancelAsync();
+        // The client walked away; how the test host reports it is not what is asserted here.
+        await Assert.ThrowsAnyAsync<Exception>(() => run.WaitAsync(TimeSpan.FromSeconds(10), Ct));
+
+        // The call itself was cancelled, not waited for: its token fired, nothing more was read from it, no call followed.
+        await model.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        // A stopped run's state is written as its request winds down, which takes longer while the whole suite runs.
+        await WaitUntil(async () => (await api.Runs.GetAsync("r_model", Ct))?.Outcome == Maf.Lab.Domain.SharedState.RunOutcomes.Cancelled, seconds: 30);
+        Assert.Equal(yielded, model.Yielded);
+        Assert.Equal(calls, model.Requests.Count);
+        await using var db = ChatApiTests.Db(api);
+        Assert.Equal(0, await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(db.Turns, Ct));
+    }
+
+    [Fact]
+    public async Task A_run_stopped_while_a_jev_call_is_out_cancels_it_and_calls_nothing_after()
+    {
+        var model = ApiFactory.ProceduralModel();
+        // The run's first Jev call — the intent classification — is held until its request is cancelled.
+        var jev = new FakeJev { HoldWhen = _ => true };
+        using var api = new ApiFactory(model, jev: jev);
+        var client = api.ClientFor("adam", "firm-a", Role.ADVISOR);
+        using var stop = new CancellationTokenSource();
+
+        var run = ApiFactory.ChatAsync(client, "what is the procedure when a fee schedule is missing", runId: "r_jev", cancel: stop.Token);
+        await jev.Holding.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        var jevCalls = jev.Requests.Count;
+        await stop.CancelAsync();
+        await Assert.ThrowsAnyAsync<Exception>(() => run.WaitAsync(TimeSpan.FromSeconds(10), Ct));
+
+        await jev.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        // A stopped run's state is written as its request winds down, which takes longer while the whole suite runs.
+        string? outcome = null;
+        for (var i = 0; i < 300 && outcome != Maf.Lab.Domain.SharedState.RunOutcomes.Cancelled; i++)
+        {
+            outcome = (await api.Runs.GetAsync("r_jev", Ct))?.Outcome;
+            await Task.Delay(100, Ct);
+        }
+        Assert.True(outcome == Maf.Lab.Domain.SharedState.RunOutcomes.Cancelled, $"the run ended {outcome ?? "with no state"}");
+        await Task.Delay(300, Ct);
+        Assert.Equal(jevCalls, jev.Requests.Count);
+        Assert.Empty(model.Requests);
+    }
+
+    [Fact]
     public async Task A_run_id_used_before_starts_no_run()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
@@ -209,9 +267,9 @@ public class RunProtocolTests
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    private static async Task WaitUntil(Func<Task<bool>> condition)
+    private static async Task WaitUntil(Func<Task<bool>> condition, int seconds = 10)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(10);
+        var deadline = DateTime.UtcNow.AddSeconds(seconds);
         while (!await condition())
         {
             Assert.True(DateTime.UtcNow < deadline, "the condition was not met in time");

@@ -32,6 +32,16 @@ public sealed partial class FakeJev : HttpMessageHandler
     /// <summary>When set, the fake waits this long and ignores cancellation, like a transport that never answers.</summary>
     public TimeSpan? Hang { get; set; }
 
+    /// <summary>
+    /// When set, a request whose body matches is held until its own token fires — a paid Jev call still out when the
+    /// person stops the run (stop-anything). <see cref="Holding"/> and <see cref="Cancelled"/> say what became of it.
+    /// </summary>
+    public Func<string, bool>? HoldWhen { get; set; }
+
+    public TaskCompletionSource Holding { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public TaskCompletionSource Cancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     public string Model { get; set; } = "jev-1.13.0";
 
     /// <summary>What every Noul question is answered with — for the classifier, the probability the question is in the domain.</summary>
@@ -105,6 +115,19 @@ public sealed partial class FakeJev : HttpMessageHandler
         LastContentLength = request.Content?.Headers.ContentLength;
         var body = request.Content is null ? "" : await request.Content.ReadAsStringAsync(cancellationToken);
         Requests.Enqueue((request.Headers.Authorization?.ToString(), body));
+        if (HoldWhen?.Invoke(body) == true && !Holding.Task.IsCompleted)
+        {
+            Holding.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                Cancelled.TrySetResult();
+                throw;
+            }
+        }
         if (Hang is { } hang)
         {
             await Task.Delay(hang, CancellationToken.None);

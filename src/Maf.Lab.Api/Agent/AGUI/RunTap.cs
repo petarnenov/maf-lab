@@ -71,12 +71,19 @@ public sealed class RunTap(RequestDelegate next, ILogger<RunTap> logger)
             {
                 logger.LogWarning("run tap failed ({ErrorType})", ex.GetType().Name);
             }
+            // A run stopped before the server wrote its first frame (say, while a Jev check was out) still ends
+            // cancelled for every replica, not running.
+            if (state is null && context.RequestAborted.IsCancellationRequested
+                && context.Items[ChatRunFilter.RunKey] is ChatRun stopped)
+            {
+                state = new RunStateTracker(runStates, stopped.Principal, stopped.ConversationId, stopped.RunId,
+                    stopped.RecordsNoTurn ? null : stopped.RunId, time);
+            }
             if (context.Items[ChatRunFilter.RunKey] is ChatRun run && state is not null)
             {
-                if (context.RequestAborted.IsCancellationRequested)
-                {
-                    state.Cancelled();
-                }
+                // A response that ends with no terminal event is a run that was stopped: the client's abort may not
+                // have reached RequestAborted yet when the stopped work unwinds. A run that ended keeps its outcome.
+                state.Cancelled();
                 // What the client saw last, whether the run ended or the client walked away from it.
                 await state.SaveAsync(CancellationToken.None);
                 // What the client received, kept under the turn the run recorded; a run that recorded none has nowhere.

@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type {
   AnswerCheckStats,
@@ -11,6 +11,8 @@ import type {
 } from '../api/types';
 import { useApi, useAuth } from '../auth/useAuth';
 import page from '../components/Page.module.css';
+import { StopHint } from '../components/StopHint';
+import { useEscToStop } from '../components/useEscToStop';
 import { Bars, Columns, Legend, Lines } from '../intents/charts';
 import { EvalHistory, IntentSection, Kpi, Panel } from '../intents/IntentSection';
 import styles from '../intents/IntentStats.module.css';
@@ -46,6 +48,12 @@ export function JevPage() {
     enabled: !!session,
     refetchInterval: 60_000,
   });
+  // A read still loading stops on Esc (stop-anything); the screen keeps what it last showed.
+  const queryClient = useQueryClient();
+  useEscToStop(
+    stats.isFetching,
+    () => void queryClient.cancelQueries({ queryKey: ['admin', 'jev-stats'] }),
+  );
 
   const period = WINDOWS.find((w) => w.id === window)?.label ?? window;
   const r = stats.data;
@@ -85,6 +93,7 @@ export function JevPage() {
       </div>
 
       {stats.isLoading && <p className={page.muted}>Loading the numbers…</p>}
+      {stats.isFetching && <StopHint stopping={false} />}
       {stats.isError && (
         <p className={page.error} role="alert">
           Could not load the Jev statistics.

@@ -1,8 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
+import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fragment, useState } from 'react';
 import type { EvalReport, EvalReportSummary, MetricComparison } from '../api/types';
 import { useApi, useAuth } from '../auth/useAuth';
 import styles from '../components/Page.module.css';
+import { StopHint } from '../components/StopHint';
+import { useEscToStop } from '../components/useEscToStop';
 import { formatDate, formatMetric } from './format';
 import { MetricTrend } from './MetricTrend';
 import trend from './MetricTrend.module.css';
@@ -17,6 +19,10 @@ export function EvalsPage() {
     queryFn: ({ signal }) => api<EvalReportSummary[]>('/api/evals/reports', { signal }),
     enabled: !!session,
   });
+  // The reports still loading — the list or an opened report — stop on Esc (stop-anything).
+  const queryClient = useQueryClient();
+  const loading = useIsFetching({ queryKey: ['evals'] }) > 0;
+  useEscToStop(loading, () => void queryClient.cancelQueries({ queryKey: ['evals'] }));
 
   if (!session)
     return <p className={styles.notice}>Pick a dev persona in the header to continue.</p>;
@@ -25,6 +31,7 @@ export function EvalsPage() {
     <div className={styles.page}>
       <h1 className={styles.heading}>Eval runs</h1>
       {reports.isLoading && <p className={styles.muted}>Loading reports…</p>}
+      {loading && <StopHint stopping={false} />}
       {reports.isError && (
         <p className={styles.error} role="alert">
           Could not load eval reports.

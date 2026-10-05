@@ -39,11 +39,16 @@ export function detail(overrides: Partial<CoverageFileDetail> = {}): CoverageFil
 
 /** Answers the coverage API by path; anything else is a 404. */
 export function stubCoverageApi(routes: Record<string, (method: string) => Response>) {
-  const calls: { url: string; method: string; body?: string }[] = [];
+  const calls: { url: string; method: string; body?: string; signal?: AbortSignal | null }[] = [];
   vi.stubGlobal(
     'fetch',
     agentFetch(vi.fn(async (url: string, init?: RequestInit) => {
-      calls.push({ url, method: init?.method ?? 'GET', body: typeof init?.body === 'string' ? init.body : undefined });
+      calls.push({
+        url,
+        method: init?.method ?? 'GET',
+        body: typeof init?.body === 'string' ? init.body : undefined,
+        signal: init?.signal,
+      });
       const key = Object.keys(routes).find((k) => url.startsWith(k));
       return key ? routes[key](init?.method ?? 'GET') : jsonResponse({ title: 'Not found' }, 404);
     })),

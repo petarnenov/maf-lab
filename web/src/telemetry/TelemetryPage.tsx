@@ -1,8 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { TelemetryPanel, TelemetryReport } from '../api/types';
 import { useApi, useAuth } from '../auth/useAuth';
 import styles from '../components/Page.module.css';
+import { StopHint } from '../components/StopHint';
+import { useEscToStop } from '../components/useEscToStop';
 import panel from './TelemetryPage.module.css';
 
 /** The windows the server will answer for. Asking for anything else is refused there, not here. */
@@ -25,6 +27,12 @@ export function TelemetryPage() {
     enabled: !!session,
     refetchInterval: 15_000,
   });
+  // A read still loading stops on Esc (stop-anything); the screen keeps what it last showed.
+  const queryClient = useQueryClient();
+  useEscToStop(
+    report.isFetching,
+    () => void queryClient.cancelQueries({ queryKey: ['telemetry'] }),
+  );
 
   if (!session)
     return <p className={styles.notice}>Pick a dev persona in the header to continue.</p>;
@@ -63,6 +71,7 @@ export function TelemetryPage() {
       </div>
 
       {report.isLoading && <p className={styles.muted}>Loading the numbers…</p>}
+      {report.isFetching && <StopHint stopping={false} />}
       {report.isError && (
         <p className={styles.error} role="alert">
           Could not read the numbers.

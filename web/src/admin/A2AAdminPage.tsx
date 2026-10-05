@@ -9,6 +9,8 @@ import type { A2AActivity } from '../api/types';
 import { useApi, useAuth } from '../auth/useAuth';
 import styles from '../components/Page.module.css';
 import { Progress } from '../components/Progress';
+import { StopHint } from '../components/StopHint';
+import { useEscToStop } from '../components/useEscToStop';
 import { formatDate } from '../evals/format';
 import { TestAgentSection } from './TestAgentSection';
 import { useTestAgentOverview } from './testAgentOverview';
@@ -41,6 +43,8 @@ export function A2AAdminPage() {
   // Both sections share the ['admin', 'a2a'] prefix: one Refresh asks for both, and cannot be pressed twice.
   const fetching = useIsFetching({ queryKey: ['admin', 'a2a'] }) > 0;
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['admin', 'a2a'] });
+  // A read still loading stops on Esc (stop-anything); the screen keeps what it last showed.
+  useEscToStop(fetching, () => void queryClient.cancelQueries({ queryKey: ['admin', 'a2a'] }));
 
   return (
     <section className={styles.page}>
@@ -51,6 +55,7 @@ export function A2AAdminPage() {
         </button>
       </header>
       {fetching && !activity.isPending && !overview.isPending && <Progress label="Refreshing…" />}
+      {fetching && <StopHint stopping={false} />}
 
       <Activity
         activity={activity}

@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import type { AgentModels, RunSummary } from '../api/types';
@@ -109,6 +109,32 @@ describe('threshold control', () => {
 
     expect(calls.some((c) => c.method === 'PUT')).toBe(true);
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('does not abort a run being started when Esc is pressed: what it starts is stopped by its id', async () => {
+    // The request that starts a paid run answers with the run's id; cut half-way, the run could start with no id to
+    // stop it by (stop-anything). So Esc leaves it alone, and the started run is stopped from its Activity instead.
+    let answer!: (r: Response) => void;
+    const held = new Promise<Response>((resolve) => (answer = resolve));
+    const calls = open({
+      '/api/coverage/runs': (method) =>
+        (method === 'POST' ? held : jsonResponse(run({ state: 'submitted' }))) as unknown as Response,
+    });
+    await setThreshold('85');
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Continue' }));
+    await within(dialog).findByRole('radio', { name: /^GLM 5\.3\s*recommended/ });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Start run' }));
+    expect(await within(dialog).findByRole('button', { name: 'Starting…' })).toBeDisabled();
+
+    await userEvent.keyboard('{Escape}');
+
+    const post = calls.find((c) => c.method === 'POST' && c.url === '/api/coverage/runs')!;
+    expect(post.signal?.aborted ?? false).toBe(false);
+    // It cannot be sent twice meanwhile, and once it answers the dialog is done with it.
+    expect(calls.filter((c) => c.method === 'POST' && c.url === '/api/coverage/runs')).toHaveLength(1);
+    answer(jsonResponse(run({ state: 'submitted' })));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
   it('confirms a raise above coverage, then asks for a model before starting', async () => {
