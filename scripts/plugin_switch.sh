@@ -63,6 +63,19 @@ checkpoint() {
   fi
 }
 finish() { [[ -t 1 ]] && echo; echo "✓ $1"; }
+# A step's own output stays out of the progress bar, but a step that fails shows it: nothing is swallowed.
+STEP_LOG="$(mktemp -t plugin-switch.XXXXXX)"
+trap 'rm -f "$STEP_LOG"' EXIT
+quiet() {
+  local status=0
+  "$@" >"$STEP_LOG" 2>&1 || status=$?
+  if [[ "$status" != 0 ]]; then
+    [[ -t 1 ]] && echo
+    echo "✗ the step failed (exit $status); its output:" >&2
+    cat "$STEP_LOG" >&2
+  fi
+  return "$status"
+}
 
 installed_list() { "${PLUGINS[@]}" resolve 2>/dev/null || true; }
 compose_files_for() { MAF_PLUGINS="$1" "${PLUGINS[@]}" compose-files; }
@@ -107,10 +120,10 @@ if [[ "$ACTION" == on ]]; then
   fi
   if (( ${#services[@]} > 0 )); then
     step "starting ${services[*]-}"
-    COMPOSE_FILE="$(compose_file_env "$new_set")" shielded "${COMPOSE[@]}" up -d --build --no-deps ${services[@]+"${services[@]}"} >/dev/null 2>&1
+    COMPOSE_FILE="$(compose_file_env "$new_set")" quiet shielded "${COMPOSE[@]}" up -d --build --no-deps ${services[@]+"${services[@]}"}
     checkpoint
     step "waiting until healthy"
-    COMPOSE_FILE="$(compose_file_env "$new_set")" shielded "$ROOT/scripts/wait_healthy.sh" "${WAIT_TIMEOUT:-300}" >/dev/null
+    COMPOSE_FILE="$(compose_file_env "$new_set")" quiet shielded "$ROOT/scripts/wait_healthy.sh" "${WAIT_TIMEOUT:-300}"
     checkpoint
   fi
   step "adding its routes to the balancer"
@@ -180,7 +193,7 @@ else
   checkpoint
   if (( ${#services[@]} > 0 )); then
     step "stopping ${services[*]-}"
-    COMPOSE_FILE="$(compose_file_env "$current")" shielded "${COMPOSE[@]}" rm -sf ${services[@]+"${services[@]}"} >/dev/null 2>&1
+    COMPOSE_FILE="$(compose_file_env "$current")" quiet shielded "${COMPOSE[@]}" rm -sf ${services[@]+"${services[@]}"}
     checkpoint
   fi
   if [[ "$restart" == 1 ]]; then
