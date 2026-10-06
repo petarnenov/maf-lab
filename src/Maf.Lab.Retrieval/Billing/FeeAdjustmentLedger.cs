@@ -28,7 +28,10 @@ public sealed class FeeAdjustmentLedger
 
     internal FeeAdjustmentLedger(string connectionString)
     {
-        _connectionString = connectionString;
+        // No connection pool: a pooled handle can come back with a native transaction still open (a connection the pool
+        // reclaimed, efcore#38854), and the next BEGIN IMMEDIATE then fails with "cannot start a transaction within a
+        // transaction". The ledger opens rarely, so a fresh connection each time costs nothing that matters.
+        _connectionString = new SqliteConnectionStringBuilder(connectionString) { Pooling = false }.ToString();
         Initialize();
     }
 
@@ -37,8 +40,10 @@ public sealed class FeeAdjustmentLedger
     {
         using var connection = Open();
         using var command = connection.CreateCommand();
+        // WAL is a property of the file, kept once set: two replicas share one file, exactly as the API's store does.
         command.CommandText =
             """
+            PRAGMA journal_mode=WAL;
             CREATE TABLE IF NOT EXISTS "FeeAdjustments" (
                 "AdjustmentId" TEXT NOT NULL,
                 "FirmId" TEXT NOT NULL,
@@ -191,15 +196,23 @@ public sealed class FeeAdjustmentLedger
         return total;
     }
 
+    /// <summary>An open connection that waits for the other replica's write; disposed again if opening it fails.</summary>
     private SqliteConnection Open()
     {
         var connection = new SqliteConnection(_connectionString);
-        connection.Open();
-        using var pragma = connection.CreateCommand();
-        // Two replicas share one file, exactly as the API's store does.
-        pragma.CommandText = "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;";
-        pragma.ExecuteNonQuery();
-        return connection;
+        try
+        {
+            connection.Open();
+            using var pragma = connection.CreateCommand();
+            pragma.CommandText = "PRAGMA busy_timeout=5000;";
+            pragma.ExecuteNonQuery();
+            return connection;
+        }
+        catch
+        {
+            connection.Dispose();
+            throw;
+        }
     }
 
     /// <summary>Money is stored as text so no rounding creeps in through a floating-point column.</summary>
