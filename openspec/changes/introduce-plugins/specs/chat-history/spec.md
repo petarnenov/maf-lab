@@ -7,10 +7,10 @@ While the `conversation-history` plugin is installed, the system SHALL list the 
 ordered by last activity (newest first). Each entry SHALL include the conversation id, title, creation time, last
 activity time and turn count. The list SHALL support a case-insensitive search over titles, questions and answers, and
 paging with a limit (default 30, maximum 100) and a cursor. Conversations of other users, including other users of the
-same firm, MUST NOT be listed. Without the plugin, the list route SHALL not exist.
+same tenant, MUST NOT be listed. Without the plugin, the list route SHALL not exist.
 
 #### Scenario: Own conversations only
-- **WHEN** Adam of firm A lists conversations after Rita (firm A) and Bianca (firm B) have chatted
+- **WHEN** Adam of tenant A lists conversations after Rita (tenant A) and Bianca (tenant B) have chatted
 - **THEN** only Adam's conversations are returned
 
 #### Scenario: Search
@@ -37,7 +37,7 @@ to rename it to 1–120 non-blank characters.
 ### Requirement: Delete a conversation
 While the `conversation-history` plugin is installed, the owner SHALL be able to delete a conversation after
 confirming. A deleted conversation MUST disappear from the list, MUST return not found when opened, and MUST reject new
-messages. Its turns, feedback and traces SHALL remain available to the firm's review queue and retention rules. The
+messages. Its turns, feedback and traces SHALL remain available to the tenant's review queue and retention rules. The
 soft delete SHALL go through the core's conversation store, which records it in the audit.
 
 #### Scenario: Delete
@@ -46,7 +46,7 @@ soft delete SHALL go through the core's conversation store, which records it in 
 
 #### Scenario: Review queue unaffected
 - **WHEN** a deleted conversation had a flagged turn
-- **THEN** that turn is still in the FIRM_ADMIN review queue
+- **THEN** that turn is still in the TENANT_ADMIN review queue
 
 ### Requirement: History in the chat screen
 The `/chat` screen SHALL always offer "New conversation" in the chat's own header (core). The active conversation SHALL
