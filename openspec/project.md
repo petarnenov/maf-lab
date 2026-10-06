@@ -40,13 +40,17 @@ production system.
 - Agents to browser: every agent is an Agent Framework `AIAgent` behind the
   Agent Framework's AG-UI server (`MapAGUIServer`); only official AG-UI
   events, built only by the official libraries — never a custom event.
-- Containers: Docker Compose — lb (nginx, the one entry point on 7171),
+- Containers: Docker Compose — the core's lb (nginx, the one entry point on 7171),
   api (as the host user), api-data-init, mcp-retrieval, mcp-portfolio,
-  mcp-code, compliance, test-agent, coverage-runner, web, copilot-runtime, qdrant,
-  neo4j, ollama, ollama-batch, ollama-init, ollama-warm, redis, otel-collector, prometheus, jaeger, and
-  the dev-only inspectors a2a-inspector, mcp-inspector, redis-insight and neo4j-browser
-  (profile `inspectors`, off in CI). One command (`make`) brings
-  everything up.
+  compliance, test-agent, coverage-runner, web, copilot-runtime, qdrant,
+  neo4j, ollama, ollama-batch, ollama-init, ollama-warm, redis, otel-collector, prometheus and jaeger;
+  and each plugin's own, merged by make for the installed set: mcp-code (`code`), mcp-example (`_example`), and the
+  dev-only inspectors a2a-inspector, mcp-inspector, redis-insight and neo4j-browser (each its own plugin, off in CI).
+  One command (`make`) brings everything up; `make core` brings up the core alone.
+- Plugins: everything optional is a plugin, one folder under `plugins/` with a
+  `plugin.toml` manifest (`plugins/plugin.schema.json`). Remote plugins speak MCP
+  or A2A; in-process ones contribute through `Maf.Lab.Plugins.Abstractions` and
+  the web's `@maf/plugin-api`. Guide: docs/plugins.md; spec: `plugins`.
 - Tests: xUnit for .NET (unit + integration with Testcontainers for
   Qdrant; NSubstitute for substitutes in unit tests), Vitest for the web. Evals are a separate CLI project, not part
   of the unit test run.
@@ -140,6 +144,13 @@ maf-lab/
   and one of a fixed set of Cypher templates, and binds the readable
   tenants itself. Cypher never comes from a request, a tool argument or the
   model.
+- The core never references a plugin: no project reference, package or import
+  from `src/` or `web/src/` into `plugins/`, and no file outside a plugin's
+  folder names its path or its project; the api and the test hosts take plugin
+  code only through globs. A plugin reaches Qdrant, Neo4j, its tables and AG-UI
+  only through the core's seams, and its tools reach the agent only through
+  MCP. Deleting a plugin's folder removes it from every part of the system and
+  keeps `make test` and `make docs-check` green (spec: `plugins`).
 - Tool results are purpose-built DTOs, never serialized entities.
 - Model-facing error text never contains stack traces, SQL, or hostnames.
 - Logs carry structure (tool names, latencies, counts), never message

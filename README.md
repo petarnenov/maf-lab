@@ -176,6 +176,7 @@ make setup                 # install what's missing (.NET SDK at the version glo
 export OLLAMA_API_KEY=…    # chat runs on Ollama Cloud (gpt-oss:120b); the key is only read from the environment
 export JEV_MAF_LAB=…       # intent classification runs on TypeSafe Jev; same rule
 make                       # doctor-lite → build → start → wait until healthy → index if empty → http://localhost:7171
+make core                  # the core alone, no plugin (MAF_PLUGINS=none), for checking the core
 make help                  # every target
 ```
 
@@ -268,15 +269,17 @@ allows, `none` means the core alone (`make core`), otherwise a comma-separated l
 
 ## Chat history
 
-The left sidebar of `/chat` lists your own conversations, most recent activity first. You can search titles, questions
+With the `conversation-history` plugin (installed by default), the left sidebar of `/chat` lists your own conversations, most recent activity first. You can search titles, questions
 and answers. Open a conversation to restore every turn exactly as it looked (answers, tool cards, sources, feedback,
 and the behind-the-scenes trace with time travel while it is kept), then continue it. The active conversation is in
 the URL (`/chat/{id}`), so a reload reopens it. Rename or delete from the item's menu. Delete hides the conversation
-and stops it being continued; its turns stay for the review queue and evals.
+and stops it being continued; its turns stay for the review queue and evals. Without the plugin there is no sidebar: a
+conversation is reopened by its URL, and "New conversation" is in the chat's header either way.
 
 ## Asking about the code
 
-The repository itself is a corpus (`make index-code`). It is indexed by structure: each type and member with its doc
+With the `code` plugin (dev and qa), the repository itself is a corpus, indexed by `make index` while the plugin is
+present. It is indexed by structure: each type and member with its doc
 comment, sized under embeddinggemma's 2048-token window, and searchable by identifier as well as by meaning. Ask in the
 chat, "how does the code make a tool call idempotent?" or "покажи ми дефиницията на code mcp сървъра". Jev puts the
 question in the codebase domain, the turn loads the codebase server's `search_codebase` (plus `trace_code_symbol` and
@@ -453,7 +456,8 @@ no separate confirm endpoint, because the protocol already had somewhere to put 
 
 ## Behind the scenes
 
-`/chat` shows the conversation on the left and a live **behind-the-scenes monitor** on the right: every step of the turn
+With the `monitor` plugin (dev and qa), `/chat` shows the conversation on the left and a live **behind-the-scenes
+monitor** on the right: every step of the turn
 as it happens. Tabs:
 - **Timeline:** a waterfall of every step.
 - **Model:** each request (messages, tools, tool mode) and response (text, tool calls, tokens, latency).
@@ -540,7 +544,7 @@ ollama pull embeddinggemma                                    # (qwen3:4b only f
 dotnet run --project src/Maf.Lab.Indexing                     # index data/ (index | drift | status | rebuild --yes | migrate --to <vector>)
 dotnet run --project src/Maf.Lab.Retrieval                    # billing MCP server on :5090
 dotnet run --project src/Maf.Lab.Portfolio                    # portfolio MCP server on :5091
-dotnet run --project src/Maf.Lab.CodeSearch                   # codebase MCP server on :5092 (make index-code first)
+dotnet run --project src/Maf.Lab.CodeSearch                   # codebase MCP server on :5092 (make index first)
 dotnet run --project src/Maf.Lab.Api                          # agent host on :5080
 cd web && npm install && npm run dev                          # UI on :5174
 ```

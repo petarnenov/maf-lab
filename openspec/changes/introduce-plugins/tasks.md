@@ -232,6 +232,10 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
       plugin's C# and web tests pass locally; the mcp kind's start is `_example`'s live check.
 - [ ] 6.3 Write `docs/plugins.md`, and make the CLAUDE.md, project.md, README and DECISIONS §81 updates from the
       proposal.
+      Done but CLAUDE.md: docs/plugins.md, project.md (stack, containers by plugin, the plugin convention), README
+      (quick start's `make core`, each section a plugin owns says so, no target named outside its folder) and
+      DECISIONS §81 (the proposal's own decisions). With any one plugin folder deleted, docs-check stays in sync.
+      CLAUDE.md's lines wait for the user's own pending CLAUDE.md edit to be committed.
 
 ## 7. CI
 

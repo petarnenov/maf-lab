@@ -3185,8 +3185,29 @@ be re-run then.
 
 ## 81. Plugins: a domain-agnostic core, every domain a plugin (introduce-plugins, 2026-10-06)
 
-Written as the change lands, section by section; task 6.3 completes it. The design's "Decisions taken during
-implementation" (parts A and B) holds each choice in full.
+Written as the change landed, section by section, and completed by task 6.3. The design's "Decisions taken during
+implementation" (parts A, B and C) holds each choice in full. The decisions the proposal itself took:
+
+- **Plugins are compiled in, not loaded at run time.** In-process plugins are projects the api and the test hosts
+  reference by glob (`Directory.Build.targets`); the installed set decides which apply. Rejected:
+  `AssemblyLoadContext` loading of DLLs dropped into a folder (version skew against the shared packages, an unreviewed
+  binary inside the tenant boundary, and no single test build); a plugin that must stay out of the repository is a
+  remote one, behind the protocols the project already trusts.
+- **A plugin's compose file holds only its own services, and the core reads the set at run time.** make merges the
+  core file with each installed plugin's `compose.yml` (and `compose.ci.yml` in CI); the api, the CopilotKit runtime
+  and the balancer read `plugins/.installed` and the generated `conf.d`. Rejected: fragments that add environment or
+  dependencies to core services, which would make the core's behaviour depend on which files were merged.
+- **Settings come from manifests keyed by plugin, not from indexed environment lists.** Rejected: `Agent__Servers__0/1`
+  and lists like it, where two independent fragments collide on an index.
+- **`IContributes*` interfaces are kept over bare `AddX(services, config)` + `MapX(app)`.** They are that same shape
+  with a contract the composition root discovers by type and the contract suite tests (Orchard Core's `IStartup`, ABP's
+  module, VS Code's contribution points). Rejected: hand-edited lines in `Program.cs` naming each plugin.
+- **Fee adjustment goes with the billing plugin.** It is a billing write, and its tool is offered only while
+  `compliance` is in use, so it is never offered without a reviewer its review needs. It moves with billing's
+  follow-up.
+
+No package version moves in this change.
+
 
 - **Part A (manifests, `MAF_PLUGINS`, `conf.d`, the contract and its checks).**
   - `IMafPlugin` carries only `Name`; the manifest is resolved from `plugins/.installed` by name. Rejected: a manifest
