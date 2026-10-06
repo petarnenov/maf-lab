@@ -69,6 +69,17 @@ jobs:
       - run: cd web && npm ci
       - run: make lint-web test-web build-web
 
+  product-image:
+    # The product image variant (introduce-plugins decision 5e): what stage and prod run, built and checked here as qa's
+    # run of it. It must hold no code of a plugin whose manifest does not allow stage or prod.
+    name: Product image variant
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the product api and web images, check they hold no dev-or-qa-only plugin code
+        run: make product-check CI_MODE=1 MAF_LAB_REPO="$PWD"
+
   e2e:
     name: End-to-end stack (model-free)
     runs-on: ubuntu-24.04

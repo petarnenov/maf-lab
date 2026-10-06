@@ -54,6 +54,12 @@ export default tseslint.config(
         {
           patterns: [
             { regex: 'sseParser$', message: 'Agent streams are read by the AG-UI client only.' },
+            {
+              // The core never imports a plugin (introduce-plugins decision 8): plugins register through the API.
+              regex: '(^|/)plugins/[^/]+/web(/|$)',
+              message:
+                'The core never imports a plugin; plugins register through src/plugins/api.ts.',
+            },
           ],
         },
       ],

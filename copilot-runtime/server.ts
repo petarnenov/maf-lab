@@ -6,10 +6,11 @@
 //
 // The runtime keeps each thread's events in memory with no owner, and by default serves them to anyone: listing
 // threads, reading their messages and events, and reconnecting to them. That would let one firm read another's
-// conversation. So only what the web uses is served — the runtime's info, a run of one of the two agents, and a stop —
+// conversation. So only what the web uses is served — the runtime's info, a run of one of the served agents, and a stop —
 // and a thread may be stopped only by the credentials that ran it. Everything an agent says still comes from the api,
 // which checks who is asking on every run.
 import { createHash } from 'node:crypto';
+import { readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
@@ -19,16 +20,49 @@ import { CopilotRuntime, InMemoryAgentRunner, createCopilotRuntimeHandler } from
 const api = process.env.AGENTS_BASE_URL ?? 'http://lb';
 const port = Number(process.env.PORT ?? 8080);
 const basePath = '/copilotkit';
-const agents = ['chat', 'testgen'] as const;
+/**
+ * The agents served here: chat is built in; testgen stays built in until the coverage plugin moves; any other agent comes
+ * from an installed plugin's manifest (`[agent] name`, `path`), read from plugins/.installed whenever it changes
+ * (introduce-plugins decision 3). The runtime still decides nothing: it maps names to the paths it reads.
+ */
+const builtIn: Record<string, string> = { chat: '/api/chat', testgen: '/api/coverage/runs/agent' };
+const pluginsFile = `${process.env.PLUGINS_ROOT ?? '/plugins'}/.installed`;
+let pluginAgents: Record<string, string> = {};
+let pluginsStamp = -1;
+
+/** Plugin agents from plugins/.installed, re-read when its modification time changes; a bad file keeps the last good set. */
+export function readPluginAgents(text: string): Record<string, string> {
+  const doc = JSON.parse(text) as { plugins?: { manifest?: { agent?: { name?: string; path?: string } } }[] };
+  const found: Record<string, string> = {};
+  for (const plugin of doc.plugins ?? []) {
+    const agent = plugin.manifest?.agent;
+    if (agent?.name && /^[a-z0-9][a-z0-9-]*$/.test(agent.name) && agent.path?.startsWith('/') && !(agent.name in builtIn)) {
+      found[agent.name] = agent.path;
+    }
+  }
+  return found;
+}
+
+function agents(): Record<string, string> {
+  try {
+    const stamp = statSync(pluginsFile).mtimeMs;
+    if (stamp !== pluginsStamp) {
+      pluginAgents = readPluginAgents(readFileSync(pluginsFile, 'utf8'));
+      pluginsStamp = stamp;
+    }
+  } catch {
+    // No installed set (no plugins, or a file being replaced): keep the last good set.
+  }
+  return { ...builtIn, ...pluginAgents };
+}
 
 const runtime = new CopilotRuntime({
   agents: ({ request }) => {
     const authorization = request.headers.get('authorization');
     const headers: Record<string, string> = authorization ? { Authorization: authorization } : {};
-    return {
-      chat: new HttpAgent({ url: `${api}/api/chat`, headers }),
-      testgen: new HttpAgent({ url: `${api}/api/coverage/runs/agent`, headers }),
-    };
+    return Object.fromEntries(
+      Object.entries(agents()).map(([name, path]) => [name, new HttpAgent({ url: `${api}${path}`, headers })]),
+    );
   },
   // A new message while the previous run is still going replaces that run, as it did before the runtime existed.
   runner: new InMemoryAgentRunner({ onConcurrentRun: 'supersede' }),
@@ -89,7 +123,7 @@ async function serve(request: IncomingMessage, response: ServerResponse, body?: 
   Readable.fromWeb(answer.body as WebReadableStream<Uint8Array>).pipe(response);
 }
 
-const agentRoute = new RegExp(`^${basePath}/agent/(${agents.join('|')})/(run|stop/([^/?]+))$`);
+const agentRoute = () => new RegExp(`^${basePath}/agent/(${Object.keys(agents()).join('|')})/(run|stop/([^/?]+))$`);
 
 createServer(async (request, response) => {
   const path = (request.url ?? '').split('?')[0];
@@ -98,7 +132,7 @@ createServer(async (request, response) => {
     response.end('{"status":"ok"}');
     return;
   }
-  const route = agentRoute.exec(path);
+  const route = agentRoute().exec(path);
   const allowed =
     (request.method === 'GET' && path === `${basePath}/info`) || (request.method === 'POST' && route !== null);
   if (!allowed) {

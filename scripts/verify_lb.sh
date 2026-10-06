@@ -5,6 +5,7 @@ set -euo pipefail
 # compose mounts the repository at MAF_LAB_REPO (make exports it); outside make, it is this checkout.
 export MAF_LAB_REPO="${MAF_LAB_REPO:-$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel)}"
 BASE="${1:-http://localhost:7171}"
+export VERIFY_SCRIPT="$0"
 COMPOSE="docker compose -f $(dirname "$0")/../compose/docker-compose.yml"
 export BASE COMPOSE
 
@@ -55,6 +56,20 @@ def token(user, firm, role):
     _, _, body = req("/dev/token", "POST", {"userId": user, "tenantId": firm, "role": role})
     return json.loads(body)["token"]
 
+# A plugin's checks run only while the plugin is in use (introduce-plugins task 2.4): a part that is still core (no
+# plugins/<name>/ folder yet) always runs; a plugin's part runs only when /api/plugins lists it.
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(os.environ.get("VERIFY_SCRIPT", "scripts/verify_lb.sh"))))
+_in_use = None
+
+def plugin_in_use(name):
+    global _in_use
+    if not os.path.isfile(os.path.join(ROOT, "plugins", name, "plugin.toml")):
+        return True
+    if _in_use is None:
+        _, _, body = req("/api/plugins", token=token("adam", "firm-a", "USER"))
+        _in_use = {p["name"] for p in json.loads(body or "{}").get("plugins", [])}
+    return name in _in_use
+
 # 4.1 entry point, routing, closed ports ---------------------------------------------------------------
 status, _, body = req("/")
 check("GET / serves the web app", status == 200 and 'id="root"' in body)
@@ -65,8 +80,9 @@ check("GET /dev/users through the balancer", status == 200 and "alice" in body)
 status, _, body = req("/lb-health")
 check("GET /lb-health", status == 200)
 status, _, body = req("/copilotkit/info")
-check("GET /copilotkit/info names the chat and test-run agents (agui-protocol-only)",
-      status == 200 and '"chat"' in body and '"testgen"' in body and '"telemetryDisabled":true' in body)
+check("GET /copilotkit/info names the chat agent, and the test-run agent while coverage is in use (agui-protocol-only)",
+      status == 200 and '"chat"' in body and ('"testgen"' in body or not plugin_in_use("coverage"))
+      and '"telemetryDisabled":true' in body)
 for port in (5080, 5090, 5174):
     s = socket.socket(); s.settimeout(2)
     refused = s.connect_ex(("127.0.0.1", port)) != 0
@@ -225,48 +241,49 @@ if partner:
     check("more than one replica answered for the task", len(instances) >= 2, str(sorted(i for i in instances if i)))
 
 # 4.6 the second agent, through the same entry point --------------------------------------------------
-status, _, card = req("/compliance/.well-known/agent-card.json")
-check("the compliance agent's card is served through the balancer",
-      status == 200 and "review_fee_adjustment" in card and "maf-lab compliance reviewer" in card)
+if plugin_in_use("compliance"):
+    status, _, card = req("/compliance/.well-known/agent-card.json")
+    check("the compliance agent's card is served through the balancer",
+          status == 200 and "review_fee_adjustment" in card and "maf-lab compliance reviewer" in card)
 
-status, _, body = req("/compliance/a2a/token", "POST",
-                      {"clientId": "maf-lab-assistant", "clientSecret": COMPLIANCE_SECRET})
-reviewer = json.loads(body)["accessToken"] if status == 200 else ""
-check("the assistant's credentials are accepted by the reviewer", status == 200 and bool(reviewer), f"HTTP {status}")
+    status, _, body = req("/compliance/a2a/token", "POST",
+                          {"clientId": "maf-lab-assistant", "clientSecret": COMPLIANCE_SECRET})
+    reviewer = json.loads(body)["accessToken"] if status == 200 else ""
+    check("the assistant's credentials are accepted by the reviewer", status == 200 and bool(reviewer), f"HTTP {status}")
 
-if reviewer:
-    # A token for the assistant's own surface must not open this one: different agent, different audience.
-    _, _, crossed = req("/compliance/a2a", "POST",
-                        {"jsonrpc": "2.0", "id": 1, "method": "message/send", "params": user_message("hello")},
-                        token=partner)
-    check("a token for the billing agent does not open the compliance agent", "error" in crossed or not crossed,
-          crossed[:60])
+    if reviewer:
+        # A token for the assistant's own surface must not open this one: different agent, different audience.
+        _, _, crossed = req("/compliance/a2a", "POST",
+                            {"jsonrpc": "2.0", "id": 1, "method": "message/send", "params": user_message("hello")},
+                            token=partner)
+        check("a token for the billing agent does not open the compliance agent", "error" in crossed or not crossed,
+              crossed[:60])
 
-    adjustment = {"adjustmentId": "ADJ-LB", "firmId": "firm-a", "accountId": "ACC-1042",
-                  "amount": 250, "reason": "Overcharged in Q2"}
-    review = {"message": {"kind": "message", "messageId": uuid.uuid4().hex, "role": "user",
-                          "parts": [{"kind": "data", "data": adjustment}]}}
-    _, headers, raw = req("/compliance/a2a", "POST",
-                          {"jsonrpc": "2.0", "id": 1, "method": "message/send", "params": review},
-                          token=reviewer, timeout=180)
-    answer = json.loads(raw)
-    task = answer.get("result", {})
-    state = task.get("status", {}).get("state")
-    check("a review runs end to end through the balancer", state in ("completed", "input-required"),
-          json.dumps(answer)[:90])
-    if state == "completed":
-        verdict = next((p.get("data") for a in task.get("artifacts", []) for p in a.get("parts", [])
-                        if p.get("kind") == "data"), {})
-        check("the verdict is structured and says it is simulated",
-              verdict.get("decision") in ("approved", "refused") and verdict.get("simulated") is True,
-              json.dumps(verdict)[:80])
+        adjustment = {"adjustmentId": "ADJ-LB", "firmId": "firm-a", "accountId": "ACC-1042",
+                      "amount": 250, "reason": "Overcharged in Q2"}
+        review = {"message": {"kind": "message", "messageId": uuid.uuid4().hex, "role": "user",
+                              "parts": [{"kind": "data", "data": adjustment}]}}
+        _, headers, raw = req("/compliance/a2a", "POST",
+                              {"jsonrpc": "2.0", "id": 1, "method": "message/send", "params": review},
+                              token=reviewer, timeout=180)
+        answer = json.loads(raw)
+        task = answer.get("result", {})
+        state = task.get("status", {}).get("state")
+        check("a review runs end to end through the balancer", state in ("completed", "input-required"),
+              json.dumps(answer)[:90])
+        if state == "completed":
+            verdict = next((p.get("data") for a in task.get("artifacts", []) for p in a.get("parts", [])
+                            if p.get("kind") == "data"), {})
+            check("the verdict is structured and says it is simulated",
+                  verdict.get("decision") in ("approved", "refused") and verdict.get("simulated") is True,
+                  json.dumps(verdict)[:80])
 
-    replicas = set()
-    for _ in range(8):
-        _, headers, _ = req("/compliance/.well-known/agent-card.json")
-        replicas.add(headers.get("X-Instance"))
-    check("the compliance tier answers from more than one replica", len(replicas) >= 2,
-          str(sorted(r for r in replicas if r)))
+        replicas = set()
+        for _ in range(8):
+            _, headers, _ = req("/compliance/.well-known/agent-card.json")
+            replicas.add(headers.get("X-Instance"))
+        check("the compliance tier answers from more than one replica", len(replicas) >= 2,
+              str(sorted(r for r in replicas if r)))
 
 # 4.6 a write proposed on one replica and confirmed through the balancer --------------------------------
 # The MCP server keeps nothing between the two calls, so whichever replica answers must honour the proposal.

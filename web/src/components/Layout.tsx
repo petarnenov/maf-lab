@@ -4,6 +4,9 @@ import { DevTokenPicker } from './DevTokenPicker';
 import { ThemeButton } from '../theme/ThemeButton';
 import styles from './Layout.module.css';
 import { useStickyHeader } from './useStickyHeader';
+import { usePlugins } from '../plugins/context';
+import { contributions } from '../plugins/registry';
+import { useAuth } from '../auth/useAuth';
 
 const LINKS = [
   { to: '/chat', label: 'Chat' },
@@ -33,6 +36,10 @@ function inspectorUrl(port: number): string {
 export function Layout() {
   const headerRef = useRef<HTMLElement>(null);
   const sticky = useStickyHeader(headerRef);
+  const plugins = usePlugins();
+  const { session } = useAuth();
+  const admin = session?.user.role === 'TENANT_ADMIN';
+  const pluginLinks = contributions(plugins, 'nav').filter(({ item }) => !item.adminOnly || admin);
 
   return (
     <div className={styles.shell}>
@@ -50,6 +57,33 @@ export function Layout() {
               {link.label}
             </NavLink>
           ))}
+          {pluginLinks.map(({ plugin, item }) =>
+            item.to ? (
+              <NavLink
+                key={`${plugin}:${item.to}`}
+                to={item.to}
+                className={({ isActive }) =>
+                  isActive ? `${styles.link} ${styles.active}` : styles.link
+                }
+              >
+                {item.label}
+              </NavLink>
+            ) : (
+              <a
+                key={`${plugin}:${item.href}`}
+                href={item.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`${item.label} (opens in a new tab)`}
+                className={styles.link}
+              >
+                {item.label}
+                <span className={styles.external} aria-hidden="true">
+                  ↗
+                </span>
+              </a>
+            ),
+          )}
           {INSPECTORS.map((tool) => (
             <a
               key={tool.port}

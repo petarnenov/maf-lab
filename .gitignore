@@ -52,3 +52,8 @@ __pycache__/
 
 # ephemeral subagent worktrees
 .claude/worktrees/
+
+# Derived by make up from compose/lb/api.upstream.conf and the installed plugins (introduce-plugins decision 2).
+compose/lb/conf.d/
+# Written by make (scripts/plugins.py install): the installed plugin set, read at run time.
+plugins/.installed

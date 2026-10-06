@@ -39,18 +39,27 @@ public sealed class AGUIProtocolOnlyTests
 
     [Fact]
     public void No_event_stream_of_our_own() =>
-        AssertNone(Sources().Where(f => f.Path.StartsWith("src/Maf.Lab.Api/", StringComparison.Ordinal) && f.Path != TapFile
-                && OwnSse.IsMatch(f.Text)),
+        AssertNone(Sources().Where(f => (f.Path.StartsWith("src/Maf.Lab.Api/", StringComparison.Ordinal) || IsPluginServer(f.Path))
+                && f.Path != TapFile && OwnSse.IsMatch(f.Text)),
             "writes its own event stream");
+
+    /// <summary>Code of a plugin's in-process part, which these rules cover as they cover the core (introduce-plugins task 3.3).</summary>
+    private static bool IsPluginServer(string path) =>
+        path.StartsWith("plugins/", StringComparison.Ordinal) && path.Contains("/server/", StringComparison.Ordinal);
 
     [Fact]
     public void The_tap_only_reads_what_the_official_server_wrote() =>
         AssertNone(Sources().Where(f => f.Path == TapFile && WritesSse.IsMatch(f.Text)), "writes an event stream");
 
-    private static IEnumerable<(string Path, string Text)> Sources()
+    /// <summary>The core's sources and every plugin's in-process part (plugins/*/server/), so plugin code cannot escape.</summary>
+    internal static IEnumerable<(string Path, string Text)> Sources()
     {
         var root = CorpusLoaderTests.RepoRoot();
-        return Directory.EnumerateFiles(Path.Combine(root, "src"), "*.cs", SearchOption.AllDirectories)
+        var plugins = Directory.Exists(Path.Combine(root, "plugins"))
+            ? Directory.EnumerateDirectories(Path.Combine(root, "plugins")).Select(p => Path.Combine(p, "server")).Where(Directory.Exists)
+            : [];
+        return new[] { Path.Combine(root, "src") }.Concat(plugins)
+            .SelectMany(dir => Directory.EnumerateFiles(dir, "*.cs", SearchOption.AllDirectories))
             .Where(p => !p.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
                 && !p.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
             .Select(p => (Path.GetRelativePath(root, p).Replace('\\', '/'), File.ReadAllText(p)));

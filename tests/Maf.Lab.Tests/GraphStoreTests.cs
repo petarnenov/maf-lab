@@ -287,9 +287,11 @@ public class GraphStoreTests
         return violations;
     }
 
+    /// <summary>The core's assemblies and every in-process plugin's (introduce-plugins task 3.3): plugin code cannot escape.</summary>
     private static IEnumerable<string> ProductAssemblies() =>
         new[] { "Maf.Lab.Domain", "Maf.Lab.Retrieval", "Maf.Lab.Api", "Maf.Lab.Indexing", "Maf.Lab.Eval", "Maf.Lab.CodeSearch", "Maf.Lab.Portfolio" }
-            .Select(n => Path.Combine(AppContext.BaseDirectory, n + ".dll"));
+            .Select(n => Path.Combine(AppContext.BaseDirectory, n + ".dll"))
+            .Concat(PluginArchitectureTests.PluginAssemblies());
 
     /// <summary>Calls that run Cypher: the driver's query and session entry points, and anything on a session or transaction.</summary>
     private static List<(string Type, string Caller, string Target)> FindDriverCalls(IEnumerable<string> assemblies)

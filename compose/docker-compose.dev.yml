@@ -1,0 +1,11 @@
+# Dev-only additions, merged after docker-compose.yml by make when CI_MODE is not 1 (introduce-plugins decision 2).
+# stage and prod never load this file.
+#
+# The A2A and MCP inspectors share lb's network namespace, so their ports can only be published by lb. Ports cannot be
+# gated by a profile (DECISIONS.md §75), so they live here: with an inspector plugin off, its port simply refuses
+# connections, and lb is never recreated for it.
+services:
+  lb:
+    ports:
+      - "127.0.0.1:7172:7172"
+      - "127.0.0.1:7173:7173"

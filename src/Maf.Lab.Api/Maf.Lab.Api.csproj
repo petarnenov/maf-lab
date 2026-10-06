@@ -26,6 +26,7 @@
     <!-- Admin endpoints reuse the indexing pipeline; chat never queries the store directly (only via MCP tools). -->
     <ProjectReference Include="..\Maf.Lab.Retrieval\Maf.Lab.Retrieval.csproj" />
     <ProjectReference Include="..\Maf.Lab.Indexing\Maf.Lab.Indexing.csproj" />
+    <ProjectReference Include="..\Maf.Lab.Plugins.Abstractions\Maf.Lab.Plugins.Abstractions.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Maf.Lab.Tests" />

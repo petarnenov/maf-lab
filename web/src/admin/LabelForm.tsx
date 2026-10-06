@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import type { LabelDataset, LabelRequest, ReviewQueueItem } from '../api/types';
-import styles from '../components/Page.module.css';
+import styles from '../shared/Page.module.css';
 import { TOOL_NAMES } from './toolNames';
 
 const splitLines = (value: string) =>

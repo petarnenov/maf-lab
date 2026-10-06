@@ -8,6 +8,7 @@ using Maf.Lab.Api.Agent.Jev;
 using Maf.Lab.Retrieval.Jev;
 using Maf.Lab.Api.Endpoints;
 using Maf.Lab.Api.Feedback;
+using Maf.Lab.Api.Plugins;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.Indexing;
 using Maf.Lab.Retrieval.Auth;
@@ -22,7 +23,8 @@ public partial class Program
 {
     public static void Main(string[] args) => BuildApp(args).Run();
 
-    public static WebApplication BuildApp(string[] args, Action<WebApplicationBuilder>? configure = null)
+    public static WebApplication BuildApp(string[] args, Action<WebApplicationBuilder>? configure = null,
+        IEnumerable<System.Reflection.Assembly>? plugins = null)
     {
         var builder = WebApplication.CreateBuilder(args);
         configure?.Invoke(builder);
@@ -34,6 +36,13 @@ public partial class Program
         // loses others, so it does not start at all.
         builder.AddSharedState();
         builder.RequireSharedState<Maf.Lab.Domain.SharedState.IRunStateStore>();
+
+        // The api's drain on a graceful stop: Docker's stop grace (40 s) exceeds it, so a stopping replica finishes its
+        // runs or records them cancelled before it can be killed (introduce-plugins decision 2).
+        builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(30));
+        // The installed plugins: read at run time, composed here (introduce-plugins decision 5).
+        builder.AddMafPlugins(plugins);
+        builder.Services.AddHttpClient("plugins");
 
         builder.Services.AddMafIndexing(builder.Configuration);
         builder.Services.AddDevJwtAuthentication(builder.Configuration);
@@ -177,6 +186,8 @@ public partial class Program
         app.MapCoverage();
         app.MapA2ASurface();
         app.MapA2AProtocol();
+        app.MapPlugins();
+        app.MapMafPlugins();
         return app;
     }
 }

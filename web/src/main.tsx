@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router';
 import { AgentsProvider } from './agents/AgentsProvider';
 import { App } from './App';
 import { AuthProvider } from './auth/AuthProvider';
+import { PluginsProvider } from './plugins/PluginsProvider';
 import { startBrowserTracing } from './telemetry/browserTracing';
 import './index.css';
 
@@ -20,9 +21,11 @@ createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <AgentsProvider>
-          <BrowserRouter>
-            <App />
-          </BrowserRouter>
+          <PluginsProvider>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </PluginsProvider>
         </AgentsProvider>
       </AuthProvider>
     </QueryClientProvider>

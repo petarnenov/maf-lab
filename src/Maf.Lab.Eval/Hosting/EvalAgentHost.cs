@@ -104,11 +104,11 @@ public sealed class EvalAgentHost : IAsyncDisposable
         services.PostConfigure<AgentOptions>(o =>
         {
             o.McpEndpoint = endpoint;
-            o.Servers =
-            [
-                new McpServerOptions { Domain = Domains.Portfolio, Endpoint = portfolioEndpoint },
-                new McpServerOptions { Domain = Domains.Codebase, Endpoint = codeEndpoint, Tools = [Maf.Lab.Domain.Code.CodeTools.Search, Maf.Lab.Domain.Graph.GraphTools.TraceCodeSymbol, Maf.Lab.Domain.Graph.GraphTools.ChangeImpact] },
-            ];
+            o.Servers = new(StringComparer.Ordinal)
+            {
+                ["portfolio"] = new McpServerOptions { Domain = Domains.Portfolio, Endpoint = portfolioEndpoint },
+                ["codebase"] = new McpServerOptions { Domain = Domains.Codebase, Endpoint = codeEndpoint, Tools = [Maf.Lab.Domain.Code.CodeTools.Search, Maf.Lab.Domain.Graph.GraphTools.TraceCodeSymbol, Maf.Lab.Domain.Graph.GraphTools.ChangeImpact] },
+            };
         });
         services.AddDbContextFactory<MafDbContext>(o => o.UseSqlite($"Data Source={Path.Combine(workDir, "eval.db")}"));
         services.AddSingleton<SystemPrompt>();

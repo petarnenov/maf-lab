@@ -119,6 +119,9 @@ README = """\
 <!-- generated:lb-routes — edit compose/lb/nginx.conf, then run make docs -->
 <!-- /generated:lb-routes -->
 
+<!-- generated:plugins — edit plugins/<name>/plugin.toml, then run make docs -->
+<!-- /generated:plugins -->
+
 Run `make up` and make sure it works.
 """
 
@@ -324,8 +327,9 @@ class BlockTests(DocsTestCase):
 
     def test_unbalanced_marker_fails(self):
         self.generated()
-        self.fx.edit("README.md", "<!-- /generated:lb-routes -->", "")
-        self.assertCheckFails("`lb-routes` is never closed")
+        # The last block of the file: an earlier one left open would be reported as a block opening inside it.
+        self.fx.edit("README.md", "<!-- /generated:plugins -->", "")
+        self.assertCheckFails("`plugins` is never closed")
 
     def generated_ignoring_findings(self):
         self.fx.run("generate")
@@ -758,6 +762,65 @@ class PrinciplesTests(DocsTestCase):
         self.propose(self.BOTH + "- Own: a — x; DECISIONS §3\n- Own: b — y")
         out = self.assertCheckFails("names no DECISIONS section: b — y")
         self.assertNotIn("section: a — x", out)
+
+
+GOOD_MANIFEST = """\
+schema = 1
+name = "weather"
+kind = "mcp"
+scope = "tenant"
+environments = ["dev", "qa"]
+description = "Forecasts"
+progress = "None — every call is short"
+stopping = "None — no long work"
+"""
+
+
+class PluginTests(DocsTestCase):
+    """Plugins in the docs (introduce-plugins task 3.6): manifests checked, their targets and routes in the tables."""
+
+    def setUp(self):
+        super().setUp()
+        self.fx.edit("docs/docs-sync.toml", '"openspec" = "Specs"', '"openspec" = "Specs"\n"plugins" = "One folder per plugin"')
+        self.fx.write("plugins/plugin.schema.json", (Path(__file__).resolve().parents[2] / "plugins" / "plugin.schema.json").read_text())
+
+    def test_a_valid_manifest_is_listed_and_passes(self):
+        self.fx.write("plugins/weather/plugin.toml", GOOD_MANIFEST)
+        self.generated()
+        self.assertIn("| `weather` | mcp | tenant | dev, qa | Forecasts |", self.fx.read("README.md"))
+        self.assertCheckPasses()
+
+    def test_a_manifest_without_stopping_fails_naming_the_plugin(self):
+        self.fx.write("plugins/weather/plugin.toml", GOOD_MANIFEST.replace('stopping = "None — no long work"\n', ""))
+        self.assertCheckFails("plugins/weather/plugin.toml", "missing required `stopping`")
+
+    def test_a_stopping_without_its_facts_fails(self):
+        self.fx.write("plugins/weather/plugin.toml", GOOD_MANIFEST.replace('"None — no long work"', '"Key: Esc"'))
+        self.assertCheckFails("/stopping", "Stop:, Recorded in:, Shown:")
+
+    def test_an_unknown_key_and_a_missing_dependency_fail(self):
+        self.fx.write("plugins/weather/plugin.toml", GOOD_MANIFEST + 'depends = ["sun"]\ncolour = "blue"\n')
+        self.assertCheckFails("unknown key `colour`", "depends on `sun`")
+
+    def test_a_plugins_make_targets_and_routes_reach_the_tables(self):
+        self.fx.write("plugins/weather/plugin.toml", GOOD_MANIFEST)
+        self.fx.write("plugins/weather/plugin.mk", "weather-index: ## Index the forecasts\n\t@true\n")
+        self.fx.write("plugins/weather/lb.http.conf", "upstream weather_pool {\n    server weather:8080;\n}\n")
+        self.fx.write("plugins/weather/lb.server.conf",
+                      "location = /weather/mcp {\n    proxy_pass http://weather_pool/mcp;\n}\n")
+        self.generated()
+        readme = self.fx.read("README.md")
+        self.assertIn("| `make weather-index` | Index the forecasts |", readme)
+        self.assertIn("| `/weather/mcp` | exact | `weather` at `/mcp` (plugin `weather`) |", readme)
+        self.fx.edit("README.md", "Run `make up`", "Run `make weather-index` then `make up`")
+        self.assertCheckPasses()
+
+    def test_a_route_a_plugin_server_maps_must_be_documented(self):
+        self.fx.write("plugins/weather/plugin.toml", GOOD_MANIFEST)
+        self.fx.write("plugins/weather/server/WeatherPlugin.cs",
+                      'public sealed class WeatherPlugin { void M(IEndpointRouteBuilder r) { r.MapGet("/api/weather", () => 1); } }\n')
+        self.generated()
+        self.assertCheckFails("GET /api/weather is registered but not in docs/http-api.md")
 
 
 if __name__ == "__main__":

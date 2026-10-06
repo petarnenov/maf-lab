@@ -112,11 +112,13 @@ them in the git-ignored `compose/.env` (plain `KEY=value`, no quotes): compose a
 environment or the make command line still wins. Secrets stay in the environment — make skips `JEV_MAF_LAB` and any
 `*_KEY`, `*_TOKEN`, `*_SECRET` or `*_PASSWORD` in that file.
 
-The balancer's routes, as `compose/lb/nginx.conf` declares them:
+The balancer's routes, as `compose/lb/nginx.conf`, the api upstream template and each plugin's snippets declare them:
 
-<!-- generated:lb-routes — edit compose/lb/nginx.conf, then run make docs -->
+<!-- generated:lb-routes — edit compose/lb/nginx.conf or a plugin's lb.*.conf, then run make docs -->
 | Path | Match | Served by |
 |---|---|---|
+| `^/[a-z0-9-]+/mcp$` | regex | the balancer itself |
+| `^/[a-z0-9-]+/(a2a\|\.well-known/agent-card\.json)(/\|$)` | regex | the balancer itself |
 | `/lb-health` | exact | the balancer itself |
 | `/api/coverage/runs/agent` | exact | `api` |
 | `/copilotkit/` | prefix | `copilot-runtime` |
@@ -182,6 +184,11 @@ make help                  # every target
 | `make all` | Start everything: build, run, wait for health, index if empty (default) |
 | `make help` | List the targets |
 | `make up` | Build and start the stack (replicas via API_REPLICAS/MCP_REPLICAS/PORTFOLIO_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy |
+| `make core` | Start the core with no plugin (MAF_PLUGINS=none): a shell that declines every turn, for checking the core |
+| `make product-check` | Build the product image variant (api, web) and check it holds no dev-or-qa-only plugin code |
+| `make plugins` | List every plugin: kind, scope, environments, whether installed, dependencies, description |
+| `make plugin-on` | Install one plugin into the running stack (NAME=…): its services, healthy, then its routes; ALLOW_DOWNTIME=1 for one api replica |
+| `make plugin-off` | Remove one plugin from the running stack (NAME=…); refuses while it has open work unless STOP_WORK=1 |
 | `make down` | Stop the stack (data volumes are kept) |
 | `make restart` | Stop and start the stack |
 | `make ps` | Show services, state and health |
@@ -233,6 +240,18 @@ make help                  # every target
 | `make doctor` | Check prerequisites (Docker, .NET SDK, Node/npm, make, OLLAMA_API_KEY, JEV_MAF_LAB, MAF_LAB_REPO, GITHUB_ISSUES_TOKEN) |
 | `make setup` | Install what 'make doctor' reports missing (.NET SDK unattended; prints the rest) |
 <!-- /generated:make-targets -->
+
+## Plugins
+
+Everything optional is a plugin: one folder `plugins/<name>/` with a `plugin.toml` manifest (checked against
+`plugins/plugin.schema.json`). `MAF_PLUGINS` decides what `make` installs: unset means every bundled plugin `MAF_ENV`
+allows, `none` means the core alone (`make core`), otherwise a comma-separated list. `make plugins` lists them,
+`make plugin-on NAME=…` and `make plugin-off NAME=…` switch one on the running stack. The authoring guide is
+[docs/plugins.md](docs/plugins.md).
+
+<!-- generated:plugins — edit plugins/<name>/plugin.toml, then run make docs -->
+No plugin is present yet: the repository holds only the core (`plugins/` has no `plugin.toml`).
+<!-- /generated:plugins -->
 
 ## Chat history
 

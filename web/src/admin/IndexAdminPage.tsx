@@ -2,11 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import type { AdminJob, DriftReport, IndexStatus } from '../api/types';
 import { useApi, useAuth } from '../auth/useAuth';
-import styles from '../components/Page.module.css';
+import styles from '../shared/Page.module.css';
 import { Progress } from '../components/Progress';
-import { StopHint } from '../components/StopHint';
-import { useEscToStop } from '../components/useEscToStop';
-import { formatDate } from '../evals/format';
+import { StopHint } from '../shared/StopHint';
+import { useEscToStop } from '../shared/useEscToStop';
+import { formatDate } from '../shared/format';
 import { isJobActive } from './jobs';
 
 export function IndexAdminPage() {

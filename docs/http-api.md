@@ -19,6 +19,20 @@ server; when the request names none, the issuer adds the persona's own. For one 
 `firmId` for `tenantId` and the old role names (`FIRM_ADMIN`, `ADVISOR`, `OPS`), and the api accepts a token's
 `firm_id` claim for `tenant_id`.
 
+## Plugins
+
+What the web and make learn about the installed plugins (introduce-plugins). The set is read at run time from
+`plugins/.installed`, which `make` writes; see [plugins.md](plugins.md).
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | `/api/plugins` | — | `{ plugins: [{ name, kind, scope, description, health, domain, cardTypes }], problems }`. Anonymous: only plugins whose manifest says `public = true` (none in stage or prod), and no problems. Signed in: every installed plugin, and any manifest problem of the last read. `health` is `ok` for a plugin whose code runs in the api, the probe of its topology address for a remote one (cached 15 s), else `unknown` |
+| GET | `/api/plugins/{name}/open-work` | — | `[{ kind, id, state }]` the plugin's open long work; TENANT_ADMIN only, otherwise `403`. Empty for a plugin with none |
+| POST | `/api/plugins/{name}/open-work/cancel` | — | `202`: every open item is marked cancelled in the store that owns it; poll the list until it is empty. TENANT_ADMIN only |
+
+A plugin's own routes answer `404` whenever the plugin is not in the installed set the api last read, whatever the
+plugin does itself.
+
 ## Identity
 
 | Method | Path | Body | Response |

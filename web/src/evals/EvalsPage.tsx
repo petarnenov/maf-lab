@@ -2,10 +2,10 @@ import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fragment, useState } from 'react';
 import type { EvalReport, EvalReportSummary, MetricComparison } from '../api/types';
 import { useApi, useAuth } from '../auth/useAuth';
-import styles from '../components/Page.module.css';
-import { StopHint } from '../components/StopHint';
-import { useEscToStop } from '../components/useEscToStop';
-import { formatDate, formatMetric } from './format';
+import styles from '../shared/Page.module.css';
+import { StopHint } from '../shared/StopHint';
+import { useEscToStop } from '../shared/useEscToStop';
+import { formatDate, formatMetric } from '../shared/format';
 import { MetricTrend } from './MetricTrend';
 import trend from './MetricTrend.module.css';
 

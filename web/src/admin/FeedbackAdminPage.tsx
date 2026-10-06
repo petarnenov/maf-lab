@@ -2,8 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { LabelRequest, ReviewQueueItem } from '../api/types';
 import { useApi, useAuth } from '../auth/useAuth';
-import styles from '../components/Page.module.css';
-import { formatDate } from '../evals/format';
+import styles from '../shared/Page.module.css';
+import { formatDate } from '../shared/format';
 import { StoredTracePanel } from '../monitor/StoredTracePanel';
 import { LabelForm } from './LabelForm';
 

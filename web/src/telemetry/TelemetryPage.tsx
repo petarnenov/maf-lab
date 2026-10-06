@@ -2,9 +2,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { TelemetryPanel, TelemetryReport } from '../api/types';
 import { useApi, useAuth } from '../auth/useAuth';
-import styles from '../components/Page.module.css';
-import { StopHint } from '../components/StopHint';
-import { useEscToStop } from '../components/useEscToStop';
+import styles from '../shared/Page.module.css';
+import { StopHint } from '../shared/StopHint';
+import { useEscToStop } from '../shared/useEscToStop';
 import panel from './TelemetryPage.module.css';
 
 /** The windows the server will answer for. Asking for anything else is refused there, not here. */

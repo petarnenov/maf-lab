@@ -100,7 +100,7 @@ public sealed class RunStateTracker(IRunStateStore store, Principal principal, s
         _answer.ToString(),
         [.. _order.Select(id => _toolCalls[id])],
         _outcome, _awaitingId, _turnId, _error,
-        _startedAt, time.GetUtcNow());
+        _startedAt, time.GetUtcNow(), Maf.Lab.Hosting.InstanceIdentity.ProcessId);
 
     public Task SaveAsync(CancellationToken ct)
     {

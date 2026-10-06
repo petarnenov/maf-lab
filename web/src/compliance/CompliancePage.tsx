@@ -2,10 +2,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import type { ActionPage, AuditAction, ChainReport, ExportManifest } from '../api/types';
 import { useApi, useAuth } from '../auth/useAuth';
-import page from '../components/Page.module.css';
-import { StopHint } from '../components/StopHint';
-import { useEscToStop } from '../components/useEscToStop';
-import { formatDate } from '../evals/format';
+import page from '../shared/Page.module.css';
+import { StopHint } from '../shared/StopHint';
+import { useEscToStop } from '../shared/useEscToStop';
+import { formatDate } from '../shared/format';
 import styles from './Compliance.module.css';
 
 // Every kind the record can hold, so nothing written is invisible to whoever is looking.

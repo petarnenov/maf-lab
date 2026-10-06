@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import type { AgentModel } from '../api/types';
-import page from '../components/Page.module.css';
+import page from '../shared/Page.module.css';
 import { type BudgetInput, describeBudget, parseBudget } from './budget';
 import { duration, usd } from './format';
 import { estimateRun, type LimitKey, type LimitsInput, defaultLimits, parseLimits } from './limits';

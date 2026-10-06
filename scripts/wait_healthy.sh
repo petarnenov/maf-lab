@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Waits until every running compose service with a healthcheck is healthy and every one-shot service exited 0.
 # On timeout (or a failed one-shot) prints the offending services with their last 30 log lines and exits 1.
-# Usage: scripts/wait_healthy.sh [timeout_seconds]   (compose file: $COMPOSE_FILE or compose/docker-compose.yml)
+# Usage: scripts/wait_healthy.sh [timeout_seconds]
+# Compose files: $COMPOSE_FILE (make exports the core's plus each installed plugin's, ':'-separated), else the core's.
 set -euo pipefail
 # compose mounts the repository at MAF_LAB_REPO (make exports it); outside make, it is this checkout.
 export MAF_LAB_REPO="${MAF_LAB_REPO:-$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel)}"
 TIMEOUT="${1:-300}"
-FILE="${COMPOSE_FILE:-$(cd "$(dirname "$0")/.." && pwd)/compose/docker-compose.yml}"
-compose() { docker compose -f "$FILE" "$@"; }
+export COMPOSE_FILE="${COMPOSE_FILE:-$(cd "$(dirname "$0")/.." && pwd)/compose/docker-compose.yml}"
+compose() { docker compose "$@"; }
 
 status() {
   # Prints "<container> <service> <state> <health> <exitcode>" per container.

@@ -51,6 +51,8 @@ MCP note: workspace MCP server config lives in `.mcp.json` (Playwright server vi
 <!-- generated:lb-routes — edit compose/lb/nginx.conf, then run make docs -->
 | Path | Match | Served by |
 |---|---|---|
+| `^/[a-z0-9-]+/mcp$` | regex | the balancer itself |
+| `^/[a-z0-9-]+/(a2a\|\.well-known/agent-card\.json)(/\|$)` | regex | the balancer itself |
 | `/lb-health` | exact | the balancer itself |
 | `/api/coverage/runs/agent` | exact | `api` |
 | `/copilotkit/` | prefix | `copilot-runtime` |

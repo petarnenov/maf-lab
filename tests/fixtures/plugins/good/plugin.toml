@@ -1,0 +1,8 @@
+schema = 1
+name = "good"
+kind = "app"
+scope = "installation"
+environments = ["dev", "qa"]
+description = "A contract-suite fixture that passes"
+progress = "None — a fixture"
+stopping = "None — a fixture"

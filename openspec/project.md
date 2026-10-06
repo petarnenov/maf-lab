@@ -69,6 +69,7 @@ maf-lab/
   docs/                       HTTP API, trace events, telemetry and shared-state references; rules; screenshots; docs-sync.toml
   evals/                      JSONL datasets per suite, the accepted baseline, and the run reports
   openspec/                   Specs, active changes and the archive; project.md is the source for the OpenSpec context
+  plugins/                    One folder per plugin (plugin.toml, its compose, lb snippets, make targets, server and web parts); plugin.schema.json
   scripts/                    The multi-line logic behind make targets (bash, and Python for docs and corpus stats)
   src/                        .NET projects, one per service or shared library
     Maf.Lab.A2A/              A2A code both agents share: partner identity, the signed card, the 1.0 wire format, the request handler

@@ -41,6 +41,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Maf.Lab.TestAgent", "src\Ma
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Maf.Lab.CoverageRunner", "src\Maf.Lab.CoverageRunner\Maf.Lab.CoverageRunner.csproj", "{D3523158-FB45-4DE3-8ED0-BB90077C2D4A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Maf.Lab.Plugins.Abstractions", "src\Maf.Lab.Plugins.Abstractions\Maf.Lab.Plugins.Abstractions.csproj", "{661E8E8A-8E0B-4940-A71A-92C2960ACF58}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -243,6 +245,18 @@ Global
 		{D3523158-FB45-4DE3-8ED0-BB90077C2D4A}.Release|x64.Build.0 = Release|Any CPU
 		{D3523158-FB45-4DE3-8ED0-BB90077C2D4A}.Release|x86.ActiveCfg = Release|Any CPU
 		{D3523158-FB45-4DE3-8ED0-BB90077C2D4A}.Release|x86.Build.0 = Release|Any CPU
+		{661E8E8A-8E0B-4940-A71A-92C2960ACF58}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{661E8E8A-8E0B-4940-A71A-92C2960ACF58}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{661E8E8A-8E0B-4940-A71A-92C2960ACF58}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{661E8E8A-8E0B-4940-A71A-92C2960ACF58}.Debug|x64.Build.0 = Debug|Any CPU
+		{661E8E8A-8E0B-4940-A71A-92C2960ACF58}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{661E8E8A-8E0B-4940-A71A-92C2960ACF58}.Debug|x86.Build.0 = Debug|Any CPU
+		{661E8E8A-8E0B-4940-A71A-92C2960ACF58}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{661E8E8A-8E0B-4940-A71A-92C2960ACF58}.Release|Any CPU.Build.0 = Release|Any CPU
+		{661E8E8A-8E0B-4940-A71A-92C2960ACF58}.Release|x64.ActiveCfg = Release|Any CPU
+		{661E8E8A-8E0B-4940-A71A-92C2960ACF58}.Release|x64.Build.0 = Release|Any CPU
+		{661E8E8A-8E0B-4940-A71A-92C2960ACF58}.Release|x86.ActiveCfg = Release|Any CPU
+		{661E8E8A-8E0B-4940-A71A-92C2960ACF58}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -264,5 +278,6 @@ Global
 		{B043906D-9FEF-4700-AC35-469632E63883} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{2F1831EB-AFED-452D-B0BE-98A12344B9E3} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{D3523158-FB45-4DE3-8ED0-BB90077C2D4A} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{661E8E8A-8E0B-4940-A71A-92C2960ACF58} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

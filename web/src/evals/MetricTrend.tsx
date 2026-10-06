@@ -1,8 +1,8 @@
 import { useId, useMemo, useState } from 'react';
 import type { EvalReportSummary } from '../api/types';
-import page from '../components/Page.module.css';
+import page from '../shared/Page.module.css';
 import styles from './MetricTrend.module.css';
-import { formatDate } from './format';
+import { formatDate } from '../shared/format';
 import { groupLabel, groupSeries } from './seriesGroups';
 
 type Point = { runId: string; at: string; value: number };

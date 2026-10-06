@@ -250,7 +250,7 @@ public class CodebaseDomainTests
         {
             // Billing is unreachable: a turn that did not select it must neither contact it nor fail on it.
             McpEndpoint = "http://billing.test/mcp",
-            Servers = [new McpServerOptions { Domain = Domains.Codebase, Endpoint = "http://code.test/mcp", Tools = [CodeTools.Search] }],
+            Servers = new(StringComparer.Ordinal) { ["codebase"] = new McpServerOptions { Domain = Domains.Codebase, Endpoint = "http://code.test/mcp", Tools = [CodeTools.Search] } },
         }), LoggerFactory.Create(_ => { }), new CodeTestClients(() => new HttpClient(router, disposeHandler: false)));
         var (token, _) = Maf.Lab.Retrieval.Auth.DevJwt.Issue(new Maf.Lab.Domain.Configuration.AuthOptions(), "alice", TenantId.Firm("firm-a"), Role.TENANT_ADMIN);
 

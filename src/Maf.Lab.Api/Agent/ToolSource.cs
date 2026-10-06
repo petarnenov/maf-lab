@@ -66,14 +66,15 @@ public sealed record ToolOrigin(string Domain, string Server);
 /// passes a tenant. The billing server failing fails the turn as it always did; another domain's server failing leaves
 /// its tools out of the turn, which then runs with what it has.
 /// </summary>
-public sealed class McpToolSource(IOptions<AgentOptions> options, ILoggerFactory loggers, IHttpClientFactory http) : IToolSource
+public sealed class McpToolSource(IOptions<AgentOptions> options, ILoggerFactory loggers, IHttpClientFactory http,
+    Plugins.PluginCatalogue? plugins = null) : IToolSource
 {
     private readonly ILogger _logger = loggers.CreateLogger<McpToolSource>();
 
     public async Task<ToolSet> GetToolsAsync(string bearerToken, ConfirmationSink? confirmations, CancellationToken ct,
         IReadOnlySet<string>? domains = null)
     {
-        var servers = options.Value.AllServers().Where(s => domains is null || domains.Contains(s.Domain)).ToList();
+        var servers = options.Value.AllServers(plugins?.McpServers()).Where(s => domains is null || domains.Contains(s.Domain)).ToList();
         // The billing server failing fails the turn only when the turn needs it: it is the first server only if selected.
         var billingFirst = servers.Count > 0 && servers[0].Domain == Domains.Billing;
         var connected = await Task.WhenAll(servers.Select(async (server, index) =>

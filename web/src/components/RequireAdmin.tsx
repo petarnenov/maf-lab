@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useAuth } from '../auth/useAuth';
-import styles from './Page.module.css';
+import styles from '../shared/Page.module.css';
 
 /** Renders children only for TENANT_ADMIN. The API enforces this too; this is the UX guard. */
 export function RequireAdmin({ children }: { children: ReactNode }) {

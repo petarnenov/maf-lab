@@ -33,8 +33,12 @@ import { TurnFeedback } from './TurnFeedback';
 import { useChatStream } from './useChatStream';
 import { stepLabel } from './runStep';
 import { Progress } from '../components/Progress';
-import { StopHint } from '../components/StopHint';
-import { useEscToStop } from '../components/useEscToStop';
+import { StopHint } from '../shared/StopHint';
+import { useEscToStop } from '../shared/useEscToStop';
+import type { ChatContext } from '../plugins/api';
+import { usePlugins } from '../plugins/context';
+import { PluginBoundary } from '../plugins/PluginBoundary';
+import { contributions } from '../plugins/registry';
 
 export const TRACE_EXPIRED = 'Trace expired (kept 7 days).';
 
@@ -43,7 +47,8 @@ const PANE_TABS = [
   { id: 'scenes', label: 'Behind the scenes' },
   { id: 'code', label: 'Code snippets' },
 ] as const;
-type PaneTab = (typeof PANE_TABS)[number]['id'];
+/** A core tab, or a plugin's pane by its id (introduce-plugins decision 8). */
+type PaneTab = (typeof PANE_TABS)[number]['id'] | `plugin:${string}`;
 
 export function ChatPage() {
   const { session } = useAuth();
@@ -51,6 +56,7 @@ export function ChatPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const userKey = useUserKey();
+  const pluginPanes = contributions(usePlugins(), 'chatPanes');
   const { state, send, cancel, reset, hydrate, answer, loadPending, toggleReasoning, setFocus } =
     useChatStream();
   const [draft, setDraft] = useState('');
@@ -60,6 +66,17 @@ export function ChatPage() {
   const [monitorOpen, setMonitorOpen] = useState(true);
   /** Which view the right pane shows: the turn's trace, or the code that answers its question. */
   const [paneTab, setPaneTab] = useState<PaneTab>('scenes');
+  /** What a plugin's pane is told about the chat, and how it opens another pane. */
+  const chatContext: ChatContext = {
+    conversationId: state.conversationId ?? routeId,
+    openPane: (id) => {
+      const core = PANE_TABS.find((t) => t.id === id);
+      const plugin = pluginPanes.find(({ item }) => item.id === id);
+      if (core) setPaneTab(core.id);
+      else if (plugin) setPaneTab(`plugin:${plugin.plugin}:${plugin.item.id}`);
+      setMonitorOpen(true);
+    },
+  };
   /** The code snippet a source in an answer pointed at (add-codebase-domain). */
   const [highlight, setHighlight] = useState<string | null>(null);
   /** Turns whose code already switched the pane once: after that the person's choice of tab stands. */
@@ -434,7 +451,47 @@ export function ChatPage() {
                 )}
               </button>
             ))}
+            {pluginPanes.map(({ plugin, item }) => {
+              const id = `plugin:${plugin}:${item.id}` as const;
+              const badge = item.badge?.(chatContext);
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  id={`pane-tab-${id}`}
+                  aria-selected={paneTab === id}
+                  aria-controls={`pane-${id}`}
+                  className={`${styles.paneTab} ${paneTab === id ? styles.paneTabActive : ''}`}
+                  onClick={() => setPaneTab(id)}
+                >
+                  {item.label}
+                  {badge ? (
+                    <span className={styles.paneCount} aria-label={`${badge} items`}>
+                      {badge}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
           </div>
+          {pluginPanes.map(({ plugin, item }) => {
+            const id = `plugin:${plugin}:${item.id}`;
+            return (
+              <div
+                key={id}
+                className={styles.paneBody}
+                role="tabpanel"
+                id={`pane-${id}`}
+                aria-labelledby={`pane-tab-${id}`}
+                hidden={paneTab !== id}
+              >
+                {paneTab === id && (
+                  <PluginBoundary plugin={plugin}>{item.render(chatContext)}</PluginBoundary>
+                )}
+              </div>
+            );
+          })}
           <div
             className={styles.paneBody}
             role="tabpanel"

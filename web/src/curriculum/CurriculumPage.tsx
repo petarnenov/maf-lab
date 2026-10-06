@@ -1,6 +1,6 @@
 import { Fragment } from 'react';
 import { Link } from 'react-router';
-import page from '../components/Page.module.css';
+import page from '../shared/Page.module.css';
 import { CURRICULUM, NOT_COVERED, type CurriculumEntry } from './curriculum';
 import styles from './Curriculum.module.css';
 

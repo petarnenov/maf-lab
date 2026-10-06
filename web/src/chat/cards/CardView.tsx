@@ -2,6 +2,9 @@ import { useState, type ReactNode } from 'react';
 import type { DataCard } from '../../api/types';
 import styles from './Cards.module.css';
 import { date, langOf, money, percent, toCsv, words, type Lang } from './format';
+import { usePlugins } from '../../plugins/context';
+import { PluginBoundary } from '../../plugins/PluginBoundary';
+import { cardRenderers } from '../../plugins/registry';
 
 /**
  * A data card (add-activity-cards): a typed tool result drawn as a table, in the language of the question it answers.
@@ -22,6 +25,15 @@ export function CardView({
 }) {
   const lang = langOf(question);
   const focusing = { focus, onFocus };
+  // A plugin in use may draw a card type of its own (introduce-plugins decision 8); the core's types come after.
+  const Plugin = cardRenderers(usePlugins())[card.activityType];
+  if (Plugin) {
+    return (
+      <PluginBoundary plugin={card.activityType}>
+        <Plugin content={card.content} />
+      </PluginBoundary>
+    );
+  }
   switch (card.activityType) {
     case 'maf-lab/holdings':
       return (

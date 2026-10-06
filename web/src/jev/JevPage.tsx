@@ -10,9 +10,9 @@ import type {
   DomainStats,
 } from '../api/types';
 import { useApi, useAuth } from '../auth/useAuth';
-import page from '../components/Page.module.css';
-import { StopHint } from '../components/StopHint';
-import { useEscToStop } from '../components/useEscToStop';
+import page from '../shared/Page.module.css';
+import { StopHint } from '../shared/StopHint';
+import { useEscToStop } from '../shared/useEscToStop';
 import { Bars, Columns, Legend, Lines } from '../intents/charts';
 import { EvalHistory, IntentSection, Kpi, Panel } from '../intents/IntentSection';
 import styles from '../intents/IntentStats.module.css';

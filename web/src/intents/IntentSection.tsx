@@ -8,8 +8,8 @@ import type {
   IntentStatsReport,
 } from '../api/types';
 import { useApi, useAuth } from '../auth/useAuth';
-import page from '../components/Page.module.css';
-import { formatDate } from '../evals/format';
+import page from '../shared/Page.module.css';
+import { formatDate } from '../shared/format';
 import { Bars, Columns, Legend, Lines, Scatter, type Series } from './charts';
 import styles from './IntentStats.module.css';
 import { PipelineDiagram } from './PipelineDiagram';

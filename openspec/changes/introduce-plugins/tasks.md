@@ -9,10 +9,10 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
 
 ## 1. Pin today's behaviour
 
-- [ ] 1.1 Add tests that pin today's domain routing, forced search and card mapping for billing, portfolio and codebase
+- [x] 1.1 Add tests that pin today's domain routing, forced search and card mapping for billing, portfolio and codebase
       (`ChatTurnRunner`, `DataToolRouter`, `CodeToolRouter`, `DataCards`, `Domains.OfTool`). Verify they pass on `main`
       unchanged.
-- [ ] 1.2 Record `make eval SUITE=selection` on `main` as the reference for task 4.
+- [x] 1.2 Record `make eval SUITE=selection` on `main` as the reference for task 4.
 
 ## 2. Infrastructure seams (no behaviour change)
 
@@ -21,14 +21,14 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   - `return 404` reservations for the plugin route shapes (`/<name>/mcp`, the A2A agent paths).
 
   Verify that the lb loads with `conf.d` holding only the generated `00-api.conf`, and that `/code/mcp` answers 404, not the SPA, with no snippet.
-- [ ] 2.2 Plugin settings from manifests:
+- [x] 2.2 Plugin settings from manifests:
   - a `PluginCatalogue` reads `plugins/.installed`, the manifests and `server.json` on a Redis `plugins-changed`
     message and every 30 seconds (no file watcher). A malformed manifest keeps the last good set and is reported;
   - `Agent:Servers` becomes a map keyed by plugin, still binding the indexed form for one change;
   - topology services and the runtime's agents come from manifests.
 
   Verify with binding tests and the runtime's conformance check.
-- [ ] 2.3 Makefile:
+- [x] 2.3 Makefile:
   - `MAF_PLUGINS` and `MAF_ENV`, with dependency expansion and cycle detection;
   - `plugins/.installed` written by rename;
   - `COMPOSE_FILE` from the installed `plugins/*/compose.yml`, each holding only its own services;
@@ -56,25 +56,25 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   plugin, and that a plugin-on of a remote plugin recreates none of api, lb or copilot-runtime. Verify the restart
   scenarios: a streaming answer is not cut by a closed keepalive connection, and a killed replica's run is marked cancelled
   on its next read, and that a `make up` after an interrupted restart serves `/api` (the upstream is name-based again).
-- [ ] 2.4 Make `index_if_empty.sh`, `verify_lb.sh` and `conformance.mjs` run a plugin's part only when `/api/plugins`
+- [x] 2.4 Make `index_if_empty.sh`, `verify_lb.sh` and `conformance.mjs` run a plugin's part only when `/api/plugins`
       lists it.
-- [ ] 2.5 Move the inspector ports into the dev-only compose override. `MAF_LAB_REPO` stays required while the api
+- [x] 2.5 Move the inspector ports into the dev-only compose override. `MAF_LAB_REPO` stays required while the api
       itself mounts the repository (`docker-compose.yml:290,315`, for coverage and index admin). It becomes
       plugin-only when those move to their plugins, in their follow-ups.
 
 ## 3. Contracts
 
-- [ ] 3.1 `Maf.Lab.Plugins.Abstractions`:
+- [x] 3.1 `Maf.Lab.Plugins.Abstractions`:
   - `IMafPlugin` (identity) and the `IContributes*` interfaces;
   - `IMafEndpoints`, with `MapPluginAgent` implemented in `Agent/AGUI/`;
   - `IDomainDescriptor`, `IDomainBehaviour`, `ITurnObserver`, `IConversationStore` and the `IBrandProvider` port
     (implemented by `add-white-labeling`);
   - `AddMafPlugins()` discovery;
   - `Directory.Build.targets` referencing `plugins/*/server/*.csproj`.
-- [ ] 3.2 `GET /api/plugins`: the plugins in use, each one's health, domain ids and card ids, and any invalid manifest.
+- [x] 3.2 `GET /api/plugins`: the plugins in use, each one's health, domain ids and card ids, and any invalid manifest.
       Anonymous before sign-in, with only `public = true` plugins (only `dev-login`, so empty in stage and prod).
       Documented in `docs/http-api.md`.
-- [ ] 3.3 Architecture tests:
+- [x] 3.3 Architecture tests:
   - core → plugin references;
   - plugin → Qdrant, Neo4j or AG-UI types;
   - tenant parameters;
@@ -82,7 +82,7 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
 
   Widen the roots of the existing `AGUIProtocolOnlyTests` and tenant query-path tests from `src/` to `src/` plus
   `plugins/*/server/`. Verify each test fails once on a planted violation inside a plugin folder (then reverted).
-- [ ] 3.4 `ApiFactory` takes the installed set. Add boot tests with no plugin and with all plugins.
+- [x] 3.4 `ApiFactory` takes the installed set. Add boot tests with no plugin and with all plugins.
 - [ ] 3.5 Web:
   - `web/src/plugins/api.ts` (`definePlugin`, registries);
   - `web/src/shared/` (moved `formatDate`, `Page.module.css`, `StopHint`, `useEscToStop`, `ErrorBoundary`);
@@ -92,14 +92,14 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   - the web image context at the repository root, with a `.dockerignore`.
 
   Vitest: the app with no plugins (nav = Chat, no aside) and with all.
-- [ ] 3.6 `docs.py`:
+- [x] 3.6 `docs.py`:
   - validate manifests against `plugins/plugin.schema.json` (keys, scope, environments, `progress`, `stopping`,
     `depends`);
   - glob `plugin.mk` and `lb.conf`;
   - widen `ROUTE_SOURCES`;
   - generate the README `plugins` block;
   - add a `[layout]` line for `plugins/`.
-- [ ] 3.7 Plugin contract suite: one shared xUnit/Vitest suite run against every plugin folder. It checks that:
+- [x] 3.7 Plugin contract suite: one shared xUnit/Vitest suite run against every plugin folder. It checks that:
   - the manifest is valid;
   - the stack boots with and without the plugin;
   - `progress` and `stopping` are present;
@@ -107,9 +107,9 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   - its folder is deletable, with its tests going with it.
 
   Verify it runs for each plugin present and fails on a planted broken manifest.
-- [ ] 3.8 Environments: make and the api refuse a plugin not allowed in `MAF_ENV`. Verify both refusals name the
+- [x] 3.8 Environments: make and the api refuse a plugin not allowed in `MAF_ENV`. Verify both refusals name the
       plugin.
-- [ ] 3.9 CI builds `full` and `product` image variants. Check that `product` holds no dev-or-qa-only plugin code, and
+- [x] 3.9 CI builds `full` and `product` image variants. Check that `product` holds no dev-or-qa-only plugin code, and
       have qa run `product`.
 
 ## 4. Domains as data

@@ -30,10 +30,17 @@ index_domain() {
 }
 
 index_domain "$COLLECTION" "${Indexing__CorpusRoot:-$ROOT/data}" "${Qdrant__MetaCollection:-maf_meta}"
-index_domain maf_portfolio_chunks "$ROOT/data-portfolio" maf_portfolio_meta
+# A plugin's corpus is indexed only while it is installed (introduce-plugins task 2.4); a part still in the core (no
+# plugins/<name>/ folder yet) always is.
+installed() { [[ ! -f "$ROOT/plugins/$1/plugin.toml" ]] || python3 "$ROOT/scripts/plugins.py" resolve | grep -qx "$1"; }
+if installed portfolio; then
+  index_domain maf_portfolio_chunks "$ROOT/data-portfolio" maf_portfolio_meta
+fi
 # The codebase: the repository itself, cut by structure, in embedding tokens (see CODE_ENV in the Makefile).
-Indexing__Layout=repository Indexing__MaxChunkTokens=1024 Indexing__Bm25Tokenizer=code \
-  index_domain maf_code_chunks "$ROOT" maf_code_meta
+if installed code; then
+  Indexing__Layout=repository Indexing__MaxChunkTokens=1024 Indexing__Bm25Tokenizer=code \
+    index_domain maf_code_chunks "$ROOT" maf_code_meta
+fi
 
 # The graph: billing relationships and the code graph (make graph). Counted through cypher-shell in the neo4j container,
 # so the host needs no Neo4j client.

@@ -1,0 +1,7 @@
+schema = 1
+name = "broken"
+kind = "app"
+scope = "installation"
+environments = ["dev"]
+description = "A contract-suite fixture with no stopping, which the suite must refuse"
+progress = "None — a fixture"

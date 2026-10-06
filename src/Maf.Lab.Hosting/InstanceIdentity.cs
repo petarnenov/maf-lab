@@ -12,6 +12,13 @@ public static class InstanceIdentity
 
     public static string Name { get; } = Environment.MachineName;
 
+    /// <summary>
+    /// This process, unique per start: the hostname plus a fresh id. `docker restart` keeps a container's hostname, so
+    /// the hostname alone would let a restarted replica's heartbeat vouch for the runs of the process before it
+    /// (introduce-plugins decision 2). It names a run's owner, never anything a client sees.
+    /// </summary>
+    public static string ProcessId { get; } = $"{Environment.MachineName}-{Guid.NewGuid():N}";
+
     public static IApplicationBuilder UseInstanceHeader(this IApplicationBuilder app) =>
         app.Use((context, next) =>
         {

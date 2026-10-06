@@ -22,16 +22,18 @@ from pathlib import Path
 CONFIG = "docs/docs-sync.toml"
 VERBS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 ROUTE_SOURCES = ("src/Maf.Lab.Api", "src/Maf.Lab.A2A", "src/Maf.Lab.Hosting")
+# Every plugin's in-process part maps routes too (introduce-plugins task 3.6).
+PLUGIN_ROUTE_SOURCES = "plugins/*/server"
 HTTP_API = "docs/http-api.md"
 
 # Where each generated block must appear. Dependency order: repo-layout rewrites project.md, which project-context copies.
 REQUIRED_BLOCKS = {
-    "README.md": ("make-targets", "lb-routes"),
+    "README.md": ("make-targets", "lb-routes", "plugins"),
     ".github/copilot-instructions.md": ("lb-routes",),
     "openspec/project.md": ("repo-layout",),
     "openspec/config.yaml": ("project-context",),
 }
-BLOCK_ORDER = ("make-targets", "repo-layout", "lb-routes", "project-context")
+BLOCK_ORDER = ("make-targets", "repo-layout", "lb-routes", "plugins", "project-context")
 GENERATED_FILES = ("README.md", ".github/copilot-instructions.md", "openspec/project.md", "openspec/config.yaml")
 
 
@@ -131,11 +133,17 @@ def replace_block(text: str, start: int, end: int, body: str) -> str:
     return "\n".join(lines[: start + 1] + ([body] if body else []) + lines[end:])
 
 
+def make_files(repo: Repo) -> list[str]:
+    """The Makefile and every plugin's own make targets, which it includes (introduce-plugins task 3.6)."""
+    return ["Makefile"] + sorted(str(p.relative_to(repo.root)) for p in repo.root.glob("plugins/*/plugin.mk"))
+
+
 def gen_make_targets(repo: Repo, findings: list[Finding]) -> str:
     rows = ["| Command | What it does |", "|---|---|"]
-    for m in re.finditer(r"^([a-zA-Z0-9_-]+):.*?## (.*)$", repo.read("Makefile"), re.M):
-        description = m[2].strip().replace("|", r"\|")
-        rows.append(f"| `make {m[1]}` | {description} |")
+    for rel in make_files(repo):
+        for m in re.finditer(r"^([a-zA-Z0-9_-]+):.*?## (.*)$", repo.read(rel), re.M):
+            description = m[2].strip().replace("|", r"\|")
+            rows.append(f"| `make {m[1]}` | {description} |")
     return "\n".join(rows)
 
 
@@ -179,25 +187,113 @@ def gen_repo_layout(repo: Repo, findings: list[Finding]) -> str:
     return "\n".join(lines)
 
 
+def lb_sources(repo: Repo) -> list[tuple[str, str | None]]:
+    """
+    The balancer's configuration as nginx assembles it (introduce-plugins decision 4): nginx.conf, the tracked api
+    upstream template that `make up` copies into conf.d, and each plugin's own snippets — read from their sources, so
+    the check needs no stack and no generated conf.d. Each source names the plugin it belongs to, or None for the core.
+    """
+    sources: list[tuple[str, str | None]] = [("compose/lb/nginx.conf", None)]
+    if repo.exists("compose/lb/api.upstream.conf"):
+        sources.append(("compose/lb/api.upstream.conf", None))
+    for part in ("http", "server"):
+        for p in sorted(repo.root.glob(f"plugins/*/lb.{part}.conf")):
+            sources.append((str(p.relative_to(repo.root)), p.parent.name))
+    return sources
+
+
 def gen_lb_routes(repo: Repo, findings: list[Finding]) -> str:
-    conf = repo.read("compose/lb/nginx.conf")
-    upstreams = {m[1]: m[2] for m in re.finditer(r"upstream\s+(\w+)\s*\{[^}]*?^\s*server\s+([\w.-]+)", conf, re.M | re.S)}
+    sources = lb_sources(repo)
+    upstreams = {m[1]: m[2] for rel, _ in sources
+                 for m in re.finditer(r"upstream\s+(\w+)\s*\{[^}]*?^\s*server\s+([\w.-]+)", repo.read(rel), re.M | re.S)}
     rows = ["| Path | Match | Served by |", "|---|---|---|"]
-    for m in re.finditer(r"^\s*location\s+(=\s*)?(\S+)\s*\{(.*?)^\s*\}", conf, re.M | re.S):
-        exact, path, body = bool(m[1]), m[2], m[3]
+    for rel, plugin in sources:
+        for m in re.finditer(r"^\s*location\s+(=|~\*?|\^~)?\s*(\S+)\s*\{(.*?)^\s*\}", repo.read(rel), re.M | re.S):
+            row = lb_row(repo, rel, plugin, m, upstreams, findings)
+            if row:
+                rows.append(row)
+    return "\n".join(rows)
+
+
+def lb_row(repo: Repo, rel: str, plugin: str | None, m: re.Match, upstreams: dict[str, str], findings: list[Finding]) -> str | None:
+        modifier, path, body = m[1] or "", m[2], m[3]
+        exact = modifier == "="
         if p := re.search(r"proxy_pass\s+http://(\w+)(/\S*)?;", body):
             service = upstreams.get(p[1])
             if not service:
-                findings.append(Finding("compose/lb/nginx.conf", None, "lb-routes",
+                findings.append(Finding(rel, None, "lb-routes",
                                         f"`location {path}` proxies to unknown upstream `{p[1]}`", "define the upstream"))
                 service = p[1]
             target = f"`{service}`" + (f" at `{p[2]}`" if p[2] else "")
         elif re.search(r"\breturn\b", body):
             target = "the balancer itself"
         else:
+            return None
+        if plugin:
+            target += f" (plugin `{plugin}`)"
+        match = "exact" if exact else "regex" if modifier.startswith("~") else "prefix"
+        return f"| `{path.replace('|', chr(92) + '|')}` | {match} | {target} |"
+
+
+def gen_plugins(repo: Repo, findings: list[Finding]) -> str:
+    """Every plugin present, from its manifest (introduce-plugins task 3.6); a bad manifest is a finding, not a row."""
+    found = discover_plugins(repo)
+    if not found:
+        return "No plugin is present yet: the repository holds only the core (`plugins/` has no `plugin.toml`)."
+    rows = ["| Plugin | Kind | Scope | Environments | What it is |", "|---|---|---|---|---|"]
+    for name, p in found.items():
+        if p.problems:
             continue
-        rows.append(f"| `{path}` | {'exact' if exact else 'prefix'} | {target} |")
+        m = p.manifest
+        rows.append(f"| `{name}` | {m['kind']} | {m['scope']} | {', '.join(m['environments'])} | "
+                    f"{m['description'].replace('|', chr(92) + '|')} |")
     return "\n".join(rows)
+
+
+def plugin_module():
+    """scripts/plugins.py, imported: the one reader of plugin manifests, shared with make."""
+    import importlib.util
+    path = Path(__file__).resolve().parent / "plugins.py"
+    spec = importlib.util.spec_from_file_location("maf_plugins", path)
+    if not spec or not spec.loader:
+        return None
+    if "maf_plugins" in sys.modules:
+        return sys.modules["maf_plugins"]
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["maf_plugins"] = module  # a dataclass resolves its module by name while it is defined
+    spec.loader.exec_module(module)
+    return module
+
+
+def discover_plugins(repo: Repo) -> dict:
+    """The plugin folders of the repository being checked (not necessarily this checkout), with their problems."""
+    plugins = plugin_module()
+    if not plugins:
+        return {}
+    old = os.environ.get("MAF_PLUGINS_ROOT")
+    os.environ["MAF_PLUGINS_ROOT"] = str(repo.root / "plugins")
+    try:
+        return plugins.discover()
+    finally:
+        if old is None:
+            os.environ.pop("MAF_PLUGINS_ROOT", None)
+        else:
+            os.environ["MAF_PLUGINS_ROOT"] = old
+
+
+def check_plugin_manifests(repo: Repo) -> list[Finding]:
+    """Every plugins/<name>/plugin.toml against plugins/plugin.schema.json, its progress and stopping, its dependencies."""
+    found = discover_plugins(repo)
+    findings = [Finding(f"plugins/{name}/plugin.toml", None, "plugins", problem,
+                        "fix the manifest (plugins/plugin.schema.json, docs/plugins.md)")
+                for name, p in found.items() for problem in p.problems]
+    for name, p in found.items():
+        for dependency in p.depends:
+            if dependency not in found:
+                findings.append(Finding(f"plugins/{name}/plugin.toml", None, "plugins",
+                                        f"depends on `{dependency}`, which has no plugins/{dependency}/plugin.toml",
+                                        "add that plugin or remove the dependency"))
+    return findings
 
 
 def gen_project_context(repo: Repo, findings: list[Finding]) -> str:
@@ -209,6 +305,7 @@ GENERATORS = {
     "make-targets": gen_make_targets,
     "repo-layout": gen_repo_layout,
     "lb-routes": gen_lb_routes,
+    "plugins": gen_plugins,
     "project-context": gen_project_context,
 }
 
@@ -255,7 +352,8 @@ def normalize_route(path: str) -> str:
 
 
 def registered_routes(repo: Repo) -> tuple[dict[tuple[str, str], tuple[str, int]], list[Finding]]:
-    files = sorted(p for src in ROUTE_SOURCES if (repo.root / src).is_dir() for p in (repo.root / src).rglob("*.cs")
+    roots = [repo.root / src for src in ROUTE_SOURCES] + sorted(repo.root.glob(PLUGIN_ROUTE_SOURCES))
+    files = sorted(p for src in roots if src.is_dir() for p in src.rglob("*.cs")
                    if "/obj/" not in str(p) and "/bin/" not in str(p))
     consts: dict[str, str] = {}
     texts = {}
@@ -374,8 +472,9 @@ def check_routes(repo: Repo) -> tuple[list[Finding], int]:
 
 def make_targets_defined(repo: Repo) -> set[str]:
     targets = set()
-    for m in re.finditer(r"^([a-zA-Z0-9_.%-][^:=#\n]*?)\s*:(?![=])", repo.read("Makefile"), re.M):
-        targets |= {t for t in m[1].split() if not t.startswith(".")}
+    for rel in make_files(repo):
+        for m in re.finditer(r"^([a-zA-Z0-9_.%-][^:=#\n]*?)\s*:(?![=])", repo.read(rel), re.M):
+            targets |= {t for t in m[1].split() if not t.startswith(".")}
     return targets
 
 
@@ -749,6 +848,7 @@ def check(root: Path) -> int:
     findings += check_links(on_disk)
     findings += check_pages(on_disk)
     findings += check_change_proposals(on_disk)
+    findings += check_plugin_manifests(on_disk)
     for f in findings:
         print(f)
     documents = len(on_disk.checked_documents())

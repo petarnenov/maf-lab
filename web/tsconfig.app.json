@@ -17,7 +17,11 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
+    "noUncheckedSideEffectImports": true,
+    "paths": {
+      "@maf/plugin-api": ["./src/plugins/api.ts"],
+      "@maf/shared/*": ["./src/shared/*"]
+    }
   },
-  "include": ["src"]
+  "include": ["src", "../plugins/*/web"]
 }

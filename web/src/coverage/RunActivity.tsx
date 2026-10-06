@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { RunSummary } from '../api/types';
 import { useApi } from '../auth/useAuth';
-import { StopHint } from '../components/StopHint';
+import { StopHint } from '../shared/StopHint';
 import { describeBudget } from './budget';
 import { instant, pct, reasonLabel, RUN_LABELS, stopSentence, usd } from './format';
 import { LiveMarker } from './LiveMarker';

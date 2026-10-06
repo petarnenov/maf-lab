@@ -60,7 +60,8 @@ public sealed class TopologyProbe(
     Maf.Lab.Hosting.SharedStateHealth shared,
     TimeProvider time,
     IServiceResolver resolver,
-    ILoggerFactory loggers)
+    ILoggerFactory loggers,
+    Plugins.PluginCatalogue? plugins = null)
 {
     private const string CacheKey = "topology-report";
 
@@ -167,10 +168,17 @@ public sealed class TopologyProbe(
         var traces = Http("jaeger", "jaeger", o.JaegerHealthUrl, timeout, ct);
         var shared = SharedStateAsync(ct);
 
+        // Each installed plugin that names a topology address (introduce-plugins decision 3) is probed like any other
+        // service and listed after the core's nodes; the drawn diagram holds only the core's.
+        var pluginNodes = (plugins?.Current.Plugins ?? [])
+            .Where(p => p.Manifest.Topology?.Url is { Length: > 0 } && !NodeIds.Contains(p.Name))
+            .Select(p => Http(p.Name, p.Manifest.Topology!.Label ?? p.Name, p.Manifest.Topology.Url, timeout, ct))
+            .ToList();
+
         var probed = await Task.WhenAll(lb, web, api, mcp, portfolio, code, compliance, agentNode, runnerNode, store, graph, embeddings, collector,
             metrics, traces, shared);
         var byId = probed.Append(ChatProvider()).ToDictionary(n => n.Id);
-        var ordered = NodeIds.Select(id => byId[id]).ToList();
+        var ordered = NodeIds.Select(id => byId[id]).Concat(await Task.WhenAll(pluginNodes)).ToList();
 
         return new TopologyReport(time.GetUtcNow(), o.CacheSeconds, discovery, InstanceIdentity.Name, ordered, Edges);
     }
@@ -316,7 +324,7 @@ public sealed class TopologyProbe(
     private async Task<TopologyNode> DomainServerAsync(string id, string domain, IReadOnlyList<string> addresses, Task<Offered> offered,
         TimeSpan timeout, CancellationToken ct)
     {
-        var endpoint = agent.Value.Servers.FirstOrDefault(s => s.Domain == domain)?.Endpoint;
+        var endpoint = agent.Value.Servers.Values.FirstOrDefault(s => s.Domain == domain)?.Endpoint;
         var node = await ReplicasAsync(id, id, addresses, timeout, ct);
         if (string.IsNullOrWhiteSpace(endpoint))
         {

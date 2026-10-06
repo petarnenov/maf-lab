@@ -1,0 +1,24 @@
+<Project>
+  <!--
+    In-process plugins are compiled in (introduce-plugins decision 5): the api, and the test projects that host it,
+    reference every plugins/<name>/server/*.csproj. The api applies only the installed ones (plugins/.installed); the
+    rest are inert.
+
+    The product image variant (decision 5e) builds with MafImageVariant=product and MafProductPlugins=|A|B| (the server
+    projects of plugins whose manifest allows stage or prod, from `scripts/plugins.py product-servers`); every other
+    plugin's code is left out of the build, so it is not in the image at all.
+  -->
+  <PropertyGroup>
+    <_MafPluginHost Condition="'$(MSBuildProjectName)' == 'Maf.Lab.Api' or '$(MSBuildProjectName)' == 'Maf.Lab.Tests' or '$(MSBuildProjectName)' == 'Maf.Lab.IntegrationTests'">true</_MafPluginHost>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(_MafPluginHost)' == 'true'">
+    <_MafPluginServer Include="$(MSBuildThisFileDirectory)plugins/*/server/*.csproj" />
+    <ProjectReference Include="@(_MafPluginServer)" />
+  </ItemGroup>
+  <Target Name="_MafLeaveOutNonProductPlugins" BeforeTargets="AssignProjectConfiguration"
+          Condition="'$(_MafPluginHost)' == 'true' and '$(MafImageVariant)' == 'product'">
+    <ItemGroup>
+      <ProjectReference Remove="@(_MafPluginServer)" Condition="!$(MafProductPlugins.Contains('|%(_MafPluginServer.Filename)|'))" />
+    </ItemGroup>
+  </Target>
+</Project>

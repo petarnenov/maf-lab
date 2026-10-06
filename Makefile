@@ -6,24 +6,15 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := all
 
 ROOT          := $(CURDIR)
-COMPOSE_FILE  := $(ROOT)/compose/docker-compose.yml
 # CI_MODE=1 swaps the model backend for a deterministic stub (no downloads, no secrets) — see compose/docker-compose.ci.yml.
 CI_MODE       ?= 0
 # The compose project, and so its volumes: ci-e2e runs as maf-lab-e2e and never touches the dev stack's data. Exported
 # as COMPOSE_PROJECT_NAME too, so the scripts' own `docker compose` calls address the same project.
 COMPOSE_PROJECT ?= maf-lab
 export COMPOSE_PROJECT_NAME := $(COMPOSE_PROJECT)
-ifeq ($(CI_MODE),1)
-COMPOSE       := docker compose -p $(COMPOSE_PROJECT) -f $(COMPOSE_FILE) -f $(ROOT)/compose/docker-compose.ci.yml
-else
-COMPOSE       := docker compose -p $(COMPOSE_PROJECT) -f $(COMPOSE_FILE)
-# The A2A, MCP and Redis inspectors run with the dev stack, never in CI. Exported, so the scripts' own compose calls
-# address the same set of services.
-export COMPOSE_PROFILES := inspectors
-endif
 # compose/.env (git-ignored, machine-local) is read by compose itself; make reads it too, so the host-side CLIs see the
-# same values (e.g. OLLAMA_*_THREADS). As with compose, the environment and the command line win over the file.
-# Values are taken literally: no quotes, no `export` prefix. Secrets come only from the environment, so make skips
+# same values (e.g. OLLAMA_*_THREADS, MAF_PLUGINS). As with compose, the environment and the command line win over the
+# file. Values are taken literally: no quotes, no `export` prefix. Secrets come only from the environment, so make skips
 # JEV_MAF_LAB and any *_KEY, *_TOKEN, *_SECRET or *_PASSWORD line in the file (compose still reads them for itself).
 COMPOSE_ENV_FILE := $(ROOT)/compose/.env
 COMPOSE_ENV_SECRET := ^(JEV_MAF_LAB|[A-Za-z0-9_]*_(KEY|TOKEN|SECRET|PASSWORD))=
@@ -32,6 +23,41 @@ COMPOSE_ENV_LINES := $(shell grep -vE '$(COMPOSE_ENV_SECRET)' $(COMPOSE_ENV_FILE
 $(foreach line,$(COMPOSE_ENV_LINES),$(eval $(subst __SP__, ,$(line))))
 export $(shell grep -vE '$(COMPOSE_ENV_SECRET)' $(COMPOSE_ENV_FILE) | sed -nE 's/^([A-Za-z_][A-Za-z0-9_]*)=.*/\1/p')
 endif
+
+# ── plugins (introduce-plugins) ──────────────────────────────────────────────────────────────────────────────────
+# MAF_PLUGINS: unset or empty installs every bundled plugin MAF_ENV allows (except _example), `none` installs none,
+# otherwise a comma-separated list; dependencies are added. MAF_ENV: dev | qa | stage | prod. scripts/plugins.py
+# resolves the set; `make up` writes it to plugins/.installed and regenerates compose/lb/conf.d from it.
+MAF_ENV       ?= dev
+MAF_PLUGINS   ?=
+export MAF_ENV MAF_PLUGINS
+PLUGINS_PY    := python3 $(ROOT)/scripts/plugins.py
+# The image variant (introduce-plugins decision 5e): full for dev and qa, product (no dev-or-qa-only plugin code) for
+# stage and prod. qa also runs the product images (`make product-check`, and CI's product job).
+MAF_IMAGE_VARIANT ?= $(if $(filter stage prod,$(MAF_ENV)),product,full)
+MAF_PRODUCT_PLUGINS := $(shell $(PLUGINS_PY) product-servers 2>/dev/null)
+MAF_PRODUCT_WEB := $(shell $(PLUGINS_PY) product-plugins 2>/dev/null)
+export MAF_IMAGE_VARIANT MAF_PRODUCT_PLUGINS MAF_PRODUCT_WEB
+# Each installed plugin's compose file holds only its own services; it is merged after the core's.
+PLUGIN_COMPOSE_FILES := $(shell $(PLUGINS_PY) compose-files 2>/dev/null)
+COMPOSE_BASE  := $(ROOT)/compose/docker-compose.yml
+ifeq ($(CI_MODE),1)
+COMPOSE_FILES := $(COMPOSE_BASE) $(ROOT)/compose/docker-compose.ci.yml $(PLUGIN_COMPOSE_FILES)
+else
+# The dev-only override: the inspectors' ports, published by lb (whose network they share). Never loaded in CI, and
+# never in stage or prod, which run without it.
+COMPOSE_FILES := $(COMPOSE_BASE) $(ROOT)/compose/docker-compose.dev.yml $(PLUGIN_COMPOSE_FILES)
+# The A2A, MCP and Redis inspectors run with the dev stack, never in CI. Exported, so the scripts' own compose calls
+# address the same set of services.
+export COMPOSE_PROFILES := inspectors
+endif
+empty :=
+space := $(empty) $(empty)
+# Exported, so every script's own `docker compose` call (wait_healthy.sh, plugin_switch.sh) loads the same files.
+export COMPOSE_FILE := $(subst $(space),:,$(strip $(COMPOSE_FILES)))
+COMPOSE       := docker compose -p $(COMPOSE_PROJECT)
+# Each plugin's own make targets.
+-include $(wildcard $(ROOT)/plugins/*/plugin.mk)
 
 # ── configuration (override on the command line or in the environment) ─────────────────────────────────────────────
 BASE_URL      ?= http://localhost:7171
@@ -92,7 +118,7 @@ INDEXER_SRC  := $(shell find src/Maf.Lab.Indexing src/Maf.Lab.Retrieval src/Maf.
                 Directory.Build.props Directory.Packages.props global.json
 INDEXER      := $(DOTNET) $(INDEXER_DLL)
 
-.PHONY: all help up down restart ps logs clean infra index index-portfolio index-code graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
+.PHONY: all help up core plugins plugin-on plugin-off product-check down restart ps logs clean infra index index-portfolio index-code graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
         coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-answer-check eval-code-route eval-graph-depth eval-retrieval-backends eval-a2a neo4j-chunks dev doctor banner index-if-empty \
         specs docs docs-check lint-dotnet lint-web build-web ci ci-e2e setup \
         require-docker require-dotnet require-npm require-python
@@ -109,6 +135,9 @@ up: require-docker ## Build and start the stack (replicas via API_REPLICAS/MCP_R
 	@if [ "$(CI_MODE)" != "1" ] && [ -z "$$JEV_MAF_LAB" ]; then echo "⚠ JEV_MAF_LAB is not set: the stack starts, but no turn is classified (nothing forced to search)."; fi
 	@# Earlier versions ran the api as root; give back to you whatever it left owned by root in the checkout.
 	@scripts/repair_ownership.sh "$(ROOT)" "$(MAF_LAB_REPO)"
+	@# The installed plugin set and the balancer's derived conf.d (the api upstream from its template, each plugin's
+	@# snippets): rewritten on every start, so a stack brought down with another set never keeps a stale snippet.
+	@$(PLUGINS_PY) install
 	@# compose itself waits for the balancer's dependencies to be healthy; if that fails, show which service and why.
 	$(COMPOSE) up -d --build --remove-orphans --scale api=$(API_REPLICAS) --scale mcp-retrieval=$(MCP_REPLICAS) \
 	  --scale mcp-portfolio=$(PORTFOLIO_REPLICAS) --scale compliance=$(COMPLIANCE_REPLICAS) \
@@ -116,6 +145,24 @@ up: require-docker ## Build and start the stack (replicas via API_REPLICAS/MCP_R
 	@scripts/wait_healthy.sh $(WAIT_TIMEOUT)
 	@# The balancer resolves the replicas when it (re)loads; reload so it sees the current set after scaling/recreation.
 	@$(COMPOSE) exec -T lb nginx -c /etc/nginx/lb/nginx.conf -s reload >/dev/null 2>&1 && echo "✓ load balancer reloaded ($(API_REPLICAS) api, $(MCP_REPLICAS) mcp, $(PORTFOLIO_REPLICAS) portfolio, $(COMPLIANCE_REPLICAS) compliance replicas)"
+	@# Every replica re-reads plugins/.installed now rather than at its next 30-second check.
+	@$(COMPOSE) exec -T redis redis-cli PUBLISH plugins-changed up >/dev/null 2>&1 || true
+
+core: ## Start the core with no plugin (MAF_PLUGINS=none): a shell that declines every turn, for checking the core
+	@$(MAKE) --no-print-directory up MAF_PLUGINS=none
+
+product-check: require-docker ## Build the product image variant (api, web) and check it holds no dev-or-qa-only plugin code
+	@MAF_IMAGE_VARIANT=product $(COMPOSE) build api web
+	@scripts/check_product_image.sh
+
+plugins: ## List every plugin: kind, scope, environments, whether installed, dependencies, description
+	@$(PLUGINS_PY) list
+
+plugin-on: require-docker ## Install one plugin into the running stack (NAME=…): its services, healthy, then its routes; ALLOW_DOWNTIME=1 for one api replica
+	@scripts/plugin_switch.sh on "$(NAME)"
+
+plugin-off: require-docker ## Remove one plugin from the running stack (NAME=…); refuses while it has open work unless STOP_WORK=1
+	@scripts/plugin_switch.sh off "$(NAME)"
 
 down: require-docker ## Stop the stack (data volumes are kept)
 	$(COMPOSE) down --remove-orphans

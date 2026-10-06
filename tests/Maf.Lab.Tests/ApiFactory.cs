@@ -52,6 +52,41 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
         ["Jev:Breaker:OpenSeconds"] = "600",
     };
 
+    /// <summary>
+    /// The installed plugin set this host starts with (introduce-plugins task 3.4): written as its plugins/.installed.
+    /// Empty by default, which is the core alone; the fixture plugins in this test assembly are found by name.
+    /// </summary>
+    public IReadOnlyList<Maf.Lab.Plugins.Abstractions.PluginManifest> InstalledPlugins { get; init; } = [];
+
+    /// <summary>The environment this host declares (MAF_ENV), which an installed plugin must allow.</summary>
+    public string Environment { get; init; } = "dev";
+
+    public string PluginsRoot => Path.Combine(DataDir, "plugins");
+
+    private static readonly IReadOnlySet<string> FixtureNames =
+        Maf.Lab.Api.Plugins.PluginHost.Discover([typeof(ApiFactory).Assembly]).Keys.ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>Rewrites the installed set while the host runs, as make does, and makes the catalogue re-read it.</summary>
+    public void SetInstalled(IEnumerable<Maf.Lab.Plugins.Abstractions.PluginManifest> plugins)
+    {
+        WriteInstalled(plugins);
+        Services.GetRequiredService<Maf.Lab.Api.Plugins.PluginCatalogue>().Refresh();
+    }
+
+    private void WriteInstalled(IEnumerable<Maf.Lab.Plugins.Abstractions.PluginManifest> plugins)
+    {
+        Directory.CreateDirectory(PluginsRoot);
+        var document = new
+        {
+            schema = 1,
+            env = Environment,
+            // A plugin "has a server part" exactly when this test assembly holds code for it, as make sees a server/ folder.
+            plugins = plugins.Select(m => new { manifest = m, serverJson = (object?)null, hasServer = FixtureNames.Contains(m.Name) }),
+        };
+        File.WriteAllText(Path.Combine(PluginsRoot, ".installed"),
+            System.Text.Json.JsonSerializer.Serialize(document, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));
+    }
+
     /// <summary>Extra configuration for one test, applied over the standard settings.</summary>
     public IReadOnlyDictionary<string, string?> ExtraSettings { get; init; } = new Dictionary<string, string?>();
     /// <summary>Extra service overrides for one test (applied after the standard ones).</summary>
@@ -65,6 +100,11 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
+        WriteInstalled(InstalledPlugins);
+        // Read while the api composes its services, before configuration added below exists: host settings are visible then.
+        builder.UseSetting("Plugins:Root", PluginsRoot);
+        builder.UseSetting("Plugins:ExtraAssemblies:0", typeof(ApiFactory).Assembly.GetName().Name);
+        builder.UseSetting("MAF_ENV", Environment);
         builder.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Storage:ConnectionString"] = $"Data Source={Path.Combine(DataDir, "maf-lab.db")}",

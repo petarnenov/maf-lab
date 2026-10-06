@@ -2,16 +2,24 @@
 # Build context: repository root (see compose/docker-compose.yml).
 FROM mcr.microsoft.com/dotnet/sdk:10.0.401-noble AS build
 WORKDIR /src
-COPY global.json Directory.Build.props Directory.Packages.props ./
+COPY global.json Directory.Build.props Directory.Build.targets Directory.Packages.props ./
 COPY src/ src/
+# In-process plugins are compiled in (introduce-plugins decision 5); the product variant leaves out every plugin whose
+# manifest does not allow stage or prod (decision 5e): MAF_PRODUCT_PLUGINS lists the server projects it keeps.
+COPY plugins/ plugins/
+ARG MAF_IMAGE_VARIANT=full
+ARG MAF_PRODUCT_PLUGINS=||
 # NuGet packages come from a cache shared by every image build (DECISIONS.md §58). The first restore fills it with
 # anything it lacks, holding it alone so parallel builds never extract into the same folder; the second copies this
 # project's packages out of it into the stage, so publish needs neither the cache nor the network.
 ENV NUGET_PACKAGES=/nuget
 RUN --mount=type=cache,id=maf-lab-nuget,target=/root/.nuget/packages,sharing=locked \
     NUGET_PACKAGES=/root/.nuget/packages dotnet restore src/Maf.Lab.Api/Maf.Lab.Api.csproj \
-    && dotnet restore src/Maf.Lab.Api/Maf.Lab.Api.csproj --force --source /root/.nuget/packages
-RUN dotnet publish src/Maf.Lab.Api/Maf.Lab.Api.csproj -c Release -o /app /p:UseAppHost=false --no-restore
+      -p:MafImageVariant=$MAF_IMAGE_VARIANT "-p:MafProductPlugins=$MAF_PRODUCT_PLUGINS" \
+    && dotnet restore src/Maf.Lab.Api/Maf.Lab.Api.csproj --force --source /root/.nuget/packages \
+      -p:MafImageVariant=$MAF_IMAGE_VARIANT "-p:MafProductPlugins=$MAF_PRODUCT_PLUGINS"
+RUN dotnet publish src/Maf.Lab.Api/Maf.Lab.Api.csproj -c Release -o /app /p:UseAppHost=false --no-restore \
+      -p:MafImageVariant=$MAF_IMAGE_VARIANT "-p:MafProductPlugins=$MAF_PRODUCT_PLUGINS"
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.12-noble
 # git: the Coverage screen reads files at a commit, and a verified test run is committed to a branch and merged.

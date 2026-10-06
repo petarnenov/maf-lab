@@ -133,10 +133,20 @@ for (const via of ['direct', 'runtime']) {
   });
 }
 
-const runs = await (await fetch(`${base}/api/coverage/runs`, { headers: adam })).json().catch(() => []);
+// A plugin's agent is checked only while the plugin is in use (introduce-plugins task 2.4): still core (no plugins/<name>/
+// folder yet), or listed by /api/plugins.
+const inUse = async (name) => {
+  const { existsSync } = await import('node:fs');
+  if (!existsSync(new URL(`../plugins/${name}/plugin.toml`, import.meta.url))) return true;
+  const list = await (await fetch(`${base}/api/plugins`, { headers: adam })).json().catch(() => ({ plugins: [] }));
+  return list.plugins.some((p) => p.name === name);
+};
+const coverageInUse = await inUse('coverage');
+const runs = coverageInUse ? await (await fetch(`${base}/api/coverage/runs`, { headers: adam })).json().catch(() => []) : [];
 const followed = Array.isArray(runs) ? runs.find((r) => !r.active) : undefined;
 for (const via of ['direct', 'runtime']) {
   check(`testgen (${via}): a finished run replays as one well-formed run`, async () => {
+    if (!coverageInUse) return 'skipped: the coverage plugin is not in use';
     if (!followed) return 'skipped: no finished test run on this stack';
     const { events } = await run(routes.testgen[via], { threadId: `testgen:${followed.id}:conformance` });
     wellFormed(events);

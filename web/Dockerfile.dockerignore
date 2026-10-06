@@ -1,0 +1,13 @@
+# The web image's context is the repository root (introduce-plugins decision 8). Only the app and each plugin's web
+# part and manifest go in; the build itself installs node_modules.
+*
+!web/
+!plugins/
+plugins/*/*
+!plugins/*/web/
+!plugins/*/plugin.toml
+web/node_modules/
+web/dist/
+web/coverage/
+web/.vite/
+**/*.log

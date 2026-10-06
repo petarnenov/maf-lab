@@ -70,6 +70,7 @@ public static class SharedState
         builder.Services.AddSingleton<IRunStateStore, Stores.RedisRunStateStore>();
         builder.Services.AddSingleton<IRunTraceStore, Stores.RedisRunTraceStore>();
         builder.Services.AddSingleton<IIdempotencyStore, Stores.RedisIdempotencyStore>();
+        builder.Services.AddHostedService<Stores.RunOwnerHeartbeat>();
         return builder;
     }
 

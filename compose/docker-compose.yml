@@ -258,6 +258,10 @@ services:
     build:
       context: ..
       dockerfile: src/Maf.Lab.Api/Dockerfile
+      # full (dev, qa) or product (stage, prod; also run by qa): see Directory.Build.targets (introduce-plugins 5e).
+      args:
+        MAF_IMAGE_VARIANT: ${MAF_IMAGE_VARIANT:-full}
+        MAF_PRODUCT_PLUGINS: ${MAF_PRODUCT_PLUGINS:-||}
     # The user who runs make (exported by it): the api writes into the repository (branches, merges), data/ and evals/,
     # and on Linux whatever it writes there belongs to this user. Root here left root-owned files in the checkout.
     user: "${MAF_LAB_UID:-1000}:${MAF_LAB_GID:-1000}"
@@ -268,16 +272,17 @@ services:
       HOME: /tmp
       # Tool calls go through the balancer too, so they are spread over the mcp-retrieval replicas.
       Agent__McpEndpoint: http://lb/mcp
-      # The second domain's server, also through the balancer. The billing server above keeps the domain "billing".
-      Agent__Servers__0__Domain: portfolio
-      Agent__Servers__0__Endpoint: http://lb/portfolio/mcp
+      # The second domain's server, also through the balancer, keyed by name (introduce-plugins decision 3). The billing
+      # server above keeps the domain "billing".
+      Agent__Servers__portfolio__Domain: portfolio
+      Agent__Servers__portfolio__Endpoint: http://lb/portfolio/mcp
       # The codebase as the agent's third domain (add-codebase-domain): its search and the code-graph tools
       # (add-neo4j-graph) are offered to the agent; ask_codebase writes an answer of its own and stays for other MCP clients.
-      Agent__Servers__1__Domain: codebase
-      Agent__Servers__1__Endpoint: http://lb/code/mcp
-      Agent__Servers__1__Tools__0: search_codebase
-      Agent__Servers__1__Tools__1: trace_code_symbol
-      Agent__Servers__1__Tools__2: change_impact
+      Agent__Servers__codebase__Domain: codebase
+      Agent__Servers__codebase__Endpoint: http://lb/code/mcp
+      Agent__Servers__codebase__Tools__0: search_codebase
+      Agent__Servers__codebase__Tools__1: trace_code_symbol
+      Agent__Servers__codebase__Tools__2: change_impact
       # The Code snippets tab asks the codebase server, as the user, through the balancer.
       CodeSearch__Endpoint: http://lb/code/mcp
       Storage__ConnectionString: Data Source=/app-data/maf-lab.db
@@ -298,8 +303,15 @@ services:
       TestAgent__ClientSecret: ${TEST_AGENT_CLIENT_SECRET:-assistant-testgen-dev-secret}
       # Optional: opens GitHub issues for suspected bugs. A token limited to this repository's issues, for the api only.
       GITHUB_ISSUES_TOKEN: ${GITHUB_ISSUES_TOKEN:-}
+      # The installed plugins, read at run time from the mounted folder (introduce-plugins decision 2), and the
+      # environment the deployment declares, which an installed plugin must allow.
+      Plugins__Root: /plugins
+      MAF_ENV: ${MAF_ENV:-dev}
     deploy:
       replicas: 2
+    # Docker's stop grace exceeds the api's own drain (HostOptions.ShutdownTimeout = 30 s): SIGKILL never races the
+    # write that records the runs a drain left cancelled (introduce-plugins decision 2).
+    stop_grace_period: 40s
     # A push webhook points at whatever the caller registered, and the A2A conformance probe registers one on the
     # machine running it. Docker Desktop defines this name already; on Linux it has to be asked for.
     extra_hosts:
@@ -313,6 +325,8 @@ services:
       - ../docs:/docs:ro
       # At the host's own path: the repository's worktrees record host paths.
       - ${MAF_LAB_REPO}:${MAF_LAB_REPO}
+      # The plugin manifests and the installed set, read only.
+      - ../plugins:/plugins:ro
     networks:
       - default
       - runner
@@ -393,6 +407,11 @@ services:
     environment:
       AGENTS_BASE_URL: http://lb
       PORT: "8080"
+      # Agents beyond chat come from the installed plugins' manifests (introduce-plugins decision 3), re-read whenever
+      # plugins/.installed changes.
+      PLUGINS_ROOT: /plugins
+    volumes:
+      - ../plugins:/plugins:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
       interval: 5s
@@ -401,7 +420,13 @@ services:
 
   web:
     build:
-      context: ../web
+      # The repository root (introduce-plugins decision 8): each plugin's web part lives in plugins/<name>/web/.
+      # web/Dockerfile.dockerignore keeps the context to web/ and those parts.
+      context: ..
+      dockerfile: web/Dockerfile
+      args:
+        MAF_IMAGE_VARIANT: ${MAF_IMAGE_VARIANT:-full}
+        MAF_PRODUCT_WEB: ${MAF_PRODUCT_WEB:-||}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz || exit 1"]
       interval: 5s
@@ -468,10 +493,8 @@ services:
     command: ["nginx", "-c", "/etc/nginx/lb/nginx.conf", "-g", "daemon off;"]
     ports:
       - "7171:80"
-      # The A2A and MCP inspectors share this container's network (see below); their ports are published here, on
-      # loopback only.
-      - "127.0.0.1:7172:7172"
-      - "127.0.0.1:7173:7173"
+      # The A2A and MCP inspectors' ports (they share this container's network) are published by the dev-only override,
+      # docker-compose.dev.yml, never in CI, stage or prod.
     volumes:
       # The directory, not the file: a single-file bind mount pins the file's inode, and a git checkout or merge
       # replaces the file with a new one — the balancer then keeps serving the old configuration and cannot reload.

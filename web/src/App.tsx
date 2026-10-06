@@ -12,8 +12,12 @@ import { JevPage } from './jev/JevPage';
 import { CompliancePage } from './compliance/CompliancePage';
 import { TelemetryPage } from './telemetry/TelemetryPage';
 import { TopologyPage } from './topology/TopologyPage';
+import { PluginBoundary } from './plugins/PluginBoundary';
+import { usePlugins } from './plugins/context';
+import { contributions } from './plugins/registry';
 
 export function App() {
+  const plugins = usePlugins();
   return (
     <Routes>
       <Route element={<Layout />}>
@@ -67,6 +71,18 @@ export function App() {
             </RequireAdmin>
           }
         />
+        {/* Each plugin in use contributes its own pages (introduce-plugins decision 8), each inside its own boundary. */}
+        {contributions(plugins, 'routes').map(({ plugin, item }) => (
+          <Route
+            key={`${plugin}:${item.path}`}
+            path={item.path}
+            element={
+              <PluginBoundary plugin={plugin}>
+                {item.admin ? <RequireAdmin>{item.element}</RequireAdmin> : item.element}
+              </PluginBoundary>
+            }
+          />
+        ))}
         <Route path="*" element={<Navigate to="/chat" replace />} />
       </Route>
     </Routes>
