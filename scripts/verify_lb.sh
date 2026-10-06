@@ -117,19 +117,21 @@ def mcp(method, params, tok):
         body = next(l[5:].strip() for l in body.splitlines() if l.startswith("data:"))
     return status, h, json.loads(body) if body else {}
 
-status, _, listing = mcp("tools/list", {}, adam)
-names = sorted(t["name"] for t in listing.get("result", {}).get("tools", []))
-check("MCP tools/list through /mcp",
-      names == ["get_billing_run_status", "propose_fee_adjustment", "search_billing_runs", "search_documents",
-               "trace_billing_relationships"],
-      str(names or listing))
-mcp_instances = collections.Counter()
-ok_calls = 0
-for _ in range(8):
-    status, h, res = mcp("tools/call", {"name": "get_billing_run_status", "arguments": {"runId": "4417"}}, adam)
-    mcp_instances[h.get("X-Instance")] += 1
-    ok_calls += 1 if status == 200 and not res.get("result", {}).get("isError") else 0
-check("8 MCP calls succeed across >= 2 mcp replicas (no affinity)", ok_calls == 8 and len(mcp_instances) >= 2, f"ok={ok_calls} {dict(mcp_instances)}")
+# Billing's MCP server is a plugin (extract-billing): its checks run while it is in use.
+if plugin_in_use("billing"):
+    status, _, listing = mcp("tools/list", {}, adam)
+    names = sorted(t["name"] for t in listing.get("result", {}).get("tools", []))
+    check("MCP tools/list through /mcp",
+          names == ["get_billing_run_status", "propose_fee_adjustment", "search_billing_runs", "search_documents",
+                   "trace_billing_relationships"],
+          str(names or listing))
+    mcp_instances = collections.Counter()
+    ok_calls = 0
+    for _ in range(8):
+        status, h, res = mcp("tools/call", {"name": "get_billing_run_status", "arguments": {"runId": "4417"}}, adam)
+        mcp_instances[h.get("X-Instance")] += 1
+        ok_calls += 1 if status == 200 and not res.get("result", {}).get("isError") else 0
+    check("8 MCP calls succeed across >= 2 mcp replicas (no affinity)", ok_calls == 8 and len(mcp_instances) >= 2, f"ok={ok_calls} {dict(mcp_instances)}")
 
 # 4.2 SSE through the balancer --------------------------------------------------------------------------
 run_input = {
@@ -319,36 +321,37 @@ def summary_of(result):
     return next((r.get("params", {}).get("_meta", {}).get("maf-lab/adjustment", {})
                  for r in (result.get("inputRequests") or {}).values()), {})
 
-asked = propose(200, "verify_lb end-to-end check").get("result", {})
-state = asked.get("requestState")
-check("a proposal asks for input and writes nothing", bool(state) and bool(asked.get("inputRequests")),
-      json.dumps(asked)[:140])
+if plugin_in_use("billing"):
+    asked = propose(200, "verify_lb end-to-end check").get("result", {})
+    state = asked.get("requestState")
+    check("a proposal asks for input and writes nothing", bool(state) and bool(asked.get("inputRequests")),
+          json.dumps(asked)[:140])
 
-if state:
-    summary = summary_of(asked)
-    before = summary.get("currentFee")
-    check("the proposal names the account, its fee and what it would become",
-          summary.get("accountId") == "A-1042" and "currentFee" in summary and "resultingFee" in summary,
-          json.dumps(summary)[:140])
+    if state:
+        summary = summary_of(asked)
+        before = summary.get("currentFee")
+        check("the proposal names the account, its fee and what it would become",
+              summary.get("accountId") == "A-1042" and "currentFee" in summary and "resultingFee" in summary,
+              json.dumps(summary)[:140])
 
-    first = propose(200, "verify_lb end-to-end check", state, approve=True).get("result", {}).get("structuredContent", {})
-    check("confirming through the balancer applies it", first.get("status") == "applied",
-          json.dumps(first)[:140])
+        first = propose(200, "verify_lb end-to-end check", state, approve=True).get("result", {}).get("structuredContent", {})
+        check("confirming through the balancer applies it", first.get("status") == "applied",
+              json.dumps(first)[:140])
 
-    second = propose(200, "verify_lb end-to-end check", state, approve=True).get("result", {}).get("structuredContent", {})
-    check("confirming the same proposal twice applies it once",
-          second.get("status") == "already_applied"
-          and second.get("adjustment", {}).get("currentFee") == first.get("adjustment", {}).get("currentFee"),
-          json.dumps(second)[:140])
+        second = propose(200, "verify_lb end-to-end check", state, approve=True).get("result", {}).get("structuredContent", {})
+        check("confirming the same proposal twice applies it once",
+              second.get("status") == "already_applied"
+              and second.get("adjustment", {}).get("currentFee") == first.get("adjustment", {}).get("currentFee"),
+              json.dumps(second)[:140])
 
-    undo = propose(-200, "verify_lb reversal of its own check").get("result", {})
-    undone = propose(-200, "verify_lb reversal of its own check", undo.get("requestState"), approve=True) \
-        .get("result", {}).get("structuredContent", {}) if undo.get("requestState") else {}
-    after = undone.get("adjustment", {}).get("currentFee")
-    check("the run undoes its own adjustment: the fee is back where it started",
-          undone.get("status") == "applied" and before is not None and after is not None
-          and abs(float(after) - float(before)) < 0.005,
-          f"before={before} after={after} {json.dumps(undone)[:100]}")
+        undo = propose(-200, "verify_lb reversal of its own check").get("result", {})
+        undone = propose(-200, "verify_lb reversal of its own check", undo.get("requestState"), approve=True) \
+            .get("result", {}).get("structuredContent", {}) if undo.get("requestState") else {}
+        after = undone.get("adjustment", {}).get("currentFee")
+        check("the run undoes its own adjustment: the fee is back where it started",
+              undone.get("status") == "applied" and before is not None and after is not None
+              and abs(float(after) - float(before)) < 0.005,
+              f"before={before} after={after} {json.dumps(undone)[:100]}")
 
 print()
 print("ALL CHECKS PASSED" if not failures else f"{len(failures)} CHECK(S) FAILED: {failures}")
