@@ -3283,4 +3283,10 @@ implementation" (parts A and B) holds each choice in full.
   - Time travel shows a rewound turn through a core-owned override, `ChatContext.setTurnView(turnKey, view | null)`;
     the core renders the banner and keeps the bubble read-only. Rejected: a plugin rendering inside the core's bubble.
     The review queue's trace is a plugin `reviewPanels` entry.
+  - Lint runs from the repo root with web/'s configs (`npm run lint` does the `cd ..`): `eslint --config
+    web/eslint.config.js web plugins/*/web` and `prettier --config web/.prettierrc.json --ignore-path
+    web/.prettierignore`, so the plugins' web parts get the same rules; the config's patterns are root-relative. It
+    found a hooks violation in a plugin test on its first run. Rejected: a root config (the root has no package to
+    resolve ESLint's plugins from), a per-object `basePath` (a file outside the cwd is external before it is read),
+    a symlink.
 

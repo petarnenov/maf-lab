@@ -1,17 +1,28 @@
 import { act } from '@testing-library/react';
-import { useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatContext } from '@maf/plugin-api';
 import { hangingFetch, jsonResponse, renderWithProviders } from '@maf/testing';
 import { MonitorPane, TRACE_POLL_MS } from './MonitorPane';
 import { createMonitorStore, type MonitorStore } from './monitorStore';
 
-/** What the chat tells the pane, changed by the test as the chat would change it. */
-let show: (context: ChatContext) => void = () => {};
-function Chat({ store, initial }: { store: MonitorStore; initial: ChatContext }) {
-  const [current, setCurrent] = useState(initial);
-  show = setCurrent;
-  return <MonitorPane context={current} store={store} />;
+/** What the chat tells the pane, held outside React and changed by the test as the chat would change it. */
+function chatOf(initial: ChatContext) {
+  let current = initial;
+  const listeners = new Set<() => void>();
+  const subscribe = (listener: () => void) => {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  };
+  function Chat({ store }: { store: MonitorStore }) {
+    const context = useSyncExternalStore(subscribe, () => current);
+    return <MonitorPane context={context} store={store} />;
+  }
+  const show = (next: ChatContext) => {
+    current = next;
+    for (const listener of listeners) listener();
+  };
+  return { Chat, show };
 }
 
 function context(active: boolean, streaming = true): ChatContext {
@@ -40,7 +51,8 @@ describe('MonitorPane', () => {
     const store = createMonitorStore();
     store.observer.onRunStart?.({ runId: 'r-1', turnKey: 'a-1' });
 
-    const view = renderWithProviders(<Chat initial={context(false)} store={store} />);
+    const { Chat, show } = chatOf(context(false));
+    const view = renderWithProviders(<Chat store={store} />);
     await act(() => vi.advanceTimersByTimeAsync(TRACE_POLL_MS * 3));
     expect(held).toHaveLength(0);
 
@@ -62,7 +74,8 @@ describe('MonitorPane', () => {
     store.observer.onRunStart?.({ runId: 'r-1', turnKey: 'a-1' });
     const reads = () => fetch.mock.calls.filter(([url]) => isLive(url)).length;
 
-    renderWithProviders(<Chat initial={context(true)} store={store} />);
+    const { Chat, show } = chatOf(context(true));
+    renderWithProviders(<Chat store={store} />);
     await act(() => vi.advanceTimersByTimeAsync(TRACE_POLL_MS * 2 + 10));
     expect(reads()).toBe(3);
 

@@ -4,8 +4,10 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
+// Run only from the repo root (`npm run lint` does the `cd ..`), so it reaches the plugins' web parts too: every
+// pattern below is relative to the root (see DECISIONS: lint runs from the root with web/'s configs).
 export default tseslint.config(
-  { ignores: ['dist', 'node_modules', 'coverage'] },
+  { ignores: ['web/dist/**', 'web/coverage/**', '**/node_modules/**'] },
   {
     files: ['**/*.{ts,tsx}'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
@@ -25,8 +27,8 @@ export default tseslint.config(
   // Only the official AG-UI protocol, through the official client (agui-protocol-only): no custom events, no stream
   // parsing of our own, no agent endpoint called by hand.
   {
-    files: ['src/**/*.{ts,tsx}'],
-    ignores: ['**/*.test.{ts,tsx}', 'src/test/**'],
+    files: ['web/src/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}', 'web/src/test/**'],
     rules: {
       'no-restricted-syntax': [
         'error',
@@ -66,7 +68,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['**/*.test.{ts,tsx}', 'src/test/**'],
+    files: ['**/*.test.{ts,tsx}', 'web/src/test/**'],
     rules: {
       'react-refresh/only-export-components': 'off',
     },

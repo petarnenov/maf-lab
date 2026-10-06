@@ -957,9 +957,8 @@ These choices deviate from the text above. Each is kept, with the rejected alter
       task 5.4 moves it to the conversation-history plugin's `runObservers.onRunEnd`.
     - `monitorTabs` stays declared and unused: no plugin contributes a monitor tab yet, and the monitor reading another
       plugin's contributions needs a registry seam of its own (YAGNI until one does).
-    - Known gap: ESLint's flat config in `web/` does not lint `plugins/*/web` (files outside its base path), so the
-      React hooks rules do not run on plugin code; Prettier is run on it with the web's config by hand. Raised with the
-      reviewing session.
+    - Lint runs from the repo root with web/'s configs, so `plugins/*/web` gets the same ESLint and Prettier rules
+      (DECISIONS §81). Rejected: a root config, a per-object `basePath`, a symlink.
 
 ## Principles and patterns
 

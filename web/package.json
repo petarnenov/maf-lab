@@ -10,8 +10,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "lint": "eslint . && prettier --check .",
-    "format": "prettier --write .",
+    "lint": "cd .. && eslint --config web/eslint.config.js web plugins/*/web && prettier --config web/.prettierrc.json --ignore-path web/.prettierignore --check web plugins/*/web",
+    "format": "cd .. && prettier --config web/.prettierrc.json --ignore-path web/.prettierignore --write web plugins/*/web",
     "test": "vitest"
   },
   "dependencies": {
