@@ -102,5 +102,5 @@ public static class ChunkFusion
     }
 
     private static IReadOnlyList<ScoredChunk> Ordered(Dictionary<string, (ChunkRecord Chunk, double Score)> scores) =>
-        [.. scores.Values.OrderByDescending(s => s.Score).ThenBy(s => s.Chunk.ChunkId, StringComparer.Ordinal).Select(s => new ScoredChunk(s.Chunk, s.Score))];
+        ScoredChunkOrder.Ordered(scores.Values.Select(s => new ScoredChunk(s.Chunk, s.Score)));
 }

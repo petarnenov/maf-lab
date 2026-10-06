@@ -148,6 +148,13 @@ fused server-side with **RRF** (default) or **DBSF** (`Retrieval:Fusion=dbsf`). 
 sparse`. Optional rerank (`Retrieval:RerankEnabled`) is an LLM listwise reranker standing in for a cross-encoder; on any
 failure it degrades to the fused order and logs only the error type. Its input is the tenant-scoped candidate list.
 
+- **Ranking is a total order** (2026-10-06): score descending, then chunk id (ordinal), in both chunk searches
+  (`ScoredChunkOrder`). It is applied client-side to the fused page, because Qdrant orders equal scores (an RRF tie)
+  arbitrarily, so the same search could list the same chunks in a different order. Ties at the fused limit may still
+  change which chunk makes the page. That is accepted: the limit is the candidate pool, not the top k the caller sees.
+  Rejected: over-fetching past the limit (a second knob with no principled value), and an acceptance test that
+  compares sets instead of the order (the model reads position).
+
 ## 5. Indexing identity and re-indexing
 
 - `doc_id = "{tenant}/{path within tenant}"` and `chunk_id = "{doc_id}#{section-slug}[-n]"`: stable across runs and

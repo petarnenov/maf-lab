@@ -66,8 +66,15 @@ public sealed class TenantScopedSearch(QdrantClient client, IOptions<QdrantOptio
             _ => [],
         };
 
-        return points.Select(p => new ScoredChunk(PayloadMapper.FromPayload(p.Payload), p.Score)).ToList();
+        return Page(points);
     }
+
+    /// <summary>
+    /// The store's page as results, in <see cref="ScoredChunkOrder"/>: Qdrant orders equal scores (an RRF tie) arbitrarily,
+    /// so the same search could otherwise list the same chunks in a different order.
+    /// </summary>
+    internal static IReadOnlyList<ScoredChunk> Page(IEnumerable<ScoredPoint> points) =>
+        ScoredChunkOrder.Ordered(points.Select(p => new ScoredChunk(PayloadMapper.FromPayload(p.Payload), p.Score)));
 
     private async Task<IReadOnlyList<ScoredPoint>> HybridAsync(
         Query? denseQuery, Query? sparseQuery, SearchRequest request, Filter filter, ulong prefetchLimit, CancellationToken ct)
