@@ -54,11 +54,6 @@ Two instances serve it: `ollama` (11435) for search queries only, `ollama-batch`
 Entry point: everything runs behind the nginx load balancer on http://localhost:7171 (api, mcp-retrieval, mcp-portfolio and compliance x2; mcp-code and copilot-runtime x1). Inspectors (dev only, loopback): A2A http://localhost:7172, MCP http://localhost:7173, Redis Insight http://localhost:7174, Neo4j Browser http://localhost:7175.
 Graph store: Neo4j (`neo4j:2026.09.0-community`), Bolt on 127.0.0.1:7687, password `NEO4J_PASSWORD` (dev default `maf-lab-dev-graph`).
 
-Commands (see `make help`):
-- `make` — start everything on http://localhost:7171 (build, wait healthy, index if empty)
-- `make down` · `make ps` · `make logs SERVICE=api`
-- `make test` · `make lint` · `make verify` · `make eval SUITE=selection`
-- `make index` · `make graph` (billing + code graph in Neo4j) · `make drift` · `make dev` (local, no Docker for app services) · `make doctor`
-- `make docs` (rewrite generated doc blocks) · `make docs-check` (docs vs code; also in `make ci`)
+Commands: `make help`.
 
 - Before touching any TypeSafe Jev call, read docs/rules/jev-usage.md.
