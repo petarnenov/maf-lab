@@ -31,9 +31,6 @@ services:
     image: alpine:3.22
     entrypoint: ["true"]
 
-  mcp-retrieval:
-    env_file: [env/ci-models.env]
-
   mcp-portfolio:
     env_file: [env/ci-models.env]
 

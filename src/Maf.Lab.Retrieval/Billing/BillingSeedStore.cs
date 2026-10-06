@@ -7,6 +7,8 @@ using Microsoft.Extensions.Configuration;
 
 namespace Maf.Lab.Retrieval.Billing;
 
+// names a domain until the extract-evals-plugin follow-up moves it (introduce-plugins 8.1)
+// The billing host, which stays here until the eval stops hosting it in-process.
 /// <summary>Seed record as stored. Has a free-text Note that must never leave this class.</summary>
 internal sealed record BillingRunRecord(
     string FirmId,
@@ -30,7 +32,7 @@ public sealed class BillingSeedStore
     private readonly IReadOnlyList<BillingRunRecord> _runs;
 
     public BillingSeedStore(IConfiguration configuration)
-        : this(File.ReadAllText(ResolvePath(configuration)))
+        : this(SeedPaths.Read(configuration, "Billing:SeedPath", "billing-runs.json"))
     {
     }
 
@@ -64,7 +66,10 @@ public sealed class BillingSeedStore
         new(System.Text.RegularExpressions.Regex.Replace(runId, @"^\s*run\b", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
             .Where(char.IsLetterOrDigit).ToArray());
 
-    /// <summary>Billing:SeedPath if set; otherwise compose/seed/billing-runs.json of the repository containing the working directory.</summary>
+    /// <summary>
+    /// Billing:SeedPath: set by billing.env in compose, by the billing plugin's plugin.mk under make, and by the
+    /// fixture in tests; the repository fallback of <see cref="SeedPaths"/> no longer holds billing's seeds.
+    /// </summary>
     internal static string ResolvePath(IConfiguration configuration) =>
         SeedPaths.Resolve(configuration, "Billing:SeedPath", "billing-runs.json");
 }

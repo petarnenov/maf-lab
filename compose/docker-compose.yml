@@ -2,7 +2,7 @@ name: maf-lab
 
 # One command brings everything up; the only application entry point is the load balancer on http://localhost:7171
 #   docker compose -f compose/docker-compose.yml up -d --build
-# Scale further with: docker compose -f compose/docker-compose.yml up -d --scale api=3 --scale mcp-retrieval=3
+# Scale further with: docker compose -f compose/docker-compose.yml up -d --scale api=3
 # Models are pulled by the ollama-init service on first start, and loaded into both Ollama instances by ollama-warm.
 # To reuse models already pulled by a host Ollama: OLLAMA_MODELS_DIR=$HOME/.ollama docker compose ... up
 
@@ -21,29 +21,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
-
-  # The graph store: billing relationships (firms, households, accounts, runs, fee schedules, documents) and the
-  # repository's code graph, built by `make graph`. Bolt is published on loopback only, for the host-side indexer; the
-  # Browser page is reached through the neo4j-browser plugin (dev and qa).
-  neo4j:
-    image: neo4j:2026.09.0-community
-    environment:
-      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-maf-lab-dev-graph}
-      NEO4J_server_memory_heap_initial__size: 256m
-      NEO4J_server_memory_heap_max__size: 512m
-      NEO4J_server_memory_pagecache_size: 256m
-      # Where Neo4j Browser (served on 7474) tells the user's browser to open Bolt: the loopback port below.
-      NEO4J_server_bolt_advertised__address: localhost:7687
-    ports:
-      - "127.0.0.1:7687:7687"
-    volumes:
-      - neo4j-data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/7687' || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-      start_period: 20s
 
   # Interactive: search query embeddings only. Its CPUs are its own (default 0-3 of Docker Desktop's 16), so a batch on
   # ollama-batch cannot take CPU time from it. OLLAMA_INTERACTIVE_THREADS must match the size of this set.
@@ -115,31 +92,6 @@ services:
     entrypoint: ["/bin/sh", "/warm-models.sh"]
     restart: "no"
 
-  mcp-retrieval:
-    build:
-      context: ..
-      dockerfile: src/Maf.Lab.Retrieval/Dockerfile
-    deploy:
-      replicas: 2
-    env_file: [env/retrieval.env, env/platform.env, env/graph.env, env/billing.env]
-    environment:
-      Urls: http://+:8080
-      # Only this server writes, so only this server is told where the ledger lives.
-      Billing__AdjustmentsConnectionString: Data Source=/app-data/maf-lab-adjustments.db
-    volumes:
-      - ./seed:/seed:ro
-      # The applied-adjustments ledger: the only thing this server writes. Shared by its replicas, like the api's store.
-      - retrieval-data:/app-data
-    depends_on:
-      qdrant:
-        condition: service_healthy
-      neo4j:
-        condition: service_healthy
-      ollama-warm:
-        condition: service_completed_successfully
-      redis:
-        condition: service_healthy
-
   # The portfolio domain: its own MCP server, corpus collection and read tools. Read-only, so no ledger and no volume
   # of its own; it reads the same seed folder for the household portfolios.
   mcp-portfolio:
@@ -148,7 +100,7 @@ services:
       dockerfile: src/Maf.Lab.Portfolio/Dockerfile
     deploy:
       replicas: 2
-    env_file: [env/retrieval.env, env/platform.env, env/graph.env, env/billing.env]
+    env_file: [env/retrieval.env, env/platform.env, env/graph.env]
     environment:
       Urls: http://+:8080
       Portfolio__Collection: maf_portfolio_chunks
@@ -168,7 +120,7 @@ services:
       dockerfile: src/Maf.Lab.ComplianceAgent/Dockerfile
     deploy:
       replicas: 2
-    env_file: [env/retrieval.env, env/platform.env, env/graph.env, env/billing.env]
+    env_file: [env/retrieval.env, env/platform.env]
     environment:
       Urls: http://+:8080
       # Its own audience and its own registry: a token for the assistant's surface is no good here.
@@ -200,25 +152,25 @@ services:
       args:
         MAF_IMAGE_VARIANT: ${MAF_IMAGE_VARIANT:-full}
         MAF_PRODUCT_PLUGINS: ${MAF_PRODUCT_PLUGINS:-||}
-    # The user who runs make (exported by it): the api writes into the repository (branches, merges), data/ and evals/,
+    # The user who runs make (exported by it): the api writes into the repository (branches, merges) and evals/,
     # and on Linux whatever it writes there belongs to this user. Root here left root-owned files in the checkout.
     user: "${MAF_LAB_UID:-1000}:${MAF_LAB_GID:-1000}"
-    env_file: [env/retrieval.env, env/platform.env, env/graph.env, env/billing.env]
+    env_file: [env/retrieval.env, env/platform.env, env/graph.env, env/a2a.env, env/compliance.env]
     environment:
       Urls: http://+:8080
       # Writable by any user; a uid with no passwd entry would otherwise get HOME=/.
       HOME: /tmp
-      # Tool calls go through the balancer too, so they are spread over the mcp-retrieval replicas.
-      # Every domain's server, keyed by name (introduce-plugins decision 3); none is first (task 4.6).
-      Agent__Servers__billing__Domain: billing
-      Agent__Servers__billing__Endpoint: http://lb/mcp
+      # Tool calls go through the balancer too, so they are spread over each domain server's replicas.
+      # The built-in domains' servers, keyed by name (introduce-plugins decision 3); a plugin's comes from its manifest.
       Agent__Servers__portfolio__Domain: portfolio
       Agent__Servers__portfolio__Endpoint: http://lb/portfolio/mcp
       # The built-in domains in use (introduce-plugins 5h), passed through from make's environment only when set: unset
       # keeps them all; `make core` sets it empty, so no domain is in use and every turn declines.
       Agent__BuiltInDomains:
       Storage__ConnectionString: Data Source=/app-data/maf-lab.db
-      Indexing__CorpusRoot: /data
+      # The admin index's corpus, under the plugins mount: passed through from make's environment (a plugin's plugin.mk
+      # exports it while its folder is present); unset = no corpus, and an index run says so and changes nothing.
+      Indexing__CorpusRoot: /plugins/${MAF_ADMIN_INDEX_CORPUS:-.no-corpus}
       Evals__Root: /evals
       # The drawn topology, served to the web app by the api (the web image is built from web/ only).
       Topology__DiagramPath: /docs/topology.drawio
@@ -250,9 +202,6 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - api-data:/app-data
-      # The A2A billing skill reads the same seeded runs the retrieval server does.
-      - ./seed:/seed:ro
-      - ../data:/data
       - ../evals:/evals
       - ../docs:/docs:ro
       # At the host's own path: the repository's worktrees record host paths.
@@ -265,8 +214,6 @@ services:
     depends_on:
       api-data-init:
         condition: service_completed_successfully
-      mcp-retrieval:
-        condition: service_healthy
       mcp-portfolio:
         condition: service_healthy
       redis:
@@ -437,8 +384,6 @@ services:
     depends_on:
       api:
         condition: service_healthy
-      mcp-retrieval:
-        condition: service_healthy
       mcp-portfolio:
         condition: service_healthy
       compliance:
@@ -459,8 +404,6 @@ services:
         condition: service_started
       redis:
         condition: service_healthy
-      neo4j:
-        condition: service_healthy
 
 networks:
   default: {}
@@ -474,7 +417,5 @@ volumes:
   qdrant-data:
   ollama-models:
   api-data:
-  retrieval-data:
   prometheus-data:
   redis-data:
-  neo4j-data:

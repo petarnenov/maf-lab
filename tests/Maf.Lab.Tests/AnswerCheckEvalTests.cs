@@ -20,8 +20,13 @@ namespace Maf.Lab.Tests;
 /// loader, the guardrail suite screening each row as its tool, the answer-check suite, and the generation suite's
 /// uncertain share.
 /// </summary>
-public class AnswerCheckEvalTests
+public class AnswerCheckEvalTests : IDisposable
 {
+    // The stand-in billing domain the shared fakes speak, with portfolio built in, for the static readers.
+    private readonly IDisposable _domains = DomainCatalogue.Use(StandInDomains.WithBilling);
+
+    public void Dispose() => _domains.Dispose();
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static string EvalsRoot => Path.Combine(CorpusLoaderTests.RepoRoot(), "evals");
 

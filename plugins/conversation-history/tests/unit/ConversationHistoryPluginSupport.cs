@@ -14,7 +14,7 @@ public static class ConversationHistoryPluginSupport
     public static PluginManifest Manifest => Loaded.Value;
 
     /// <summary>An api with the conversation list installed.</summary>
-    public static ApiFactory Api(ScriptedChatClient chat) => new(chat) { InstalledPlugins = [Manifest] };
+    public static ApiFactory Api(ScriptedChatClient chat) => new(chat) { InstalledPlugins = [Manifest, .. StandInDomains.Installed] };
 
     private static PluginManifest Load()
     {

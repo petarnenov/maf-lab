@@ -10,8 +10,8 @@ namespace Maf.Lab.IntegrationTests;
 /// The whole point of normalising the query: a question in another language must reach the same chunks as its
 /// English twin, through the same tenant-scoped path, over a real index.
 /// </summary>
-[Collection(CorpusCollection.Name)]
-public class QueryNormalisationTests(CorpusIndexFixture corpus)
+[Collection(SmallCorpusCollection.Name)]
+public class QueryNormalisationTests(SmallCorpusFixture corpus)
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 

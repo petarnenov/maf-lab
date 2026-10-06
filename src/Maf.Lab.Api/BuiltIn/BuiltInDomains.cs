@@ -11,12 +11,15 @@ namespace Maf.Lab.Api.BuiltIn;
 /// </summary>
 public static class BuiltInDomains
 {
-    /// <summary>The ids of the built-in domains, for the domain code and the tests; the core never names them.</summary>
+    /// <summary>
+    /// The ids of the built-in domains, for the domain code and the tests; the core never names them. Billing's is kept
+    /// as a name only: the domain itself is the billing plugin's since extract-billing.
+    /// </summary>
     public const string Billing = "billing";
     public const string Portfolio = "portfolio";
 
     /// <summary>Every built-in domain's id, as shipped.</summary>
-    public static readonly IReadOnlyList<string> Ids = [Billing, Portfolio];
+    public static readonly IReadOnlyList<string> Ids = [Portfolio];
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -55,15 +58,14 @@ public static class BuiltInDomains
 
     /// <summary>The behaviour of each built-in domain.</summary>
     public static IReadOnlyList<IDomainBehaviour> Behaviours { get; } =
-        [new BillingBehaviour(), new PortfolioBehaviour()];
+        [new PortfolioBehaviour()];
 
     /// <summary>
-    /// Each built-in domain's chunk store, keyed by its id: billing's is the api's own collection, portfolio's its own.
+    /// Each built-in domain's chunk store, keyed by its id: portfolio's own (billing's is the billing plugin's).
     /// The review queue resolves a search's sources in the store of the search's domain; a domain with none has no key.
     /// </summary>
     public static void AddStores(IServiceCollection services, IConfiguration configuration)
     {
-        services.AddKeyedSingleton(Billing, (sp, _) => sp.GetRequiredService<Maf.Lab.Retrieval.Store.TenantScopedMaintenance>());
         services.AddKeyedSingleton(Portfolio, (sp, _) =>
         {
             var qdrant = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Maf.Lab.Retrieval.Configuration.QdrantOptions>>().Value;

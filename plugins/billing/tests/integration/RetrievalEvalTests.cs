@@ -1,3 +1,4 @@
+using Maf.Lab.TestSupport;
 using System.Text.Json.Nodes;
 using Maf.Lab.Api.Endpoints;
 using Maf.Lab.Api.Feedback;
@@ -19,7 +20,7 @@ public class RetrievalEvalTests(CorpusIndexFixture corpus)
     {
         // A copy of the repo datasets, plus the row a reviewer creates after "wrong document" feedback.
         var root = Directory.CreateTempSubdirectory("maf-evals-").FullName;
-        foreach (var file in Directory.EnumerateFiles(Path.Combine(CorpusIndexFixture.RepoRoot(), "evals"), "*.jsonl"))
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(Repo.Root(), "evals"), "*.jsonl"))
         {
             File.Copy(file, Path.Combine(root, Path.GetFileName(file)));
         }

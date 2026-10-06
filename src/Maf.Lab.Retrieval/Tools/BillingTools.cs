@@ -8,6 +8,8 @@ using ModelContextProtocol.Server;
 
 namespace Maf.Lab.Retrieval.Tools;
 
+// names a domain until the extract-evals-plugin follow-up moves it (introduce-plugins 8.1)
+// The billing host, which stays here until the eval stops hosting it in-process.
 [McpServerToolType]
 public sealed class BillingTools(BillingSeedStore store, IPrincipalAccessor principals, ILogger<BillingTools> logger)
 {

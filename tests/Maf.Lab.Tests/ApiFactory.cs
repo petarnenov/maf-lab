@@ -54,9 +54,10 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
 
     /// <summary>
     /// The installed plugin set this host starts with (introduce-plugins task 3.4): written as its plugins/.installed.
-    /// Empty by default, which is the core alone; the fixture plugins in this test assembly are found by name.
+    /// The stand-in billing domain by default (<see cref="StandInDomains.Installed"/>), the domain the shared fakes speak;
+    /// [] is the core alone. The fixture plugins in this test assembly are found by name.
     /// </summary>
-    public IReadOnlyList<Maf.Lab.Plugins.Abstractions.PluginManifest> InstalledPlugins { get; init; } = [];
+    public IReadOnlyList<Maf.Lab.Plugins.Abstractions.PluginManifest> InstalledPlugins { get; init; } = StandInDomains.Installed;
     /// <summary>Plugins installed as having a server part although this assembly holds no code for them.</summary>
     public IReadOnlyCollection<string> ServerWithoutCode { get; init; } = [];
 

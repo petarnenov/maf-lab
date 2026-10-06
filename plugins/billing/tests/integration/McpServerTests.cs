@@ -1,3 +1,4 @@
+using Maf.Lab.Retrieval.Tools;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using Maf.Lab.Domain.Tenancy;
@@ -211,12 +212,21 @@ public sealed class McpServerTests(CorpusIndexFixture corpus) : IAsyncDisposable
         Assert.True(search.StructuredContent!.Value.GetProperty("results").GetArrayLength() > 0);
     }
 
+    [Fact]
+    public async Task A_run_identifier_alone_is_pointed_at_the_run_tools()
+    {
+        var client = await ClientAsync("adam", "firm-a", Role.USER);
+
+        var search = await client.CallToolAsync("search_documents", new Dictionary<string, object?> { ["query"] = "run 4417" }, cancellationToken: Ct);
+
+        Assert.NotEqual(true, search.IsError);
+        Assert.Equal(SearchDocumentsTool.RunIdentifierNote, search.StructuredContent!.Value.GetProperty("refineHint").GetString());
+    }
+
     private WebApplicationFactory<Maf.Lab.Retrieval.Program> Factory(
         Action<Dictionary<string, string?>>? configure = null, IDenseEncoder? encoder = null)
     {
-        var values = corpus.Qdrant.Config(corpus.Collection, corpus.CorpusRoot);
-        values["Billing:SeedPath"] = Path.Combine(CorpusIndexFixture.RepoRoot(), "compose", "seed", "billing-runs.json");
-        values["Billing:AccountsSeedPath"] = Path.Combine(CorpusIndexFixture.RepoRoot(), "compose", "seed", "billing-accounts.json");
+        var values = corpus.Config();
         // Its own file per factory, so one test's adjustments are not another's.
         var ledger = Path.Combine(Path.GetTempPath(), $"maf-lab-mcp-{Guid.NewGuid():N}.db");
         values["Billing:AdjustmentsConnectionString"] = $"Data Source={ledger}";
@@ -363,7 +373,7 @@ public sealed class McpDiagnosticsTests(CorpusIndexFixture corpus)
     [Fact]
     public async Task Diagnostics_only_on_request_tenant_scoped_and_structured_content_unchanged()
     {
-        var values = corpus.Qdrant.Config(corpus.Collection, corpus.CorpusRoot);
+        var values = corpus.Config();
         await using var factory = new WebApplicationFactory<Maf.Lab.Retrieval.Program>().WithWebHostBuilder(b =>
         {
             b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(values));
@@ -411,7 +421,7 @@ public sealed class McpDiagnosticsTests(CorpusIndexFixture corpus)
     [Fact]
     public async Task A_judged_search_carries_the_relevance_summary_with_or_without_the_trace_flag()
     {
-        var values = corpus.Qdrant.Config(corpus.Collection, corpus.CorpusRoot);
+        var values = corpus.Config();
         values["Retrieval:RelevanceGateEnabled"] = "true";
         await using var factory = new WebApplicationFactory<Maf.Lab.Retrieval.Program>().WithWebHostBuilder(b =>
         {

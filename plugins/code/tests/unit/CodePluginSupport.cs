@@ -9,7 +9,7 @@ namespace Maf.Lab.Tests;
 /// <summary>
 /// The code plugin as its tests see it: its manifest as make reads it (`scripts/plugins.py manifest-json code`), its
 /// descriptor with the prompt fragment, and the three-domain view the lab had before the plugin left the core —
-/// billing and portfolio built in, codebase from this folder (introduce-plugins 5.2).
+/// billing (the core tests' stand-in for it), portfolio built in, codebase from this folder (introduce-plugins 5.2).
 /// </summary>
 public static class CodePluginSupport
 {
@@ -25,9 +25,9 @@ public static class CodePluginSupport
     public static DomainDescriptor Descriptor =>
         Manifest.Domain!.ToDescriptor(File.ReadAllText(Path.Combine(Folder, Manifest.Domain.Prompt!)));
 
-    /// <summary>Billing and portfolio as built in, then codebase: every domain this repository ships.</summary>
+    /// <summary>Billing (the stand-in) and portfolio, then codebase: every domain this repository ships.</summary>
     public static DomainCatalogue ThreeDomains() =>
-        DomainCatalogue.Of([.. DomainCatalogue.AllBuiltIn.All, Descriptor], [.. DomainCatalogue.AllBuiltIn.Behaviours, new CodebaseBehaviour()]);
+        DomainCatalogue.Of([.. StandInDomains.WithBilling.All, Descriptor], [.. StandInDomains.WithBilling.Behaviours, new CodebaseBehaviour()]);
 
     /// <summary>Puts the three-domain view in scope for the static readers, until disposed.</summary>
     public static IDisposable Use() => DomainCatalogue.Use(ThreeDomains());

@@ -94,11 +94,12 @@ flowchart TB
   class app,mcp,backing group
 ```
 
-Everything user- and agent-facing goes through **one entry point on port 7171**. api, mcp-retrieval, mcp-portfolio and
-compliance run two replicas each, mcp-code and copilot-runtime one (`X-Instance` response header shows which one answered).
+Everything user- and agent-facing goes through **one entry point on port 7171**. api, mcp-retrieval (the billing
+plugin's), mcp-portfolio and compliance run two replicas each, mcp-code and copilot-runtime one (`X-Instance` response header shows which one answered).
 test-agent and coverage-runner run one each and have no route of their own: the api reaches them inside the compose
 network. The balancer also serves Jaeger at `/jaeger` and takes the browser's OTLP traces at `/v1/traces`. Besides
-7171, only Qdrant and the two Ollamas are published, Neo4j's Bolt port on `127.0.0.1:7687` for the host-side indexer,
+7171, only Qdrant and the two Ollamas are published, Neo4j's Bolt port on `127.0.0.1:7687` for the host-side indexer
+(while the `neo4j` plugin is installed),
 plus the [developer tools](#developer-tools) on `127.0.0.1` (7172–7175) while their plugins are installed.
 
 The embedding model runs in **two Ollama instances**: `ollama` (11435) embeds search queries only, `ollama-batch`
@@ -127,13 +128,13 @@ The balancer's routes, as `compose/lb/nginx.conf`, the api upstream template and
 | `/dev/` | prefix | `api` |
 | `/.well-known/agent-card.json` | exact | `api` |
 | `/a2a` | prefix | `api` |
-| `/mcp` | exact | `mcp-retrieval` |
 | `/portfolio/mcp` | exact | `mcp-portfolio` at `/mcp` |
 | `/compliance` | prefix | `compliance` |
 | `/v1/traces` | prefix | `otel-collector` |
 | `/jaeger` | prefix | `jaeger` |
 | `/` | prefix | `web` |
 | `/example/mcp` | exact | `mcp-example` at `/mcp` (plugin `_example`) |
+| `/mcp` | exact | `mcp-retrieval` (plugin `billing`) |
 | `/code/mcp` | exact | `mcp-code` at `/mcp` (plugin `code`) |
 <!-- /generated:lb-routes -->
 
@@ -185,7 +186,7 @@ make help                  # every target
 |---|---|
 | `make all` | Start everything: build, run, wait for health, index if empty (default) |
 | `make help` | List the targets |
-| `make up` | Build and start the stack (replicas via API_REPLICAS/MCP_REPLICAS/PORTFOLIO_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy |
+| `make up` | Build and start the stack (replicas via API_REPLICAS/PORTFOLIO_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy |
 | `make core` | Start the core with no plugin and no built-in domain (MAF_PLUGINS=none); declines every turn (decision 5h); a plain make brings them back |
 | `make product-check` | Build the product image variant (api, web) and check it holds no dev-or-qa-only plugin code |
 | `make plugins` | List every plugin: kind, scope, environments, whether installed, dependencies, description |
@@ -199,15 +200,14 @@ make help                  # every target
 | `make ps` | Show services, state and health |
 | `make logs` | Follow logs (SERVICE=api to narrow) |
 | `make clean` | Remove the stack WITH volumes (index, conversations) and build outputs; asks unless FORCE=1 |
-| `make infra` | Start only the indexer's infrastructure (Qdrant, Neo4j, both Ollama instances + the embedding model) and wait until healthy |
-| `make index` | Index the built-in domains' corpora, then build their graph; installed plugins add theirs (unchanged documents are skipped) |
-| `make graph` | Build the Neo4j graph: billing relationships, and any installed plugin's graph (unchanged nodes are not rewritten) |
-| `make neo4j-chunks` | Spike: copy the billing and portfolio chunks from Qdrant into Neo4j for eval-retrieval-backends |
+| `make infra` | Start only the indexer's infrastructure (Qdrant, both Ollama instances + the embedding model, and installed stores) and wait until healthy |
+| `make index` | Index the built-in domains' corpora; each plugin present adds its corpus and graph (unchanged documents are skipped) |
+| `make graph` | Build the Neo4j graph: each plugin present adds its own (unchanged nodes are not rewritten) |
 | `make index-portfolio` | Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only |
-| `make reindex` | Re-embed every document of the built-in domains, and of installed plugins (--force) |
-| `make drift` | Report stale documents: the index and the billing graph against the source |
-| `make rebuild-index` | Re-create the collection with every configured dense vector and re-index (asks unless FORCE=1) |
-| `make migrate` | Fill a provisioned dense vector with its configured model (TO=dense_v3) |
+| `make reindex` | Re-embed every document of the built-in domains, and of each plugin present (--force) |
+| `make drift` | Report stale documents: each plugin present compares its index and graph against its source |
+| `make rebuild-index` | Re-create each plugin's collection with every configured dense vector and re-index it (asks unless FORCE=1) |
+| `make migrate` | Fill a provisioned dense vector with its configured model in each plugin's collection (TO=dense_v3) |
 | `make test` | Run all tests (.NET unit + integration, web) |
 | `make test-dotnet` | .NET tests (integration tests start Qdrant and Neo4j via Testcontainers) |
 | `make test-web` | Web tests (Vitest) |
@@ -239,12 +239,15 @@ make help                  # every target
 | `make eval-presentation` | Eval: do portfolio answers build on their data cards instead of restating them? |
 | `make eval-answer-check` | Eval: Jev's answer check alone — are labelled unsupported answers flagged and supported ones not? (needs JEV_MAF_LAB) |
 | `make eval-code-route` | Eval: Jev's code-route answer alone — would each code question start with the right graph call or the search? (needs JEV_MAF_LAB) |
-| `make eval-retrieval-backends` | Spike comparison: retrieval cases on Qdrant and on Neo4j side by side, never gated (run make neo4j-chunks first) |
 | `make eval-graph-depth` | Comparison: code graph traces at depth 2, 3 and 4, side by side, never gated (STRUCTURAL=1 for no model) |
 | `make eval-a2a` | Conformance: an outside client drives the agents through evals/a2a-conformance.jsonl |
 | `make dev` | Run mcp/api/web locally without Docker (infra stays in compose); Ctrl-C stops |
 | `make doctor` | Check prerequisites (Docker, .NET SDK, Node/npm, make, OLLAMA_API_KEY, JEV_MAF_LAB, MAF_LAB_REPO, GITHUB_ISSUES_TOKEN) |
 | `make setup` | Install what 'make doctor' reports missing (.NET SDK unattended; prints the rest) |
+| `make index-billing` | Index the billing corpus (→ maf_chunks, served by mcp-retrieval) only; unchanged documents are skipped |
+| `make graph-billing` | Build the billing graph only (accounts, runs, households) in Neo4j |
+| `make neo4j-chunks` | Spike: copy the billing and portfolio chunks from Qdrant into Neo4j for eval-retrieval-backends |
+| `make eval-retrieval-backends` | Spike comparison: retrieval cases on Qdrant and on Neo4j side by side, never gated (run make neo4j-chunks first) |
 | `make index-code` | Index the repository itself (→ maf_code_chunks, served by mcp-code) only; unchanged files are skipped |
 | `make graph-code` | Build the code graph only (calls, types, tests) in Neo4j |
 <!-- /generated:make-targets -->
@@ -262,10 +265,12 @@ allows, `none` means the core alone (`make core`), otherwise a comma-separated l
 |---|---|---|---|---|
 | `_example` | mcp | tenant | dev, qa | The authoring template: a small MCP server in its own container with one tool, get_example_fact, and a domain descriptor that routes questions about the sample fact to it. Off unless asked for. |
 | `a2a-inspector` | infra | installation | dev, qa | The A2A Inspector (a2aproject), opened on the lab's agent cards with a fresh partner token: a dev and qa tool. |
+| `billing` | mcp | tenant | dev, qa, stage, prod | Fee billing as a domain: its MCP server (mcp-retrieval: documentation search, run status and history, the billing graph, fee adjustments), its corpus and seeds, and its domain descriptor and routing. |
 | `code` | mcp | installation | dev, qa | The lab's own source code as a domain: the codebase MCP server (search_codebase and the code-graph tools), its domain descriptor and routing, and the chat's Code snippets pane. |
 | `conversation-history` | app | installation | dev, qa, stage, prod | The chat's conversation list: the caller's own conversations, searched and paged, renamed and deleted, beside the chat. Without it, a conversation is still reopened by its URL and a new one started from the chat's header. |
 | `mcp-inspector` | infra | installation | dev, qa | The MCP Inspector, listing the lab's MCP servers with a dev user's token: a dev and qa tool. |
 | `monitor` | app | installation | dev, qa | Behind the scenes of every chat turn: the full trace (model calls, prompt, retrieval diagnostics, guard, answer check), live while it runs and kept for a while after, with the run's AG-UI frames and time travel. |
+| `neo4j` | infra | installation | dev, qa, stage, prod | The graph store (Neo4j Community): billing's relationships and the repository's code graph, read through the core's one tenant-scoped graph method. A store that domain plugins depend on. |
 | `neo4j-browser` | infra | installation | dev, qa | Neo4j Browser on the graph store, forwarded on loopback: a dev and qa tool. |
 | `redis-insight` | infra | installation | dev, qa | Redis Insight on the lab's Redis (run state, stops, shared stores), loopback only: a dev and qa tool. |
 <!-- /generated:plugins -->
@@ -398,7 +403,7 @@ discard it. A suspected bug whose test still fails when un-skipped becomes a Git
 follows a run live, and `/admin/a2a` shows the agent and its runs. `make testgen-e2e` drives the whole path without a
 model; `make ci-e2e` includes it.
 
-The api writes to the repository (those branches and merges), `data/` and `evals/` as the user who ran `make`
+The api writes to the repository (those branches and merges) and `evals/` as the user who ran `make`
 (`MAF_LAB_UID`/`MAF_LAB_GID`, from `id -u`/`id -g`), so on Linux everything it leaves there is yours; a one-shot
 `api-data-init` hands its data volume to that user first. Earlier versions ran it as root: `make up` finds paths owned
 by root in the checkout and gives exactly those back to you. On rootless Docker or `userns-remap`, run
@@ -544,8 +549,8 @@ ollama pull embeddinggemma                                    # (qwen3:4b only f
                                                               # one host Ollama serves queries and documents alike:
                                                               # leave Models__BatchOllamaEndpoint unset
 
-dotnet run --project src/Maf.Lab.Indexing                     # index data/ (index | drift | status | rebuild --yes | migrate --to <vector>)
-dotnet run --project src/Maf.Lab.Retrieval                    # billing MCP server on :5090
+dotnet run --project src/Maf.Lab.Indexing                     # index Indexing__CorpusRoot (index | drift | status | rebuild --yes | migrate --to <vector>)
+dotnet run --project src/Maf.Lab.Retrieval                    # billing MCP server on :5090 (Billing__SeedPath, Billing__AccountsSeedPath)
 dotnet run --project src/Maf.Lab.Portfolio                    # portfolio MCP server on :5091
 dotnet run --project src/Maf.Lab.CodeSearch                   # codebase MCP server on :5092 (make index first)
 dotnet run --project src/Maf.Lab.Api                          # agent host on :5080
@@ -651,9 +656,9 @@ Evals run **on demand**, not on every commit. They are **required** before mergi
   no agent), then `generation`
 - the **code graph** (the builder in `src/Maf.Lab.Indexing/Graph`, or a trace or impact depth in `CodeGraphTools`) →
   `graph-depth`
-- a question about the **vector store itself** (Qdrant versus Neo4j) → `make neo4j-chunks`, then `retrieval-backends`, a
-  comparison like `graph-depth`: the retrieval cases on Qdrant and on an eval-only Neo4j search over the same copied
-  chunks, side by side, never gated (neo4j-retrieval-spike)
+- a question about the **vector store itself** (Qdrant versus Neo4j) → the billing plugin's `neo4j-chunks` target, then
+  `retrieval-backends`, a comparison like `graph-depth`: the retrieval cases on Qdrant and on an eval-only Neo4j search
+  over the same copied chunks, side by side, never gated (neo4j-retrieval-spike)
 - the **code-route question** (`CodeToolRouter`, `Jev:RouteCodeTools`, `Jev:MinCodeRouteConfidence`) → `code-route`, which
   asks Jev alone whether each code question would start with the right graph call or the search, and `intent`
 

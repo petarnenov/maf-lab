@@ -6,7 +6,7 @@
 .vs/
 .vscode/
 .cache/
-data/
+plugins/*/files/corpus/
 evals/
 web/
 tests/

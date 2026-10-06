@@ -150,7 +150,12 @@ public sealed class AdminIndexApiTests
     [Fact]
     public async Task An_index_run_is_started_as_a_job_that_can_be_polled()
     {
-        using var api = AdminApi();
+        // A corpus of one document, so the run reaches the store (unreachable here) and fails there: a run over a missing
+        // corpus stops before it, and succeeds with nothing to do.
+        var corpus = Directory.CreateTempSubdirectory("maf-lab-admin-corpus-");
+        Directory.CreateDirectory(Path.Combine(corpus.FullName, "firm-a", "docs"));
+        File.WriteAllText(Path.Combine(corpus.FullName, "firm-a", "docs", "fees.md"), "# Fees\n\nA fee schedule is assigned per account.\n");
+        using var api = AdminApi(new Dictionary<string, string?> { ["Indexing:CorpusRoot"] = corpus.FullName });
         var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
 
         var response = await admin.PostAsync("/api/admin/index/run", null, Ct);
@@ -162,6 +167,7 @@ public sealed class AdminIndexApiTests
         Assert.Equal($"/api/admin/jobs/{job.JobId}", response.Headers.Location?.ToString());
         var finished = await WaitAsync(admin, job.JobId);
         Assert.Equal(AdminJobStates.Failed, finished.State);
+        corpus.Delete(recursive: true);
     }
 
     [Fact]

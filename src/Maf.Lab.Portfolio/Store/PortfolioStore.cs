@@ -36,7 +36,7 @@ public sealed partial class PortfolioStore
     private readonly IReadOnlyList<PortfolioRecord> _records;
 
     public PortfolioStore(IConfiguration configuration)
-        : this(File.ReadAllText(SeedPaths.Resolve(configuration, "Portfolio:SeedPath", "portfolio-households.json")))
+        : this(SeedPaths.Read(configuration, "Portfolio:SeedPath", "portfolio-households.json"))
     {
     }
 

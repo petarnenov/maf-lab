@@ -1,5 +1,7 @@
 namespace Maf.Lab.Retrieval.Graph;
 
+// names a domain until the extract-evals-plugin follow-up moves it (introduce-plugins 8.1)
+// The billing graph: its templates and builder move with the template-contribution seam.
 /// <summary>
 /// The labels and relationship types the graph holds. Cypher cannot take a label as a parameter, so writes pick theirs
 /// from these constants and nothing else.

@@ -24,8 +24,13 @@ namespace Maf.Lab.Tests;
 /// question — what a positive does, and what an unavailable Jev does. The reviewer's words are covered beside the other
 /// hostile-verdict fixtures in <see cref="InjectionA2ATests"/>.
 /// </summary>
-public class GuardrailTests
+public class GuardrailTests : IDisposable
 {
+    // The stand-in billing domain the shared fakes speak, with portfolio built in, for the static readers.
+    private readonly IDisposable _domains = DomainCatalogue.Use(StandInDomains.WithBilling);
+
+    public void Dispose() => _domains.Dispose();
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 

@@ -18,9 +18,16 @@ public class TopologyTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
+    /// <summary>The graph store's infra plugin, as an installed set carries it.</summary>
+    private static readonly Maf.Lab.Plugins.Abstractions.PluginManifest GraphStore = new()
+    {
+        Name = "neo4j", Kind = "infra", Scope = "installation", Environments = ["dev"], Description = "the graph store",
+        Progress = "None", Stopping = "None",
+    };
+
     private static ApiFactory Api(StubHandler handler, IReadOnlyDictionary<string, string[]>? dns = null,
         string complianceUrl = "http://compliance", FakeToolSource? tools = null, string testAgentUrl = "",
-        IReadOnlyDictionary<string, string?>? settings = null, bool withCodeDomain = false)
+        IReadOnlyDictionary<string, string?>? settings = null, bool withCodeDomain = false, bool withGraphStore = false)
     {
         var extra = new Dictionary<string, string?>
         {
@@ -31,7 +38,11 @@ public class TopologyTests
         {
             extra[key] = value;
         }
-        var api = new ApiFactory(ApiFactory.ProceduralModel(), tools) { ExtraSettings = extra };
+        var api = new ApiFactory(ApiFactory.ProceduralModel(), tools)
+        {
+            ExtraSettings = extra,
+            InstalledPlugins = withGraphStore ? [.. StandInDomains.Installed, GraphStore] : StandInDomains.Installed,
+        };
         api.ConfigureTestServices = s =>
         {
             s.RemoveAll<IServiceResolver>();
@@ -41,8 +52,8 @@ public class TopologyTests
             {
                 // A code domain in use, as the code plugin would bring one; the core reads its shape, not the plugin.
                 s.RemoveAll<Maf.Lab.Api.Agent.DomainCatalogue>();
-                s.AddSingleton(Maf.Lab.Api.Agent.DomainCatalogue.Of([.. Maf.Lab.Api.Agent.DomainCatalogue.AllBuiltIn.All, StandInDomains.CodeDomain],
-                    Maf.Lab.Api.Agent.DomainCatalogue.AllBuiltIn.Behaviours));
+                s.AddSingleton(Maf.Lab.Api.Agent.DomainCatalogue.Of([.. StandInDomains.WithBilling.All, StandInDomains.CodeDomain],
+                    StandInDomains.WithBilling.Behaviours));
             }
         };
         return api;
@@ -174,7 +185,7 @@ public class TopologyTests
     [Fact]
     public async Task The_graph_store_is_reported_with_its_edges_and_without_its_password()
     {
-        using var api = Api(StubHandler.AllHealthy(), settings: new Dictionary<string, string?>
+        using var api = Api(StubHandler.AllHealthy(), withGraphStore: true, settings: new Dictionary<string, string?>
         {
             ["Neo4j:Uri"] = "bolt://127.0.0.1:1",
             ["Neo4j:Password"] = "s3cret-graph",
@@ -188,6 +199,18 @@ public class TopologyTests
         Assert.Contains(report.Edges, e => e is { From: "mcp", To: "neo4j" });
         Assert.Contains(report.Edges, e => e is { From: "mcp-code", To: "neo4j" });
         Assert.DoesNotContain("s3cret-graph", JsonSerializer.Serialize(report, Json));
+    }
+
+    [Fact]
+    public async Task A_graph_store_that_is_not_installed_is_reported_as_such_not_as_a_fault()
+    {
+        using var api = Api(StubHandler.AllHealthy());
+
+        var node = Assert.Single((await GetAsync(api)).Nodes, n => n.Id == "neo4j");
+
+        Assert.Equal(NodeHealth.NotProbed, node.Health);
+        Assert.Equal("not installed", node.Facts["endpoint"]);
+        Assert.Equal("the graph store is not installed", node.Reason);
     }
 
     [Fact]

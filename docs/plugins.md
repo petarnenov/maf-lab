@@ -49,6 +49,12 @@ as Compose does for every merged file: `../plugins/<name>/files/…`. A plugin's
 (`ApiFactory` in C#, `@maf/testing` on the web) and leave with the folder; give the plugin's own server under
 `service/` no `tests/unit` files, because those compile into the api's test host.
 
+A `plugin.mk` may also export what a host-side run needs from the plugin's folder, the way make passes `MAF_LAB_REPO`:
+billing's exports its seed paths (`Billing__SeedPath`, `Billing__AccountsSeedPath`) for `make dev`, `make test` and
+the indexer, and `MAF_ADMIN_INDEX_CORPUS`, the folder of the corpus the api's admin index reads through its `/plugins`
+mount (transitional: index-admin takes each plugin's corpus from its manifest). Use `export NAME ?= value`, so the
+environment still wins.
+
 Two kinds of plugin cover almost everything:
 
 - **Remote plugins** (`mcp`, `a2a`) add a capability over a protocol the project already speaks: an MCP server or an

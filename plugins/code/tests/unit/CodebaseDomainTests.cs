@@ -151,7 +151,7 @@ public class CodebaseDomainTests : IDisposable
 
     private static ApiFactory CodeApi(FakeToolSource tools, string answer = "Idempotency rides in ConfirmedCall (src/Maf.Lab.Api/Agent/ToolSource.cs:17-27).")
     {
-        var api = new ApiFactory(ApiFactory.ProceduralModel(answer), tools) { InstalledPlugins = [CodePluginSupport.Manifest] }.WithCode();
+        var api = new ApiFactory(ApiFactory.ProceduralModel(answer), tools) { InstalledPlugins = [CodePluginSupport.Manifest, .. StandInDomains.Installed] }.WithCode();
         api.Jev.InDomain = 0.02;
         api.Jev.Codebase = q => q.Contains("code", StringComparison.OrdinalIgnoreCase) || q.Contains("кода") ? 0.92 : 0.0;
         api.Jev.Choose = _ => "other";
@@ -213,7 +213,7 @@ public class CodebaseDomainTests : IDisposable
     public async Task A_billing_question_does_not_load_the_codebase()
     {
         var tools = new FakeToolSource { WithPortfolio = true, WithCodebase = true };
-        using var api = new ApiFactory(ApiFactory.ProceduralModel(), tools) { InstalledPlugins = [CodePluginSupport.Manifest] }.WithCode();
+        using var api = new ApiFactory(ApiFactory.ProceduralModel(), tools) { InstalledPlugins = [CodePluginSupport.Manifest, .. StandInDomains.Installed] }.WithCode();
 
         await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "What is the procedure when a fee schedule is missing?");
 

@@ -10,8 +10,8 @@ namespace Maf.Lab.IntegrationTests;
 /// always returned its k nearest neighbours, so an empty result was unreachable and everything downstream that
 /// waits for one — the refine hint, the zero-results signal, the review queue — was dead code.
 /// </summary>
-[Collection(CorpusCollection.Name)]
-public class RelevanceFloorAcceptanceTests(CorpusIndexFixture corpus)
+[Collection(SmallCorpusCollection.Name)]
+public class RelevanceFloorAcceptanceTests(SmallCorpusFixture corpus)
 {
     private static readonly Principal AdvisorA = new("adam", TenantId.Firm("firm-a"), Role.USER);
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

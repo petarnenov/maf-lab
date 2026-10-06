@@ -21,4 +21,13 @@ public static class SeedPaths
         }
         return Path.Combine(AppContext.BaseDirectory, "seed", fileName);
     }
+
+    /// <summary>The seed file's text; a missing file fails naming where it looked and the key that says where it is.</summary>
+    public static string Read(IConfiguration configuration, string configurationKey, string fileName)
+    {
+        var path = Resolve(configuration, configurationKey, fileName);
+        return File.Exists(path)
+            ? File.ReadAllText(path)
+            : throw new FileNotFoundException($"The seed file {fileName} is not at {path}; set {configurationKey} to where it is.", path);
+    }
 }

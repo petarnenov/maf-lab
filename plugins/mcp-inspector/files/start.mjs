@@ -16,9 +16,9 @@ const persona = {
 };
 const installed = process.env.MAF_INSTALLED_PATH ?? '/plugins/.installed';
 
-// The built-in domains' servers, until each becomes a plugin whose server.json names its own (transitional: the billing
-// and portfolio follow-ups each remove their line).
-const builtIn = { 'maf-lab billing': `${lab}/mcp`, 'maf-lab portfolio': `${lab}/portfolio/mcp` };
+// The built-in domain's server, until it becomes a plugin whose server.json names its own (transitional: the portfolio
+// follow-up removes its line).
+const builtIn = { 'maf-lab portfolio': `${lab}/portfolio/mcp` };
 
 /** The installed MCP plugins' servers, by name: the first remote of each plugin's server.json. */
 function installedServers() {

@@ -26,8 +26,12 @@ public sealed record SearchSettings(string Mode, string Fusion, string DenseVect
 /// What the relevance judge said about this search, as numbers only (<see cref="SearchDiagnostics.SummaryOf"/>); null
 /// when the search did not ask it.
 /// </param>
+/// <param name="IdentifierOnly">
+/// The query was an identifier alone, not a question: nothing was searched, and the note says so in no domain's words,
+/// so a domain's tool may say which of its tools answers for an identifier instead.
+/// </param>
 public sealed record SearchOutcome(SearchDocumentsResult Result, IReadOnlyList<ScoredChunk> Chunks,
-    System.Text.Json.Nodes.JsonObject? Relevance = null);
+    System.Text.Json.Nodes.JsonObject? Relevance = null, bool IdentifierOnly = false);
 
 /// <param name="chunkSearch">
 /// Measurement only (neo4j-retrieval-spike): another chunk search to use instead of <paramref name="search"/>, passed by
@@ -53,6 +57,11 @@ public sealed partial class DocumentSearchService(
     public SearchSettings DefaultSettings => new(_options.Mode, _options.Fusion, _options.DenseVector, _options.RerankEnabled,
         _options.DenseFloorFor(models.Value, _options.DenseVector), _options.SparseFloor, _options.RelevanceGateEnabled, _options.Reranker);
 
+    /// <summary>What a search for an identifier alone answers, in no domain's words.</summary>
+    public const string IdentifierOnlyNote =
+        "The query looks like an identifier, not a question. Use the domain's data tools for current state; "
+        + "the documentation search answers how/why/procedure questions.";
+
     public async Task<SearchOutcome> SearchAsync(
         Principal principal, string query, IReadOnlyList<string>? sourceTypes, int? maxResults, SearchSettings? settings, CancellationToken ct,
         SearchDiagnostics? diagnostics = null)
@@ -62,9 +71,7 @@ public sealed partial class DocumentSearchService(
 
         if (IdentifierOnly().IsMatch(query))
         {
-            return new SearchOutcome(new SearchDocumentsResult([], 0, false,
-                "The query looks like a billing run identifier, not a question. Use get_billing_run_status for a run's current state, " +
-                "or search_billing_runs to find runs. search_documents answers how/why/procedure questions."), []);
+            return new SearchOutcome(new SearchDocumentsResult([], 0, false, IdentifierOnlyNote), [], IdentifierOnly: true);
         }
 
         var sw = Stopwatch.StartNew();

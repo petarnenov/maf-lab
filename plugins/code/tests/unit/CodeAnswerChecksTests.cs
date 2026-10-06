@@ -56,7 +56,7 @@ public class CodeAnswerChecksTests : IDisposable
     private static ApiFactory CodeApi(Func<string, string, double>? guard, string answer = "Idempotency rides in ConfirmedCall (src/Maf.Lab.Api/Agent/ToolSource.cs:17-27).",
         FakeToolSource? tools = null)
     {
-        var api = new ApiFactory(ApiFactory.ProceduralModel(answer), tools ?? new FakeToolSource { WithCodebase = true }) { InstalledPlugins = [CodePluginSupport.Manifest] }.WithCode();
+        var api = new ApiFactory(ApiFactory.ProceduralModel(answer), tools ?? new FakeToolSource { WithCodebase = true }) { InstalledPlugins = [CodePluginSupport.Manifest, .. StandInDomains.Installed] }.WithCode();
         api.Jev.InDomain = 0.02;
         api.Jev.Codebase = q => q.Contains("code", StringComparison.OrdinalIgnoreCase) ? 0.92 : 0.0;
         api.Jev.Choose = _ => "other";
@@ -183,7 +183,7 @@ public class CodeAnswerChecksTests : IDisposable
         using var slow = new ApiFactory(ApiFactory.ProceduralModel("Idempotency rides in ConfirmedCall."), new FakeToolSource { WithCodebase = true }, jev: jev)
         {
             ExtraSettings = new Dictionary<string, string?> { ["Guard:TimeoutSeconds"] = "0.05" },
-            InstalledPlugins = [CodePluginSupport.Manifest],
+            InstalledPlugins = [CodePluginSupport.Manifest, .. StandInDomains.Installed],
         }.WithCode();
 
         var events = await ApiFactory.ChatAsync(slow.ClientFor("alice", "firm-a", Role.TENANT_ADMIN), CodeQuestion);

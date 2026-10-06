@@ -1,5 +1,7 @@
 namespace Maf.Lab.Retrieval.Graph;
 
+// names a domain until the extract-evals-plugin follow-up moves it (introduce-plugins 8.1)
+// The billing graph: its templates and builder move with the template-contribution seam.
 /// <summary>
 /// Every Cypher read the system runs, as constant text. <c>$readable</c> (the principal's firm and shared) and
 /// <c>$limit</c> are bound by <see cref="TenantScopedGraph"/> alone. Every node a template matches carries

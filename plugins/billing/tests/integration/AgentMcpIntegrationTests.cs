@@ -27,7 +27,7 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
     [Fact]
     public async Task Agent_tool_source_lists_the_three_tools_and_invokes_search_as_the_user()
     {
-        var values = corpus.Qdrant.Config(corpus.Collection, corpus.CorpusRoot);
+        var values = corpus.Config();
         await using var server = new WebApplicationFactory<Maf.Lab.Retrieval.Program>().WithWebHostBuilder(b =>
         {
             b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(values));
@@ -40,7 +40,7 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
         });
         // A compliance reviewer is configured, so the fee adjustment that needs one is offered (introduce-plugins 4.4).
         var source = new McpToolSource(Options.Create(new AgentOptions { Servers = { ["billing"] = new McpServerOptions { Domain = "billing", Endpoint = new Uri(server.Server.BaseAddress, "/mcp").ToString() } } }),
-            NullLoggerFactory.Instance, new ServerHttpClientFactory(server),
+            NullLoggerFactory.Instance, new ServerHttpClientFactory(server), domainCatalogue: CorpusIndexFixture.Domains,
             configuration: new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Compliance:BaseUrl"] = "http://compliance.test" }).Build());
         var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.USER);
 
@@ -59,7 +59,7 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
 
         // Without a reviewer the adjustment's review could never pass, so the tool is not offered at all (task 4.4).
         var unreviewed = new McpToolSource(Options.Create(new AgentOptions { Servers = { ["billing"] = new McpServerOptions { Domain = "billing", Endpoint = new Uri(server.Server.BaseAddress, "/mcp").ToString() } } }),
-            NullLoggerFactory.Instance, new ServerHttpClientFactory(server), configuration: new ConfigurationBuilder().Build());
+            NullLoggerFactory.Instance, new ServerHttpClientFactory(server), domainCatalogue: CorpusIndexFixture.Domains, configuration: new ConfigurationBuilder().Build());
         await using var withoutReviewer = await unreviewed.GetToolsAsync(token, null, TestContext.Current.CancellationToken);
         Assert.DoesNotContain("propose_fee_adjustment", withoutReviewer.Names);
         Assert.Contains("search_documents", withoutReviewer.Names);
@@ -80,7 +80,7 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
         ActivitySource.AddActivityListener(listener);
 
         var traceId = ActivityTraceId.CreateRandom();
-        var values = corpus.Qdrant.Config(corpus.Collection, corpus.CorpusRoot);
+        var values = corpus.Config();
         await using var server = new WebApplicationFactory<Maf.Lab.Retrieval.Program>().WithWebHostBuilder(b =>
         {
             b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(values));
@@ -93,7 +93,7 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
         });
         var sending = new SendingHandler($"00-{traceId.ToHexString()}-{ActivitySpanId.CreateRandom().ToHexString()}-01");
         var source = new McpToolSource(Options.Create(new AgentOptions { Servers = { ["billing"] = new McpServerOptions { Domain = "billing", Endpoint = new Uri(server.Server.BaseAddress, "/mcp").ToString() } } }),
-            NullLoggerFactory.Instance, new ServerHttpClientFactory(server, sending));
+            NullLoggerFactory.Instance, new ServerHttpClientFactory(server, sending), domainCatalogue: CorpusIndexFixture.Domains);
         var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.USER);
         await using var tools = await source.GetToolsAsync(token, null, TestContext.Current.CancellationToken);
         var search = (AIFunction)tools.Tools.Single(t => t.Name == "search_documents");
@@ -127,7 +127,7 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
         ActivitySource.AddActivityListener(listener);
 
         var traceId = ActivityTraceId.CreateRandom();
-        var values = corpus.Qdrant.Config(corpus.Collection, corpus.CorpusRoot);
+        var values = corpus.Config();
         await using var server = new WebApplicationFactory<Maf.Lab.Retrieval.Program>().WithWebHostBuilder(b =>
         {
             b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(values));
@@ -140,7 +140,7 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
         });
         var sending = new SendingHandler($"00-{traceId.ToHexString()}-{ActivitySpanId.CreateRandom().ToHexString()}-01");
         var source = new McpToolSource(Options.Create(new AgentOptions { Servers = { ["billing"] = new McpServerOptions { Domain = "billing", Endpoint = new Uri(server.Server.BaseAddress, "/mcp").ToString() } } }),
-            NullLoggerFactory.Instance, new ServerHttpClientFactory(server, sending));
+            NullLoggerFactory.Instance, new ServerHttpClientFactory(server, sending), domainCatalogue: CorpusIndexFixture.Domains);
         var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.USER);
 
         await using var tools = await source.GetToolsAsync(token, null, TestContext.Current.CancellationToken);

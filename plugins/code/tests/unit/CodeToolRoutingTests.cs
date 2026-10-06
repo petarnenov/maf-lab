@@ -185,7 +185,7 @@ public class CodeToolRoutingTests : IDisposable
 
     private static ApiFactory CodeApi(FakeToolSource tools, Func<string, string> need, string intent = "other", double billing = 0.02)
     {
-        var api = new ApiFactory(ApiFactory.ProceduralModel("It is called from DocumentSearchService.RankCoreAsync."), tools) { InstalledPlugins = [CodePluginSupport.Manifest] }.WithCode();
+        var api = new ApiFactory(ApiFactory.ProceduralModel("It is called from DocumentSearchService.RankCoreAsync."), tools) { InstalledPlugins = [CodePluginSupport.Manifest, .. StandInDomains.Installed] }.WithCode();
         api.Jev.InDomain = billing;
         api.Jev.Codebase = _ => 0.92;
         api.Jev.Choose = _ => intent;

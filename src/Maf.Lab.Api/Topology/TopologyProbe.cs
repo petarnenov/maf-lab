@@ -67,6 +67,9 @@ public sealed class TopologyProbe(
 {
     private const string CacheKey = "topology-report";
 
+    /// <summary>The infra plugin that runs the graph store, and the node that shows it.</summary>
+    private const string GraphStorePlugin = "neo4j";
+
     private static readonly TopologyEdge[] Edges =
     [
         new("lb", "web", "/"),
@@ -403,6 +406,12 @@ public sealed class TopologyProbe(
     {
         var o = graphOptions.Value;
         var facts = new Dictionary<string, string> { ["role"] = "graph store", ["host"] = o.Authority, ["database"] = o.Database };
+        // The graph store is a plugin (extract-billing): without it there is nothing to probe, and that is not a fault.
+        if (plugins is not null && !plugins.Current.Contains(GraphStorePlugin))
+        {
+            facts["endpoint"] = "not installed";
+            return new TopologyNode("neo4j", "neo4j", NodeHealth.NotProbed, [], facts, "the graph store is not installed");
+        }
         try
         {
             using var cts = Linked(timeout, ct);

@@ -5,6 +5,8 @@ using Microsoft.Extensions.Configuration;
 
 namespace Maf.Lab.Retrieval.Billing;
 
+// names a domain until the extract-evals-plugin follow-up moves it (introduce-plugins 8.1)
+// The billing host, which stays here until the eval stops hosting it in-process.
 /// <summary>
 /// What a proposal fixes at the moment it is made. It travels back through the model, so it carries no free
 /// text: the advisor's reason is here only as a digest, enough to tell whether it was swapped.

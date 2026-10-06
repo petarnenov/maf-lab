@@ -12,7 +12,7 @@ public class BillingAccountTests
     private static readonly Principal FirmB = new("bianca", TenantId.Firm("firm-b"), Role.USER);
 
     internal static BillingAccountStore Load() =>
-        new(File.ReadAllText(Path.Combine(CorpusLoaderTests.RepoRoot(), "compose", "seed", "billing-accounts.json")));
+        new(File.ReadAllText(Path.Combine(BillingPluginSupport.Folder, "files", "seed", "billing-accounts.json")));
 
     [Fact]
     public void Seed_loads_and_a_1042_is_firm_a_at_1200()
@@ -43,7 +43,7 @@ public class BillingAccountTests
     [Fact]
     public void Output_contracts_have_no_note_field_even_when_the_seed_has_one()
     {
-        var seed = File.ReadAllText(Path.Combine(CorpusLoaderTests.RepoRoot(), "compose", "seed", "billing-accounts.json"));
+        var seed = File.ReadAllText(Path.Combine(BillingPluginSupport.Folder, "files", "seed", "billing-accounts.json"));
         Assert.Contains("external@evil.example", seed);
         Assert.Contains("ACME-CANARY-4410", seed);
 
@@ -60,27 +60,11 @@ public class BillingAccountTests
 public class BillingAccountPathTests
 {
     [Fact]
-    public void Accounts_seed_is_found_from_the_repository_without_configuration()
-    {
-        var path = BillingAccountStore.ResolvePath(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
-        Assert.True(File.Exists(path), path);
-        Assert.EndsWith(Path.Combine("compose", "seed", "billing-accounts.json"), path);
-    }
-
-    [Fact]
     public void Configuration_wins_over_the_repository()
     {
         var configuration = new Microsoft.Extensions.Configuration.ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["Billing:AccountsSeedPath"] = "/seed/billing-accounts.json" })
             .Build();
         Assert.Equal(Path.GetFullPath("/seed/billing-accounts.json"), BillingAccountStore.ResolvePath(configuration));
-    }
-
-    [Fact]
-    public void The_runs_seed_still_resolves_the_way_it_did()
-    {
-        var path = BillingSeedStore.ResolvePath(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
-        Assert.True(File.Exists(path), path);
-        Assert.EndsWith(Path.Combine("compose", "seed", "billing-runs.json"), path);
     }
 }

@@ -2,7 +2,6 @@ using System.Text.Json;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Jev;
 using Maf.Lab.Api.Agent.Tracing;
-using Maf.Lab.Api.BuiltIn;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Domain.Tracing;
 using Maf.Lab.Plugins.Abstractions;
@@ -19,24 +18,27 @@ namespace Maf.Lab.Tests;
 /// Pre-routing of read tools on data turns: Jev names the tool in the intent request, code takes only the arguments
 /// from the question, a write is never routed, and anything unclear leaves the turn to the model as before.
 /// </summary>
-public class DataToolRoutingTests
+public class DataToolRoutingTests : IDisposable
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static readonly JevOptions Routing = new() { RouteDataTools = true };
 
-    private static RoutingAnswer Answer(double status = 0.1, double runs = 0.1, double write = 0.02, string? runStatus = "none", double confidence = 1.0) =>
-        Billing(new Dictionary<string, double>
+    // The stand-in billing domain the shared fakes speak, with portfolio built in: the routing mechanism, not billing's
+    // own parsing (its cases are the billing plugin's, BillingDataToolRoutingTests).
+    private readonly IDisposable _domains = DomainCatalogue.Use(StandInDomains.WithBilling);
+
+    public void Dispose() => _domains.Dispose();
+
+    private static RoutingAnswer Answer(double status = 0.1, double runs = 0.1, double write = 0.02) =>
+        Routed(new Dictionary<string, double>
         {
             ["get_billing_run_status"] = status,
             ["search_billing_runs"] = runs,
             ["propose_fee_adjustment"] = write,
-        }, runStatus, confidence);
+        });
 
-    /// <summary>The routing answer as it was before the domains' own questions moved behind their behaviour (introduce-plugins 4.3).</summary>
-    private static RoutingAnswer Billing(Dictionary<string, double> tools, string? runStatus, double confidence) =>
-        new(tools, runStatus is null ? new Dictionary<string, DecisionAnswer>()
-            : new Dictionary<string, DecisionAnswer> { [BillingBehaviour.StatusQuestionId] = new(runStatus, confidence, null, null) });
+    private static RoutingAnswer Routed(Dictionary<string, double> tools) => new(tools, new Dictionary<string, DecisionAnswer>());
 
     [Fact]
     public void Status_of_one_run_routes_to_get_billing_run_status_with_its_id()
@@ -47,65 +49,6 @@ public class DataToolRoutingTests
         Assert.Equal("get_billing_run_status", route!.Tool);
         Assert.Equal("4417", route.Arguments["runId"]);
         Assert.Equal(0.93, route.Probability);
-    }
-
-    [Theory]
-    [InlineData("Какъв е статусът на рън 4417?", "4417")]
-    [InlineData("kakav e statusat na run 4418", "4418")]
-    [InlineData("What state is run #6203 in?", "6203")]
-    public void Run_ids_are_read_in_every_script(string question, string id)
-    {
-        var (route, _) = DataToolRouter.Route(question, Answer(status: 0.92), Routing);
-
-        Assert.Equal(id, route!.Arguments["runId"]);
-    }
-
-    [Fact]
-    public void Runs_by_status_route_to_search_billing_runs()
-    {
-        var (route, reason) = DataToolRouter.Route("Which billing runs failed?", Answer(status: 0.57, runs: 0.92, runStatus: "failed"), Routing);
-
-        Assert.Null(reason);
-        Assert.Equal("search_billing_runs", route!.Tool);
-        Assert.Equal("failed", route.Arguments["status"]);
-        Assert.False(route.Arguments.ContainsKey("periodFrom"));
-    }
-
-    [Theory]
-    [InlineData("List our billing runs for June 2026.", "2026-06-01", "2026-06-30")]
-    [InlineData("Покажи рънове за февруари 2026", "2026-02-01", "2026-02-28")]
-    [InlineData("pokaji runove za dekemvri 2025", "2025-12-01", "2025-12-31")]
-    public void A_month_and_year_become_the_period(string question, string from, string to)
-    {
-        var (route, reason) = DataToolRouter.Route(question, Answer(runs: 0.93), Routing);
-
-        Assert.Null(reason);
-        Assert.Equal(from, route!.Arguments["periodFrom"]);
-        Assert.Equal(to, route.Arguments["periodTo"]);
-        Assert.False(route.Arguments.ContainsKey("status"));
-    }
-
-    [Theory]
-    [InlineData("which runs failed last month?")]
-    [InlineData("Кои рънове се провалиха този месец?")]
-    [InlineData("runs from 2026")]
-    [InlineData("runs in Q2")]
-    [InlineData("list runs for June")]
-    [InlineData("runs between June 2026 and July 2026")]
-    public void A_time_expression_the_router_cannot_parse_is_left_to_the_model(string question)
-    {
-        var (route, reason) = DataToolRouter.Route(question, Answer(runs: 0.9, runStatus: "failed"), Routing);
-
-        Assert.Null(route);
-        Assert.Contains("time expression", reason);
-    }
-
-    [Fact]
-    public void The_run_id_must_agree_with_the_chosen_tool()
-    {
-        Assert.Contains("needs one run id", DataToolRouter.Route("status of run 4417 and run 4418", Answer(status: 0.9), Routing).Reason);
-        Assert.Contains("needs one run id", DataToolRouter.Route("what is the status", Answer(status: 0.9), Routing).Reason);
-        Assert.Contains("names a run", DataToolRouter.Route("list runs like run 4417", Answer(runs: 0.9), Routing).Reason);
     }
 
     [Fact]
@@ -125,15 +68,6 @@ public class DataToolRoutingTests
 
         Assert.Null(route);
         Assert.Equal("no read tool is clear (search_billing_runs 0.73)", reason);
-    }
-
-    [Fact]
-    public void An_unsure_status_is_left_out_rather_than_guessed()
-    {
-        var (route, _) = DataToolRouter.Route("show me the latest runs", Answer(runs: 0.9, runStatus: "pending", confidence: 0.4), Routing);
-
-        Assert.Equal("search_billing_runs", route!.Tool);
-        Assert.Empty(route.Arguments);
     }
 
     [Fact]
@@ -163,13 +97,13 @@ public class DataToolRoutingTests
     // ── the account in focus (add-focus-state) ─────────────────────────────────────────────────────────────────
 
     private static RoutingAnswer PortfolioAnswer(string tool) =>
-        Billing(new Dictionary<string, double>
+        Routed(new Dictionary<string, double>
         {
             ["get_billing_run_status"] = 0.05, ["search_billing_runs"] = 0.05, ["propose_fee_adjustment"] = 0.02,
             ["get_household_portfolio"] = tool == "get_household_portfolio" ? 0.92 : 0.05,
             ["get_aum_history"] = tool == "get_aum_history" ? 0.92 : 0.05,
             ["list_my_accounts"] = tool == "list_my_accounts" ? 0.92 : 0.05,
-        }, "none", 1.0);
+        });
 
     [Fact]
     public void A_portfolio_question_that_names_no_account_routes_to_the_one_in_focus()
@@ -232,34 +166,6 @@ public class DataToolRoutingTests
         var client = new HttpClient(new JevAuthHandler(credential) { InnerHandler = jev }) { BaseAddress = new Uri("https://jev.test/") };
         var o = Options.Create(options ?? Routing);
         return (new JevIntentClassifier(new JevClient(new RoutingClientFactory(client), credential, o), o, loggers), jev);
-    }
-
-    [Fact]
-    public async Task Routing_questions_travel_in_the_intent_request_and_leave_the_state_alone()
-    {
-        var (classifier, jev) = Classifier();
-
-        var decision = await classifier.ClassifyAsync("status of run 9981", Ct);
-
-        var body = JsonDocument.Parse(Assert.Single(jev.Requests).Body).RootElement;
-        Assert.Equal(["user_question"], body.GetProperty("state").EnumerateObject().Select(p => p.Name));
-        var questions = body.GetProperty("questions");
-        // The prompt-screening battery (injection-defense) also rides in the intent request, between the domain and the
-        // routing questions; the routing questions still travel here and the state stays the user's question alone.
-        // The codebase domain's questions ride here too while the code plugin is in use (its own tests pin them).
-        string[] expected = ["intent", "in_domain", "in_portfolio", .. JevGuardQuestions.PromptIds,
-            "tool_get_billing_run_status", "tool_search_billing_runs", "tool_propose_fee_adjustment",
-            "tool_get_household_portfolio", "tool_get_aum_history", "tool_list_my_accounts", "run_status"];
-        Assert.Equal(expected, questions.EnumerateObject().Select(q => q.Name));
-        var tool = questions.GetProperty("tool_get_billing_run_status").GetProperty("instructions");
-        Assert.StartsWith("get_billing_run_status: ", tool.GetProperty("tool").GetString());
-        Assert.Equal("To answer `user_question`, is it necessary to call `tool`?", tool.GetProperty("question").GetString());
-        Assert.DoesNotContain("9981", questions.GetRawText());
-
-        Assert.Equal(Intent.Data, decision.Intent);
-        Assert.Equal("get_billing_run_status", decision.Route!.Tool);
-        Assert.Equal("9981", decision.Route.Arguments["runId"]);
-        Assert.Equal(0.93, decision.Routing!.Tools["get_billing_run_status"]);
     }
 
     [Fact]

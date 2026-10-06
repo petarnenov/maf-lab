@@ -5,7 +5,7 @@ using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Retrieval.Jev;
 using Maf.Lab.Retrieval.Tools;
 
-namespace Maf.Lab.Api.BuiltIn;
+namespace Maf.Lab.Plugins.Billing;
 
 /// <summary>
 /// The billing domain's behaviour: the run-status question beside its read tools, the arguments of a routed billing
@@ -27,7 +27,7 @@ public sealed partial class BillingBehaviour : IDomainBehaviour
         ["none"] = "No particular status is asked about",
     };
 
-    public string Domain => BuiltInDomains.Billing;
+    public string Domain => BillingPlugin.DomainId;
 
     public IReadOnlyDictionary<string, object> DataQuestions { get; } = new Dictionary<string, object>
     {

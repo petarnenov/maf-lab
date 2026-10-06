@@ -15,20 +15,29 @@ code; it changes no behaviour, except where a line below says so.
   `billing-runs.json` → `files/seed/`); its compose service, env and lb parts. The billing graph builder and its Cypher
   templates stay core, as code's did (part C), until the template-contribution seam (deferred to the change that moves
   the code builder).
-- The split of `src/Maf.Lab.Retrieval` (5g): the library stays core (tenant-scoped search, BM25, embeddings, the dev
-  JWT, the relevance judge, `DocumentSearchService`, `ToolErrors`, and `SeedPaths` moved out of the Billing namespace),
-  which the api, the portfolio and code servers reference; only the host moves — `Program.cs`, the `Dockerfile`,
+- `src/Maf.Lab.Retrieval` stays where it is for now: the library is core (tenant-scoped search, BM25, embeddings, the
+  dev JWT, the relevance judge, `DocumentSearchService`, `ToolErrors`, and `SeedPaths`, moved out of the Billing
+  namespace), and billing's host stays beside it as code's did (§81 part C). The host is `Program.cs`, the `Dockerfile`,
   `retrieval.json`, `Billing/` and the tools (`BillingTools`, `BillingGraphTools`, `FeeAdjustmentTools`, and
-  `SearchDocumentsTool`, the search tool over billing's collection) become `plugins/billing/service/`.
+  `SearchDocumentsTool`, the search tool over billing's collection). It moves to `plugins/billing/service/` with
+  extract-evals-plugin, together with CodeSearch, once the eval stops hosting both in-process. Until then
+  `CoreNamesNoDomainTests` holds the library to "no domain's name" with exactly that residue allow-listed. When the
+  folder is deleted, nothing of billing remains in the compose set, the balancer, the manifests, the corpus, the seeds
+  or the env; `src/` keeps the same kind of residue as code's.
+- An index run over a corpus that is not there deletes nothing: the api's admin index names its tenants, and the run
+  now keeps only the ones the corpus itself has, where it used to remove every chunk of the named tenants.
+- The documentation search's note on a query that is an identifier alone names no domain; billing's tool keeps its
+  own wording. So a portfolio or codebase search for a bare number is no longer pointed at billing's run tools.
 - Fee adjustment moves with billing (§81, 5g): `BuiltIn/BillingBehaviour.cs`, `Agent/FeeAdjustmentFlow.cs`, and
   `PendingAdjustments` as `IContributesModel`. `FeeAdjustmentFlow` calls `A2A/ComplianceConsultant`, an Api type, so
   this change adds **one port** in `Maf.Lab.Plugins.Abstractions` for the reviewer consultation, implemented by the core
   until extract-compliance-plugin: the one non-move. The generic write confirmation stays core:
   `ConfirmationService`, `ChatTurnRunner`, `RunRejoin`, `HistoryEndpoints`.
-- `qdrant` and `neo4j` become two infra plugin folders (installation, every environment), with `depends`:
-  `neo4j-browser` → `neo4j`; `code` → `qdrant`, `neo4j`; `billing` → `qdrant`, `neo4j` (`ollama-embeddings` comes with
-  introduce-provider-plugins). `make core` and `make ci-e2e-core` stay green with neither store: the api's health
-  must not require a store.
+- `neo4j` becomes an infra plugin folder (installation, every environment), with `depends`: `neo4j-browser`, `code`
+  and `billing` → `neo4j`. `qdrant` follows with extract-portfolio-plugin: the core's portfolio server still needs it
+  here, and Compose refuses a core service that depends on a plugin's under `MAF_PLUGINS=none`. (`ollama-embeddings`
+  comes with introduce-provider-plugins.) `make core` and `make ci-e2e-core` stay green without the graph store: the
+  api's health must not require a store, and the topology shows it as not installed.
 - Jev's text becomes domain-generic (design part B, decision 6), and the guard, intent and answer-check suites are
   re-measured — in a subagent that returns only the conclusion.
 - Removed: `Agent__Servers__billing__*` in `compose/docker-compose.yml` (they would shadow the manifest's server); its

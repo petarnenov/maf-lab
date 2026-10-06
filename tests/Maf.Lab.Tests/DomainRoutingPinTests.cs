@@ -14,16 +14,17 @@ namespace Maf.Lab.Tests;
 /// domain questions and the data cards. A later change that builds these from plugin manifests must leave every pin as
 /// it is for billing, portfolio and codebase — but one: introduce-plugins task 4.6 removes the billing fallback on purpose,
 /// so an unknown tool belongs to no domain. The codebase domain's pins moved verbatim with it into its plugin (task 5.2,
-/// CodeDomainRoutingPinTests); these keep the built-in domains'.
+/// CodeDomainRoutingPinTests), and the billing domain's with it (extract-billing, BillingDomainRoutingPinTests); these
+/// keep the built-in domain's.
 /// </summary>
 public class DomainRoutingPinTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
-    public void The_built_in_domains_in_trace_order()
+    public void The_built_in_domain_in_trace_order()
     {
-        Assert.Equal(["billing", "portfolio"], Domains.All);
+        Assert.Equal(["portfolio"], Domains.All);
     }
 
     [Fact]
@@ -31,7 +32,6 @@ public class DomainRoutingPinTests
     {
         Assert.Equal(new Dictionary<string, string>
         {
-            ["billing"] = "search_documents",
             ["portfolio"] = "search_portfolio_documents",
         }, Domains.SearchTool.ToDictionary());
     }
@@ -39,21 +39,14 @@ public class DomainRoutingPinTests
     [Fact]
     public void Graph_tools_belong_to_the_domain_whose_server_offers_them()
     {
-        Assert.Equal(new Dictionary<string, string>
-        {
-            ["trace_billing_relationships"] = "billing",
-        }, Domains.GraphTool.ToDictionary());
+        Assert.Empty(Domains.GraphTool);
     }
 
     [Theory]
-    [InlineData("search_documents", "billing")]
     [InlineData("search_portfolio_documents", "portfolio")]
-    [InlineData("get_billing_run_status", "billing")]
-    [InlineData("search_billing_runs", "billing")]
     [InlineData("get_household_portfolio", "portfolio")]
     [InlineData("get_aum_history", "portfolio")]
     [InlineData("list_my_accounts", "portfolio")]
-    [InlineData("trace_billing_relationships", "billing")]
     // An unknown tool used to fall back to billing; introduce-plugins task 4.6 removed that fallback on purpose: it belongs
     // to no domain.
     [InlineData("some_unknown_tool", null)]
@@ -65,20 +58,15 @@ public class DomainRoutingPinTests
     [Fact]
     public void The_data_router_asks_about_a_closed_set_of_read_tools_and_one_veto()
     {
-        Assert.Equal(["get_billing_run_status", "search_billing_runs", "get_household_portfolio", "get_aum_history", "list_my_accounts"],
-            DataToolRouter.ReadTools);
+        Assert.Equal(["get_household_portfolio", "get_aum_history", "list_my_accounts"], DataToolRouter.ReadTools);
         Assert.Equal(new Dictionary<string, string>
         {
-            ["get_billing_run_status"] = "billing",
-            ["search_billing_runs"] = "billing",
             ["get_household_portfolio"] = "portfolio",
             ["get_aum_history"] = "portfolio",
             ["list_my_accounts"] = "portfolio",
         }, DataToolRouter.ToolDomain.ToDictionary());
-        Assert.Equal("propose_fee_adjustment", DataToolRouter.WriteTool);
-        Assert.Equal(
-            ["run_status", "tool_get_aum_history", "tool_get_billing_run_status", "tool_get_household_portfolio", "tool_list_my_accounts",
-                "tool_propose_fee_adjustment", "tool_search_billing_runs"],
+        Assert.Null(DataToolRouter.WriteTool);
+        Assert.Equal(["tool_get_aum_history", "tool_get_household_portfolio", "tool_list_my_accounts"],
             DataToolRouter.Questions().Select(q => q.Key).Order(StringComparer.Ordinal));
     }
 
@@ -87,7 +75,6 @@ public class DomainRoutingPinTests
     {
         Assert.Equal(new Dictionary<string, string>
         {
-            ["billing"] = "in_domain",
             ["portfolio"] = "in_portfolio",
         }, JevIntentClassifier.DomainQuestionIds.ToDictionary());
     }
@@ -113,9 +100,7 @@ public class DomainRoutingPinTests
         var asked = JsonNode.Parse(body)!["questions"]!.AsObject().Select(q => q.Key).ToHashSet(StringComparer.Ordinal);
         string[] routing =
         [
-            "intent", "in_domain", "in_portfolio", "run_status",
-            "tool_get_aum_history", "tool_get_billing_run_status", "tool_get_household_portfolio", "tool_list_my_accounts",
-            "tool_propose_fee_adjustment", "tool_search_billing_runs",
+            "intent", "in_portfolio", "tool_get_aum_history", "tool_get_household_portfolio", "tool_list_my_accounts",
         ];
         Assert.Superset(routing.ToHashSet(StringComparer.Ordinal), asked);
         // Besides routing, only the prompt-screening battery rides in the same request.

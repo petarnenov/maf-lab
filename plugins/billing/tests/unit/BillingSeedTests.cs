@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using System.Text.Json;
 using Maf.Lab.Domain.Billing;
 using Maf.Lab.Domain.Tenancy;
@@ -11,7 +12,7 @@ public class BillingSeedTests
     private static readonly Principal FirmB = new("bianca", TenantId.Firm("firm-b"), Role.USER);
 
     private static BillingSeedStore Load() =>
-        new(File.ReadAllText(Path.Combine(CorpusLoaderTests.RepoRoot(), "compose", "seed", "billing-runs.json")));
+        new(File.ReadAllText(Path.Combine(BillingPluginSupport.Folder, "files", "seed", "billing-runs.json")));
 
     [Fact]
     public void Seed_loads_and_run_4417_is_firm_a_failed_with_fs_required()
@@ -32,7 +33,7 @@ public class BillingSeedTests
     [Fact]
     public void Output_contracts_have_no_note_field_even_when_the_seed_has_one()
     {
-        var seed = File.ReadAllText(Path.Combine(CorpusLoaderTests.RepoRoot(), "compose", "seed", "billing-runs.json"));
+        var seed = File.ReadAllText(Path.Combine(BillingPluginSupport.Folder, "files", "seed", "billing-runs.json"));
         Assert.Contains("external@evil.example", seed);
 
         var store = Load();
@@ -58,10 +59,11 @@ public class BillingSeedTests
 public class BillingSeedPathTests
 {
     [Fact]
-    public void Seed_is_found_from_the_repository_without_configuration()
+    public void Configuration_wins_over_the_repository()
     {
-        var path = BillingSeedStore.ResolvePath(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
-        Assert.True(File.Exists(path), path);
-        Assert.EndsWith(Path.Combine("compose", "seed", "billing-runs.json"), path);
+        var configuration = new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Billing:SeedPath"] = "/seed/billing-runs.json" })
+            .Build();
+        Assert.Equal(Path.GetFullPath("/seed/billing-runs.json"), BillingSeedStore.ResolvePath(configuration));
     }
 }

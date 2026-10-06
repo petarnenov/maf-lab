@@ -5,6 +5,8 @@ using Microsoft.Extensions.Configuration;
 
 namespace Maf.Lab.Retrieval.Billing;
 
+// names a domain until the extract-evals-plugin follow-up moves it (introduce-plugins 8.1)
+// The billing host, which stays here until the eval stops hosting it in-process.
 /// <summary>
 /// The only writable thing in the MCP server: adjustments that have actually been applied.
 /// The seeded fee stays read-only, so an account's current fee is its seed plus this ledger.

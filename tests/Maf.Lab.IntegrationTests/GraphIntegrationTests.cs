@@ -1,3 +1,4 @@
+using Maf.Lab.TestSupport;
 using System.Text.Json;
 using Maf.Lab.CodeSearch;
 using Maf.Lab.CodeSearch.Tools;
@@ -192,7 +193,7 @@ public sealed class GraphIntegrationTests(Neo4jFixture neo4j) : IDisposable
     [Fact]
     public async Task The_code_graph_of_this_repository_answers_callers_and_change_impact()
     {
-        await using var provider = neo4j.Services(v => v["Graph:RepositoryRoot"] = CorpusIndexFixture.RepoRoot());
+        await using var provider = neo4j.Services(v => v["Graph:RepositoryRoot"] = Repo.Root());
         await neo4j.ResetAsync(provider);
         var summary = Assert.Single(await provider.GetRequiredService<GraphBuildService>().RunAsync([GraphSources.Code], null, Ct));
         Assert.True(summary.NodesTotal > 1000);

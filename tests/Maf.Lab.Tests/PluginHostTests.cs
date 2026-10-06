@@ -25,7 +25,7 @@ public class PluginHostTests
     [Fact]
     public async Task With_no_plugin_the_api_boots_and_registers_nothing_of_one()
     {
-        using var factory = new ApiFactory(ApiFactory.ProceduralModel());
+        using var factory = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = [] };
         var client = factory.ClientFor("adam", "firm-a", Role.USER);
 
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/fixture/ping", Ct)).StatusCode);

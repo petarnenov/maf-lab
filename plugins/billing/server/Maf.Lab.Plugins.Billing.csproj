@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>The billing plugin's in-process part: the billing domain's behaviour (routed reads, run status, summaries) and its chunk store for the review queue</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Maf.Lab.Plugins.Abstractions\Maf.Lab.Plugins.Abstractions.csproj" />
+    <ProjectReference Include="..\..\..\src\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />
+    <!-- The core retrieval library: its tool names, Jev question types and the tenant-scoped chunk store. -->
+    <ProjectReference Include="..\..\..\src\Maf.Lab.Retrieval\Maf.Lab.Retrieval.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Maf.Lab.Tests" />
+    <InternalsVisibleTo Include="Maf.Lab.IntegrationTests" />
+  </ItemGroup>
+</Project>

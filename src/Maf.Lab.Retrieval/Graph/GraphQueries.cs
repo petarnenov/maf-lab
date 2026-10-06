@@ -2,6 +2,8 @@ using Maf.Lab.Domain.Graph;
 
 namespace Maf.Lab.Retrieval.Graph;
 
+// names a domain until the extract-evals-plugin follow-up moves it (introduce-plugins 8.1)
+// The billing graph: its templates and builder move with the template-contribution seam.
 /// <summary>One row of a graph result: column name → value (string, long, bool, list or null).</summary>
 public interface IGraphRow
 {

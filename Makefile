@@ -34,7 +34,7 @@ ifeq ($(CI_MODE),1)
 # CI's plugin set, a positive list kept here only (introduce-plugins 5.1): CI_MODE means no downloads and no secrets,
 # so the developer tools stay out (a2a-inspector even builds from a git context). Each plugin extracted from the core
 # adds itself here in the same commit.
-CI_PLUGINS    ?= code,monitor,conversation-history,_example
+CI_PLUGINS    ?= billing,code,monitor,conversation-history,_example
 MAF_PLUGINS   := $(CI_PLUGINS)
 endif
 export MAF_ENV MAF_PLUGINS
@@ -67,7 +67,6 @@ COMPOSE       := docker compose -p $(COMPOSE_PROJECT)
 # ── configuration (override on the command line or in the environment) ─────────────────────────────────────────────
 BASE_URL      ?= http://localhost:7171
 API_REPLICAS  ?= 2
-MCP_REPLICAS  ?= 2
 PORTFOLIO_REPLICAS ?= 2
 COMPLIANCE_REPLICAS ?= 2
 CHAT_MODEL    ?= gpt-oss:120b
@@ -82,7 +81,7 @@ export CHAT_MODEL OLLAMA_MODELS_DIR
 # The repository, mounted into the api (read-write), the test agent and the coverage runner (read-only) at this same path.
 MAF_LAB_REPO  ?= $(ROOT)
 export MAF_LAB_REPO
-# The user the api runs as, so what it writes there (branches, merges, evals/, data/) is yours, not root's. Docker
+# The user the api runs as, so what it writes there (branches, merges, evals/) is yours, not root's. Docker
 # Desktop maps bind mounts to you anyway; on rootless Docker or userns-remap set both to 0 (DECISIONS.md §70).
 MAF_LAB_UID   ?= $(shell id -u)
 MAF_LAB_GID   ?= $(shell id -g)
@@ -120,18 +119,18 @@ INDEXER_SRC  := $(shell find src/Maf.Lab.Indexing src/Maf.Lab.Retrieval src/Maf.
 INDEXER      := $(DOTNET) $(INDEXER_DLL)
 
 .PHONY: all help up core plugins plugin-new plugin-new-check plugin-switch-check plugin-on plugin-off product-check down restart ps logs print-compose-file clean infra index index-portfolio indexer graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
-        coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-answer-check eval-code-route eval-graph-depth eval-retrieval-backends eval-a2a neo4j-chunks dev doctor banner index-if-empty \
+        coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-answer-check eval-code-route eval-graph-depth eval-a2a dev doctor banner index-if-empty \
         specs docs docs-check lint-dotnet lint-web build-web ci ci-e2e ci-e2e-core core-turn-check setup \
         require-docker require-dotnet require-npm require-python
 
 all: require-docker up index-if-empty banner ## Start everything: build, run, wait for health, index if empty (default)
 
 help: ## List the targets
-	@echo "maf-lab — make targets (variables: API_REPLICAS MCP_REPLICAS PORTFOLIO_REPLICAS COMPLIANCE_REPLICAS CHAT_MODEL SUITE BASE_URL WAIT_TIMEOUT TO FORCE)"
+	@echo "maf-lab — make targets (variables: API_REPLICAS PORTFOLIO_REPLICAS COMPLIANCE_REPLICAS CHAT_MODEL SUITE BASE_URL WAIT_TIMEOUT TO FORCE)"
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 # ── lifecycle ────────────────────────────────────────────────────────────────────────────────────────────────────
-up: require-docker ## Build and start the stack (replicas via API_REPLICAS/MCP_REPLICAS/PORTFOLIO_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy
+up: require-docker ## Build and start the stack (replicas via API_REPLICAS/PORTFOLIO_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy
 	@if [ "$(CI_MODE)" != "1" ] && [ -z "$$OLLAMA_API_KEY" ]; then echo "⚠ OLLAMA_API_KEY is not set: the stack starts, but chat (Ollama Cloud) will fail. Run 'make setup'."; fi
 	@if [ "$(CI_MODE)" != "1" ] && [ -z "$$JEV_MAF_LAB" ]; then echo "⚠ JEV_MAF_LAB is not set: the stack starts, but no turn is classified (nothing forced to search)."; fi
 	@# Earlier versions ran the api as root; give back to you whatever it left owned by root in the checkout.
@@ -140,12 +139,12 @@ up: require-docker ## Build and start the stack (replicas via API_REPLICAS/MCP_R
 	@# snippets): rewritten on every start, so a stack brought down with another set never keeps a stale snippet.
 	@$(PLUGINS_PY) install
 	@# compose itself waits for the balancer's dependencies to be healthy; if that fails, show which service and why.
-	$(COMPOSE) up -d --build --remove-orphans --scale api=$(API_REPLICAS) --scale mcp-retrieval=$(MCP_REPLICAS) \
+	$(COMPOSE) up -d --build --remove-orphans --scale api=$(API_REPLICAS) \
 	  --scale mcp-portfolio=$(PORTFOLIO_REPLICAS) --scale compliance=$(COMPLIANCE_REPLICAS) \
 	  || { scripts/wait_healthy.sh 0; exit 1; }
 	@scripts/wait_healthy.sh $(WAIT_TIMEOUT)
 	@# The balancer resolves the replicas when it (re)loads; reload so it sees the current set after scaling/recreation.
-	@$(COMPOSE) exec -T lb nginx -c /etc/nginx/lb/nginx.conf -s reload >/dev/null 2>&1 && echo "✓ load balancer reloaded ($(API_REPLICAS) api, $(MCP_REPLICAS) mcp, $(PORTFOLIO_REPLICAS) portfolio, $(COMPLIANCE_REPLICAS) compliance replicas)"
+	@$(COMPOSE) exec -T lb nginx -c /etc/nginx/lb/nginx.conf -s reload >/dev/null 2>&1 && echo "✓ load balancer reloaded ($(API_REPLICAS) api, $(PORTFOLIO_REPLICAS) portfolio, $(COMPLIANCE_REPLICAS) compliance replicas)"
 	@# Every replica re-reads plugins/.installed now rather than at its next 30-second check.
 	@$(COMPOSE) exec -T redis redis-cli PUBLISH plugins-changed up >/dev/null 2>&1 || true
 
@@ -204,10 +203,10 @@ banner:
 	@echo ""
 
 # ── data ─────────────────────────────────────────────────────────────────────────────────────────────────────────
-infra: require-docker ## Start only the indexer's infrastructure (Qdrant, Neo4j, both Ollama instances + the embedding model) and wait until healthy
-	@# Host-side indexer CLIs need Qdrant (6333/6334), Neo4j (7687) and both compose Ollamas (11435 queries, 11436
-	@# documents); a no-op when the stack is already up.
-	@$(COMPOSE) up -d --wait qdrant neo4j ollama ollama-batch
+infra: require-docker ## Start only the indexer's infrastructure (Qdrant, both Ollama instances + the embedding model, and installed stores) and wait until healthy
+	@# Host-side indexer CLIs need Qdrant (6333/6334) and both compose Ollamas (11435 queries, 11436 documents); a store
+	@# plugin adds itself (the neo4j plugin's infra-neo4j). A no-op when the stack is already up.
+	@$(COMPOSE) up -d --wait qdrant ollama ollama-batch
 	@$(COMPOSE) up --no-log-prefix ollama-init ollama-warm
 
 index-if-empty: require-dotnet
@@ -221,34 +220,22 @@ $(INDEXER_DLL): $(INDEXER_SRC) | require-dotnet
 # The indexer's build, by name: what a plugin's index targets depend on (a plugin.mk is read before $(INDEXER_DLL) is set).
 indexer: $(INDEXER_DLL)
 
-index: require-dotnet infra $(INDEXER_DLL) ## Index the built-in domains' corpora, then build their graph; installed plugins add theirs (unchanged documents are skipped)
-	$(HOST_ENV) $(INDEXER) index
+index: require-dotnet infra $(INDEXER_DLL) ## Index the built-in domains' corpora; each plugin present adds its corpus and graph (unchanged documents are skipped)
 	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) index
-	$(HOST_ENV) $(INDEXER) graph --only billing
 
-graph: require-dotnet infra $(INDEXER_DLL) ## Build the Neo4j graph: billing relationships, and any installed plugin's graph (unchanged nodes are not rewritten)
-	$(HOST_ENV) $(INDEXER) graph --only billing
-
-neo4j-chunks: require-dotnet infra $(INDEXER_DLL) ## Spike: copy the billing and portfolio chunks from Qdrant into Neo4j for eval-retrieval-backends
-	$(HOST_ENV) $(INDEXER) neo4j-chunks
-	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) neo4j-chunks
-	@printf 'store size: neo4j %s · qdrant %s\n' "$$($(COMPOSE) exec -T neo4j du -sh /data/databases/neo4j 2>/dev/null | cut -f1)" "$$($(COMPOSE) exec -T qdrant du -shc /qdrant/storage/collections/maf_chunks /qdrant/storage/collections/maf_portfolio_chunks 2>/dev/null | tail -1 | cut -f1)"
+graph: ## Build the Neo4j graph: each plugin present adds its own (unchanged nodes are not rewritten)
 
 index-portfolio: require-dotnet infra $(INDEXER_DLL) ## Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only
 	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) index
 
-reindex: require-dotnet infra $(INDEXER_DLL) ## Re-embed every document of the built-in domains, and of installed plugins (--force)
-	$(HOST_ENV) $(INDEXER) index --force
+reindex: require-dotnet infra $(INDEXER_DLL) ## Re-embed every document of the built-in domains, and of each plugin present (--force)
 	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) index --force
 
-drift: require-dotnet infra $(INDEXER_DLL) ## Report stale documents: the index and the billing graph against the source
-	$(HOST_ENV) $(INDEXER) drift
+drift: ## Report stale documents: each plugin present compares its index and graph against its source
 
-rebuild-index: require-dotnet infra $(INDEXER_DLL) ## Re-create the collection with every configured dense vector and re-index (asks unless FORCE=1)
-	$(HOST_ENV) $(INDEXER) rebuild $(if $(filter 1,$(FORCE)),--yes,)
+rebuild-index: ## Re-create each plugin's collection with every configured dense vector and re-index it (asks unless FORCE=1)
 
-migrate: require-dotnet infra $(INDEXER_DLL) ## Fill a provisioned dense vector with its configured model (TO=dense_v3)
-	$(HOST_ENV) $(INDEXER) migrate --to $(TO)
+migrate: ## Fill a provisioned dense vector with its configured model in each plugin's collection (TO=dense_v3)
 
 # ── quality ──────────────────────────────────────────────────────────────────────────────────────────────────────
 test: test-dotnet test-web ## Run all tests (.NET unit + integration, web)
@@ -359,9 +346,6 @@ eval-answer-check: require-dotnet ## Eval: Jev's answer check alone — are labe
 
 eval-code-route: require-dotnet ## Eval: Jev's code-route answer alone — would each code question start with the right graph call or the search? (needs JEV_MAF_LAB)
 	$(EVAL) code-route
-
-eval-retrieval-backends: require-dotnet ## Spike comparison: retrieval cases on Qdrant and on Neo4j side by side, never gated (run make neo4j-chunks first)
-	$(EVAL) retrieval-backends
 
 eval-graph-depth: require-dotnet ## Comparison: code graph traces at depth 2, 3 and 4, side by side, never gated (STRUCTURAL=1 for no model)
 	$(EVAL) graph-depth $(if $(STRUCTURAL),--structural-only)

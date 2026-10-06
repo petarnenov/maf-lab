@@ -51,7 +51,8 @@ public class CodeRoutingRequestTests
         // routing questions; the routing questions still travel here and the state stays the user's question alone.
         string[] expected = ["intent", "in_domain", "in_portfolio", "in_codebase", .. JevGuardQuestions.PromptIds,
             "tool_get_billing_run_status", "tool_search_billing_runs", "tool_propose_fee_adjustment",
-            "tool_get_household_portfolio", "tool_get_aum_history", "tool_list_my_accounts", "run_status",
+            "tool_get_household_portfolio", "tool_get_aum_history", "tool_list_my_accounts",
+            // (Billing's own run_status question is the billing plugin's; the core's stand-in for billing asks none.)
             // What a codebase question needs (route-structural-code-questions) rides in the same request, after them.
             "code_need"];
         Assert.Equal(expected, questions.EnumerateObject().Select(q => q.Name));

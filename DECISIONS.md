@@ -3350,6 +3350,45 @@ No package version moves in this change.
   - The core-only leg reads the CI stub's request journal (WireMock's `GET`/`DELETE /__admin/requests`, a Test Spy) to
     prove a declined turn made no model, embedding or Jev call. Rejected: the api's own `modelCalls`, OpenTelemetry.
 
+- **Part F (extract-billing, the first follow-up).**
+  - The A2A run-status skill asks billing's server through `IToolSource`, as every other partner question does. It
+    uses a firm-scoped dev token (`DevJwt.Issue(auth, "a2a:{firm}", firm, READ_ONLY)`), never the partner's token, whose
+    audience the MCP server refuses by construction. The handler names the billing domain until extract-a2a-plugin
+    (allow-listed). Without billing, it answers out of scope and the card drops its billing skills. Rejected: an
+    in-process `IBillingRunStatus` port (a domain-named contract in the core, called only by the core), and reading the
+    seed in the api.
+  - Billing's host follows code's (part C): `src/Maf.Lab.Retrieval`'s `Program.cs`, `Billing/` and its tools stay
+    there until extract-evals-plugin, because the eval hosts the server in-process (`BuildApp`, eight factory sites).
+    `CoreNamesNoDomainTests` scans that library too, for any name that contains a domain's, so only the allow-listed
+    host and the billing graph name billing. Rejected: moving the project now, and a `service/` glob of our own.
+  - Two leaks out of the library were fixed rather than allow-listed. The identifier-only note of the generic
+    documentation search names no domain; billing's tool maps it back to its own wording. The billing stores are
+    registered by the billing host, not by the library's composition.
+  - The seeds and the corpus live in the plugin (`files/seed`, `files/corpus`). Compose mounts them and `billing.env`
+    names them. Under make, the plugin's `plugin.mk` exports `Billing__SeedPath`, `Billing__AccountsSeedPath` and
+    `MAF_ADMIN_INDEX_CORPUS`, the same make-owned-input mechanism as `MAF_LAB_REPO`. A missing seed fails naming the key
+    that says where it is. Rejected: a repository lookup of `plugins/*/files/seed` (the core learning the plugin layout
+    by convention).
+  - The api's admin index reads its corpus through the existing `/plugins` mount: `Indexing__CorpusRoot:
+    /plugins/${MAF_ADMIN_INDEX_CORPUS:-.no-corpus}`, unset meaning no corpus. index-admin replaces the variable with
+    each plugin's corpus from its manifest. A run over a missing corpus deletes nothing, because an explicit tenant
+    list is intersected with the corpus's own. Contextual retrieval in an admin run would need a writable
+    `Indexing:CacheDirectory`. Rejected: a second host mount with a tracked empty folder, keeping `data/` in the core,
+    and an exemption mechanism.
+  - `compose/env/billing.env` split three ways by owner: the plugin's own file, and `a2a.env` and `compliance.env` for
+    the api until their follow-ups. Each consumer reads only what it uses (least privilege): the compliance reviewer
+    and the portfolio server read none of them.
+  - The graph store is the `neo4j` infra plugin, which `billing`, `code` and `neo4j-browser` depend on. The topology
+    shows it as not installed, not as a fault. `make infra` gains it through its `plugin.mk`. Qdrant follows with
+    extract-portfolio, the last domain that needs it in the core.
+  - The core tests run on a fixture domain named after the shared fakes (`FixtureBillingPlugin`: plugin
+    `fixture-billing`, domain `billing`), installed by default in `ApiFactory`. Its sameness with the plugin's table is
+    pinned by the plugin's own test, not assumed. Its plugin name is not `billing`, so the real plugin's code never joins
+    it. Its behaviour is a deliberately simple test double, not billing's parsing. Rejected for now: a neutral fixture id
+    (`documents`), a 48-file rename for no change in what is asserted; revisit once portfolio has also left.
+  - The core's retrieval acceptance tests (tenant isolation, the relevance gate and floors, query normalisation) run
+    on a small corpus of no domain's, so they stay when billing's corpus is gone.
+
 ## 82. The stop-anything tests run on a fake clock (deterministic-stop-anything-tests, 2026-10-06)
 
 - **Why.** Three tests (`TaskCancelWatchTests.Disposed_it_stops_reading`,

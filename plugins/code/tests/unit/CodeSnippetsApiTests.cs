@@ -31,7 +31,7 @@ public class CodeSnippetsApiTests
             s.RemoveAll<ICodeSnippetSource>();
             s.AddSingleton(source);
         },
-        InstalledPlugins = [CodePluginSupport.Manifest],
+        InstalledPlugins = [CodePluginSupport.Manifest, .. StandInDomains.Installed],
     }.WithCode();
 
     [Fact]

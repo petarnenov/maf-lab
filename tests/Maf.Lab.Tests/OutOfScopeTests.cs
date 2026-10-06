@@ -12,8 +12,13 @@ namespace Maf.Lab.Tests;
 /// (refuse-off-domain-questions); what is still the model's to judge — a follow-up, small talk, a failed classification,
 /// the refusal switched off — reaches it as before.
 /// </summary>
-public class OutOfScopeTests
+public class OutOfScopeTests : IDisposable
 {
+    // The stand-in billing domain the shared fakes speak, with portfolio built in, for the static readers.
+    private readonly IDisposable _domains = DomainCatalogue.Use(StandInDomains.WithBilling);
+
+    public void Dispose() => _domains.Dispose();
+
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private const string Frogs = "What do frogs eat?";

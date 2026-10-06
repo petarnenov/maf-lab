@@ -11,6 +11,9 @@ code; it changes no behaviour, except where a line below says so.
 
 - `plugins/portfolio/` (mcp, tenant scope, every environment): manifest with `[domain]` from
   `BuiltIn/portfolio/`, `prompt.md`, `server.json`, its compose service (`mcp-portfolio`), lb parts and corpus.
+- `qdrant` becomes an infra plugin folder (installation, every environment), moved here from extract-billing-plugin,
+  once no core service needs it: `billing`, `code` and `portfolio` gain `depends` on it, and `make core` stays green
+  without it.
 - Removed: `Agent__Servers__portfolio__*` in `compose/docker-compose.yml` (the same shadowing as billing's); the MCP
   Inspector's `builtIn` constant entirely.
 - Removed with it (no behaviour change: `MAF_PLUGINS=none` already yields no domain): `Agent__BuiltInDomains` in the

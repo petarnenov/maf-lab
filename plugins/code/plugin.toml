@@ -2,6 +2,7 @@ schema = 1
 name = "code"
 kind = "mcp"
 scope = "installation"
+depends = ["neo4j"]
 environments = ["dev", "qa"]
 description = "The lab's own source code as a domain: the codebase MCP server (search_codebase and the code-graph tools), its domain descriptor and routing, and the chat's Code snippets pane."
 progress = "Terminal: make index-code and make graph-code show the indexer's progress bar; Page: the Code snippets pane shows its loading state while /api/code/snippets answers"

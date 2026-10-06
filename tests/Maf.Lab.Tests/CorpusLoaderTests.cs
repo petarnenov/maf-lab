@@ -36,18 +36,6 @@ public sealed class CorpusLoaderTests : IDisposable
         Assert.Equal(["firm-b/docs/b.md"], snapshot.Documents.Select(d => d.DocId));
     }
 
-    [Fact]
-    public void Real_corpus_rejects_the_orphan_and_has_the_expected_tenants()
-    {
-        var root = Path.Combine(RepoRoot(), "data");
-        var snapshot = CorpusLoader.Load(root);
-
-        Assert.Contains(snapshot.Rejected, r => r.Path == "unowned/docs/orphan-notes.md");
-        Assert.Equal(["firm-a", "firm-b", "firm-c", "shared"], snapshot.Documents.Select(d => d.Tenant.Value).Distinct().Order());
-        Assert.Equal(50, snapshot.Documents.Count(d => d.Tenant.Value == "firm-c"));
-        Assert.True(snapshot.Documents.Count(d => d.Tenant.Value == "firm-b") >= 8 * 50);
-    }
-
     public static string RepoRoot()
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)

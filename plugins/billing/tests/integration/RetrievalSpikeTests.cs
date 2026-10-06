@@ -20,7 +20,7 @@ public sealed class RetrievalSpikeFixture(QdrantFixture qdrant) : IAsyncLifetime
 {
     public const string Collection = "maf_chunks";
     public Neo4jFixture Neo4j { get; } = new();
-    public string CorpusRoot { get; } = Path.Combine(CorpusIndexFixture.RepoRoot(), "data");
+    public string CorpusRoot { get; } = Path.Combine(Repo.Root(), "plugins", "billing", "files", "corpus");
     public QdrantFixture Qdrant => qdrant;
     public RetrievalCopySummary FirstCopy { get; private set; } = null!;
 

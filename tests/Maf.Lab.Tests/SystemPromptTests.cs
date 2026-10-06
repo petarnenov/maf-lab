@@ -12,15 +12,16 @@ public class SystemPromptTests
     [Fact]
     public void The_default_is_v6_assembled_from_the_built_in_domains()
     {
+        // Portfolio built in and the stand-in billing domain (no fragment of its own: billing's is the plugin's).
+        using var domains = DomainCatalogue.Use(StandInDomains.WithBilling);
         var prompt = Load(null);
 
         Assert.Equal("core.v6", prompt.Version);
         Assert.DoesNotContain("{{", prompt.Text);
         Assert.DoesNotContain("<!--", prompt.Text);
-        Assert.Contains("trace_billing_relationships", prompt.Text);
         Assert.Contains("## Data cards", prompt.Text);
         Assert.Contains("never calculate trades", prompt.Text);
-        Assert.Contains("cross from one domain", prompt.Text);
+        // (Crossing into billing needs billing's own fragment: BillingSystemPromptTests, in the billing plugin.)
         Assert.Contains("general programming that is not about these domains", prompt.Text);
         Assert.DoesNotContain("travel, coding,", prompt.Text);
         // A domain that is not in use is not in the prompt (introduce-plugins 5g): without the code plugin, no code.

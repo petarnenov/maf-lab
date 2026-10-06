@@ -74,7 +74,7 @@ public sealed class PluginContractTests
 
     private static void AssertBootsWithAndWithout(PluginManifest manifest)
     {
-        using (var without = new ApiFactory(ApiFactory.ProceduralModel()))
+        using (var without = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = [] })
         {
             _ = without.CreateClient();
             Assert.Empty(RoutesOf(without, manifest.Name));

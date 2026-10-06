@@ -302,7 +302,8 @@ public class IndexingPipelineTests(QdrantFixture qdrant)
 
         var id = await search.SearchAsync(FirmA, "4417", null, 5, null, Ct);
         Assert.Empty(id.Result.Results);
-        Assert.Contains("get_billing_run_status", id.Result.RefineHint);
+        Assert.True(id.IdentifierOnly);
+        Assert.Equal(DocumentSearchService.IdentifierOnlyNote, id.Result.RefineHint);
     }
 
     [Fact]

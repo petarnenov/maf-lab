@@ -8,6 +8,8 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Maf.Lab.Retrieval;
 
+// names a domain until the extract-evals-plugin follow-up moves it (introduce-plugins 8.1)
+// The billing host, which stays here until the eval stops hosting it in-process.
 /// <summary>MCP server (protocol 2026-07-28, Streamable HTTP, stateless) exposing search_documents and the billing stub tools.</summary>
 public partial class Program
 {
@@ -33,6 +35,8 @@ public partial class Program
         // the graph tool answers "temporarily unavailable" until it is back.
         builder.Services.AddGraphStore(builder.Configuration);
         // The writable store belongs to this server alone, so it is registered here and not in the shared core.
+        builder.Services.TryAddSingleton<Billing.BillingSeedStore>();
+        builder.Services.TryAddSingleton<Billing.BillingAccountStore>();
         builder.Services.AddSingleton<Billing.FeeAdjustmentLedger>();
         builder.Services.AddSingleton<Billing.AccountFees>();
         builder.Services.AddSingleton<Billing.ProposalSigner>();

@@ -23,7 +23,7 @@ public class CodeSystemPromptTests
         Assert.DoesNotContain("{{", prompt.Text);
         Assert.DoesNotContain("<!--", prompt.Text);
         // add-neo4j-graph: the graph tools are named, and coverage and callers come from them, not from a snippet.
-        Assert.Contains("trace_billing_relationships", prompt.Text);
+        // (Billing's graph tool is named in billing's own fragment, the billing plugin's: the stand-in here has none.)
         Assert.Contains("trace_code_symbol", prompt.Text);
         Assert.Contains("change_impact", prompt.Text);
         Assert.Contains("not from search_codebase", prompt.Text);

@@ -29,8 +29,13 @@ namespace Maf.Lab.Tests;
 /// tools, Jev's verdict on which domains a question belongs to, the searches that verdict forces, and the trace that
 /// shows where a turn crossed from one domain into the other.
 /// </summary>
-public class PortfolioDomainTests
+public class PortfolioDomainTests : IDisposable
 {
+    // The stand-in billing domain the shared fakes speak, with portfolio built in, for the static readers.
+    private readonly IDisposable _domains = DomainCatalogue.Use(StandInDomains.WithBilling);
+
+    public void Dispose() => _domains.Dispose();
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 

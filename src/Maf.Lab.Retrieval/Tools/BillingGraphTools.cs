@@ -9,6 +9,8 @@ using ModelContextProtocol.Server;
 
 namespace Maf.Lab.Retrieval.Tools;
 
+// names a domain until the extract-evals-plugin follow-up moves it (introduce-plugins 8.1)
+// The billing host, which stays here until the eval stops hosting it in-process.
 /// <summary>
 /// The billing graph: how accounts, households, fee schedules and documents connect, within the caller's firm and the
 /// shared corpus. Read-only; the tenant comes from the principal, the query from a fixed template.

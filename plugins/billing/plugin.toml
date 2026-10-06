@@ -1,0 +1,35 @@
+schema = 1
+name = "billing"
+kind = "mcp"
+# Tenant-scoped, as a domain a tenant takes up is: today an installed tenant-scoped plugin is in use for every tenant;
+# per-tenant allow and enable arrive with enable-plugins-per-tenant.
+scope = "tenant"
+environments = ["dev", "qa", "stage", "prod"]
+depends = ["neo4j"]
+description = "Fee billing as a domain: its MCP server (mcp-retrieval: documentation search, run status and history, the billing graph, fee adjustments), its corpus and seeds, and its domain descriptor and routing."
+progress = "Terminal: make index-billing and make graph-billing show the indexer's progress bar; Page: a billing turn shows its steps as it runs"
+stopping = "Key: Ctrl+C on make index-billing or make graph-billing, Esc on the chat page; Stop: the indexer stops at a safe point (exit 130), a turn stops through CopilotKit's stop; Recorded in: the indexer's run state and the run's state in the shared store; Shown: the bar ends with stopped, the turn says it was stopped"
+
+[domain]
+id = "billing"
+order = 10
+question_key = "in_domain"
+description = "Fee billing on a wealth-management platform: billing runs and their failure codes, fee schedules and fee tiers, billable AUM and billing exclusions, invoices, fee adjustments and billing credits, billing periods and period close, household fee aggregation, custodian fee debits, client fee disputes, terminations and refunds, and who may approve what."
+search_tool = "search_documents"
+graph_tools = ["trace_billing_relationships"]
+guard_context = "documents"
+prompt = "prompt.md"
+
+[domain.read_tools]
+get_billing_run_status = "Returns the current status of one billing run by its run id: status, billing period, account count and failure reason."
+search_billing_runs = "Lists the firm's billing runs, optionally filtered by status (pending, running, completed, failed) and billing period."
+
+[domain.write_tools]
+propose_fee_adjustment = "Proposes a change to one account's fee (a credit or an increase), for a person to confirm."
+
+[domain.tool_requires]
+propose_fee_adjustment = "compliance"
+
+[domain.scope_summary]
+en = "your firm's billing (fees, fee schedules, billing runs, fee adjustments)"
+bg = "с таксуването на Вашата фирма (такси, тарифи, билинг цикли, корекции на такси)"

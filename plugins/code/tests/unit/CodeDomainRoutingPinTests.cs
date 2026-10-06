@@ -11,8 +11,9 @@ namespace Maf.Lab.Tests;
 
 /// <summary>
 /// The codebase domain's part of the routing pins (introduce-plugins task 1.1), moved verbatim with the domain into its
-/// plugin (task 5.2): run in the three-domain view the lab had when they were written — billing and portfolio built
-/// in, codebase from this folder's manifest — every assertion is the one the core pin made.
+/// plugin (task 5.2): run in the three-domain view the lab had when they were written — billing (the core tests'
+/// stand-in for it, since extract-billing) and portfolio, codebase from this folder's manifest — every assertion is the
+/// one the core pin made, but billing's own run_status question, which is the billing plugin's.
 /// </summary>
 public class CodeDomainRoutingPinTests
 {
@@ -99,9 +100,10 @@ public class CodeDomainRoutingPinTests
 
         var body = Assert.Single(jev.Requests).Body;
         var asked = JsonNode.Parse(body)!["questions"]!.AsObject().Select(q => q.Key).ToHashSet(StringComparer.Ordinal);
+        // Billing's own run_status question is the billing plugin's; the core's stand-in for billing asks none.
         string[] routing =
         [
-            "intent", "in_domain", "in_portfolio", "in_codebase", "code_need", "run_status",
+            "intent", "in_domain", "in_portfolio", "in_codebase", "code_need",
             "tool_get_aum_history", "tool_get_billing_run_status", "tool_get_household_portfolio", "tool_list_my_accounts",
             "tool_propose_fee_adjustment", "tool_search_billing_runs",
         ];

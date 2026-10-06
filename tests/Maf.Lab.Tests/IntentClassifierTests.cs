@@ -12,8 +12,13 @@ namespace Maf.Lab.Tests;
 
 /// <summary>Jev is the only intent classifier: one typed Choice per turn, and nothing it answers can do more than pick
 /// one of the known intents — or, when it is unsure, unavailable or unusable, force nothing.</summary>
-public class IntentClassifierTests
+public class IntentClassifierTests : IDisposable
 {
+    // The stand-in billing domain the shared fakes speak, with portfolio built in, for the static readers.
+    private readonly IDisposable _domains = DomainCatalogue.Use(StandInDomains.WithBilling);
+
+    public void Dispose() => _domains.Dispose();
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private sealed record Harness(JevIntentClassifier Classifier, FakeJev Jev, CapturingLoggerProvider Logs);

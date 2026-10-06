@@ -1,4 +1,3 @@
-using Maf.Lab.Retrieval.Billing;
 using Maf.Lab.Retrieval.Configuration;
 using Maf.Lab.Retrieval.Jev;
 using Maf.Lab.Retrieval.Models;
@@ -42,8 +41,6 @@ public static class RetrievalServiceCollectionExtensions
                 ? ActivatorUtilities.CreateInstance<LlmQueryTranslator>(sp)
                 : new NoOpQueryTranslator());
         services.TryAddSingleton<DocumentSearchService>();
-        services.TryAddSingleton<BillingSeedStore>();
-        services.TryAddSingleton<BillingAccountStore>();
         return services;
     }
 }

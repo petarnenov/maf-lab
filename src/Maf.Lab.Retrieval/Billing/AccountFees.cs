@@ -3,6 +3,8 @@ using Maf.Lab.Domain.Tenancy;
 
 namespace Maf.Lab.Retrieval.Billing;
 
+// names a domain until the extract-evals-plugin follow-up moves it (introduce-plugins 8.1)
+// The billing host, which stays here until the eval stops hosting it in-process.
 /// <summary>
 /// An account's fee as it stands: what the seed says plus every adjustment that has been applied to it.
 /// The seed is a fixture and stays read-only; the ledger is the only thing that moves.

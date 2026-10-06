@@ -20,6 +20,7 @@ public sealed class NoDomainTests
     {
         // No built-in domain kept and no plugin installed: `make core`.
         ExtraSettings = new Dictionary<string, string?> { ["Agent:BuiltInDomains"] = "" },
+        InstalledPlugins = [],
     };
 
     [Theory]

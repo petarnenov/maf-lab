@@ -12,6 +12,8 @@ using Maf.Lab.Hosting;
 
 namespace Maf.Lab.Retrieval.Tools;
 
+// names a domain until the extract-evals-plugin follow-up moves it (introduce-plugins 8.1)
+// The billing host, which stays here until the eval stops hosting it in-process.
 [JsonConverter(typeof(JsonStringEnumConverter<DocSourceType>))]
 public enum DocSourceType
 {
@@ -59,7 +61,7 @@ public sealed class SearchDocumentsTool(DocumentSearchService search, IPrincipal
             var types = sourceTypes?.Select(t => t.ToString()).Distinct().ToList();
             var diagnostics = TraceRequested(context) ? new SearchDiagnostics() : null;
             var outcome = await search.SearchAsync(principals.Current, query.Trim(), types, maxResults, settings: null, cancellationToken, diagnostics);
-            var result = Structured(outcome.Result);
+            var result = Structured(outcome.IdentifierOnly ? outcome.Result with { RefineHint = RunIdentifierNote } : outcome.Result);
             if (diagnostics is not null)
             {
                 result.Meta = new System.Text.Json.Nodes.JsonObject
@@ -83,6 +85,11 @@ public sealed class SearchDocumentsTool(DocumentSearchService search, IPrincipal
             return ToolErrors.Error(ToolErrors.ForException(ex, "Document search"));
         }
     }
+
+    /// <summary>Billing's answer to a run identifier alone: which of its tools reads a run (the library's note names none).</summary>
+    public const string RunIdentifierNote =
+        "The query looks like a billing run identifier, not a question. Use get_billing_run_status for a run's current state, " +
+        "or search_billing_runs to find runs. search_documents answers how/why/procedure questions.";
 
     public const string TraceFlag = "maf-lab/trace";
     public const string InstanceKey = "maf-lab/instance";

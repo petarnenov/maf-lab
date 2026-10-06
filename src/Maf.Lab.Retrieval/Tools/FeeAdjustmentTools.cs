@@ -11,6 +11,8 @@ using ModelContextProtocol.Server;
 
 namespace Maf.Lab.Retrieval.Tools;
 
+// names a domain until the extract-evals-plugin follow-up moves it (introduce-plugins 8.1)
+// The billing host, which stays here until the eval stops hosting it in-process.
 /// <summary>What came of a confirmed proposal. A declined one is an outcome, not an error.</summary>
 public sealed record FeeAdjustmentOutcome(string Status, FeeAdjustmentApplied? Adjustment, string Message);
 

@@ -19,7 +19,7 @@ public static class MonitorPluginSupport
     public static ApiFactory Api(ScriptedChatClient chat, FakeToolSource? tools = null, IReadOnlyDictionary<string, string?>? settings = null) =>
         new(chat, tools)
         {
-            InstalledPlugins = [Manifest],
+            InstalledPlugins = [Manifest, .. StandInDomains.Installed],
             ExtraSettings = settings ?? new Dictionary<string, string?>(),
         };
 

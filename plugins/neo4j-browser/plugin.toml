@@ -2,6 +2,7 @@ schema = 1
 name = "neo4j-browser"
 kind = "infra"
 scope = "installation"
+depends = ["neo4j"]
 environments = ["dev", "qa"]
 description = "Neo4j Browser on the graph store, forwarded on loopback: a dev and qa tool."
 progress = "None — no work of its own; make plugin-on's progress bar covers its build, start and health check"

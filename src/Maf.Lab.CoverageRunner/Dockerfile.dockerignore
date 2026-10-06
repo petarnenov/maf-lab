@@ -8,7 +8,7 @@
 .vs/
 .vscode/
 .cache/
-data/
+plugins/*/files/corpus/
 data-portfolio/
 evals/
 openspec/

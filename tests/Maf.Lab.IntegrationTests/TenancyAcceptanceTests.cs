@@ -9,8 +9,8 @@ using Qdrant.Client.Grpc;
 
 namespace Maf.Lab.IntegrationTests;
 
-[Collection(CorpusCollection.Name)]
-public class TenancyAcceptanceTests(CorpusIndexFixture corpus)
+[Collection(SmallCorpusCollection.Name)]
+public class TenancyAcceptanceTests(SmallCorpusFixture corpus)
 {
     private static readonly Principal AdvisorA = new("adam", TenantId.Firm("firm-a"), Role.USER);
     private static readonly Principal AdvisorC = new("chris", TenantId.Firm("firm-c"), Role.USER);

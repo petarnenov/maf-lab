@@ -12,8 +12,8 @@ namespace Maf.Lab.IntegrationTests;
 /// whether a search answers at all and never which chunks it returns, one judgment serves gate and reranker, and a judge
 /// that does not answer leaves the search exactly as it would be without the gate.
 /// </summary>
-[Collection(CorpusCollection.Name)]
-public class RelevanceGateAcceptanceTests(CorpusIndexFixture corpus)
+[Collection(SmallCorpusCollection.Name)]
+public class RelevanceGateAcceptanceTests(SmallCorpusFixture corpus)
 {
     private static readonly Principal AdvisorA = new("adam", TenantId.Firm("firm-a"), Role.USER);
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
