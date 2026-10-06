@@ -47,3 +47,33 @@ class StubAnswersEveryBattery(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheJournalSpiesOnCallsOnly(unittest.TestCase):
+    """GET /__admin/requests (WireMock's shape): the model and decision-engine calls, never a probe and never a body."""
+
+    def test_calls_are_journaled_probes_are_not_and_a_reset_empties_it(self):
+        journal = stub.Journal()
+        for path in ("/api/version", "/api/show", "/api/chat", "/v1/systemone", "/api/embed"):
+            journal.record("POST", path)
+        self.assertEqual(["/api/chat", "/v1/systemone", "/api/embed"], [r["path"] for r in journal.read()])
+        self.assertEqual({"method", "path", "at"}, set(journal.read()[0]))
+        journal.reset()
+        self.assertEqual([], journal.read())
+
+    def test_the_journal_is_served_and_reset_over_http(self):
+        import json
+        import threading
+        import urllib.request
+        from http.server import ThreadingHTTPServer
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), stub.Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+        base = f"http://127.0.0.1:{server.server_address[1]}"
+        stub.JOURNAL.reset()
+        urllib.request.urlopen(urllib.request.Request(base + "/api/embed", data=b'{"input": "x"}', method="POST")).read()
+        listed = json.loads(urllib.request.urlopen(base + "/__admin/requests").read())["requests"]
+        self.assertEqual(["/api/embed"], [r["path"] for r in listed])
+        urllib.request.urlopen(urllib.request.Request(base + "/__admin/requests", method="DELETE")).read()
+        self.assertEqual([], json.loads(urllib.request.urlopen(base + "/__admin/requests").read())["requests"])

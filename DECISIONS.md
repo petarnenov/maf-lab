@@ -3332,3 +3332,9 @@ No package version moves in this change.
   - A plugin documents its routes in its folder (`docs/http-api.md`); `docs/http-api.md` transcludes them in a generated
     block, so the API document stays whole and a deleted folder leaves it in sync. Rejected: rows in the core file,
     `[routes.undocumented]`, OpenAPI (a new package, a host or generator, and no prose).
+- **Part E (CI, task 7).**
+  - `make core` turns the built-in domains off through Compose's environment pass-through (`Agent__BuiltInDomains:`
+    with no value, set empty by `make core`), so the core alone declines every turn. Rejected: a `*` sentinel, a domain
+    list as a compose default, a compose override file.
+  - The core-only leg reads the CI stub's request journal (WireMock's `GET`/`DELETE /__admin/requests`, a Test Spy) to
+    prove a declined turn made no model, embedding or Jev call. Rejected: the api's own `modelCalls`, OpenTelemetry.

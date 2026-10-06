@@ -13,6 +13,7 @@ import math
 import re
 import time
 from datetime import datetime, timezone
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DIMENSIONS = {"embeddinggemma": 768}
@@ -217,6 +218,34 @@ def testgen_turn(messages: list[dict]) -> dict | None:
         {"function": {"name": "write_file", "arguments": {"path": E2E_TEST_PATH, "content": E2E_TEST}}}]}
 
 
+# A Test Spy (Meszaros) on the model and decision-engine calls, read and reset the way WireMock's admin API does
+# (GET / DELETE /__admin/requests): method, path and time only, never a body. Startup probes (/api/version, /api/tags,
+# /api/show, /healthz) are not calls and are not journaled. The core-only CI leg proves a declined turn made none.
+JOURNALED = ("/api/chat", "/api/embed", "/api/embeddings", "/v1/systemone")
+
+
+class Journal:
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._requests: list[dict] = []
+
+    def record(self, method: str, path: str) -> None:
+        if path in JOURNALED:
+            with self._lock:
+                self._requests.append({"method": method, "path": path, "at": now()})
+
+    def read(self) -> list[dict]:
+        with self._lock:
+            return list(self._requests)
+
+    def reset(self) -> None:
+        with self._lock:
+            self._requests.clear()
+
+
+JOURNAL = Journal()
+
+
 def now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -246,9 +275,18 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"models": [{"name": m, "model": m} for m in (*DIMENSIONS, "stub")]})
         if self.path in ("/", "/healthz"):
             return self._json(200, {"status": "ok"})
+        if self.path == "/__admin/requests":
+            return self._json(200, {"requests": JOURNAL.read()})
+        return self._json(404, {"error": "not found"})
+
+    def do_DELETE(self):
+        if self.path == "/__admin/requests":
+            JOURNAL.reset()
+            return self._json(200, {"requests": []})
         return self._json(404, {"error": "not found"})
 
     def do_POST(self):
+        JOURNAL.record("POST", self.path)
         body = self._body()
         model = body.get("model", "stub")
         if self.path == "/v1/systemone":

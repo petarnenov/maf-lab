@@ -176,7 +176,7 @@ make setup                 # install what's missing (.NET SDK at the version glo
 export OLLAMA_API_KEY=…    # chat runs on Ollama Cloud (gpt-oss:120b); the key is only read from the environment
 export JEV_MAF_LAB=…       # intent classification runs on TypeSafe Jev; same rule
 make                       # doctor-lite → build → start → wait until healthy → index if empty → http://localhost:7171
-make core                  # the core alone, no plugin (MAF_PLUGINS=none), for checking the core
+make core                  # the core alone: no plugin, no built-in domain; every turn declines (plain make brings them back)
 make help                  # every target
 ```
 
@@ -186,7 +186,7 @@ make help                  # every target
 | `make all` | Start everything: build, run, wait for health, index if empty (default) |
 | `make help` | List the targets |
 | `make up` | Build and start the stack (replicas via API_REPLICAS/MCP_REPLICAS/PORTFOLIO_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy |
-| `make core` | Start the core with no plugin (MAF_PLUGINS=none), for checking the core; billing and portfolio stay built in until their follow-ups |
+| `make core` | Start the core with no plugin and no built-in domain (MAF_PLUGINS=none); declines every turn (decision 5h); a plain make brings them back |
 | `make product-check` | Build the product image variant (api, web) and check it holds no dev-or-qa-only plugin code |
 | `make plugins` | List every plugin: kind, scope, environments, whether installed, dependencies, description |
 | `make plugin-new` | Start a new plugin (NAME=…, KIND=mcp\|app): mcp copies _example, app renders the app template; prints the files written |
@@ -219,6 +219,8 @@ make help                  # every target
 | `make docs-check` | Check the docs against the code (generated blocks, routes, make targets, models, links); changes nothing |
 | `make ci` | Run locally what GitHub Actions runs on every pull request |
 | `make ci-e2e` | Model-free end-to-end: stack with the Ollama stub, index, verify, A2A conformance, test generation (CI mode) |
+| `make ci-e2e-core` | Model-free core-only end-to-end: make core with the Ollama stub, verify, and the decline with no model, Jev or tool call (CI mode) |
+| `make core-turn-check` | On a core-only stack: a turn declines with the fixed reply, and the stub saw no model or Jev call (used by ci-e2e-core) |
 | `make testgen-e2e` | Model-free test generation end to end: refresh, run, verify, accept (used by ci-e2e, against its clone) |
 | `make coverage` | Refresh the coverage snapshot at main (both toolchains, through the running stack) |
 | `make verify` | Verify the running stack through the load balancer (37 checks), then AG-UI conformance of every agent (8 checks) |

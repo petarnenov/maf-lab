@@ -40,6 +40,19 @@ const token = async (userId, tenantId, role) =>
 
 const adam = { Authorization: `Bearer ${await token('adam', 'firm-a', 'USER')}` };
 const thread = () => `c_${crypto.randomUUID().replaceAll('-', '')}`;
+
+// What is in use, asked once (introduce-plugins 7.1): a plugin's checks run only while /api/plugins lists it, and what a
+// chat turn must do depends on whether any domain is in use (`make core` has none, and every turn declines).
+const inUseAnswer = await (await fetch(`${base}/api/plugins`, { headers: adam })).json().catch(() => ({ plugins: [], domains: [] }));
+const domainInUse = (inUseAnswer.domains ?? []).length > 0;
+// A plugin's agent is checked only while the plugin is in use (introduce-plugins task 2.4): still core (no plugins/<name>/
+// folder yet), or listed by /api/plugins.
+const inUse = async (name) => {
+  const { existsSync } = await import('node:fs');
+  if (!existsSync(new URL(`../plugins/${name}/plugin.toml`, import.meta.url))) return true;
+  return (inUseAnswer.plugins ?? []).some((p) => p.name === name);
+};
+const monitorInUse = await inUse('monitor');
 const routes = {
   chat: { direct: `${base}/api/chat`, runtime: `${base}/copilotkit/agent/chat/run` },
   testgen: { direct: `${base}/api/coverage/runs/agent`, runtime: `${base}/copilotkit/agent/testgen/run` },
@@ -88,11 +101,20 @@ for (const via of ['direct', 'runtime']) {
       message: 'What is the procedure when a fee schedule is missing?',
     });
     wellFormed(events);
-    if (!events.some((e) => e.type === 'TOOL_CALL_RESULT')) throw new Error('no tool result');
+    if (domainInUse) {
+      if (!events.some((e) => e.type === 'TOOL_CALL_RESULT')) throw new Error('no tool result');
+      return undefined;
+    }
+    // No domain in use: the fixed reply, and no tool call.
+    if (events.some((e) => e.type.startsWith('TOOL_CALL_'))) throw new Error('a tool was called with no domain in use');
+    const said = events.filter((e) => e.type === 'TEXT_MESSAGE_CONTENT').map((e) => e.delta).join('');
+    if (!/^No domain is enabled/.test(said)) throw new Error(`the answer said: ${said.slice(0, 80)}`);
+    return 'no domain in use: the fixed reply';
   });
 
   check(`chat (${via}): a write pauses on an interrupt, and the answer resumes it`, async () => {
     if (process.env.MODEL_FREE === '1') return 'skipped: the stub model proposes no write';
+    if (!domainInUse) return 'skipped: no domain is in use, so nothing proposes a write';
     const threadId = thread();
     const asked = await run(routes.chat[via], {
       threadId,
@@ -112,6 +134,10 @@ for (const via of ['direct', 'runtime']) {
   });
 
   check(`chat (${via}): a run its client stops ends on the api within seconds`, async () => {
+    if (!domainInUse) return 'skipped: no domain is in use, so a turn ends before any step there is to stop';
+    // The run's end is read from the monitor's live trace; the core's own rejoin replays what a run said, not whether it
+    // has ended, so this core property is checked only while the monitor is in use.
+    if (!monitorInUse) return 'skipped: the monitor plugin, whose trace says the run ended, is not in use';
     let stoppedAt = 0;
     const { runId } = await run(routes.chat[via], {
       threadId: thread(),
@@ -133,14 +159,6 @@ for (const via of ['direct', 'runtime']) {
   });
 }
 
-// A plugin's agent is checked only while the plugin is in use (introduce-plugins task 2.4): still core (no plugins/<name>/
-// folder yet), or listed by /api/plugins.
-const inUse = async (name) => {
-  const { existsSync } = await import('node:fs');
-  if (!existsSync(new URL(`../plugins/${name}/plugin.toml`, import.meta.url))) return true;
-  const list = await (await fetch(`${base}/api/plugins`, { headers: adam })).json().catch(() => ({ plugins: [] }));
-  return list.plugins.some((p) => p.name === name);
-};
 const coverageInUse = await inUse('coverage');
 const runs = coverageInUse ? await (await fetch(`${base}/api/coverage/runs`, { headers: adam })).json().catch(() => []) : [];
 const followed = Array.isArray(runs) ? runs.find((r) => !r.active) : undefined;

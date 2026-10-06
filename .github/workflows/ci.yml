@@ -121,3 +121,41 @@ jobs:
           name: e2e-logs
           path: e2e-logs/
           retention-days: 7
+
+  e2e-core:
+    # The core alone (introduce-plugins 7.1): `make core` — no plugin, no built-in domain — starts healthy, passes
+    # verify with every plugin's checks skipping themselves, and declines a turn before any model, Jev or tool call.
+    # In parallel with the all-plugins leg; the two share no stack.
+    name: End-to-end core only (model-free)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - uses: actions/cache@v6
+        with:
+          path: .nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: make core with the Ollama stub → verify → a turn declines with no model, Jev or tool call
+        run: make ci-e2e-core WAIT_TIMEOUT=600
+      - name: Collect diagnostics
+        if: failure()
+        run: |
+          mkdir -p e2e-core-logs
+          export MAF_LAB_REPO="$PWD"
+          export COMPOSE_FILE="$(make -s print-compose-file CI_MODE=1 MAF_PLUGINS=none)"
+          docker compose -p maf-lab-e2e-core ps -a > e2e-core-logs/ps.txt 2>&1 || true
+          docker compose -p maf-lab-e2e-core logs --no-color > e2e-core-logs/compose.log 2>&1 || true
+          cat e2e-core-logs/ps.txt
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: e2e-core-logs
+          path: e2e-core-logs/
+          retention-days: 7

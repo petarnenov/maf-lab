@@ -214,6 +214,9 @@ services:
       Agent__Servers__billing__Endpoint: http://lb/mcp
       Agent__Servers__portfolio__Domain: portfolio
       Agent__Servers__portfolio__Endpoint: http://lb/portfolio/mcp
+      # The built-in domains in use (introduce-plugins 5h), passed through from make's environment only when set: unset
+      # keeps them all; `make core` sets it empty, so no domain is in use and every turn declines.
+      Agent__BuiltInDomains:
       Storage__ConnectionString: Data Source=/app-data/maf-lab.db
       Indexing__CorpusRoot: /data
       Evals__Root: /evals

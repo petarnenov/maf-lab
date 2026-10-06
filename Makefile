@@ -121,7 +121,7 @@ INDEXER      := $(DOTNET) $(INDEXER_DLL)
 
 .PHONY: all help up core plugins plugin-new plugin-new-check plugin-on plugin-off product-check down restart ps logs print-compose-file clean infra index index-portfolio indexer graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
         coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-answer-check eval-code-route eval-graph-depth eval-retrieval-backends eval-a2a neo4j-chunks dev doctor banner index-if-empty \
-        specs docs docs-check lint-dotnet lint-web build-web ci ci-e2e setup \
+        specs docs docs-check lint-dotnet lint-web build-web ci ci-e2e ci-e2e-core core-turn-check setup \
         require-docker require-dotnet require-npm require-python
 
 all: require-docker up index-if-empty banner ## Start everything: build, run, wait for health, index if empty (default)
@@ -149,8 +149,8 @@ up: require-docker ## Build and start the stack (replicas via API_REPLICAS/MCP_R
 	@# Every replica re-reads plugins/.installed now rather than at its next 30-second check.
 	@$(COMPOSE) exec -T redis redis-cli PUBLISH plugins-changed up >/dev/null 2>&1 || true
 
-core: ## Start the core with no plugin (MAF_PLUGINS=none), for checking the core; billing and portfolio stay built in until their follow-ups
-	@$(MAKE) --no-print-directory up MAF_PLUGINS=none
+core: ## Start the core with no plugin and no built-in domain (MAF_PLUGINS=none); declines every turn (decision 5h); a plain make brings them back
+	@Agent__BuiltInDomains= $(MAKE) --no-print-directory up MAF_PLUGINS=none
 
 product-check: require-docker ## Build the product image variant (api, web) and check it holds no dev-or-qa-only plugin code
 	@MAF_IMAGE_VARIANT=product $(COMPOSE) build api web
@@ -278,7 +278,7 @@ docs-check: require-python ## Check the docs against the code (generated blocks,
 	@python3 -m unittest discover -s scripts/tests -q
 	python3 scripts/docs.py check
 
-ci: specs docs-check lint-dotnet test-dotnet lint-web test-web build-web ci-e2e ## Run locally what GitHub Actions runs on every pull request
+ci: specs docs-check lint-dotnet test-dotnet lint-web test-web build-web ci-e2e ci-e2e-core ## Run locally what GitHub Actions runs on every pull request
 
 ci-e2e: require-docker require-dotnet ## Model-free end-to-end: stack with the Ollama stub, index, verify, A2A conformance, test generation (CI mode)
 	@# Test generation merges into main: it runs on a fresh clone of the committed HEAD, never on this checkout's main.
@@ -286,6 +286,12 @@ ci-e2e: require-docker require-dotnet ## Model-free end-to-end: stack with the O
 	rm -rf $(E2E_REPO) && git clone -q $(ROOT) $(E2E_REPO) && git -C $(E2E_REPO) checkout -q -B main $$(git rev-parse HEAD)
 	@# Its own compose project (maf-lab-e2e): the dev stack is stopped, its data kept; a pass removes the e2e stack.
 	@scripts/ci_e2e.sh $(E2E_REPO) WAIT_TIMEOUT=$(WAIT_TIMEOUT)
+
+ci-e2e-core: require-docker ## Model-free core-only end-to-end: make core with the Ollama stub, verify, and the decline with no model, Jev or tool call (CI mode)
+	@E2E_PROJECT=maf-lab-e2e-core E2E_TARGETS="core verify core-turn-check" scripts/ci_e2e.sh $(ROOT) WAIT_TIMEOUT=$(WAIT_TIMEOUT)
+
+core-turn-check: ## On a core-only stack: a turn declines with the fixed reply, and the stub saw no model or Jev call (used by ci-e2e-core)
+	python3 scripts/core_turn_check.py $(BASE_URL)
 
 testgen-e2e: ## Model-free test generation end to end: refresh, run, verify, accept (used by ci-e2e, against its clone)
 	scripts/testgen_e2e.sh $(BASE_URL)

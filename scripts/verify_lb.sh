@@ -59,16 +59,24 @@ def token(user, firm, role):
 # A plugin's checks run only while the plugin is in use (introduce-plugins task 2.4): a part that is still core (no
 # plugins/<name>/ folder yet) always runs; a plugin's part runs only when /api/plugins lists it.
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(os.environ.get("VERIFY_SCRIPT", "scripts/verify_lb.sh"))))
-_in_use = None
+_answer = None
+
+def in_use_answer():
+    global _answer
+    if _answer is None:
+        _, _, body = req("/api/plugins", token=token("adam", "firm-a", "USER"))
+        _answer = json.loads(body or "{}")
+    return _answer
 
 def plugin_in_use(name):
-    global _in_use
     if not os.path.isfile(os.path.join(ROOT, "plugins", name, "plugin.toml")):
         return True
-    if _in_use is None:
-        _, _, body = req("/api/plugins", token=token("adam", "firm-a", "USER"))
-        _in_use = {p["name"] for p in json.loads(body or "{}").get("plugins", [])}
-    return name in _in_use
+    return name in {p["name"] for p in in_use_answer().get("plugins", [])}
+
+# What a chat turn does depends on whether any domain is in use (introduce-plugins 7.1): `make core` has none, and a turn
+# then declines with the fixed reply before any model or tool call.
+def domain_in_use():
+    return len(in_use_answer().get("domains", [])) > 0
 
 # 4.1 entry point, routing, closed ports ---------------------------------------------------------------
 status, _, body = req("/")
@@ -141,13 +149,20 @@ with urllib.request.urlopen(r, timeout=300) as resp:
 order = [e for e, _ in events]
 dedup = [e for i, e in enumerate(order) if i == 0 or e != order[i - 1]]
 check("only the protocol's own events, never a custom one (agui-protocol-only)", "CUSTOM" not in order, " ".join(sorted(set(order))))
-check("a run starts, calls a tool, answers and finishes, in that order",
-      order[0] == "RUN_STARTED" and order[-1] == "RUN_FINISHED"
-      and order.index("TOOL_CALL_START") < order.index("TOOL_CALL_RESULT")
-      and order.index("TOOL_CALL_RESULT") < order.index("TEXT_MESSAGE_CONTENT")
-      and order.count("RUN_STARTED") == 1 and order.count("RUN_FINISHED") == 1, " ".join(dedup))
-check("the run's events arrive incrementally (not buffered)", events[-1][1] - events[0][1] > 0.2,
-      f"first→last {events[-1][1] - events[0][1]:.2f}s over {len(events)} events")
+if domain_in_use():
+    check("a run starts, calls a tool, answers and finishes, in that order",
+          order[0] == "RUN_STARTED" and order[-1] == "RUN_FINISHED"
+          and order.index("TOOL_CALL_START") < order.index("TOOL_CALL_RESULT")
+          and order.index("TOOL_CALL_RESULT") < order.index("TEXT_MESSAGE_CONTENT")
+          and order.count("RUN_STARTED") == 1 and order.count("RUN_FINISHED") == 1, " ".join(dedup))
+    check("the run's events arrive incrementally (not buffered)", events[-1][1] - events[0][1] > 0.2,
+          f"first→last {events[-1][1] - events[0][1]:.2f}s over {len(events)} events")
+else:
+    # No domain in use: the fixed reply, with no tool call (make core-turn-check proves no model or Jev call either).
+    check("with no domain in use, a run starts, declines without a tool and finishes",
+          order[0] == "RUN_STARTED" and order[-1] == "RUN_FINISHED" and "TEXT_MESSAGE_CONTENT" in order
+          and not any(t.startswith("TOOL_CALL_") for t in order)
+          and order.count("RUN_STARTED") == 1 and order.count("RUN_FINISHED") == 1, " ".join(dedup))
 
 # 4.3 replica failure -----------------------------------------------------------------------------------
 api_containers = subprocess.run(f"{COMPOSE} ps -q api", shell=True, capture_output=True, text=True).stdout.split()

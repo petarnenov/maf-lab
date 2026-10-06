@@ -239,8 +239,11 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
 
 ## 7. CI
 
-- [ ] 7.1 A core-only e2e leg next to the all-plugins leg: `make core`, then `verify`, then one chat turn on the stub.
+- [x] 7.1 A core-only e2e leg next to the all-plugins leg: `make core`, then `verify`, then one chat turn on the stub.
       It asserts the decline and that no model, engine or tool call is made.
+      Done (design part E): `make core` sets `Agent__BuiltInDomains=` empty; `make ci-e2e-core` (CI job `e2e-core`)
+      runs `core verify core-turn-check`, with the stub's request journal proving no model, embedding or Jev call for an
+      English and a Cyrillic turn. Run locally green: verify's checks, the 8 conformance checks and the decline turns.
 
 ## 8. Follow-up changes (one plugin each, code moves only)
 

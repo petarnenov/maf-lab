@@ -984,6 +984,26 @@ These choices deviate from the text above. Each is kept, with the rejected alter
       own query through the tree's query client. The core's invalidation and the rename's touch of the core's
       `['conversation']` key are gone.
 
+### Decisions taken during implementation (part E, task 7, 2026-10-06, decided by the reviewing session)
+
+1. **`make core` turns the built-in domains off** through Compose's environment pass-through: the api's environment
+   names `Agent__BuiltInDomains:` with no value, so it reaches the container only when make's environment sets it;
+   `make core` sets it empty, so no domain is in use and every turn declines (5h). A plain `make` or `make up` leaves it
+   unset and the built-ins come back: `make core` is a mode you leave, as `MAF_PLUGINS` is. Rejected: a `*` sentinel
+   (a meaning neither .NET nor Compose defines), a domain list as a compose default (core compose restating domain ids),
+   and a compose override file (it would hide the state from `make core`).
+2. **The core-only leg proves "no model, Jev or tool call" from outside the api.** The CI stub keeps a request journal
+   in WireMock's shape (`GET`/`DELETE /__admin/requests`; method, path and time, never a body; model, embedding and
+   Jev calls only), a Test Spy read on both Ollama instances around each turn. The turn's own AG-UI events carry no
+   tool call and no step, and its text is the fixed reply exactly. Rejected: the turn's `modelCalls` (the api's own
+   report, read only by dev statistics) and OpenTelemetry (a self-report that ties the leg to observability).
+3. **`verify` and the AG-UI conformance check branch on `/api/plugins`' domains:** with a domain, a turn calls a tool;
+   with none, it declines with no tool. "A run its client stops ends within seconds" reads the run's end from the
+   monitor's live trace (the core's rejoin replays what a run said, not whether it ended), so it runs only while the
+   monitor is in use, and not at all with no domain (a declined turn has no step to stop).
+4. **The leg is its own CI job** (`e2e-core`, `make ci-e2e-core`), parallel to the all-plugins one, through the same
+   script with its own compose project and target list (`core verify core-turn-check`).
+
 ## Principles and patterns
 
 Every plugin, and every change to the core's seams, is reviewed against this section. A plugin that needs to break it

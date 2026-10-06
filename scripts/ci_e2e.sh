@@ -4,18 +4,22 @@
 # stack is stopped first — with its volumes kept. A pass removes the e2e project and its volumes; a failure leaves it
 # running for inspection (CI collects its logs).
 # Usage: scripts/ci_e2e.sh <e2e-repo> [extra make arguments]
+# E2E_PROJECT and E2E_TARGETS pick the leg: the all-plugins leg by default; the core-only leg (make ci-e2e-core) passes
+# its own project and `core verify core-turn-check` (introduce-plugins 7.1).
 set -uo pipefail
 E2E_REPO="$1"
 shift
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEV_PROJECT="${DEV_PROJECT:-maf-lab}"
 E2E_PROJECT="${E2E_PROJECT:-maf-lab-e2e}"
+E2E_TARGETS="${E2E_TARGETS:-up index-if-empty verify eval-a2a testgen-e2e}"
 FILES=(-f "$ROOT/compose/docker-compose.yml" -f "$ROOT/compose/docker-compose.ci.yml")
 
 echo "▸ Stopping the dev stack ($DEV_PROJECT, volumes kept) — the e2e stack needs its ports"
 docker compose -p "$DEV_PROJECT" -f "$ROOT/compose/docker-compose.yml" down --remove-orphans
 
-if make -C "$ROOT" up index-if-empty verify eval-a2a testgen-e2e \
+# shellcheck disable=SC2086  # the target list is words on purpose
+if make -C "$ROOT" $E2E_TARGETS \
     CI_MODE=1 MAF_LAB_REPO="$E2E_REPO" COMPOSE_PROJECT="$E2E_PROJECT" "$@"; then
   echo "▸ Removing the e2e stack ($E2E_PROJECT) and its volumes"
   MAF_LAB_REPO="$E2E_REPO" docker compose -p "$E2E_PROJECT" "${FILES[@]}" down -v --remove-orphans
