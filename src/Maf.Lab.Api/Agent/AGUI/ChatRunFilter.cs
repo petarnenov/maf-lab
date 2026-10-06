@@ -81,7 +81,7 @@ public sealed class ChatRunFilter : IEndpointFilter
             return true;
         }
         await using var db = await services.GetRequiredService<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(ct);
-        return await db.Turns.AnyAsync(t => t.Id == runId, ct) || await db.TurnTraces.AnyAsync(t => t.TurnId == runId, ct);
+        return await db.Turns.AnyAsync(t => t.Id == runId, ct);
     }
 
     private static IResult Invalid(string field, string message) =>

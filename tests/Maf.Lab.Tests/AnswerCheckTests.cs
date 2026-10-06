@@ -119,8 +119,7 @@ public class AnswerCheckTests
 
         Assert.Equal("RUN_FINISHED", events[^1].Name);
         var turnId = events[^1].Data.GetProperty("runId").GetString()!;
-        var stored = await client.GetFromJsonAsync<TurnTraceDocument>($"/api/turns/{turnId}/trace", Json, Ct);
-        Assert.Single(stored!.Events, e => e.Kind == TraceKinds.AnswerCheck);
+        Assert.Single(api.RecordOf(turnId), e => e.Kind == TraceKinds.AnswerCheck);
     }
 
     [Fact]

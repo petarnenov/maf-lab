@@ -44,32 +44,3 @@ public sealed class RunFrameRecorder(TimeProvider? time = null)
         return frame;
     }
 }
-
-/// <summary>
-/// Where a run's frames are kept: beside the turn's trace, so they are read by whoever may read it and deleted
-/// when it is. A run that recorded no turn has nowhere to put them, and does not try.
-/// </summary>
-public sealed class RunFrameStore(IDbContextFactory<MafDbContext> db, ILogger<RunFrameStore> logger)
-{
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
-
-    public async Task SaveAsync(string? turnId, IReadOnlyList<RunFrame> frames, CancellationToken ct)
-    {
-        if (string.IsNullOrEmpty(turnId) || frames.Count == 0)
-        {
-            return;
-        }
-        try
-        {
-            await using var ctx = await db.CreateDbContextAsync(ct);
-            var json = JsonSerializer.Serialize(frames, Json);
-            await ctx.TurnTraces.Where(t => t.TurnId == turnId)
-                .ExecuteUpdateAsync(s => s.SetProperty(t => t.AguiJson, json), ct);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            // The frames are a view of a turn, not the turn. Losing them must not fail the run that just ended.
-            logger.LogWarning("could not store run frames for turn {TurnId}: {ErrorType}", turnId, ex.GetType().Name);
-        }
-    }
-}

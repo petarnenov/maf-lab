@@ -323,54 +323,6 @@ public class TurnTraceTests
         Assert.True(kinds.LastIndexOf(TraceKinds.AnswerDelta) < kinds.IndexOf(TraceKinds.ModelResponse), "all answer text is recorded before the model response that produced it");
     }
 
-    [Fact]
-    public async Task Stored_trace_is_readable_by_owner_and_same_firm_admin_for_review_turns_only()
-    {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
-        var adam = api.ClientFor("adam", "firm-a", Role.USER);
-        var done = (await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing"))[^1].Data;
-        var turnId = done.GetProperty("runId").GetString()!;
-        var url = $"/api/turns/{turnId}/trace";
-
-        var own = await adam.GetFromJsonAsync<TurnTraceDocument>(url, Json, Ct);
-        Assert.Equal(turnId, own!.TurnId);
-        Assert.Equal(TraceKinds.TurnStart, own.Events[0].Kind);
-        Assert.Equal(TraceKinds.TurnEnd, own.Events[^1].Kind);
-
-        Assert.Equal(HttpStatusCode.NotFound, (await api.ClientFor("rita", "firm-a", Role.USER).GetAsync(url, Ct)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await api.ClientFor("bob", "firm-b", Role.TENANT_ADMIN).GetAsync(url, Ct)).StatusCode);
-        var alice = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
-        Assert.Equal(HttpStatusCode.NotFound, (await alice.GetAsync(url, Ct)).StatusCode); // not in the review queue yet
-
-        await adam.PostAsJsonAsync("/api/feedback", new Maf.Lab.Domain.Feedback.FeedbackRequest(done.GetProperty("threadId").GetString()!, turnId!, "wrong_answer", null), Ct);
-        Assert.Equal(HttpStatusCode.OK, (await alice.GetAsync(url, Ct)).StatusCode);
-    }
-
-    [Fact]
-    public async Task Retention_deletes_old_traces_only_and_logs_stay_free_of_trace_content()
-    {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel("ANSWER-MARKER-777."));
-        var adam = api.ClientFor("adam", "firm-a", Role.USER);
-        var turnId = (await ApiFactory.ChatAsync(adam, "how do I fix ZEBRA-TRACE-42?"))[^1]
-            .Data.GetProperty("runId").GetString()!;
-
-        await using (var ctx = ChatApiTests.Db(api))
-        {
-            var stored = await ctx.TurnTraces.SingleAsync(t => t.TurnId == turnId, Ct);
-            Assert.Contains("ZEBRA-TRACE-42", stored.Json);
-            Assert.Contains("ANSWER-MARKER-777", stored.Json);
-            ctx.TurnTraces.Add(new TurnTraceRow { TurnId = "t_old", ConversationId = "c", UserId = "adam", TenantId = "firm-a", CreatedAt = DateTime.UtcNow.AddDays(-8), Json = "[]" });
-            await ctx.SaveChangesAsync(Ct);
-        }
-        Assert.DoesNotContain(api.Logs.Messages, m => m.Contains("ZEBRA-TRACE-42") || m.Contains("ANSWER-MARKER-777"));
-
-        var removed = await api.Services.GetRequiredService<TraceRetentionService>().PurgeAsync(Ct);
-        Assert.Equal(1, removed);
-        await using var check = ChatApiTests.Db(api);
-        Assert.False(await check.TurnTraces.AnyAsync(t => t.TurnId == "t_old", Ct));
-        Assert.True(await check.TurnTraces.AnyAsync(t => t.TurnId == turnId, Ct));
-        Assert.Equal(HttpStatusCode.NotFound, (await adam.GetAsync("/api/turns/t_old/trace", Ct)).StatusCode);
-    }
     /// <summary>A model that thinks aloud: it reasons, calls a tool, reasons again, then answers.</summary>
     private static ScriptedChatClient ReasoningModel(string first, string second, string answer) =>
         new((messages, _, _) => ScriptedChatClient.HasResult(messages, "get_billing_run_status")

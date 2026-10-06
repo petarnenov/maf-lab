@@ -43,10 +43,13 @@ public interface IContributesDomainBehaviour
     IDomainBehaviour Behaviour { get; }
 }
 
-/// <summary>An observer of every turn (decision 7): how the monitor sees the full trace.</summary>
+/// <summary>
+/// An observer of every turn (decision 7): how the monitor sees the full trace. A factory method, so the observer takes
+/// its dependencies from the composed services; created once.
+/// </summary>
 public interface IContributesTurnObserver
 {
-    ITurnObserver Observer { get; }
+    ITurnObserver CreateObserver(IServiceProvider services);
 }
 
 /// <summary>A plugin's long work, so removing the plugin can stop it first through its own store (decision 2).</summary>
@@ -72,6 +75,16 @@ public interface IInstalledPlugins
     /// remote of the plugin's server.json; null when it has neither or is not installed.
     /// </summary>
     string? McpEndpoint(string plugin);
+}
+
+/// <summary>
+/// The core's rule for who may read a turn, for a plugin that serves something of it (the monitor's kept trace): the
+/// turn's owner, or a tenant admin of its tenant while the turn is in the review queue. The caller is the request's
+/// principal; the rule stays the core's, as the turn's data does.
+/// </summary>
+public interface ITurnAccess
+{
+    Task<bool> MayReadAsync(string turnId, CancellationToken ct);
 }
 
 /// <summary>One item of open work: its kind, id and state, never content.</summary>
@@ -228,14 +241,30 @@ public interface IDomainBehaviour
     string ClearedFocusToolNote => "";
 }
 
-/// <summary>One event of a turn, as an observer sees it: its kind and its structured payload, never message content
-/// unless the observer is the dev-only monitor, which the core never installs in stage or prod (decision 5d).</summary>
-public sealed record TurnEvent(string RunId, string Kind, System.Text.Json.JsonElement Payload);
-
-/// <summary>An observer of turns (decision 7); the core registers none of its own.</summary>
+/// <summary>
+/// An observer of turns (decision 7; the shape of DiagnosticListener.IsEnabled / ILogger.IsEnabled): it declares by
+/// name what it wants, and the core checks before it pays for building it — the full model capture
+/// (<see cref="Maf.Lab.Domain.Tracing.TraceKinds.ModelRequest"/>), the prompt's tool schemas
+/// (<see cref="Maf.Lab.Domain.Tracing.TraceKinds.Prompt"/>), retrieval diagnostics
+/// (<see cref="Maf.Lab.Domain.Tracing.TraceKinds.Retrieval"/>), the run's AG-UI frames (<see cref="RunFrames.Kind"/>).
+/// Events reach it in order, off the turn's path: a slow or failing observer never holds up or fails a turn. It is a
+/// singleton that keys what it keeps per run by the run id; the core registers none of its own. Events may carry
+/// message content, which is why the monitor that wants them is a dev tool never installed in stage or prod (5d).
+/// </summary>
 public interface ITurnObserver
 {
-    Task OnEventAsync(TurnEvent turnEvent, CancellationToken ct);
+    bool IsEnabled(string kind);
+
+    Task OnEventAsync(string runId, Maf.Lab.Domain.Tracing.TraceEvent e, CancellationToken ct);
+
+    /// <summary>The run's AG-UI frames as the client received them, once the run's response has ended.</summary>
+    Task OnFramesAsync(string runId, string? turnId, IReadOnlyList<Maf.Lab.Domain.Tracing.RunFrame> frames, CancellationToken ct);
+}
+
+/// <summary>The name an observer is asked about for a run's AG-UI frames (a stream of its own, not a trace kind).</summary>
+public static class RunFrames
+{
+    public const string Kind = "agui.frames";
 }
 
 /// <summary>A conversation as the list shows it (decision 5y).</summary>

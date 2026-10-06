@@ -120,7 +120,8 @@ public class ChatHistoryTests
         Assert.Equal("procedures/missing-fee-schedule.txt", turn.Sources[0].SourcePath);
         Assert.Contains("FS-REQUIRED", turn.Sources[0].Snippet);
         Assert.Equal([FeedbackKind.WrongDocument], turn.FeedbackKinds);
-        Assert.True(turn.TraceAvailable);
+        // A model that does not reason leaves the turn without reasoning (introduce-plugins 5.3).
+        Assert.Null(turn.Reasoning);
 
         Assert.Equal(HttpStatusCode.NotFound, (await api.ClientFor("rita", "firm-a", Role.USER).GetAsync($"/api/conversations/{conversationId}", Ct)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await api.ClientFor("adam", "firm-b", Role.USER).GetAsync($"/api/conversations/{conversationId}", Ct)).StatusCode);
@@ -149,7 +150,7 @@ public class ChatHistoryTests
         Assert.Null(turn.ToolCalls[0].ResultSummary);
         Assert.Null(turn.ToolCalls[0].CallId);
         Assert.Equal(("shared/docs/a.md", "A > B", "", ""), (turn.Sources[0].DocId, turn.Sources[0].SectionPath, turn.Sources[0].SourcePath, turn.Sources[0].Snippet));
-        Assert.False(turn.TraceAvailable);
+        Assert.Null(turn.Reasoning);
     }
 
     [Fact]

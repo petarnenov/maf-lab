@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Maf.Lab.Api.Endpoints;
+using Maf.Lab.Plugins.Monitor;
 using Maf.Lab.Domain.Billing;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Domain.Tracing;
@@ -22,7 +22,7 @@ public class LiveTraceTests
     [Fact]
     public async Task The_owner_reads_a_runs_trace_and_then_only_what_came_after()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = MonitorPluginSupport.Api(ApiFactory.ProceduralModel());
         var adam = api.ClientFor("adam", "firm-a", Role.USER);
         await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing", runId: "r_live");
 
@@ -43,7 +43,7 @@ public class LiveTraceTests
     [Fact]
     public async Task Another_user_and_another_firm_are_told_nothing()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = MonitorPluginSupport.Api(ApiFactory.ProceduralModel());
         await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "what is the procedure when a fee schedule is missing",
             runId: "r_private");
 
@@ -66,10 +66,7 @@ public class LiveTraceTests
                     ["accountId"] = "A-1042", ["amount"] = -200m, ["reason"] = "overcharged in Q2",
                 })
                 : ScriptedChatClient.Text("Done."));
-        using var api = new ApiFactory(chat, new FakeToolSource())
-        {
-            ExtraSettings = new Dictionary<string, string?> { ["Compliance:BaseUrl"] = "" },
-        };
+        using var api = MonitorPluginSupport.Api(chat, new FakeToolSource(), settings: new Dictionary<string, string?> { ["Compliance:BaseUrl"] = "" });
         var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var proposed = await ApiFactory.ChatAsync(adam, "adjust the fee on A-1042 down by 200");
         var resumed = await ApiFactory.ResumeAsync(adam, ApiFactory.ThreadOf(proposed),
@@ -95,7 +92,7 @@ public class LiveTraceTests
                 await release.Task.WaitAsync(TimeSpan.FromSeconds(10));
             },
         };
-        using var api = new ApiFactory(ApiFactory.ProceduralModel(), tools);
+        using var api = MonitorPluginSupport.Api(ApiFactory.ProceduralModel(), tools);
         var adam = api.ClientFor("adam", "firm-a", Role.USER);
 
         var run = ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing", runId: "r_early");

@@ -71,7 +71,8 @@ public sealed record ToolOrigin(string Domain, string Server);
 /// requires a plugin that is not in use (fee adjustment without a compliance reviewer, task 4.4) is not offered.
 /// </summary>
 public sealed class McpToolSource(IOptions<AgentOptions> options, ILoggerFactory loggers, IHttpClientFactory http,
-    Plugins.PluginCatalogue? plugins = null, DomainCatalogue? domainCatalogue = null, IConfiguration? configuration = null) : IToolSource
+    Plugins.PluginCatalogue? plugins = null, DomainCatalogue? domainCatalogue = null, IConfiguration? configuration = null,
+    Tracing.TurnObservers? observers = null) : IToolSource
 {
     /// <summary>
     /// Whether a plugin (or capability) a tool requires is in use: installed as a plugin, or — until it becomes one — the
@@ -143,8 +144,9 @@ public sealed class McpToolSource(IOptions<AgentOptions> options, ILoggerFactory
                     continue;
                 }
                 owners[tool.Name] = c.Client;
-                // Ask each server for diagnostics in the result _meta (shown in the monitor, never to the model).
-                tools.Add(options.Value.TraceRetrieval
+                // Ask each server for diagnostics in the result _meta (shown in the monitor, never to the model) — only
+                // when an observer wants them: a deployment without the monitor never pays for building them.
+                tools.Add(options.Value.TraceRetrieval && (observers ?? Tracing.TurnObservers.None).IsEnabled(Maf.Lab.Domain.Tracing.TraceKinds.Retrieval)
                     ? tool.WithMeta(new System.Text.Json.Nodes.JsonObject { [TraceMeta.Flag] = true })
                     : tool);
             }

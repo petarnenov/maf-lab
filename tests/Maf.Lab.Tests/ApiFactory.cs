@@ -98,6 +98,11 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
     /// <summary>The live trace of each run, as the monitor reads it while the run is going (agui-protocol-only).</summary>
     public FakeRunTraceStore RunTraces { get; } = new();
     public FakeIdempotencyStore Idempotency { get; } = new();
+    /// <summary>
+    /// Whether the host's turns are observed by <see cref="TestTraceCapture"/> (the default), so a test reads a turn's
+    /// trace with <see cref="TracesOf"/>. Off: the host runs as a core-only deployment, with no observer at all.
+    /// </summary>
+    public bool ObserveTurns { get; init; } = true;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -140,6 +145,10 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
             s.AddSingleton<Maf.Lab.Domain.SharedState.IRunTraceStore>(RunTraces);
             s.RemoveAll<Maf.Lab.Domain.SharedState.IIdempotencyStore>();
             s.AddSingleton<Maf.Lab.Domain.SharedState.IIdempotencyStore>(Idempotency);
+            if (ObserveTurns)
+            {
+                s.AddSingleton<Maf.Lab.Plugins.Abstractions.ITurnObserver, TestTraceCapture>();
+            }
             ConfigureTestServices?.Invoke(s);
         });
     }
@@ -232,10 +241,21 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
     /// The trace events of a run, as the monitor reads them while it runs (agui-protocol-only): from the live trace store,
     /// by the run's id. They never travel on the stream.
     /// </summary>
+    /// <summary>
+    /// The turn's core record as kept with it (introduce-plugins 5.3): the subset of its trace the core stores whatever
+    /// plugin is installed.
+    /// </summary>
+    public IReadOnlyList<Maf.Lab.Domain.Tracing.TraceEvent> RecordOf(string turnId)
+    {
+        using var ctx = Services.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<Maf.Lab.Api.Storage.MafDbContext>>().CreateDbContext();
+        var json = ctx.Turns.Where(t => t.Id == turnId).Select(t => t.RecordJson).Single();
+        return System.Text.Json.JsonSerializer.Deserialize<List<Maf.Lab.Domain.Tracing.TraceEvent>>(json, Maf.Lab.Api.Agent.Tracing.TurnTrace.Json) ?? [];
+    }
+
     public static IEnumerable<System.Text.Json.JsonElement> TracesOf(IEnumerable<SseEvent> events)
     {
         var runId = events.First(e => e.Name == "RUN_STARTED").Data.GetProperty("runId").GetString()!;
-        if (!FakeRunTraceStore.All.TryGetValue(runId, out var trace))
+        if (!TestTraceCapture.All.TryGetValue(runId, out var trace))
         {
             return [];
         }

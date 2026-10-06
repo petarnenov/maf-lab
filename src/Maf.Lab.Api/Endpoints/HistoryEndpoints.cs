@@ -68,7 +68,6 @@ public static class HistoryEndpoints
             var turnIds = turns.Select(t => t.Id).ToList();
             var feedback = await ctx.Feedback.AsNoTracking().Where(f => turnIds.Contains(f.TurnId) && f.UserId == p.UserId)
                 .Select(f => new { f.TurnId, f.Kind }).ToListAsync(ct);
-            var traced = (await ctx.TurnTraces.AsNoTracking().Where(t => turnIds.Contains(t.TurnId)).Select(t => t.TurnId).ToListAsync(ct)).ToHashSet();
 
             var history = turns.Select(t => new HistoryTurn(
                 t.Id, t.Question, t.Answer, Utc(t.CreatedAt),
@@ -76,8 +75,9 @@ public static class HistoryEndpoints
                     .Select(c => new HistoryToolCall(c.CallId, c.ToolName, c.ArgumentSummary, c.Outcome, c.ResultSummary, c.SourceCount)).ToList(),
                 ReadSources(t.SourcesJson),
                 feedback.Where(f => f.TurnId == t.Id).Select(f => f.Kind).Distinct().ToList(),
-                traced.Contains(t.Id),
-                ReadActivities(t.ActivitiesJson))).ToList();
+                ReadActivities(t.ActivitiesJson),
+                string.IsNullOrEmpty(t.Reasoning) ? null : t.Reasoning,
+                string.IsNullOrEmpty(t.Reasoning) ? null : t.ReasoningMs)).ToList();
 
             var title = conversation.Title ?? ConversationTitles.FromQuestion(turns.FirstOrDefault()?.Question ?? "");
             return Results.Ok(new ConversationDetail(conversation.Id, title, Utc(conversation.CreatedAt), Utc(conversation.LastActivityAt), history,

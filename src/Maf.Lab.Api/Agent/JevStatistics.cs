@@ -188,6 +188,8 @@ public static class JevStatistics
                 var data = ev.TryGetProperty("data", out var d) && d.ValueKind == JsonValueKind.Object ? d : default;
                 switch (kind)
                 {
+                    // Records stored before the core record held everything (introduce-plugins 5.3) counted model calls and
+                    // a relevance's domain from the full trace; a core record carries them on content-free events.
                     case TraceKinds.ModelRequest:
                         modelCalls++;
                         break;
@@ -202,6 +204,10 @@ public static class JevStatistics
                         verdict = predicted.Length switch { 0 => "none", 1 => predicted[0], _ => "both" };
                         break;
                     case TraceKinds.TurnEnd when data.ValueKind == JsonValueKind.Object:
+                        if (data.TryGetProperty("modelCalls", out var mc) && mc.ValueKind == JsonValueKind.Number)
+                        {
+                            modelCalls = Math.Max(modelCalls, mc.GetInt32());
+                        }
                         touched = Strings(data, "domainsTouched");
                         crossed = data.TryGetProperty("crossings", out var c) && c.ValueKind == JsonValueKind.Number && c.GetInt32() > 0;
                         break;
@@ -223,7 +229,7 @@ public static class JevStatistics
                     case TraceKinds.Relevance when data.ValueKind == JsonValueKind.Object:
                         if (JudgedOf(at, data) is { } j)
                         {
-                            judged.Add(j);
+                            judged.Add(Str(data, "domain") is { } judgedDomain ? j with { Domain = judgedDomain } : j);
                         }
                         break;
                     case TraceKinds.AnswerCheck when data.ValueKind == JsonValueKind.Object:

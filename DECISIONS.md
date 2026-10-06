@@ -3256,4 +3256,14 @@ implementation" (parts A and B) holds each choice in full.
     the whole web's install and lockfile).
   - A plugin's tests compile into the core's test projects from its folder (`tests/unit`, `tests/integration`), with
     no project of their own, so nothing outside the folder names them.
+  - The monitor is a plugin (dev and qa). The core keeps a turn's core record (`TurnRow.RecordJson`): the trace's own
+    events of an allow-listed set of kinds, enough for the answer check's previous read and the statistics (5i), with
+    `turn.end.modelCalls` and `relevance.domain` added. It also keeps the reasoning as a field. **Supersedes §7's
+    narrower core list** (envelope, guard signals, intent and domain).
+  - `ITurnObserver` is `IsEnabled(kind)` plus `OnEventAsync` and `OnFramesAsync`, the DiagnosticListener /
+    ILogger.IsEnabled shape. The core builds an optional record only when an observer asks for it. Observers are
+    composed (GoF Composite) with per-observer queues, off the turn's path, drained with a bounded timeout. Rejected:
+    §7's four methods, and a flags record.
+  - A plugin reaches its tables through EF's `IDbContextFactory<DbContext>` over the one `MafDbContext`, whose model
+    cache is keyed by the installed plugin tables. Who may read a turn stays the core's rule (`ITurnAccess`).
 

@@ -22,24 +22,6 @@ public static class ChatEndpoints
         api.MapPost("/conversations", async (IPrincipalAccessor principals, ConversationService conversations, CancellationToken ct) =>
             Results.Created((string?)null, new ConversationCreated(await conversations.CreateAsync(principals.Current, ct))));
 
-        // A run's trace while it is being written (agui-protocol-only): the trace no longer travels on the run's stream,
-        // so the monitor reads it here while the run is live, from whichever replica it reaches. Only the run's owner.
-        api.MapGet("/runs/{runId}/trace", async (string runId, int? after, IPrincipalAccessor principals, IRunStateStore runs,
-            IRunTraceStore traces, CancellationToken ct) =>
-        {
-            var principal = principals.Current;
-            var state = await runs.GetAsync(runId, ct);
-            if (state is null || state.UserId != principal.UserId || state.TenantId != principal.TenantId.Value)
-            {
-                return Results.NotFound();
-            }
-            var events = await traces.ReadAsync(runId, Math.Max(0, after ?? 0), ct);
-            return Results.Ok(new LiveTraceDocument(runId, state.TurnId, state.Outcome != RunOutcomes.Running, events));
-        });
-
         return app;
     }
 }
-
-/// <summary>A run's trace so far, and whether the run is over (then the turn's stored trace is the whole of it).</summary>
-public sealed record LiveTraceDocument(string RunId, string? TurnId, bool Ended, IReadOnlyList<Maf.Lab.Domain.Tracing.TraceEvent> Events);

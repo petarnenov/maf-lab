@@ -242,48 +242,51 @@ public class ReplicaStateTests
         var factory = Factory(path);
         await using (var ctx = await factory.CreateDbContextAsync(Ct))
         {
-            // An "old" database: TurnTraces exists, but without the column the AG-UI frames go in.
+            // An "old" database: Turns exists, but without the column a turn's reasoning goes in.
             foreach (var statement in DatabaseInitializer.Statements(ctx.Database.GenerateCreateScript()))
             {
-                await ctx.Database.ExecuteSqlRawAsync(WithoutAguiColumn(statement), Ct);
+                await ctx.Database.ExecuteSqlRawAsync(WithoutColumn(statement, "Reasoning"), Ct);
             }
-            Assert.DoesNotContain("AguiJson", await ColumnsAsync(ctx, "TurnTraces"));
+            Assert.DoesNotContain("Reasoning", await ColumnsAsync(ctx, "Turns"));
         }
 
         await using (var ctx = await factory.CreateDbContextAsync(Ct))
         {
             await DatabaseInitializer.InitializeAsync(ctx, Ct);
-            ctx.TurnTraces.Add(new TurnTraceRow
+            ctx.Turns.Add(new TurnRow
             {
-                TurnId = "t_1",
+                Id = "t_1",
                 ConversationId = "c",
                 UserId = "adam",
                 TenantId = "firm-a",
+                Question = "q",
+                Reasoning = "thought",
                 CreatedAt = DateTime.UtcNow,
-                Json = "[]",
-                AguiJson = "[{\"seq\":1}]",
             });
             await ctx.SaveChangesAsync(Ct);
         }
 
         await using var check = await factory.CreateDbContextAsync(Ct);
-        Assert.Contains("AguiJson", await ColumnsAsync(check, "TurnTraces"));
-        Assert.Equal("[{\"seq\":1}]", (await check.TurnTraces.SingleAsync(t => t.TurnId == "t_1", Ct)).AguiJson);
+        Assert.Contains("Reasoning", await ColumnsAsync(check, "Turns"));
+        Assert.Equal("thought", (await check.Turns.SingleAsync(t => t.Id == "t_1", Ct)).Reasoning);
     }
 
-    /// <summary>The same CREATE TABLE as the model's, minus the column this test is about.</summary>
-    private static string WithoutAguiColumn(string statement)
+    /// <summary>The same CREATE TABLE as the model's, minus one column.</summary>
+    private static string WithoutColumn(string statement, string column)
     {
-        if (!statement.Contains("AguiJson", StringComparison.Ordinal))
+        var lines = statement.Split('\n').ToList();
+        var at = lines.FindIndex(l => l.TrimStart().StartsWith($"\"{column}\" ", StringComparison.Ordinal));
+        if (at < 0)
         {
             return statement;
         }
-        var lines = statement.Split('\n').Where(l => !l.Contains("AguiJson", StringComparison.Ordinal)).ToList();
-        // It was the last column, so the one before it is left with a trailing comma the table cannot have.
-        for (var i = lines.Count - 1; i >= 0; i--)
+        var removed = lines[at].TrimEnd('\r', ' ');
+        lines.RemoveAt(at);
+        // The last column has no comma: the one before it then must lose its own.
+        if (!removed.EndsWith(',') && at > 0)
         {
-            var trimmed = lines[i].TrimEnd('\r', ' ');
-            if (trimmed.EndsWith(',')) { lines[i] = trimmed[..^1]; break; }
+            var before = lines[at - 1].TrimEnd('\r', ' ');
+            if (before.EndsWith(',')) { lines[at - 1] = before[..^1]; }
         }
         return string.Join('\n', lines);
     }

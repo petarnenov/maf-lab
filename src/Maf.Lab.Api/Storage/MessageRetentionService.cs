@@ -38,9 +38,8 @@ public sealed class MessageRetentionService(
         {
             return 0;
         }
-        // The turns and their traces go with the conversation: they are the same message content, written twice.
-        var turnIds = await ctx.Turns.Where(t => stale.Contains(t.ConversationId)).Select(t => t.Id).ToListAsync(ct);
-        await ctx.TurnTraces.Where(t => turnIds.Contains(t.TurnId)).ExecuteDeleteAsync(ct);
+        // The turns go with the conversation, their core records with them. A plugin's diagnostics of them (the monitor's)
+        // follow its own, shorter retention.
         await ctx.Turns.Where(t => stale.Contains(t.ConversationId)).ExecuteDeleteAsync(ct);
         await ctx.Messages.Where(m => stale.Contains(m.ConversationId)).ExecuteDeleteAsync(ct);
         await ctx.PendingAdjustments.Where(p => stale.Contains(p.ConversationId)).ExecuteDeleteAsync(ct);

@@ -2,6 +2,25 @@
 
 ## MODIFIED Requirements
 
+### Requirement: Open a conversation
+Opening a conversation SHALL return all of its turns in order. Each turn SHALL include its question, answer, creation
+time, tool calls (tool, argument summary, outcome, result summary, source count), sources (doc id, section, source path,
+snippet), the feedback kinds the user already gave, and the model's reasoning with how long it took (none for a model
+that did not reason). A conversation that does
+not belong to the caller, or was deleted, MUST return not found.
+
+#### Scenario: Restore a turn
+- **WHEN** Adam opens a conversation whose turn called search_documents and got 5 sources
+- **THEN** the turn shows its answer, a finished tool card with its result summary, the 5 sources with snippets, and its feedback state
+
+#### Scenario: Someone else's conversation
+- **WHEN** Rita opens Adam's conversation id
+- **THEN** the response is not found
+
+#### Scenario: Older turns
+- **WHEN** a turn was stored before sources and tool summaries were persisted in full
+- **THEN** it still opens, showing the fields it has
+
 ### Requirement: Conversation list
 While the `conversation-history` plugin is installed, the system SHALL list the caller's own, non-deleted conversations
 ordered by last activity (newest first). Each entry SHALL include the conversation id, title, creation time, last

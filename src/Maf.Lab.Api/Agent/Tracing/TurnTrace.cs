@@ -6,12 +6,13 @@ using Maf.Lab.Domain.Tracing;
 namespace Maf.Lab.Api.Agent.Tracing;
 
 /// <summary>
-/// Collects the ordered trace of one chat turn. Each event is handed at once to <paramref name="live"/> (the monitor's live
-/// view, read from the shared store) and kept for persistence at turn end. Strings longer than <see cref="MaxFieldChars"/> are cut; once the trace would exceed
+/// Collects the ordered trace of one chat turn — the turn's event bus. Each event is handed at once to the run's
+/// observers (<paramref name="observation"/>, the installed plugins', none in a core-only deployment) and kept in memory
+/// for the turn's own reads and for its core record. Strings longer than <see cref="MaxFieldChars"/> are cut; once the trace would exceed
 /// <see cref="MaxTraceBytes"/>, later events keep kind and timing but lose their data. Both cases set Truncated.
 /// It never travels on the run's AG-UI stream (agui-protocol-only).
 /// </summary>
-public sealed class TurnTrace(LiveTrace? live)
+public sealed class TurnTrace(TurnObservation? observation)
 {
     public const int MaxFieldChars = 20_000;
     public const int MaxTraceBytes = 1_000_000;
@@ -49,7 +50,7 @@ public sealed class TurnTrace(LiveTrace? live)
             ev = new TraceEvent(_events.Count + 1, _clock.ElapsedMilliseconds, kind, title, durationMs, element, truncated);
             _events.Add(ev);
         }
-        live?.Write(ev);
+        observation?.Write(ev);
         return ev;
     }
 

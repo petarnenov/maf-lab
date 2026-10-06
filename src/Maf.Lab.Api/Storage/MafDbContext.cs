@@ -1,4 +1,6 @@
+using Maf.Lab.Plugins.Abstractions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 
 namespace Maf.Lab.Api.Storage;
 
@@ -15,7 +17,6 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
     public DbSet<LabelRow> Labels => Set<LabelRow>();
     public DbSet<AuditRow> Audit => Set<AuditRow>();
     public DbSet<AdminJobRow> AdminJobs => Set<AdminJobRow>();
-    public DbSet<TurnTraceRow> TurnTraces => Set<TurnTraceRow>();
     public DbSet<A2ATaskRow> A2ATasks => Set<A2ATaskRow>();
     public DbSet<A2APushConfigRow> A2APushConfigs => Set<A2APushConfigRow>();
     public DbSet<A2APushDeliveryRow> A2APushDeliveries => Set<A2APushDeliveryRow>();
@@ -28,8 +29,21 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
     public DbSet<TestGenRunActivityRow> TestGenRunActivity => Set<TestGenRunActivityRow>();
     public DbSet<TestGenIssueRow> TestGenIssues => Set<TestGenIssueRow>();
 
+    /// <summary>
+    /// The installed in-process plugins that contribute tables (introduce-plugins decision 5): read from the application's
+    /// services the context was built with, none when it was built without them (a tool, a test's bare context).
+    /// </summary>
+    internal IReadOnlyList<IContributesModel> PluginModels =>
+        this.GetService<IDbContextOptions>().FindExtension<CoreOptionsExtension>()?.ApplicationServiceProvider
+            ?.GetService<Plugins.LoadedPlugins>()?.Plugins.OfType<IContributesModel>().ToList() ?? [];
+
     protected override void OnModelCreating(ModelBuilder b)
     {
+        // A plugin's tables, only while it is installed: DatabaseInitializer's create script then includes them.
+        foreach (var plugin in PluginModels)
+        {
+            plugin.ConfigureModel(b);
+        }
         b.Entity<ConversationRow>().HasKey(x => x.Id);
         b.Entity<ConversationRow>().HasIndex(x => new { x.UserId, x.TenantId, x.DeletedAt, x.LastActivityAt });
         b.Entity<MessageRow>().HasIndex(x => new { x.ConversationId, x.Id });
@@ -43,8 +57,6 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
         // An investigation starts from a person, not from a firm.
         b.Entity<AuditRow>().HasIndex(x => new { x.PrincipalId, x.At });
         b.Entity<AdminJobRow>().HasKey(x => x.Id);
-        b.Entity<TurnTraceRow>().HasKey(x => x.TurnId);
-        b.Entity<TurnTraceRow>().HasIndex(x => x.CreatedAt);
         // At most one running job per firm and kind, enforced by the database across replicas.
         b.Entity<AdminJobRow>().HasIndex(x => new { x.TenantId, x.Kind }).IsUnique().HasFilter("\"State\" = 'running'");
         b.Entity<A2ATaskRow>().HasKey(x => x.Id);
@@ -121,6 +133,15 @@ public sealed class TurnRow
     /// <summary>The data cards the turn showed, as sent (add-activity-cards): numbers and names only.</summary>
     public string ActivitiesJson { get; set; } = "[]";
     public string SignalsJson { get; set; } = "[]";
+    /// <summary>
+    /// The turn's core record (introduce-plugins decision 7): its trace events of the kinds <see cref="Agent.Tracing.TurnRecord"/>
+    /// keeps, in the trace's own shape (docs/trace-events.md). Read by the answer check's previous read and the statistics.
+    /// </summary>
+    public string RecordJson { get; set; } = "[]";
+    /// <summary>What the model reasoned before it answered, as its own field (none for a model that does not reason).</summary>
+    public string Reasoning { get; set; } = "";
+    /// <summary>How long the reasoning took, from its first chunk to its last; null without reasoning.</summary>
+    public long? ReasoningMs { get; set; }
     public bool Labeled { get; set; }
     public DateTime CreatedAt { get; set; }
 }
@@ -230,19 +251,6 @@ public sealed class AdminJobRow
 }
 
 /// <summary>Full behind-the-scenes trace of a turn (message content; retention: Tracing:RetentionDays).</summary>
-public sealed class TurnTraceRow
-{
-    public required string TurnId { get; set; }
-    public required string ConversationId { get; set; }
-    public required string UserId { get; set; }
-    public required string TenantId { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public required string Json { get; set; }
-
-    /// <summary>The run's AG-UI frames, added once its stream ended. Null for turns recorded before they were kept.</summary>
-    public string? AguiJson { get; set; }
-}
-
 /// <summary>An A2A task, whole, so any replica can answer for it. The SDK's own store is per-process.</summary>
 public sealed class A2ATaskRow
 {
@@ -280,4 +288,25 @@ public sealed class A2APushDeliveryRow
     public int Attempts { get; set; }
     public bool Delivered { get; set; }
     public string? Error { get; set; }
+}
+
+/// <summary>Keys EF's model cache by the set of plugins that contribute tables, as well as by the context type.</summary>
+public sealed class PluginModelCacheKeyFactory : IModelCacheKeyFactory
+{
+    public object Create(DbContext context, bool designTime) => context is MafDbContext maf
+        ? (context.GetType(), string.Join(",", maf.PluginModels.Select(p => ((IMafPlugin)p).Name).Order(StringComparer.Ordinal)), designTime)
+        : (object)(context.GetType(), designTime);
+}
+
+/// <summary>
+/// The one store as a plugin reaches it (introduce-plugins decision 5): EF's own <see cref="IDbContextFactory{TContext}"/>
+/// over <see cref="DbContext"/>, so a plugin reads and writes its tables with <c>Set&lt;T&gt;()</c> and never names the
+/// core's context type.
+/// </summary>
+public sealed class PluginDbContextFactory(IDbContextFactory<MafDbContext> inner) : IDbContextFactory<DbContext>
+{
+    public DbContext CreateDbContext() => inner.CreateDbContext();
+
+    public async Task<DbContext> CreateDbContextAsync(CancellationToken cancellationToken = default) =>
+        await inner.CreateDbContextAsync(cancellationToken);
 }

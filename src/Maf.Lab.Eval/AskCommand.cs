@@ -25,9 +25,8 @@ public static class AskCommand
     public static async Task<int> RunAsync(EvalAgentHost host, string tenantId, string question, string? jsonPath, CancellationToken ct)
     {
         var turn = await host.AskAsync(tenantId, question, ct);
-        await using var db = await host.Services.GetRequiredService<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(ct);
-        var row = await db.TurnTraces.SingleAsync(t => t.TurnId == turn.TurnId, ct);
-        var events = JsonSerializer.Deserialize<List<TraceEvent>>(row.Json, TurnTrace.Json) ?? [];
+        // The whole trace, from the eval's own observer (the core record holds only its subset).
+        var events = host.Services.GetRequiredService<EvalTraceCapture>().Of(turn.TurnId);
 
         Console.WriteLine($"Q ({tenantId}): {question}");
         foreach (var e in events.Where(e => Shown.Contains(e.Kind)))
@@ -39,7 +38,7 @@ public static class AskCommand
         Console.WriteLine(turn.Error ?? turn.Answer);
         if (jsonPath is { Length: > 0 })
         {
-            await File.WriteAllTextAsync(jsonPath, row.Json, ct);
+            await File.WriteAllTextAsync(jsonPath, JsonSerializer.Serialize(events, TurnTrace.Json), ct);
             Console.WriteLine($"\ntrace → {jsonPath}");
         }
         return turn.Error is null ? 0 : 1;

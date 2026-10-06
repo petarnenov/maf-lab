@@ -16,7 +16,7 @@ namespace Maf.Lab.Api.Agent;
 /// (<see cref="ConfirmationService"/>), or a rejoin of a run the caller lost (<see cref="RunRejoin"/>). The caller, its
 /// tenant and its token come from the request, never from the run's input.
 /// </summary>
-public sealed class ChatAgent(IHttpContextAccessor http, ILogger<ChatAgent> logger) : AIAgent
+public sealed class ChatAgent(IHttpContextAccessor http) : AIAgent
 {
     public const string AgentName = "maf-lab-assistant";
 
@@ -49,7 +49,7 @@ public sealed class ChatAgent(IHttpContextAccessor http, ILogger<ChatAgent> logg
         var token = context.Request.Headers.Authorization.ToString() is { Length: > 7 } header ? header["Bearer ".Length..].Trim() : "";
 
         var output = Channel.CreateUnbounded<ChatResponseUpdate>(new UnboundedChannelOptions { SingleReader = true });
-        var live = new LiveTrace(services.GetRequiredService<IRunTraceStore>(), request.RunId, logger);
+        var observation = services.GetRequiredService<TurnObservers>().Begin(request.RunId);
         string? error = null;
         var run = Task.Run(async () =>
         {
@@ -67,7 +67,7 @@ public sealed class ChatAgent(IHttpContextAccessor http, ILogger<ChatAgent> logg
                 else
                 {
                     var result = await services.GetRequiredService<ChatTurnRunner>().RunAsync(principal, token, request.ThreadId,
-                        request.Message ?? "", request.RunId, output.Writer, cancellationToken, request.State, live);
+                        request.Message ?? "", request.RunId, output.Writer, cancellationToken, request.State, observation);
                     error = result.Error;
                 }
             }
@@ -87,7 +87,7 @@ public sealed class ChatAgent(IHttpContextAccessor http, ILogger<ChatAgent> logg
         }
         finally
         {
-            await live.CompleteAsync();
+            await observation.CompleteAsync();
         }
 
         if (error is not null)

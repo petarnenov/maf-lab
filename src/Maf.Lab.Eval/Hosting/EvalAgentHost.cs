@@ -141,6 +141,10 @@ public sealed class EvalAgentHost : IAsyncDisposable
         services.AddSingleton(sp => new DomainCatalogue(sp.GetRequiredService<IOptions<AgentOptions>>(),
             Maf.Lab.Api.Plugins.PluginHost.InstalledBehaviours(sp.GetRequiredService<Maf.Lab.Api.Plugins.PluginCatalogue>().Current),
             sp.GetRequiredService<Maf.Lab.Api.Plugins.PluginCatalogue>(), sp.GetRequiredService<IOptions<Maf.Lab.Api.Plugins.PluginOptions>>()));
+        // Every eval turn traced in full, as before the monitor became a plugin: the eval's own observer wants it all.
+        services.AddSingleton<EvalTraceCapture>();
+        services.AddSingleton<Maf.Lab.Plugins.Abstractions.ITurnObserver>(sp => sp.GetRequiredService<EvalTraceCapture>());
+        services.AddSingleton<Maf.Lab.Api.Agent.Tracing.TurnObservers>();
         services.AddSingleton<SystemPrompt>();
         services.AddSingleton<TokenCounter>();
         services.AddSingleton<ToolAudit>();
@@ -204,9 +208,17 @@ public sealed class EvalAgentHost : IAsyncDisposable
         // The eval reads the turn's result, not its stream, so what the turn says goes to a channel nobody drains.
         var channel = Channel.CreateUnbounded<Microsoft.Extensions.AI.ChatResponseUpdate>();
         var runner = Services.GetRequiredService<ChatTurnRunner>();
-        var result = await runner.RunAsync(principal, token, conversationId, question, $"r_{Guid.NewGuid():N}", channel.Writer, ct);
-        channel.Writer.TryComplete();
-        return result;
+        var runId = $"r_{Guid.NewGuid():N}";
+        var observation = Services.GetRequiredService<Maf.Lab.Api.Agent.Tracing.TurnObservers>().Begin(runId);
+        try
+        {
+            return await runner.RunAsync(principal, token, conversationId, question, runId, channel.Writer, ct, observation: observation);
+        }
+        finally
+        {
+            channel.Writer.TryComplete();
+            await observation.CompleteAsync();
+        }
     }
 
     public async ValueTask DisposeAsync()

@@ -1,0 +1,8 @@
+schema = 1
+name = "monitor"
+kind = "app"
+scope = "installation"
+environments = ["dev", "qa"]
+description = "Behind the scenes of every chat turn: the full trace (model calls, prompt, retrieval diagnostics, guard, answer check), live while it runs and kept for a while after, with the run's AG-UI frames and time travel."
+progress = "Page: the Behind the scenes pane follows a running turn live and shows its loading state while a stored trace is read"
+stopping = "Key: the run's own stop; Stop: Esc stops the run as it always does, and leaving the page or closing the pane aborts the trace reads; Recorded in: the run's state (shared store) and the kept trace; Shown: the trace ends with the run's cancelled turn.end"

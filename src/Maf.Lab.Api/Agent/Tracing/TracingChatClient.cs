@@ -8,13 +8,19 @@ using Microsoft.Extensions.AI;
 namespace Maf.Lab.Api.Agent.Tracing;
 
 /// <summary>
-/// Records every real model call of a turn: the full request (messages, tools, tool mode, options) and the response
-/// (text, tool calls, finish reason, token usage, latency). Sits directly above the provider client, so calls issued
-/// on the model's behalf by <see cref="RequiredToolModeChatClient"/> are not counted as model calls.
+/// Counts every real model call of a turn and, when <paramref name="capture"/> is set (an observer wants the model
+/// capture), records the full request (messages, tools, tool mode, options) and the response (text, tool calls, finish
+/// reason, token usage, latency). Sits directly above the provider client, so calls issued on the model's behalf by
+/// <see cref="RequiredToolModeChatClient"/> are not counted as model calls. <paramref name="beforeResponse"/> runs at the
+/// end of every response either way, so the streamed text is flushed at the same points with or without the capture.
 /// </summary>
-public sealed class TracingChatClient(IChatClient inner, TurnTrace trace, Action? beforeResponse = null) : DelegatingChatClient(inner)
+public sealed class TracingChatClient(IChatClient inner, TurnTrace trace, Action? beforeResponse = null, bool capture = true)
+    : DelegatingChatClient(inner)
 {
     private int _iteration;
+
+    /// <summary>The model calls made so far.</summary>
+    public int Calls => Volatile.Read(ref _iteration);
 
     public override async Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
     {
@@ -57,6 +63,10 @@ public sealed class TracingChatClient(IChatClient inner, TurnTrace trace, Action
     private int Request(IReadOnlyList<ChatMessage> messages, ChatOptions? options)
     {
         var iteration = Interlocked.Increment(ref _iteration);
+        if (!capture)
+        {
+            return iteration;
+        }
         var meta = InnerClient.GetService<ChatClientMetadata>();
         trace.Add(TraceKinds.ModelRequest, $"Model call #{iteration} → {options?.ModelId ?? meta?.DefaultModelId ?? "model"}", new JsonObject
         {
@@ -78,6 +88,10 @@ public sealed class TracingChatClient(IChatClient inner, TurnTrace trace, Action
         // Streams are pulled: every update yielded above has already reached the turn runner, so the answer chunks
         // recorded now are exactly the text delivered before this response ended.
         beforeResponse?.Invoke();
+        if (!capture)
+        {
+            return;
+        }
         var toolCalls = calls.ToList();
         var title = toolCalls.Count > 0
             ? $"Model #{iteration} asked for {string.Join(", ", toolCalls.Select(c => c.Name))}"

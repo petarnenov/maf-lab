@@ -57,7 +57,9 @@ public partial class Program
 
         builder.Services.AddDbContextFactory<MafDbContext>(o => o
             .UseSqlite(builder.Configuration["Storage:ConnectionString"] ?? "Data Source=maf-lab.db")
-            .AddInterceptors(new SqlitePragmaInterceptor()));
+            .AddInterceptors(new SqlitePragmaInterceptor())
+            // One model per set of plugin tables, so two hosts with different plugins in one process never share one.
+            .ReplaceService<Microsoft.EntityFrameworkCore.Infrastructure.IModelCacheKeyFactory, Storage.PluginModelCacheKeyFactory>());
 
         // Each built-in domain's chunks, keyed by domain, for the review queue to resolve a search's sources where they live.
         Maf.Lab.Api.BuiltIn.BuiltInDomains.AddStores(builder.Services, builder.Configuration);
@@ -71,7 +73,11 @@ public partial class Program
         builder.Services.Configure<Agent.FeeAdjustmentOptions>(builder.Configuration.GetSection("FeeAdjustments"));
         builder.Services.AddScoped<Agent.FeeAdjustmentFlow>();
         builder.Services.AddScoped<Agent.ConfirmationService>();
-        builder.Services.AddSingleton<Agent.Streaming.RunFrameStore>();
+        // The turn observers of the installed plugins, as one (decision 7); none of the core's own.
+        builder.Services.AddSingleton<Agent.Tracing.TurnObservers>();
+        // The one store, as a plugin reaches its own tables (EF's factory over DbContext).
+        builder.Services.AddSingleton<IDbContextFactory<DbContext>, Storage.PluginDbContextFactory>();
+        builder.Services.AddScoped<Maf.Lab.Plugins.Abstractions.ITurnAccess, Storage.TurnAccess>();
         builder.Services.AddScoped<ChatTurnRunner>();
         builder.Services.AddScoped<Agent.RunRejoin>();
         // Every agent reaches a browser through the Agent Framework's own AG-UI server (agui-protocol-only).
@@ -107,13 +113,10 @@ public partial class Program
         // The SDK's server does the protocol; five operations it leaves throwing are implemented around it.
         builder.Services.AddSingleton<IPushConfigStore, A2A.SqlitePushConfigStore>();
         builder.Services.AddSingleton<global::A2A.IA2ARequestHandler, A2ARequestHandlerWithExtras>();
-        builder.Services.Configure<Agent.Tracing.TracingOptions>(builder.Configuration.GetSection(Agent.Tracing.TracingOptions.Section));
-        builder.Services.AddSingleton<Agent.Tracing.TraceRetentionService>();
         builder.Services.Configure<Storage.MessageRetentionOptions>(
             builder.Configuration.GetSection(Storage.MessageRetentionOptions.Section));
         builder.Services.AddSingleton<Storage.MessageRetentionService>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<Storage.MessageRetentionService>());
-        builder.Services.AddHostedService(sp => sp.GetRequiredService<Agent.Tracing.TraceRetentionService>());
         // The Coverage screen (add-coverage-dashboard-and-test-agent): snapshots, thresholds, and the runner that measures.
         builder.Services.Configure<Coverage.CoverageOptions>(builder.Configuration.GetSection(Coverage.CoverageOptions.Section));
         builder.Services.Configure<Coverage.CoverageRunnerOptions>(builder.Configuration.GetSection(Coverage.CoverageRunnerOptions.Section));
@@ -174,7 +177,6 @@ public partial class Program
         app.MapFeedback();
         app.MapAdminIndex();
         app.MapEvalReports();
-        app.MapTraces();
         app.MapTelemetry();
         app.MapHistory();
         app.MapTopology();

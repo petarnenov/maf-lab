@@ -30,9 +30,10 @@ public static class IntentStatsEndpoints
             var now = time.GetUtcNow();
             var from = (now - w.Span).UtcDateTime;
             await using var ctx = await db.CreateDbContextAsync(ct);
-            var rows = await ctx.TurnTraces.AsNoTracking()
+            // The turns' core records (introduce-plugins 5.3): they exist with or without the monitor.
+            var rows = await ctx.Turns.AsNoTracking()
                 .Where(t => t.TenantId == principal.TenantId.Value && t.CreatedAt >= from)
-                .Select(t => new IntentStatistics.TraceRow(t.CreatedAt, t.Json))
+                .Select(t => new IntentStatistics.TraceRow(t.CreatedAt, t.RecordJson))
                 .ToListAsync(ct);
             var o = jev.Value;
             return Results.Ok(IntentStatistics.Aggregate(rows, chosen,

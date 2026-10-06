@@ -174,11 +174,12 @@ class InstallTests(PluginsTestCase):
         self.assertEqual(["weather", "weather-db"], plugins.services(plugins.Plugin("weather", folder, {})))
 
     def test_the_product_variant_keeps_only_plugins_stage_or_prod_allow(self):
-        self.add("monitor", manifest("monitor"), **{"server__Maf.Lab.Plugins.Monitor.csproj": "<Project/>"})
-        self.add("billing", manifest("billing", environments=["dev", "prod"]), **{"server__Maf.Lab.Plugins.Billing.csproj": "<Project/>"})
+        # Fictional plugins: a real plugin's project name may appear nowhere outside its folder (the contract suite).
+        self.add("devtool", manifest("devtool"), **{"server__Maf.Lab.Plugins.DevTool.csproj": "<Project/>"})
+        self.add("ledger", manifest("ledger", environments=["dev", "prod"]), **{"server__Maf.Lab.Plugins.Ledger.csproj": "<Project/>"})
         out = subprocess.run([sys.executable, str(ROOT / "scripts/plugins.py"), "product-servers"], capture_output=True, text=True,
                              env=os.environ.copy(), check=True).stdout.strip()
-        self.assertEqual("|Maf.Lab.Plugins.Billing|", out)
+        self.assertEqual("|Maf.Lab.Plugins.Ledger|", out)
 
 
 @unittest.skipUnless(shutil.which("docker"), "docker is not installed")

@@ -63,6 +63,11 @@ public static class PluginHost
             // Read by the domain catalogue next to the built-in domains' behaviours (decision 6).
             builder.Services.AddSingleton(plugin.Behaviour);
         }
+        foreach (var plugin in loaded.OfType<IContributesTurnObserver>())
+        {
+            // Composed into the core's TurnObservers (decision 7): the core registers no observer of its own.
+            builder.Services.AddSingleton<ITurnObserver>(sp => plugin.CreateObserver(sp));
+        }
         foreach (var plugin in loaded.OfType<IContributesOpenWork>())
         {
             builder.Services.AddSingleton(new NamedOpenWork(((IMafPlugin)plugin).Name, plugin));

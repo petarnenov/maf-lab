@@ -14,7 +14,7 @@ namespace Maf.Lab.Api.Agent.AGUI;
 /// </summary>
 public sealed class RunTap(RequestDelegate next, ILogger<RunTap> logger)
 {
-    public async Task InvokeAsync(HttpContext context, IRunStateStore runStates, RunFrameStore frameStore, TimeProvider time)
+    public async Task InvokeAsync(HttpContext context, IRunStateStore runStates, Tracing.TurnObservers observers, TimeProvider time)
     {
         if (!HttpMethods.IsPost(context.Request.Method) || context.Request.Path != ChatAgentEndpoint.Path)
         {
@@ -24,7 +24,8 @@ public sealed class RunTap(RequestDelegate next, ILogger<RunTap> logger)
 
         var body = context.Response.Body;
         var pipe = new Pipe();
-        var frames = new RunFrameRecorder(time);
+        // The run's frames are kept only when an observer wants them (the monitor); the run state is recorded either way.
+        var frames = observers.IsEnabled(Maf.Lab.Plugins.Abstractions.RunFrames.Kind) ? new RunFrameRecorder(time) : null;
         RunStateTracker? state = null;
         var reader = Task.Run(async () =>
         {
@@ -46,7 +47,7 @@ public sealed class RunTap(RequestDelegate next, ILogger<RunTap> logger)
                 {
                     continue;
                 }
-                frames.Add(e, Encoding.UTF8.GetByteCount(item.Data));
+                frames?.Add(e, Encoding.UTF8.GetByteCount(item.Data));
                 if (state?.Observe(e) == true)
                 {
                     await state.SaveAsync(CancellationToken.None);
@@ -86,8 +87,11 @@ public sealed class RunTap(RequestDelegate next, ILogger<RunTap> logger)
                 state.Cancelled();
                 // What the client saw last, whether the run ended or the client walked away from it.
                 await state.SaveAsync(CancellationToken.None);
-                // What the client received, kept under the turn the run recorded; a run that recorded none has nowhere.
-                await frameStore.SaveAsync(run.RecordsNoTurn ? null : run.RunId, frames.Frames, CancellationToken.None);
+                // What the client received, handed to the observers that keep it, under the turn the run recorded.
+                if (frames is not null)
+                {
+                    await observers.FramesAsync(run.RunId, run.RecordsNoTurn ? null : run.RunId, frames.Frames);
+                }
             }
         }
     }

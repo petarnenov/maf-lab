@@ -23,8 +23,10 @@ public sealed record HistoryTurn(
     IReadOnlyList<HistoryToolCall> ToolCalls,
     IReadOnlyList<SourceRef> Sources,
     IReadOnlyList<string> FeedbackKinds,
-    bool TraceAvailable,
-    IReadOnlyList<HistoryActivity>? Activities = null);
+    IReadOnlyList<HistoryActivity>? Activities = null,
+    // What the model reasoned before it answered, from the turn itself (introduce-plugins 5.3); null when it did not.
+    string? Reasoning = null,
+    long? ReasoningMs = null);
 
 /// <summary>
 /// A data card the turn showed (add-activity-cards): the AG-UI activity as it was sent, so a reopened conversation

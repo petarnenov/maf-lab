@@ -909,6 +909,29 @@ These choices deviate from the text above. Each is kept, with the rejected alter
     name that `CoreNamesNoDomainTests` does not cover (the file is allow-listed). The billing and portfolio follow-ups
     derive the domain-server nodes from the catalogue and the agent's servers, after which a plugin that is not
     installed has no node.
+11. **The monitor split (task 5.3).**
+    - The core keeps `TurnTrace` as the turn's in-memory event bus and persists one core record per turn,
+      `TurnRow.RecordJson`, in the trace's own shape, filtered by an allow-list of kinds: intent, domain, boundary,
+      guardrail, relevance, answer.check, signals, sources, audit, focus, turn.end, envelope. It also persists
+      `Reasoning` and `ReasoningMs` as fields. This widens §7's "envelope, guard signals, intent and domain" so the
+      statistics keep reading the core record (5i binds it). `turn.end` gains `modelCalls` and `relevance` gains
+      `domain`, so no statistic needs a content-bearing event.
+    - Envelopes move from trace retention to conversation retention, under the same 20,000-char field cap.
+    - The observer contract deviates from §7's four names, `OnEvent`/`OnModelCall`/`OnPrompt`/`OnFrames`:
+      `ITurnObserver { IsEnabled(kind); OnEventAsync(runId, TraceEvent); OnFramesAsync(runId, turnId, frames) }`, the
+      DiagnosticListener/ILogger.IsEnabled shape. The core checks `IsEnabled` before building the model capture, the
+      prompt's tool schemas, retrieval diagnostics and the frames. Rejected: four methods (model capture and prompt are
+      already trace events), and a flags record.
+    - The host is a Composite, `TurnObservers`. Each observer has its own in-order queue and is never awaited on the
+      turn's path; failures are logged by type name. The drain at run end runs with `CancellationToken.None` under a
+      bounded timeout. `IContributesTurnObserver` is a factory method, so the observer takes its dependencies from DI.
+    - The monitor's table is `TurnDiagnostics` (`IContributesModel`). A plugin reaches the one store through EF's own
+      `IDbContextFactory<DbContext>`, and EF's model cache is keyed by the set of plugin tables. Who may read a turn
+      stays the core's rule, behind the `ITurnAccess` port. The shared trace store (`IRunTraceStore`) stays core.
+    - History drops `traceAvailable` and gains `reasoning`/`reasoningMs`. Core tests observe turns through a capturing
+      test observer, and the eval host has its own, so evals trace exactly as before.
+    - Without the monitor a turn writes no live trace. Older turns have no core record, and the dev-only insights page
+      shows that discontinuity, with no backfill.
 
 ## Principles and patterns
 

@@ -190,6 +190,10 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   Verify that core-only turns make no Redis trace write and no trace request, and that with the monitor on every
   existing monitor test passes.
 
+  Done in two commits: C3a (server: the core record, the observer host, the monitor's server part, table, routes and
+  retention, their tests, the docs and deltas) and C3b (web: the monitor's web part, run observers, the turn-view
+  override, the review panel slot).
+
 - [ ] 5.4 `conversation-history` (app, installation scope, installed by default):
   - add `IConversationStore` to the abstractions (task 3.1), implemented by the core: page and search, rename, and a
     soft delete that records `conversation.delete` in the audit;

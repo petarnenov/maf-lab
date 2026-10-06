@@ -1,8 +1,9 @@
-using Maf.Lab.Api.Storage;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace Maf.Lab.Api.Agent.Tracing;
+namespace Maf.Lab.Plugins.Monitor;
 
 public sealed class TracingOptions
 {
@@ -11,15 +12,18 @@ public sealed class TracingOptions
     public TimeSpan SweepInterval { get; set; } = TimeSpan.FromHours(1);
 }
 
-/// <summary>Deletes turn traces older than the retention period. Idempotent, so every api replica can run it.</summary>
-public sealed class TraceRetentionService(IDbContextFactory<MafDbContext> db, IOptions<TracingOptions> options, TimeProvider time,
+/// <summary>
+/// Deletes the monitor's kept traces older than its retention period. Idempotent, so every api replica can run it. A
+/// turn's core record is not here: it lives as long as its conversation.
+/// </summary>
+public sealed class TraceRetentionService(IDbContextFactory<DbContext> db, IOptions<TracingOptions> options, TimeProvider time,
     ILogger<TraceRetentionService> logger) : BackgroundService
 {
     public async Task<int> PurgeAsync(CancellationToken ct)
     {
         var cutoff = time.GetUtcNow().UtcDateTime.AddDays(-options.Value.RetentionDays);
         await using var ctx = await db.CreateDbContextAsync(ct);
-        return await ctx.TurnTraces.Where(t => t.CreatedAt < cutoff).ExecuteDeleteAsync(ct);
+        return await ctx.Set<TurnDiagnosticsRow>().Where(t => t.CreatedAt < cutoff).ExecuteDeleteAsync(ct);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

@@ -43,21 +43,6 @@ public class MessageRetentionTests
         Assert.True(await check.Turns.AnyAsync(t => t.ConversationId == freshId, Ct));
     }
 
-    [Fact]
-    public void The_two_retentions_are_two_settings_and_moving_one_leaves_the_other()
-    {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel())
-        {
-            ExtraSettings = new Dictionary<string, string?> { ["Tracing:RetentionDays"] = "3" },
-        };
-
-        var traces = api.Services.GetRequiredService<IOptions<TracingOptions>>().Value;
-        var messages = api.Services.GetRequiredService<IOptions<MessageRetentionOptions>>().Value;
-
-        Assert.Equal(3, traces.RetentionDays);
-        // Unmoved by the other: what was said and how it was worked out are kept for their own reasons.
-        Assert.Equal(90, messages.RetentionDays);
-    }
 
     [Fact]
     public async Task Deleting_a_conversation_does_not_wait_for_any_retention()

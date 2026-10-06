@@ -68,7 +68,8 @@ public sealed partial class ChatTurnRunner(
     IOptions<Telemetry.TelemetryQueryOptions> telemetry,
     TimeProvider time,
     ILoggerFactory loggers,
-    DomainCatalogue domainCatalogue)
+    DomainCatalogue domainCatalogue,
+    TurnObservers observers)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private readonly ILogger _logger = loggers.CreateLogger<ChatTurnRunner>();
@@ -78,17 +79,17 @@ public sealed partial class ChatTurnRunner(
     /// this conversation's cards have shown is accepted.
     /// </param>
     /// <param name="runId">The run, which is also the id of the turn it records: the client chose it, so it knows it.</param>
-    /// <param name="live">Where the trace goes while the turn runs, for the monitor (agui-protocol-only).</param>
+    /// <param name="observation">The run's observers (the installed plugins'), handed each event as it is written.</param>
     public async Task<TurnResult> RunAsync(Principal principal, string bearerToken, string conversationId, string message,
         string runId, ChannelWriter<ChatResponseUpdate> output, CancellationToken ct, JsonElement? clientState = null,
-        LiveTrace? live = null)
+        TurnObservation? observation = null)
     {
         var turnId = runId;
         // One view of the domains for the whole turn, also for the static readers it calls (the per-turn snapshot).
         var domains = domainCatalogue.Freeze();
         using var domainScope = DomainCatalogue.Use(domains);
         var traceId = Activity.Current?.TraceId.ToHexString();
-        var trace = new TurnTrace(live);
+        var trace = new TurnTrace(observation);
         var state = new TurnState(principal, conversationId, turnId, output, trace) { Domains = domains };
         // The state the turn starts with goes out first, right after the run starts (add-focus-state).
         await ResolveFocusAsync(state, clientState, ct);
@@ -98,6 +99,8 @@ public sealed partial class ChatTurnRunner(
         PromptScreen? screen = null;
         // A first question Jev put in no domain: answered with the fixed reply, like a refused prompt, with no model call.
         var outOfScope = false;
+        // The model client that counts the turn's real model calls (and records them when an observer wants them).
+        TracingChatClient? modelCalls = null;
         // No domain in use at all: the fixed reply before anything else (introduce-plugins decision 5h).
         var noDomain = false;
         trace.Add(TraceKinds.TurnStart, $"Turn started on {InstanceIdentity.Name}", new JsonObject
@@ -252,21 +255,26 @@ public sealed partial class ChatTurnRunner(
                         ["toolMode"] = TraceMapping.ToolMode(chatOptions.ToolMode),
                         ["domains"] = new JsonArray([.. tools.OfferedDomains.Select(x => (JsonNode)JsonValue.Create(x)!)]),
                         ["unavailableDomains"] = new JsonArray([.. tools.Unavailable.Select(x => (JsonNode)JsonValue.Create(x)!)]),
-                        ["tools"] = new JsonArray(tools.Tools.OfType<AIFunctionDeclaration>().Select(t => (JsonNode)new JsonObject
-                        {
-                            ["name"] = t.Name, ["description"] = t.Description, ["inputSchema"] = TraceMapping.Node(t.JsonSchema),
-                            ["domain"] = tools.DomainOf(t.Name), ["server"] = tools.ServerOf(t.Name),
-                        }).ToArray()),
+                        // The tool schemas only when an observer wants them (the monitor's prompt view); their names otherwise.
+                        ["tools"] = new JsonArray(tools.Tools.OfType<AIFunctionDeclaration>().Select(t => (JsonNode)(observers.IsEnabled(TraceKinds.Prompt)
+                            ? new JsonObject
+                            {
+                                ["name"] = t.Name, ["description"] = t.Description, ["inputSchema"] = TraceMapping.Node(t.JsonSchema),
+                                ["domain"] = tools.DomainOf(t.Name), ["server"] = tools.ServerOf(t.Name),
+                            }
+                            : new JsonObject { ["name"] = t.Name, ["domain"] = tools.DomainOf(t.Name) })).ToArray()),
                     });
 
                     // The GenAI span and its duration and token metrics belong to the provider call itself, so the
                     // framework's instrumentation sits innermost — below the trace, which is this system's own record.
                     // Sensitive data is never enabled: prompts and completions must not leave the process.
-                    IChatClient chatClient = new TracingChatClient(new OpenTelemetryChatClient(models.CreateChatClient()), trace, () =>
+                    // The full model capture only when an observer wants it; the calls are counted and the text flushed either way.
+                    modelCalls = new TracingChatClient(new OpenTelemetryChatClient(models.CreateChatClient()), trace, () =>
                     {
                         reasoning.Flush();
                         chunker.Flush();
-                    });
+                    }, capture: observers.IsEnabled(TraceKinds.ModelRequest));
+                    IChatClient chatClient = modelCalls;
                     // Above the trace, so model.response keeps what the model wrote; everything after it sees the answer clean.
                     chatClient = new CitationMarkerChatClient(chatClient, n => state.CitationMarkersRemoved += n);
                     // tool_choice names one function: a turn that must issue several calls up front — a crossing's searches,
@@ -417,6 +425,8 @@ public sealed partial class ChatTurnRunner(
             ["answerChars"] = text.Length,
             ["citationMarkersRemoved"] = state.CitationMarkersRemoved,
             ["toolCalls"] = state.ToolCalls.Count,
+            // How many real model calls the turn made: the statistics read it here, with or without the model capture.
+            ["modelCalls"] = modelCalls?.Calls ?? 0,
             ["sourceCount"] = sources.Count,
             // Where the turn actually went, beside where Jev said it would: the two disagreeing is worth a look.
             ["domainPath"] = new JsonArray([.. path.Select(x => (JsonNode)JsonValue.Create(x)!)]),
@@ -961,6 +971,8 @@ public sealed partial class ChatTurnRunner(
         if (relevance is not null)
         {
             relevance["callId"] = callId;
+            // The search's domain on the content-free event itself, for the statistics' per-domain view.
+            relevance["domain"] = domain;
             var ms = relevance["durationMs"]?.GetValue<double>() ?? 0;
             trace.Add(TraceKinds.Relevance, RelevanceTitle(relevance), relevance, (long)ms);
         }
@@ -1125,9 +1137,10 @@ public sealed partial class ChatTurnRunner(
     }
 
     /// <summary>
-    /// What the model was handed in the previous turn: its data envelopes, from that turn's stored trace. An envelope
-    /// holds what the content guard let through, so a withheld item's text is not here either. Empty on a first turn,
-    /// and when the trace is gone (retention) or unreadable — the check then judges against this turn's sources alone.
+    /// What the model was handed in the previous turn: its data envelopes, from that turn's core record. An envelope
+    /// holds what the content guard let through, so a withheld item's text is not here either. The record lives as long
+    /// as its conversation (conversation retention). Empty on a first turn and when the record is unreadable — the check
+    /// then judges against this turn's sources alone.
     /// </summary>
     private async Task<IReadOnlyList<Jev.ReadItem>> PreviousReadAsync(string? turnId, CancellationToken ct)
     {
@@ -1136,7 +1149,7 @@ public sealed partial class ChatTurnRunner(
             return [];
         }
         await using var ctx = await db.CreateDbContextAsync(ct);
-        var row = await ctx.TurnTraces.Where(t => t.TurnId == turnId).Select(t => t.Json).FirstOrDefaultAsync(ct);
+        var row = await ctx.Turns.Where(t => t.Id == turnId).Select(t => t.RecordJson).FirstOrDefaultAsync(ct);
         return row is null ? [] : PreviousRead(row);
     }
 
@@ -1165,15 +1178,8 @@ public sealed partial class ChatTurnRunner(
         TurnTrace trace, CancellationToken ct)
     {
         await using var ctx = await db.CreateDbContextAsync(ct);
-        ctx.TurnTraces.Add(new TurnTraceRow
-        {
-            TurnId = turnId,
-            ConversationId = conversationId,
-            UserId = principal.UserId,
-            TenantId = principal.TenantId.Value,
-            CreatedAt = time.GetUtcNow().UtcDateTime,
-            Json = JsonSerializer.Serialize(trace.Events, TurnTrace.Json),
-        });
+        var events = trace.Events;
+        var reasoningDeltas = events.Where(e => e.Kind == TraceKinds.ReasoningDelta).ToList();
         ctx.Turns.Add(new TurnRow
         {
             Id = turnId,
@@ -1189,6 +1195,11 @@ public sealed partial class ChatTurnRunner(
             SourcesJson = JsonSerializer.Serialize(sources, Json),
             ActivitiesJson = JsonSerializer.Serialize(cards.Select(c => new Maf.Lab.Domain.History.HistoryActivity(c.MessageId, c.ActivityType, c.Content)), Json),
             SignalsJson = JsonSerializer.Serialize(signals, Json),
+            // The turn's core record (introduce-plugins decision 7): its subset of the trace, in the trace's own shape.
+            RecordJson = JsonSerializer.Serialize(events.Where(e => TurnRecord.Kinds.Contains(e.Kind)), TurnTrace.Json),
+            Reasoning = string.Concat(reasoningDeltas
+                .Select(e => e.Data.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString() : "")),
+            ReasoningMs = reasoningDeltas.Count > 0 ? reasoningDeltas[^1].AtMs - reasoningDeltas[0].AtMs : null,
             CreatedAt = time.GetUtcNow().UtcDateTime,
         });
         var conversation = await ctx.Conversations.FirstOrDefaultAsync(c => c.Id == conversationId, ct);
