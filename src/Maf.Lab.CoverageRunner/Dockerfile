@@ -24,8 +24,9 @@ RUN npm ci --no-audit --no-fund
 
 # The runner builds and tests, so it is an SDK image, with node beside it and the packages the tests need.
 FROM mcr.microsoft.com/dotnet/sdk:10.0.401-noble
-# The CLI cancel tests send a real Ctrl+C through a python3 launcher (CliCancelTests): without it they fail here.
-RUN apt-get update && apt-get install -y --no-install-recommends python3-minimal && rm -rf /var/lib/apt/lists/*
+# The CLI cancel tests send a real Ctrl+C through a python3 launcher (CliCancelTests), and a plugin's tests read its
+# manifest through scripts/plugins.py (json, tomllib): the standard library in full, not python3-minimal.
+RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
 COPY --from=webdeps /usr/local/bin/node /usr/local/bin/node
 ENV NUGET_PACKAGES=/opt/nuget \
     DOTNET_CLI_TELEMETRY_OPTOUT=1 \
