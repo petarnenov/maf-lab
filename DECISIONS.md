@@ -3266,4 +3266,13 @@ implementation" (parts A and B) holds each choice in full.
     §7's four methods, and a flags record.
   - A plugin reaches its tables through EF's `IDbContextFactory<DbContext>` over the one `MafDbContext`, whose model
     cache is keyed by the installed plugin tables. Who may read a turn stays the core's rule (`ITurnAccess`).
+  - Who may read a turn stays the core's rule behind a one-method port, `ITurnAccess` (the owner, or a tenant admin
+    while the turn is under review, read live from the turn's signals). Rejected: an `AuthorizationHandler<ReadTurn,
+    TurnRef>`, since the policy needs a store read and the project has no handler-based authorization to join.
+  - The plugin tables come into `MafDbContext` from EF's `ApplicationServiceProvider`, not by constructor injection,
+    because two sites build the context bare (`new MafDbContext(options)`). Rejected: one DbContext per plugin (one
+    SQLite file, one create script in `DatabaseInitializer`, cross-table deletes). An architecture test keeps every
+    plugin assembly off the core's (`Maf.Lab.Api`, Hosting, Indexing, A2A, TestGen).
+  - The `TurnTraces` table of before 5.3 is dropped by the initializer: its full traces would otherwise outlive every
+    retention. They are discarded, not migrated (at or past the monitor's seven days).
 

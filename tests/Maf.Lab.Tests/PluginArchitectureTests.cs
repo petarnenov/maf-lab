@@ -43,6 +43,24 @@ public sealed class PluginArchitectureTests
         Assert.True(violations.Count == 0, string.Join("\n", violations));
     }
 
+    /// <summary>
+    /// The other direction: a plugin reaches the core only through the abstractions and the shared libraries (Domain,
+    /// Retrieval) — never the api or the other services' assemblies, whose types are the core's to change.
+    /// </summary>
+    [Fact]
+    public void No_plugin_references_the_core()
+    {
+        string[] core = ["Maf.Lab.Api", "Maf.Lab.Hosting", "Maf.Lab.Indexing", "Maf.Lab.A2A", "Maf.Lab.TestGen"];
+        var plugins = PluginAssemblies().ToList();
+        Assert.NotEmpty(plugins);
+        AssertNone(plugins.SelectMany(path =>
+        {
+            using var assembly = AssemblyDefinition.ReadAssembly(path);
+            return assembly.MainModule.AssemblyReferences.Where(r => core.Contains(r.Name))
+                .Select(r => $"{assembly.Name.Name} references {r.Name}").ToList();
+        }), "references the core");
+    }
+
     [Fact]
     public void No_plugin_reaches_Qdrant_Neo4j_or_AGUI() =>
         AssertNone(PluginAssemblies().SelectMany(ForbiddenReferences), "references a store or AG-UI directly");

@@ -932,6 +932,10 @@ These choices deviate from the text above. Each is kept, with the rejected alter
       test observer, and the eval host has its own, so evals trace exactly as before.
     - Without the monitor a turn writes no live trace. Older turns have no core record, and the dev-only insights page
       shows that discontinuity, with no backfill.
+    - The tables come into `MafDbContext` from EF's `ApplicationServiceProvider`, not by constructor injection, because
+      two sites build the context bare. Rejected: one DbContext per plugin. An architecture test keeps every plugin
+      assembly off the core's assemblies.
+    - The pre-5.3 `TurnTraces` table is dropped by the initializer, so its full traces never outlive a retention.
 
 ## Principles and patterns
 

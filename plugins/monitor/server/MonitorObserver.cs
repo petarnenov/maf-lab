@@ -12,7 +12,8 @@ namespace Maf.Lab.Plugins.Monitor;
 /// The monitor's turn observer (introduce-plugins decision 7): it wants every event and the run's frames. Each event is
 /// appended to the run's live trace in the shared store, so the monitor reads it from any replica while the turn runs;
 /// at turn.end the whole trace is kept in the monitor's table, and the frames join it when the run's response ends.
-/// A singleton: it keys what it holds by the run id and lets go of it at turn.end.
+/// A singleton: it keys what it holds by the run id and lets go of it at turn.end. A run that never reaches turn.end — a
+/// crash before the turn's unconditional last write — stays held until the process ends.
 /// </summary>
 public sealed class MonitorObserver(IRunTraceStore live, IDbContextFactory<DbContext> db, TimeProvider time, ILogger<MonitorObserver> logger)
     : ITurnObserver
@@ -52,8 +53,13 @@ public sealed class MonitorObserver(IRunTraceStore live, IDbContextFactory<DbCon
         {
             await using var ctx = await db.CreateDbContextAsync(ct);
             var json = JsonSerializer.Serialize(frames, Json);
-            await ctx.Set<TurnDiagnosticsRow>().Where(t => t.TurnId == turnId)
+            var updated = await ctx.Set<TurnDiagnosticsRow>().Where(t => t.TurnId == turnId)
                 .ExecuteUpdateAsync(s => s.SetProperty(t => t.AguiJson, json), ct);
+            if (updated == 0)
+            {
+                // The turn's trace was not kept yet (its drain timed out) or at all: the frames have nowhere to go.
+                logger.LogWarning("run frames dropped: no kept trace for the turn ({FrameCount} frames)", frames.Count);
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

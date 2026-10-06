@@ -39,6 +39,7 @@ public static partial class DatabaseInitializer
         // First: a column the model renamed must be renamed in place before the additive pass, or that pass would add an
         // empty column beside it (rename-firm-to-tenant).
         await RenameLegacyColumnsAsync(db, ct);
+        await DropRetiredTablesAsync(db, ct);
         var script = db.Database.GenerateCreateScript();
         foreach (var statement in Statements(script).Where(s => s.StartsWith("CREATE TABLE", StringComparison.OrdinalIgnoreCase)))
         {
@@ -51,6 +52,24 @@ public static partial class DatabaseInitializer
             await db.Database.ExecuteSqlRawAsync(statement, ct);
         }
         await BackfillAsync(db, ct);
+    }
+
+    /// <summary>
+    /// Tables the model no longer has and nothing else owns, dropped so their content does not outlive every retention:
+    /// <c>TurnTraces</c>, the full traces kept before the monitor became a plugin (introduce-plugins 5.3), which are at or
+    /// past its seven days anyway — the monitor keeps its own, in its own table. Idempotent and safe across replicas.
+    /// </summary>
+    internal static readonly IReadOnlyList<string> RetiredTables = ["TurnTraces"];
+
+    internal static async Task DropRetiredTablesAsync(MafDbContext db, CancellationToken ct)
+    {
+        foreach (var table in RetiredTables)
+        {
+            // The name comes from the list above, never from a request.
+#pragma warning disable EF1002
+            await db.Database.ExecuteSqlRawAsync($"DROP TABLE IF EXISTS \"{table}\"", ct);
+#pragma warning restore EF1002
+        }
     }
 
     /// <summary>Columns renamed by the model, old name → new name. A table is touched only when it has the old one.</summary>

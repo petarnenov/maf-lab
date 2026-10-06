@@ -59,7 +59,8 @@ public sealed class TurnObservers(IEnumerable<ITurnObserver> observers, ILogger<
 /// One run as its observers receive it. <see cref="Write"/> never waits: each observer has an unbounded queue and a pump
 /// that hands it the events in order, so a slow or failing observer never holds up the turn. <see cref="CompleteAsync"/>
 /// waits, with <see cref="CancellationToken.None"/> and a bounded timeout, for the queues to drain, so a stopped run
-/// still delivers its last events (its cancelled turn.end) — and nothing outlives the request beyond that.
+/// still delivers its last events (its cancelled turn.end). After that timeout the request stops waiting, but an observer's
+/// pump that has not caught up keeps running on its own until its queue is empty.
 /// </summary>
 public sealed class TurnObservation
 {

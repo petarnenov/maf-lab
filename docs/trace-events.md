@@ -13,7 +13,8 @@ kinds: `intent`, `domain`, `boundary`, `guardrail`, `relevance`, `answer.check`,
 `focus`, `turn.end`, `envelope`. The answer check's previous read and the Jev and intent statistics read it. The model's
 reasoning is kept with the turn as its own field. An optional part of an event is built only when an observer asks for
 it: the full model capture (`model.request`/`model.response`), the prompt's tool schemas (without them `prompt.tools`
-holds `{ name, domain }`), retrieval diagnostics (`retrieval`, `graph`) and the run's frames. Text fields are capped at 20,000
+holds `{ name, domain }`), retrieval diagnostics (`retrieval`, `graph`) and the run's frames. Full traces kept before
+introduce-plugins 5.3 (the `TurnTraces` table) are discarded at the first start after it; the monitor keeps its own. Text fields are capped at 20,000
 characters and a trace at 1 MB; `truncated: true` marks a capped event. JSON is camelCase. A trace stored before
 rename-firm-to-tenant names the principal's tenant `firmId` and its role by the old name; readers take `tenantId` or,
 failing that, `firmId`.

@@ -236,6 +236,28 @@ public class ReplicaStateTests
     }
 
     [Fact]
+    public async Task Initializer_drops_the_traces_table_of_before_the_monitor_became_a_plugin()
+    {
+        var path = Path.Combine(Directory.CreateTempSubdirectory("maf-db-drop-").FullName, "maf.db");
+        var factory = Factory(path);
+        await using (var ctx = await factory.CreateDbContextAsync(Ct))
+        {
+            // An old database: it still has the full traces table, with content.
+            await ctx.Database.ExecuteSqlRawAsync(
+                "CREATE TABLE \"TurnTraces\" (\"TurnId\" TEXT PRIMARY KEY, \"Json\" TEXT NOT NULL); INSERT INTO \"TurnTraces\" VALUES ('t', '[]');", Ct);
+        }
+
+        await Task.WhenAll(Enumerable.Range(0, 3).Select(async _ =>
+        {
+            await using var ctx = await factory.CreateDbContextAsync(Ct);
+            await DatabaseInitializer.InitializeAsync(ctx, Ct);
+        }));
+
+        await using var check = await factory.CreateDbContextAsync(Ct);
+        Assert.Empty(await ColumnsAsync(check, "TurnTraces"));
+    }
+
+    [Fact]
     public async Task Initializer_adds_a_new_column_to_a_table_an_old_database_already_has()
     {
         var path = Path.Combine(Directory.CreateTempSubdirectory("maf-db-col-").FullName, "maf.db");

@@ -7,7 +7,7 @@ namespace Maf.Lab.Eval.Hosting;
 /// <summary>
 /// The eval's own turn observer: it wants everything, as the monitor does, so an eval turn is traced exactly as before
 /// the monitor became a plugin (the model capture, the prompt, retrieval diagnostics), and `make ask` prints the whole
-/// timeline. In memory, per run, for the eval process only.
+/// timeline. In memory, per run, for the eval process only; nothing is evicted, which a short-lived CLI can afford.
 /// </summary>
 public sealed class EvalTraceCapture : ITurnObserver
 {
