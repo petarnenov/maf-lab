@@ -7,7 +7,8 @@ probabilities, latency, model versions — so its behaviour can be read as a who
 ## Requirements
 
 ### Requirement: Intent statistics endpoint
-`GET /api/admin/intent-stats` SHALL return aggregates of the `intent` trace events of the caller's tenant's turns
+`GET /api/admin/intent-stats` SHALL return aggregates of the `intent` events of the caller's tenant's turns — read from
+each turn's core record of trace events, which exists without the monitor —
 recorded within a window the caller chooses from a fixed list (`1h`, `24h`, `7d`; default `24h`). Any other window
 SHALL be refused as a validation problem. Only events whose recorded model is a Jev model SHALL be counted; events
 written by earlier classifiers SHALL be reported only as a count of excluded events.

@@ -27,11 +27,11 @@ report. The services that read it SHALL start only once it is healthy.
 - **THEN** the graph query port is not published on any interface other than loopback
 
 ### Requirement: Graph browser as a dev inspector
-The graph database's own browser SHALL be offered as a development inspector on `http://localhost:7175`, bound to
-loopback only, under the same profile as the other inspectors, so it is off in CI.
+The graph database's own browser SHALL be offered by its plugin, `neo4j-browser` (allowed in dev and qa only), on
+`http://localhost:7175`, bound to loopback only, so it is absent wherever the plugin is not installed, CI included.
 
 #### Scenario: Inspector in development
-- **WHEN** the stack runs with the inspectors profile
+- **WHEN** the stack runs with the `neo4j-browser` plugin installed
 - **THEN** the graph browser answers on `http://localhost:7175` and is not reachable from other hosts
 
 #### Scenario: No inspector in CI

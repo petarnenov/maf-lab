@@ -138,8 +138,10 @@ bearer header.
 - **THEN** no log line contains the answer's text
 
 ### Requirement: A code answer is judged as code
-When this turn's sources or the previous turn's sources include a codebase search's snippets, the check SHALL ask its
-two questions in a codebase context and SHALL otherwise use the billing and portfolio context unchanged. The codebase
+When this turn's sources or the previous turn's sources include the snippets of a search whose domain's guard context
+is code (the codebase search), the check SHALL ask its two questions in a code context and SHALL otherwise use the
+documents context (named `billing` before introduce-plugins) unchanged. The trace names the context `code` or
+`documents`. The codebase
 context SHALL say that the user asked about the lab's own repository, that each codebase source reads as its place —
 path, line range and symbol — followed by the code, and that other sources may be document excerpts and records. The
 grounding criteria SHALL count as supported a path, file name, line range, symbol, identifier or quoted code that a
@@ -162,7 +164,7 @@ it.
 
 #### Scenario: A billing turn keeps its context
 - **WHEN** a turn read only `search_documents` excerpts and billing records
-- **THEN** the request uses the billing and portfolio context, exactly as before this change
+- **THEN** the request uses the documents context, exactly as before this change, and the trace names it `documents`
 
 #### Scenario: The codebase check is unavailable
 - **WHEN** the answer check of a code answer times out

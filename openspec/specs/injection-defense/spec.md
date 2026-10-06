@@ -117,7 +117,9 @@ asks for other firms' data. The text SHALL be carried as data in the request's s
 A codebase snippet SHALL be assessed with the same questions and a context that says the text is a file of the
 lab's own repository being read by a developer's assistant — where prompt templates, agent instructions, string
 literals and documentation addressed to an AI are ordinary content of the code — instead of the context of a billing
-assistant reading documents and records. Every other tool's items SHALL keep the billing context.
+assistant reading documents and records. Every other tool's items SHALL keep the documents context (named `billing`
+before introduce-plugins). The battery is chosen by the guard context of the domain whose search returned the item;
+every other item, a graph tool's included, uses `documents`.
 
 An item whose highest probability is at or above a configured withhold threshold (default 0.85) SHALL be withheld,
 except that for a codebase snippet the questions configured as record-only (by default only "an instruction
@@ -130,7 +132,7 @@ a neutral notice. A withheld item SHALL NOT be a source of the answer, and the t
 tool that is not a search is withheld whole, as before.
 
 The words another agent sends back — a compliance reviewer's reason or question — SHALL be screened the same way, with
-the billing context. When they are flagged, the review SHALL be treated as having failed: nothing is proposed to the
+the documents context. When they are flagged, the review SHALL be treated as having failed: nothing is proposed to the
 user on its strength, nothing is written, and the model is told only that the review could not be completed.
 
 #### Scenario: A poisoned excerpt among clean ones

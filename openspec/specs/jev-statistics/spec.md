@@ -9,7 +9,8 @@ availability can be read as a whole rather than one trace at a time.
 ## Requirements
 
 ### Requirement: Jev statistics endpoint
-`GET /api/admin/jev-stats` SHALL return aggregates of the Jev call sites recorded in the turn traces of the caller's
+`GET /api/admin/jev-stats` SHALL return aggregates of the Jev call sites recorded in the turns' core records of trace
+events — which exist without the monitor — of the caller's
 firm's chat turns. The caller chooses the window from a fixed list (`1h`, `24h`, `7d`; default `24h`), and any other
 window SHALL be refused as a validation problem.
 

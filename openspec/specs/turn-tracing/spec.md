@@ -7,7 +7,7 @@ asked, and keeps it for later inspection, so the internals of the agent and retr
 ## Requirements
 
 ### Requirement: Complete turn trace
-For every chat turn the system SHALL record an ordered trace of timestamped events. The trace MUST cover:
+For every chat turn the system SHALL record an ordered trace of timestamped events and hand each event, as it is written, to the installed turn observers (the `monitor` plugin is one); with none installed, the trace exists only for the turn itself and its core record. An optional part of an event — the full model capture, the prompt's tool schemas, retrieval diagnostics — SHALL be built only when an observer asks for it. The trace MUST cover:
 - turn start: principal, conversation, turn id, api replica, question;
 - intent classification: the intent the turn proceeded with, whether retrieval was forced, the classifier's choice,
   its probability for every known intent and its confidence, the probability that the question is about the documented
@@ -74,7 +74,7 @@ For every chat turn the system SHALL record an ordered trace of timestamped even
 - **THEN** the intent event shows the data intent, each routing probability and the routed tool with run id 4417, the routed call is recorded as issued on the model's behalf before any model call, and exactly one model call follows it
 
 ### Requirement: Live streaming of the trace
-A turn's trace SHALL be readable while the turn runs, so that each step is visible when it happens. It SHALL NOT travel
+While the `monitor` plugin is installed, a turn's trace SHALL be readable while the turn runs, so that each step is visible when it happens. It SHALL NOT travel
 on the run's AG-UI stream. The owner of the turn SHALL be able to read the trace recorded so far, and every event
 recorded after a given position, from the trace API, under the same access rules as the stored trace. The run's own
 progress SHALL travel on the stream as the protocol's steps (`STEP_STARTED`/`STEP_FINISHED`), named by what the turn
@@ -98,8 +98,10 @@ trace still sees what the turn is doing.
 - **THEN** it is reported as not found
 
 ### Requirement: Persistence and retention
-The complete trace of each turn SHALL be stored with the turn and returned by `GET /api/turns/{turnId}/trace`. Traces
-older than the configured retention (default 7 days) SHALL be deleted automatically.
+While the `monitor` plugin is installed, the complete trace of each turn SHALL be kept in its table and returned by
+`GET /api/turns/{turnId}/trace`; traces older than its configured retention (default 7 days) SHALL be deleted
+automatically. Without the monitor the route does not exist and no complete trace is kept; the turn's core record is
+kept with the turn either way.
 
 #### Scenario: Reopen an old turn
 - **WHEN** a user selects an earlier assistant turn of their conversation
@@ -134,7 +136,8 @@ marked in the trace.
 - **THEN** it is truncated and flagged as truncated in the event
 
 ### Requirement: The run's AG-UI frames are recorded
-For every run it streams, the system SHALL record each event it puts on the wire, in the order it was written, as
+For every run it streams, while a turn observer asks for the frames (the `monitor` plugin does), the system SHALL record
+each event it puts on the wire, in the order it was written, as
 a frame carrying: its position in the run, the milliseconds since the run started, the protocol event type, the
 payload's size in bytes, and the payload itself. The record SHALL cover every event of the run, including those a
 client may ignore — the run starting, a text message opening and closing, a tool call ending, a step — and the run's
@@ -157,7 +160,8 @@ with their position, timing, type and size, and SHALL be marked as truncated in 
 - **THEN** the frames past the cap are recorded with their position, timing and type, and are marked truncated
 
 ### Requirement: The frames are kept and served with the turn's trace
-The frames of a run that produced a turn SHALL be stored with that turn and returned by
+While the `monitor` plugin is installed, the frames of a run that produced a turn SHALL be stored with that turn's kept
+trace and returned by
 `GET /api/turns/{turnId}/trace` together with the trace's events. They SHALL be readable exactly by whoever may
 read that turn's trace, and SHALL be deleted when that trace is deleted, whether by retention or otherwise. A run
 that produces no turn — an answer to a confirmation — SHALL NOT have its frames stored, and the response for a
@@ -429,3 +433,19 @@ the api SHALL remove from the recorded `tool.result` and from everything the mod
 #### Scenario: A trace from before the graph event
 - **WHEN** a stored trace recorded before this kind existed is read
 - **THEN** it is returned unchanged, with no `graph` event
+
+### Requirement: The turn's core record
+Every turn SHALL keep, with the turn and for as long as its conversation, its core record: the events of its trace of
+the kinds `intent`, `domain`, `boundary`, `guardrail`, `relevance`, `answer.check`, `signals`, `sources`, `audit`,
+`focus`, `turn.end` and `envelope`, in the trace's own shape and under the same field cap, whatever plugin is
+installed. `turn.end` SHALL carry the turn's number of model calls, and `relevance` the search's domain. The answer
+check's previous read and the Jev and intent statistics SHALL read this record. The model's reasoning SHALL be kept with
+the turn as its own field, with how long it took.
+
+#### Scenario: Core only
+- **WHEN** a turn runs with no turn observer installed
+- **THEN** no live trace is written to the shared store, and the turn keeps its core record and its reasoning
+
+#### Scenario: A follow-up is checked against what was read before
+- **WHEN** a follow-up question is answered from what the previous turn read
+- **THEN** the answer check reads the previous turn's envelopes from its core record

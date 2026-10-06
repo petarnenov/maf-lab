@@ -134,8 +134,9 @@ A server MAY be configured with a list of the tools it offers the agent. Its oth
 Every tool SHALL be known by the domain and the server that own it. A tool name offered by two servers SHALL be kept
 from the first and dropped from the second, with a log entry.
 
-The billing server failing SHALL fail a turn that selected billing, as before. Another domain's server that cannot be
-reached SHALL leave its tools out of the turn without failing it.
+A server that cannot be reached SHALL leave its domain's tools out of the turn without failing it; a turn SHALL fail
+only when every server of its selected domains cannot be reached. No server is first: billing's is configured and
+treated like any other (introduce-plugins 4.6).
 
 A confirmation SHALL be sent to the server that owns the tool, whatever domains the current turn selected.
 
@@ -162,6 +163,10 @@ A confirmation SHALL be sent to the server that owns the tool, whatever domains 
 #### Scenario: Only the listed tools of the codebase server
 - **WHEN** the codebase server offers search_codebase and ask_codebase and is configured to offer search_codebase
 - **THEN** the agent is offered search_codebase and not ask_codebase
+
+#### Scenario: One of two selected servers is down
+- **WHEN** a turn selected billing and codebase and the billing server cannot be reached
+- **THEN** the turn runs with the codebase tools, and the trace lists billing as unavailable
 
 ### Requirement: Retrieval forced in every domain in scope
 When a forcing intent is acted on, the agent SHALL force the search tool of every domain in scope that is offered.

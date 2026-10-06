@@ -7,10 +7,11 @@ shown live (answers, tools, sources, feedback and the behind-the-scenes monitor)
 ## Requirements
 
 ### Requirement: Conversation list
-The system SHALL list the caller's own, non-deleted conversations ordered by last activity (newest first). Each entry
-SHALL include the conversation id, title, creation time, last activity time and turn count. The list SHALL support a
-case-insensitive search over titles, questions and answers, and paging with a limit (default 30, maximum 100) and a
-cursor. Conversations of other users, including other users of the same tenant, MUST NOT be listed.
+While the `conversation-history` plugin is installed, the system SHALL list the caller's own, non-deleted conversations
+ordered by last activity (newest first). Each entry SHALL include the conversation id, title, creation time, last
+activity time and turn count. The list SHALL support a case-insensitive search over titles, questions and answers, and
+paging with a limit (default 30, maximum 100) and a cursor. Conversations of other users, including other users of the
+same tenant, MUST NOT be listed. Without the plugin, the list route SHALL not be served.
 
 #### Scenario: Own conversations only
 - **WHEN** Adam of tenant A lists conversations after Rita (tenant A) and Bianca (tenant B) have chatted
@@ -25,8 +26,9 @@ cursor. Conversations of other users, including other users of the same tenant, 
 - **THEN** it is not listed
 
 ### Requirement: Titles
-A conversation's title SHALL default to its first question, truncated to 80 characters at a word boundary. The owner
-SHALL be able to rename it to 1–120 non-blank characters.
+A conversation's title SHALL default to its first question, truncated to 80 characters at a word boundary, and SHALL be
+shown on the opened conversation (core). While the `conversation-history` plugin is installed, the owner SHALL be able
+to rename it to 1–120 non-blank characters.
 
 #### Scenario: Default title
 - **WHEN** the first question of a conversation is "How do I issue a billing credit to a client who was overcharged?"
@@ -39,7 +41,8 @@ SHALL be able to rename it to 1–120 non-blank characters.
 ### Requirement: Open a conversation
 Opening a conversation SHALL return all of its turns in order. Each turn SHALL include its question, answer, creation
 time, tool calls (tool, argument summary, outcome, result summary, source count), sources (doc id, section, source path,
-snippet), the feedback kinds the user already gave, and whether its trace is still available. A conversation that does
+snippet), the feedback kinds the user already gave, and the model's reasoning with how long it took (none for a model
+that did not reason). A conversation that does
 not belong to the caller, or was deleted, MUST return not found.
 
 #### Scenario: Restore a turn
@@ -64,9 +67,10 @@ activity SHALL update.
 - **THEN** the new turn's history window includes the earlier turns, and the conversation moves to the top of the list
 
 ### Requirement: Delete a conversation
-The owner SHALL be able to delete a conversation after confirming. A deleted conversation MUST disappear from the list,
-MUST return not found when opened, and MUST reject new messages. Its turns, feedback and traces SHALL remain available
-to the tenant's review queue and retention rules.
+While the `conversation-history` plugin is installed, the owner SHALL be able to delete a conversation after
+confirming. A deleted conversation MUST disappear from the list, MUST return not found when opened, and MUST reject new
+messages. Its turns, feedback and traces SHALL remain available to the tenant's review queue and retention rules. The
+soft delete SHALL go through the core's conversation store, which records it in the audit.
 
 #### Scenario: Delete
 - **WHEN** Adam deletes a conversation and confirms
@@ -77,11 +81,13 @@ to the tenant's review queue and retention rules.
 - **THEN** that turn is still in the TENANT_ADMIN review queue
 
 ### Requirement: History in the chat screen
-The `/chat` screen SHALL show a history sidebar to the left of the conversation, collapsible on wide screens and shown
-as a drawer on screens narrower than 1024 px. The sidebar SHALL provide "New conversation", search, the conversation
-list with the active one highlighted, and rename and delete actions. The active conversation SHALL be addressed by the
-URL `/chat/{conversationId}`, so reloading reopens it. Selecting a restored turn SHALL show its stored trace in the
-monitor with time travel, or "trace expired" when it has been deleted by retention.
+The `/chat` screen SHALL always offer "New conversation" in the chat's own header (core). The active conversation SHALL
+be addressed by the URL `/chat/{conversationId}`, so reloading reopens it. While the `conversation-history` plugin is
+installed, the screen SHALL show its history sidebar to the left of the conversation, collapsible on wide screens and
+shown as a drawer on screens narrower than 1024 px, with search, the conversation list with the active one highlighted,
+and rename and delete actions; without the plugin, no sidebar, drawer, toggle or rail SHALL be shown. Selecting a
+restored turn SHALL show its stored trace in the monitor with time travel, or "trace expired" when it has been deleted
+by retention, while the `monitor` plugin is installed.
 
 Starting a new conversation SHALL be final: once the user asks for one, nothing the screen already holds about the
 previous conversation — neither its stored turns nor any cached copy of them — SHALL put it back on screen or back
