@@ -3,9 +3,10 @@
 turn declines with the fixed reply before any model, decision-engine or tool call.
 
 It asks /api/plugins first (no plugin and no domain must be in use, or the stack is not the core alone), checks that the
-balancer answers a plugin's route shape with 404 rather than the web app, then sends
-one English and one Cyrillic question through /api/chat. The stub's request journal (WireMock's GET/DELETE
-/__admin/requests) on both Ollama instances is reset just before each turn and read just after: it must stay empty.
+balancer answers a plugin's route shape with 404 rather than the web app, then sends one English and one Cyrillic
+question through /api/chat. The stub's request journal (WireMock's GET/DELETE /__admin/requests) on both Ollama
+instances is reset just before each turn and read just after: it must stay empty. After each turn, the shared store
+must hold no live trace for it (no monitor, no observer).
 
 Progress: one line per step with its elapsed time, then a PASS or FAIL line per check (CI is not a terminal).
 Stopping: Ctrl+C or SIGTERM closes the run's request, which stops the run on the server (stop-anything), and exits 130.
@@ -13,7 +14,9 @@ Stopping: Ctrl+C or SIGTERM closes the run's request, which stops the run on the
 from __future__ import annotations
 
 import json
+import os
 import signal
+import subprocess
 import sys
 import time
 import urllib.error
@@ -21,6 +24,9 @@ import urllib.request
 import uuid
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:7171"
+# The shared store is reached as verify_lb.sh reaches the stack: through compose, in the project make exports.
+COMPOSE = ["docker", "compose", "-p", os.environ.get("COMPOSE_PROJECT_NAME", "maf-lab"), "-f",
+           os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "compose", "docker-compose.yml")]
 # Both Ollama instances, as the host reaches them: the query one and the batch one.
 STUBS = ("http://127.0.0.1:11435", "http://127.0.0.1:11436")
 # The oracle: NoDomain's fixed replies (src/Maf.Lab.Api/Agent/IntentClassifier.cs), copied, not read from the api.
@@ -71,8 +77,24 @@ def journal(method: str = "GET") -> list[dict]:
     return seen
 
 
-def turn(question: str, token: str) -> list[dict]:
-    run = {"threadId": None, "runId": "r_core_" + uuid.uuid4().hex[:12],
+def live_trace_kept(run_id: str) -> bool | None:
+    """Whether the shared store holds a live trace for the run (the monitor's `runtrace:<runId>` list); None when the
+    store cannot be asked."""
+    result = subprocess.run([*COMPOSE, "exec", "-T", "redis", "redis-cli", "EXISTS", f"runtrace:{run_id}"],
+                            capture_output=True, text=True, timeout=30)
+    return None if result.returncode != 0 else result.stdout.strip() != "0"
+
+
+def live_traces() -> set[str] | None:
+    """Every live trace the shared store holds; None when it cannot be asked. Compared before and after the turns, so an
+    older run's trace (kept for the run grace period) is not mistaken for one of these."""
+    result = subprocess.run([*COMPOSE, "exec", "-T", "redis", "redis-cli", "--scan", "--pattern", "runtrace:*"],
+                            capture_output=True, text=True, timeout=30)
+    return None if result.returncode != 0 else {k for k in result.stdout.split() if k}
+
+
+def turn(question: str, token: str, run_id: str) -> list[dict]:
+    run = {"threadId": None, "runId": run_id,
            "messages": [{"id": "u_core", "role": "user", "content": question}]}
     events = []
     response = call(BASE + "/api/chat", "POST", run, token, timeout=120)
@@ -114,11 +136,14 @@ def main() -> int:
             status, body = e.code, e.read().decode(errors="replace")
         check(f"{path} answers 404, not the web app", status == 404 and 'id="root"' not in body, f"HTTP {status}")
 
+    traces_before = live_traces()
     for question, reply in QUESTIONS:
         step(f"ask {question!r}")
         journal("DELETE")
-        events = turn(question, token)
+        run_id = "r_core_" + uuid.uuid4().hex[:12]
+        events = turn(question, token, run_id)
         calls = journal()
+        kept = live_trace_kept(run_id)
         types = [e["type"] for e in events]
         text = "".join(e.get("delta", "") for e in events if e["type"] == "TEXT_MESSAGE_CONTENT")
         check("the run starts once and ends finished", types.count("RUN_STARTED") == 1 and types[-1:] == ["RUN_FINISHED"],
@@ -127,6 +152,14 @@ def main() -> int:
         check("no tool call and no step", not any(t.startswith(("TOOL_CALL_", "STEP_")) for t in types))
         check("no model, embedding or decision-engine call reached either Ollama instance", calls == [],
               ", ".join(f"{c['method']} {c['path']}" for c in calls))
+        # With no monitor, a turn is observed by nobody: no live trace is written (introduce-plugins 5.3).
+        check("no live trace was written to the shared store", kept is False,
+              "the store could not be asked" if kept is None else f"runtrace:{run_id}")
+
+    traces_after = live_traces()
+    written = None if traces_before is None or traces_after is None else traces_after - traces_before
+    check("no live trace appeared in the shared store under any id", written == set(),
+          "the store could not be asked" if written is None else ", ".join(sorted(written)))
 
     step("done")
     return 1 if failures else 0

@@ -290,9 +290,9 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   Opened (proposals only, `openspec/changes/extract-<name>-plugin/`), with the reviewing session's conditions in each.
   Portfolio's also deletes `Agent__Servers__portfolio__*` (the same shadowing as billing's).
 
-  Recommended order with the rollout's own changes, **pending the user's confirmation** (no follow-up is implemented
-  before it): extract-billing → extract-portfolio → extract-compliance → extract-a2a → introduce-provider-plugins →
-  adopt-company-idp → extract-feedback-review → enable-plugins-per-tenant → document-acls → data-lifecycle →
+  Order with the rollout's own changes, **confirmed by the user 2026-10-06** (through the reviewing session):
+  extract-billing → extract-portfolio → extract-compliance → extract-a2a → extract-feedback-review →
+  introduce-provider-plugins → adopt-company-idp → enable-plugins-per-tenant → document-acls → data-lifecycle →
   add-document-parsing → add-white-labeling → extract-coverage, -evals, -insights, -index-admin, -observability,
   -topology, -curriculum. Why: enable-plugins-per-tenant needs billing, portfolio, compliance, a2a and feedback-review
   as plugins (per-tenant rows, audiences, tenant-admin sections); introduce-provider-plugins assumes billing with

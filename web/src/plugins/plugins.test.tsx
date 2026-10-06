@@ -145,14 +145,24 @@ describe('web plugins', () => {
       // No silent pass: the bundled plugins with a web part are found.
       expect(names.length).toBeGreaterThan(0);
       stubApi(names);
+      // What the registry holds, as the page reads it: the names, and each plugin's panes and sidebars by label.
       function Probe() {
+        const { plugins } = usePlugins();
         return (
-          <p data-testid="registered">
-            {usePlugins()
-              .plugins.map((p) => p.name)
-              .sort()
-              .join(',')}
-          </p>
+          <>
+            <p data-testid="registered">
+              {plugins
+                .map((p) => p.name)
+                .sort()
+                .join(',')}
+            </p>
+            <p data-testid="panes">
+              {plugins.flatMap((p) => (p.chatPanes ?? []).map((pane) => pane.label)).join('|')}
+            </p>
+            <p data-testid="sidebars">
+              {plugins.flatMap((p) => (p.chatSidebars ?? []).map((bar) => bar.label)).join('|')}
+            </p>
+          </>
         );
       }
       // PluginsProvider's own modules: every plugins/*/web/index.ts this build bundles.
@@ -164,10 +174,20 @@ describe('web plugins', () => {
         { timeout: 15_000 },
       );
       expect(screen.queryByText(/could not be shown/i)).toBeNull();
-      const pane = screen.getByRole('tablist', { name: 'Right pane' });
-      expect(within(pane).getByRole('tab', { name: 'Behind the scenes' })).toBeInTheDocument();
-      expect(within(pane).getByRole('tab', { name: /Code snippets/ })).toBeInTheDocument();
-      expect(screen.getByRole('navigation', { name: 'History' })).toBeInTheDocument();
+      // Every pane and sidebar of the plugins present is on the page (whichever folders this checkout holds).
+      const panes = screen.getByTestId('panes').textContent?.split('|').filter(Boolean) ?? [];
+      const sidebars = screen.getByTestId('sidebars').textContent?.split('|').filter(Boolean) ?? [];
+      if (panes.length > 0) {
+        const pane = screen.getByRole('tablist', { name: 'Right pane' });
+        for (const label of panes) {
+          expect(
+            within(pane).getByRole('tab', { name: new RegExp(`^${label}`) }),
+          ).toBeInTheDocument();
+        }
+      }
+      for (const label of sidebars) {
+        expect(screen.getByRole('navigation', { name: label })).toBeInTheDocument();
+      }
     },
   );
 

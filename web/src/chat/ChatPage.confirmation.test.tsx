@@ -57,8 +57,6 @@ async function propose(answer: string) {
   let chatCalls = 0;
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.startsWith('/api/conversations')) return jsonResponse(emptyHistory);
-    // Trace requests are GET (no body); return empty trace so useTurnTrace does not count as a chat call.
-    if (url.startsWith('/api/turns')) return jsonResponse({ events: [] });
     bodies.push(init!.body as string);
     chatCalls += 1;
     return chatCalls === 1
