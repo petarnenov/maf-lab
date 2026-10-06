@@ -166,9 +166,8 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
     /// call, for core tests that need a conversation listed, renamed or deleted without the plugin installed.
     /// </summary>
     public Maf.Lab.Plugins.Abstractions.IConversationStore ConversationsOf(string user, string firm, Role role = Role.USER) =>
-        new Maf.Lab.Api.Storage.ConversationStore(new FixedPrincipalAccessor(new Principal(user, TenantId.Firm(firm), role)),
-            Services.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<Maf.Lab.Api.Storage.MafDbContext>>(),
-            Services.GetRequiredService<TimeProvider>(), Services.GetRequiredService<ToolAudit>());
+        ActivatorUtilities.CreateInstance<Maf.Lab.Api.Storage.ConversationStore>(Services,
+            new FixedPrincipalAccessor(new Principal(user, TenantId.Firm(firm), role)));
 
     /// <summary>Runs a turn the way a client does: a run of the agent on a thread, carrying the user's message.</summary>
     /// <param name="state">The run's AG-UI state as the client sends it (add-focus-state); omitted when null.</param>

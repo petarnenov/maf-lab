@@ -168,9 +168,19 @@ public class ChatHistoryTests
         var id = ApiFactory.ThreadOf(await ApiFactory.ChatAsync(adam, "explain breakpoint pricing"));
 
         // Not served: the paths stay the core's for their other verbs (POST creates, GET /{id} reopens), so 405.
-        Assert.Equal(HttpStatusCode.MethodNotAllowed, (await adam.GetAsync("/api/conversations", Ct)).StatusCode);
-        Assert.Equal(HttpStatusCode.MethodNotAllowed, (await adam.PatchAsJsonAsync($"/api/conversations/{id}", new RenameConversationRequest("x"), Ct)).StatusCode);
-        Assert.Equal(HttpStatusCode.MethodNotAllowed, (await adam.DeleteAsync($"/api/conversations/{id}", Ct)).StatusCode);
+        // Each 405 names the methods the core does serve there (RFC 9110 §15.5.6).
+        var list = await adam.GetAsync("/api/conversations", Ct);
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, list.StatusCode);
+        Assert.Equal(["POST"], list.Content.Headers.Allow);
+        foreach (var other in new[]
+        {
+            await adam.PatchAsJsonAsync($"/api/conversations/{id}", new RenameConversationRequest("x"), Ct),
+            await adam.DeleteAsync($"/api/conversations/{id}", Ct),
+        })
+        {
+            Assert.Equal(HttpStatusCode.MethodNotAllowed, other.StatusCode);
+            Assert.Equal(["GET"], other.Content.Headers.Allow);
+        }
         // Reopening by its URL is the core's, whatever the screen.
         Assert.Equal(HttpStatusCode.OK, (await adam.GetAsync($"/api/conversations/{id}", Ct)).StatusCode);
     }

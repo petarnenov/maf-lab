@@ -207,4 +207,4 @@ still start and continue conversations with full memory, and SHALL show no sideb
 - **WHEN** `conversation-history` is not installed and a user returns to a conversation by its URL
 - **THEN** the conversation opens with its messages, the agent answers with the earlier turns in context, no sidebar,
   drawer, toggle or rail is shown, "New conversation" is in the chat header, and `GET /api/conversations` is not
-  served (`405 Method Not Allowed`: the path's `POST` stays the core's)
+  served (`405 Method Not Allowed`, with `Allow` naming the core's methods: the path's `POST` stays the core's)
