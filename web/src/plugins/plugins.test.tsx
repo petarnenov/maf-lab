@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -133,17 +133,18 @@ describe('web plugins', () => {
 describe('plugin import boundary', () => {
   const web = join(__dirname, '..', '..');
   const repo = join(web, '..');
-  const files = (dir: string): string[] => {
-    try {
-      return readdirSync(dir).flatMap((name) => {
-        const path = join(dir, name);
-        if (name === 'node_modules') return [];
-        return statSync(path).isDirectory() ? files(path) : /\.(ts|tsx)$/.test(name) ? [path] : [];
-      });
-    } catch {
-      return [];
-    }
-  };
+  const files = (dir: string): string[] =>
+    !existsSync(dir)
+      ? []
+      : readdirSync(dir).flatMap((name) => {
+          const path = join(dir, name);
+          if (name === 'node_modules') return [];
+          return statSync(path).isDirectory()
+            ? files(path)
+            : /\.(ts|tsx)$/.test(name)
+              ? [path]
+              : [];
+        });
   const imports = (path: string) =>
     [...readFileSync(path, 'utf8').matchAll(/(?:from\s+|import\s*\(\s*)['"]([^'"]+)['"]/g)].map(
       (m) => m[1],
@@ -162,30 +163,23 @@ describe('plugin import boundary', () => {
     const webDirs = readdirSync(join(repo, 'plugins'), { withFileTypes: true })
       .filter((d) => d.isDirectory())
       .map((d) => join(repo, 'plugins', d.name, 'web'))
-      .filter((dir) => {
-        try {
-          return statSync(dir).isDirectory();
-        } catch {
-          return false;
-        }
-      });
+      .filter((dir) => existsSync(dir) && statSync(dir).isDirectory());
     const scanned = webDirs.flatMap((dir) => files(dir));
     // No silent pass: a plugin web folder that yields no files means the scanner missed them.
     if (webDirs.length > 0) expect(scanned.length).toBeGreaterThan(0);
-    const offenders = scanned
-      .flatMap((path) =>
-        imports(path)
-          .filter(
-            (spec) =>
-              !(
-                spec === '@maf/plugin-api' ||
-                spec.startsWith('@maf/shared/') ||
-                !spec.startsWith('.') ||
-                isOwn(path, spec)
-              ),
-          )
-          .map((spec) => `${relative(repo, path)} → ${spec}`),
-      );
+    const offenders = scanned.flatMap((path) =>
+      imports(path)
+        .filter(
+          (spec) =>
+            !(
+              spec === '@maf/plugin-api' ||
+              spec.startsWith('@maf/shared/') ||
+              !spec.startsWith('.') ||
+              isOwn(path, spec)
+            ),
+        )
+        .map((spec) => `${relative(repo, path)} → ${spec}`),
+    );
     expect(offenders).toEqual([]);
   });
 
