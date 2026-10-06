@@ -57,6 +57,8 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
     /// Empty by default, which is the core alone; the fixture plugins in this test assembly are found by name.
     /// </summary>
     public IReadOnlyList<Maf.Lab.Plugins.Abstractions.PluginManifest> InstalledPlugins { get; init; } = [];
+    /// <summary>Plugins installed as having a server part although this assembly holds no code for them.</summary>
+    public IReadOnlyCollection<string> ServerWithoutCode { get; init; } = [];
 
     /// <summary>The environment this host declares (MAF_ENV), which an installed plugin must allow.</summary>
     public string Environment { get; init; } = "dev";
@@ -81,7 +83,7 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
             schema = 1,
             env = Environment,
             // A plugin "has a server part" exactly when this test assembly holds code for it, as make sees a server/ folder.
-            plugins = plugins.Select(m => new { manifest = m, serverJson = (object?)null, hasServer = FixtureNames.Contains(m.Name) }),
+            plugins = plugins.Select(m => new { manifest = m, serverJson = (object?)null, hasServer = FixtureNames.Contains(m.Name) || ServerWithoutCode.Contains(m.Name) }),
         };
         File.WriteAllText(Path.Combine(PluginsRoot, ".installed"),
             System.Text.Json.JsonSerializer.Serialize(document, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));

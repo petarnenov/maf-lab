@@ -116,7 +116,8 @@ per-tenant layer without touching any plugin.
 plugins/<name>/
   plugin.toml          # name, kind, description, depends, progress, stopping, owned specs
   compose.yml          # its own services only (merged with -f); never changes api, lb or copilot-runtime
-  lb.conf              # its nginx upstreams and locations (included from conf.d)
+  lb.http.conf         # its nginx upstreams (included in http{} from conf.d/http)
+  lb.server.conf       # its nginx locations (included in server{} from conf.d/server)
   plugin.mk            # its make targets (included by the Makefile)
   server/              # Maf.Lab.Plugins.<Name>.csproj — IMafPlugin (in-process only)
   web/index.ts         # definePlugin({...}) (in-process only)
@@ -293,7 +294,7 @@ name.
 - `nginx.conf` keeps only the core upstreams and locations, except the api upstream, which is generated into
   `conf.d/http/00-api.conf` (decision 2), plus `include /etc/nginx/lb/conf.d/http/*.conf;` in `http{}`
   and `include /etc/nginx/lb/conf.d/server/*.conf;` in `server{}`.
-- `make plugin-on` copies a plugin's `lb.conf` parts into those directories after its services are healthy, then
+- `make plugin-on` copies a plugin's `lb.http.conf` and `lb.server.conf` into those directories after its services are healthy, then
   reloads nginx (decision 2).
 - A plugin that is not installed leaves no `server mcp-code:8080` line, so nginx always loads. `lb.depends_on` keeps
   only the core services.
@@ -687,8 +688,8 @@ What moves where:
   and only while its pane is open.
 - **Shared code.** `formatDate`, `Page.module.css`, `StopHint`, `useEscToStop` and `ErrorBoundary` move into a core
   `web/src/shared/`. `api/types.ts` sheds plugin types into their plugins.
-- **The plugin API.** It is a small, typed `web/src/plugins/api.ts`, and the core never imports a plugin. An ESLint
-  `no-restricted-imports` rule enforces both directions:
+- **The plugin API.** It is a small, typed `web/src/plugins/api.ts`, and the core never imports a plugin. ESLint enforces core→plugins (`no-restricted-imports`), and an architecture test (a Vitest scanner) enforces
+  plugins→core, because ESLint's flat config cannot see files outside `web/`. The directions are:
   - core → `/plugins/**` is forbidden;
   - plugin → core internals other than `shared/` and `plugins/api` is forbidden.
 
@@ -716,7 +717,7 @@ All of these run in `make test`, `make docs-check` and CI.
     `Key:`/…/`None — reason`);
   - `depends` resolve.
 - **Docs.**
-  - `docs.py` globs `plugins/*/plugin.mk` for make targets and `plugins/*/lb.conf` for routes. Each route row names its
+  - `docs.py` globs `plugins/*/plugin.mk` for make targets and `plugins/*/lb.http.conf` and `plugins/*/lb.server.conf` for routes. Each route row names its
     plugin.
   - `ROUTE_SOURCES` includes `plugins/*/server`.
   - Documentation describes every plugin present, whether enabled or not.
@@ -764,6 +765,31 @@ than something a tenant enables.
 
 **Dev sign-in.** `DevTokenPicker` and `/dev/*` become the `dev-login` plugin (installation, dev and qa) once the
 company IdP is wired in (`adopt-company-idp`). Until then they are the only way in and stay where they are.
+
+### Decisions taken during implementation (part A, 2026-10-06, decided by the reviewing session)
+
+These choices deviate from the text above. Each is kept, with the rejected alternative recorded in DECISIONS §81:
+
+1. **`IMafPlugin` carries only `Name`.** The manifest is resolved from `plugins/.installed` by name, so it has a single
+   source in `plugin.toml`. The join fails closed both ways:
+   - an installed server part with no code stops the start;
+   - a compiled plugin with no manifest fails the contract suite;
+   - duplicate names are refused.
+
+   Rejected: a `PluginManifest` property duplicating the toml in code.
+2. **copilot-runtime re-reads `.installed` on read when its inode or mtime changes.** There is no watcher and no Redis
+   client in a wiring-only service. The api keeps Redis `plugins-changed` plus the 30 s re-read. Rejected: a
+   FileSystemWatcher (unreliable over bind mounts), and a Redis client in the runtime.
+3. **The plugins→core web boundary is an architecture test**, a Vitest scanner that fails when plugin web folders exist
+   but yield no files. ESLint covers core→plugins. Rejected: dependency-cruiser (a second tool and a new devDependency
+   for one rule).
+4. **A plugin's nginx parts are two files, `lb.http.conf` and `lb.server.conf`.** One file cannot be included in both
+   `http{}` and `server{}`. This corrects the earlier single `lb.conf`.
+5. **The manifest validator is a stdlib subset of JSON Schema** (draft 2020-12, declared in `$schema`). It refuses
+   unknown keywords, and a test asserts the schema uses only supported ones. Rejected: `jsonschema`, which would be
+   the first third-party Python package.
+
+**Corrected back to the design:** qa defaults to the `product` image, as stage and prod do (5e).
 
 ## Principles and patterns
 

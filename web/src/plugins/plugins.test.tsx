@@ -159,9 +159,20 @@ describe('plugin import boundary', () => {
   });
 
   it('a plugin imports only the plugin API, shared code, packages and its own files', () => {
-    const offenders = readdirSync(join(repo, 'plugins'), { withFileTypes: true })
+    const webDirs = readdirSync(join(repo, 'plugins'), { withFileTypes: true })
       .filter((d) => d.isDirectory())
-      .flatMap((d) => files(join(repo, 'plugins', d.name, 'web')))
+      .map((d) => join(repo, 'plugins', d.name, 'web'))
+      .filter((dir) => {
+        try {
+          return statSync(dir).isDirectory();
+        } catch {
+          return false;
+        }
+      });
+    const scanned = webDirs.flatMap((dir) => files(dir));
+    // No silent pass: a plugin web folder that yields no files means the scanner missed them.
+    if (webDirs.length > 0) expect(scanned.length).toBeGreaterThan(0);
+    const offenders = scanned
       .flatMap((path) =>
         imports(path)
           .filter(

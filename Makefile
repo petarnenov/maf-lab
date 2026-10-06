@@ -32,9 +32,9 @@ MAF_ENV       ?= dev
 MAF_PLUGINS   ?=
 export MAF_ENV MAF_PLUGINS
 PLUGINS_PY    := python3 $(ROOT)/scripts/plugins.py
-# The image variant (introduce-plugins decision 5e): full for dev and qa, product (no dev-or-qa-only plugin code) for
-# stage and prod. qa also runs the product images (`make product-check`, and CI's product job).
-MAF_IMAGE_VARIANT ?= $(if $(filter stage prod,$(MAF_ENV)),product,full)
+# The image variant (introduce-plugins decision 5e): full for dev, product (no dev-or-qa-only plugin code) for qa, stage
+# and prod, so stage and prod promote exactly the image qa tested. qa may run full beside it with MAF_IMAGE_VARIANT=full.
+MAF_IMAGE_VARIANT ?= $(if $(filter qa stage prod,$(MAF_ENV)),product,full)
 MAF_PRODUCT_PLUGINS := $(shell $(PLUGINS_PY) product-servers 2>/dev/null)
 MAF_PRODUCT_WEB := $(shell $(PLUGINS_PY) product-plugins 2>/dev/null)
 export MAF_IMAGE_VARIANT MAF_PRODUCT_PLUGINS MAF_PRODUCT_WEB

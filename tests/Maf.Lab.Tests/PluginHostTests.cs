@@ -85,6 +85,21 @@ public class PluginHostTests
     }
 
     [Fact]
+    public void An_installed_server_part_without_its_code_stops_the_start_naming_it()
+    {
+        var manifest = FixturePlugin.Manifest() with { Name = "zz-no-code" };
+        using var factory = new ApiFactory(ApiFactory.ProceduralModel())
+        {
+            InstalledPlugins = [manifest],
+            ServerWithoutCode = ["zz-no-code"],
+        };
+
+        var error = Assert.ThrowsAny<Exception>(() => factory.CreateClient());
+
+        Assert.Contains("plugin 'zz-no-code' is installed with a server part, but this image has no code for it", Flatten(error));
+    }
+
+    [Fact]
     public async Task Open_work_is_listed_for_an_admin_and_stopped_through_the_plugin()
     {
         lock (FixturePlugin.Open)

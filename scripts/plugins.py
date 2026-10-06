@@ -72,15 +72,18 @@ def load_schema() -> dict:
     return json.loads((ROOT / "plugins" / "plugin.schema.json").read_text(encoding="utf-8"))
 
 
+# The JSON Schema (draft 2020-12) keywords the validator below implements; a test checks the schema uses no other.
+KNOWN_KEYWORDS = frozenset({"$schema", "$id", "title", "description", "type", "required", "properties",
+                            "additionalProperties", "enum", "pattern", "minLength", "minItems", "uniqueItems", "items"})
+
+
 def schema_errors(value, schema: dict, path: str = "") -> list[str]:
     """
     The subset of JSON Schema (draft 2020-12) the manifest schema uses: type, required, properties,
     additionalProperties, enum, pattern, minLength, minItems, uniqueItems and items. The standard library has no JSON
     Schema validator, and the schema stays the source of truth: a keyword this does not know is refused, not ignored.
     """
-    known = {"$schema", "$id", "title", "description", "type", "required", "properties", "additionalProperties",
-             "enum", "pattern", "minLength", "minItems", "uniqueItems", "items"}
-    unknown = set(schema) - known
+    unknown = set(schema) - KNOWN_KEYWORDS
     if unknown:
         return [f"{path or '/'}: the schema uses {sorted(unknown)}, which the validator does not implement"]
     errors: list[str] = []

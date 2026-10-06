@@ -105,6 +105,24 @@ class ManifestTests(PluginsTestCase):
         self.assertTrue(any("unknown key `colour`" in p for p in problems), problems)
         self.assertTrue(any(p.startswith("/progress:") for p in problems), problems)
 
+    def test_every_keyword_the_schema_uses_is_supported(self):
+        # The validator implements a subset of JSON Schema: adding a keyword it lacks must fail here, not in make.
+        schema = plugins.load_schema()
+        self.assertEqual(schema.get("$schema"), "https://json-schema.org/draft/2020-12/schema")
+        used = set()
+
+        def walk(node):
+            if isinstance(node, dict):
+                used.update(node.keys())
+                for key in ("properties",):
+                    for sub in node.get(key, {}).values():
+                        walk(sub)
+                for key in ("items", "additionalProperties"):
+                    if isinstance(node.get(key), dict):
+                        walk(node[key])
+        walk(schema)
+        self.assertEqual(sorted(used - plugins.KNOWN_KEYWORDS), [])
+
     def test_a_provider_names_what_it_provides(self):
         self.add("jev", manifest("jev", kind="provider"))
         self.assertIn("/provides: a provider plugin names what it provides", plugins.discover()["jev"].problems)

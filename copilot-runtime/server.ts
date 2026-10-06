@@ -45,7 +45,10 @@ export function readPluginAgents(text: string): Record<string, string> {
 
 function agents(): Record<string, string> {
   try {
-    const stamp = statSync(pluginsFile).mtimeMs;
+    // Re-read on read when the file changed: make writes it by rename, so the inode changes too, and comparing both
+    // catches two renames within one millisecond. No watcher (unreliable over bind mounts) and no Redis client here.
+    const info = statSync(pluginsFile);
+    const stamp = `${info.ino}:${info.mtimeMs}`;
     if (stamp !== pluginsStamp) {
       pluginAgents = readPluginAgents(readFileSync(pluginsFile, 'utf8'));
       pluginsStamp = stamp;

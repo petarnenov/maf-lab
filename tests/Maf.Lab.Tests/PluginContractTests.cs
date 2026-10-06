@@ -20,6 +20,22 @@ public sealed class PluginContractTests
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static string Repo => CorpusLoaderTests.RepoRoot();
 
+    /// <summary>
+    /// The name join fails closed the other way too (fifth part-A decision): every IMafPlugin compiled into a plugin
+    /// assembly (Maf.Lab.Plugins.*, the abstractions aside) has a folder with a manifest of that name under plugins/.
+    /// </summary>
+    [Fact]
+    public void Every_compiled_plugin_has_a_manifest_of_its_name()
+    {
+        var pluginAssemblies = AppDomain.CurrentDomain.GetAssemblies()
+            .Where(a => a.GetName().Name is { } n && n.StartsWith("Maf.Lab.Plugins.", StringComparison.Ordinal)
+                && n != "Maf.Lab.Plugins.Abstractions");
+        var compiled = PluginHost.Discover(pluginAssemblies).Keys;
+        var folders = PluginFolders().ToHashSet(StringComparer.Ordinal);
+        var orphans = compiled.Where(name => !folders.Contains(name)).ToList();
+        Assert.True(orphans.Count == 0, "compiled plugins with no manifest: " + string.Join(", ", orphans));
+    }
+
     public static IEnumerable<string> PluginFolders() =>
         Directory.Exists(Path.Combine(Repo, "plugins"))
             ? Directory.EnumerateDirectories(Path.Combine(Repo, "plugins"))
