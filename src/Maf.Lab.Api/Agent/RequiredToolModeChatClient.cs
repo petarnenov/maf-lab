@@ -21,8 +21,6 @@ public sealed class RequiredToolModeChatClient(IChatClient inner, Action<Functio
     IReadOnlyList<string>? forcedSearches = null, IReadOnlyList<Jev.ToolRoute>? alongside = null)
     : DelegatingChatClient(inner)
 {
-    public const string EmulatedTool = "search_documents";
-
     public override async Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
     {
         var list = messages as IList<ChatMessage> ?? messages.ToList();

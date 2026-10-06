@@ -6,7 +6,9 @@ using MessageRole = A2A.Role;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Compliance;
 using Maf.Lab.Domain.Tenancy;
-using Maf.Lab.Retrieval.Billing;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Microsoft.Extensions.AI;
 using Maf.Lab.TestSupport;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -40,7 +42,8 @@ public class A2AHandlerTests
             new HashSet<string> { A2AScopes.BillingRead });
         var handler = new BillingAgentHandler(
             new FixedPartner(partner),
-            new BillingSeedStore(Seed),
+            new SeededBillingServer(Seed),
+            api.Services.GetRequiredService<IOptions<Maf.Lab.Domain.Configuration.AuthOptions>>(),
             Options.Create(a2a),
             api.Services.GetRequiredService<ToolAudit>(),
             api.Services.GetRequiredService<AssistantBridge>(),
@@ -228,4 +231,42 @@ public class A2AHandlerTests
 internal sealed class FixedPartner(PartnerPrincipal partner) : IPartnerAccessor
 {
     public PartnerPrincipal Current { get; } = partner;
+}
+
+/// <summary>
+/// Billing's server as the A2A handler reaches it (introduce-plugins 8.1, extract-billing): its two run tools over a seed,
+/// each answering only for the tenant the caller's token names — as the real server scopes every read by its principal.
+/// </summary>
+file sealed class SeededBillingServer(string seed) : IToolSource
+{
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    private readonly JsonArray _runs = JsonNode.Parse(seed)!.AsArray();
+
+    public Task<ToolSet> GetToolsAsync(string bearerToken, ConfirmationSink? confirmations, CancellationToken ct,
+        IReadOnlySet<string>? domains = null)
+    {
+        var tenant = TenantOf(bearerToken);
+        var mine = _runs.Where(r => r!["firmId"]!.GetValue<string>() == tenant).ToList();
+        var status = AIFunctionFactory.Create((string runId) =>
+            mine.FirstOrDefault(r => r!["runId"]!.GetValue<string>() == runId) is { } run
+                ? Result(run.DeepClone(), false)
+                : Result(new JsonObject { ["error"] = "not found" }, true), "get_billing_run_status");
+        var search = AIFunctionFactory.Create((int? maxResults = null) =>
+            Result(new JsonObject
+            {
+                ["runs"] = new JsonArray([.. mine.Take(maxResults ?? 10).Select(r => r!.DeepClone())]),
+                ["totalMatches"] = mine.Count,
+                ["truncated"] = false,
+            }, false), "search_billing_runs");
+        return Task.FromResult(new ToolSet([status, search], null));
+    }
+
+    private static JsonElement Result(JsonNode structured, bool isError) =>
+        JsonSerializer.SerializeToElement(new JsonObject { ["structuredContent"] = structured, ["isError"] = isError }, Json);
+
+    private static string TenantOf(string token) =>
+        JsonNode.Parse(Convert.FromBase64String(Pad(token.Split('.')[1])))!["tenant_id"]!.GetValue<string>();
+
+    private static string Pad(string part) =>
+        part.Replace('-', '+').Replace('_', '/') + new string('=', (4 - part.Length % 4) % 4);
 }

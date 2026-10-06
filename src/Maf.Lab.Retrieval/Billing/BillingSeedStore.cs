@@ -1,7 +1,8 @@
-using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json;
 using Maf.Lab.Domain.Billing;
 using Maf.Lab.Domain.Tenancy;
+using Maf.Lab.Retrieval.Configuration;
 using Microsoft.Extensions.Configuration;
 
 namespace Maf.Lab.Retrieval.Billing;

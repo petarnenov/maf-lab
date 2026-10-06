@@ -1,10 +1,14 @@
 using Maf.Lab.A2A;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using A2A;
 using Maf.Lab.Api.Agent;
+using Maf.Lab.Domain.Billing;
+using Maf.Lab.Domain.Configuration;
 using Maf.Lab.Domain.Tenancy;
-using Maf.Lab.Retrieval.Billing;
+using Maf.Lab.Retrieval.Auth;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.AI;
 // Both libraries have a Role; naming them apart is clearer than hoping the right one wins.
 using MessageRole = A2A.Role;
 using UserRole = Maf.Lab.Domain.Tenancy.Role;
@@ -21,7 +25,8 @@ namespace Maf.Lab.Api.A2A;
 /// </summary>
 public sealed partial class BillingAgentHandler(
     IPartnerAccessor partners,
-    BillingSeedStore billing,
+    IToolSource tools,
+    IOptions<AuthOptions> auth,
     IOptions<A2AOptions> options,
     ToolAudit audit,
     AssistantBridge assistant,
@@ -32,6 +37,9 @@ public sealed partial class BillingAgentHandler(
 {
     /// <summary>What a caller is told when it asks about a firm it is not entitled to — the same sentence, always.</summary>
     public const string OutOfScope = "This request concerns data outside your entitlement.";
+
+    // names a domain until the a2a follow-up moves it (introduce-plugins 8.1): run status comes from billing's own server.
+    private static readonly IReadOnlySet<string> BillingDomain = new HashSet<string>(StringComparer.Ordinal) { "billing" };
 
     public async Task ExecuteAsync(RequestContext context, AgentEventQueue queue, CancellationToken cancellationToken)
     {
@@ -94,7 +102,7 @@ public sealed partial class BillingAgentHandler(
                 {
                     MessageId = Guid.NewGuid().ToString("N"),
                     Role = MessageRole.Agent,
-                    Parts = [new Part { Text = StatusFor(partner, match.Groups["run"].Value) }],
+                    Parts = [new Part { Text = await StatusForAsync(partner, match.Groups["run"].Value, ct) }],
                 }, ct);
             queue.Complete();
             return;
@@ -116,13 +124,14 @@ public sealed partial class BillingAgentHandler(
         await assistant.AnswerAsync(partner.AllowedFirms.First(), text, queue, ct);
     }
 
-    private string StatusFor(PartnerPrincipal partner, string runId)
+    private async Task<string> StatusForAsync(PartnerPrincipal partner, string runId, CancellationToken ct)
     {
         // The entitlement decides, and it decides the same way whether or not the run exists: a partner learns
         // nothing about another firm, not even that one of its runs exists.
         foreach (var firm in partner.AllowedFirms)
         {
-            var status = billing.GetStatus(PartnerScope(firm), runId);
+            var status = await CallBillingAsync<BillingRunStatus>(firm, "get_billing_run_status",
+                new Dictionary<string, object?> { ["runId"] = runId }, ct);
             if (status is not null)
             {
                 return $"Run {status.RunId} for {firm.Value} is {status.Status} "
@@ -181,8 +190,8 @@ public sealed partial class BillingAgentHandler(
         }
 
         // The artifact reports the firm's most recent seeded run: the lifecycle is what is being built here, not billing.
-        var latest = billing.Search(PartnerScope(scope), status: null, periodFrom: null, periodTo: null, limit: 1)
-            .Runs.FirstOrDefault();
+        var latest = (await CallBillingAsync<SearchBillingRunsResult>(scope, "search_billing_runs",
+            new Dictionary<string, object?> { ["maxResults"] = 1 }, work))?.Runs.FirstOrDefault();
         await updater.AddArtifactAsync(
             [
                 new Part
@@ -213,8 +222,37 @@ public sealed partial class BillingAgentHandler(
         Parts = [new Part { Text = text }],
     };
 
-    /// <summary>A partner reads one firm at a time, with no advisor scope: it is not a user.</summary>
-    private static Principal PartnerScope(TenantId firm) => new($"a2a:{firm.Value}", firm, UserRole.READ_ONLY);
+    /// <summary>
+    /// One of billing's tools, called on billing's own server as the firm, the way every other partner question reaches
+    /// a domain (<see cref="AssistantBridge"/>). Null when billing is not installed, its server cannot answer, or the
+    /// tool says it found nothing.
+    /// </summary>
+    private async Task<T?> CallBillingAsync<T>(TenantId firm, string tool, Dictionary<string, object?> arguments,
+        CancellationToken ct) where T : class
+    {
+        // A read-only token for the firm, minted as AssistantBridge mints it: a partner reads one firm at a time, with no
+        // advisor scope. Not the partner's own token, whose A2A audience the MCP server refuses by construction
+        // (PartnerIdentity).
+        var (token, _) = DevJwt.Issue(auth.Value, $"a2a:{firm.Value}", firm, UserRole.READ_ONLY);
+        try
+        {
+            await using var toolSet = await tools.GetToolsAsync(token, null, ct, BillingDomain);
+            if (toolSet.Tools.OfType<AIFunction>().FirstOrDefault(t => t.Name == tool) is not { } found)
+            {
+                return null;
+            }
+            // An MCP tool's result, read as every tool result is read: its structured content, unless it is an error.
+            var (_, structured, isError) = ToolDataEnvelope.Unpack(await found.InvokeAsync(new AIFunctionArguments(arguments), ct));
+            return isError || structured is not { } content
+                ? null
+                : content.Deserialize<T>(new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning("a2a: billing's server could not answer {Tool} ({Error})", tool, ex.GetType().Name);
+            return null;
+        }
+    }
 
     private async Task RecordAsync(PartnerPrincipal partner, string operation, string taskId, DateTimeOffset started, CancellationToken ct)
     {

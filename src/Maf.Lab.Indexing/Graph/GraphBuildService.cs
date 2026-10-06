@@ -1,6 +1,7 @@
 using Maf.Lab.Indexing.Corpus;
 using Maf.Lab.Indexing.Pipeline;
 using Maf.Lab.Retrieval.Billing;
+using Maf.Lab.Retrieval.Configuration;
 using Maf.Lab.Retrieval.Graph;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;

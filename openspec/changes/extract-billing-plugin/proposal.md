@@ -2,7 +2,7 @@
 
 ## Why
 
-Billing, the lab's first domain, is still built into the core (`src/Maf.Lab.Api/BuiltIn/billing`, the `mcp-retrieval` host, the billing corpus, collection and graph templates). Until it is a plugin, the core is not domain-agnostic, and enable-plugins-per-tenant and introduce-provider-plugins cannot treat it like any other domain.
+Billing, the lab's first domain, is still built into the core (`src/Maf.Lab.Api/BuiltIn/billing`, the `mcp-retrieval` host, the billing corpus and collection). Until it is a plugin, the core is not domain-agnostic, and enable-plugins-per-tenant and introduce-provider-plugins cannot treat it like any other domain.
 
 This is one of the follow-up extractions introduce-plugins (task 8.1) opened, in this order: `extract-billing-plugin`, `extract-portfolio-plugin`, `extract-compliance-plugin`, `extract-a2a-plugin`, `extract-coverage-plugin`, `extract-evals-plugin`, `extract-insights-plugin`, `extract-feedback-review-plugin`, `extract-index-admin-plugin`, `extract-observability-plugin`, `extract-topology-plugin`, `extract-curriculum-plugin`. It moves
 code; it changes no behaviour, except where a line below says so.
@@ -10,12 +10,16 @@ code; it changes no behaviour, except where a line below says so.
 ## What Changes
 
 - `plugins/billing/` (mcp, tenant scope, every environment): its manifest with the `[domain]` table from
-  `BuiltIn/billing/domain.json` and `prompt.md`; `server.json` for `mcp-retrieval`; the corpus, collection and graph
-  templates; the billing eval cases; its compose service and lb parts.
+  `BuiltIn/billing/domain.json` and `prompt.md`; `server.json` for `mcp-retrieval`; the corpus (`data/` →
+  `files/corpus/`) and collection, indexed through its `plugin.mk`; the billing seeds (`billing-accounts.json`,
+  `billing-runs.json` → `files/seed/`); its compose service, env and lb parts. The billing graph builder and its Cypher
+  templates stay core, as code's did (part C), until the template-contribution seam (deferred to the change that moves
+  the code builder).
 - The split of `src/Maf.Lab.Retrieval` (5g): the library stays core (tenant-scoped search, BM25, embeddings, the dev
-  JWT, the relevance judge's client), which the api and the code server reference; only the host moves —
-  `Program.cs`, the `Dockerfile`, `Billing/` and the relevance judge's server side become `plugins/billing/service/`.
-  The proposal's design names each file on either side.
+  JWT, the relevance judge, `DocumentSearchService`, `ToolErrors`, and `SeedPaths` moved out of the Billing namespace),
+  which the api, the portfolio and code servers reference; only the host moves — `Program.cs`, the `Dockerfile`,
+  `retrieval.json`, `Billing/` and the tools (`BillingTools`, `BillingGraphTools`, `FeeAdjustmentTools`, and
+  `SearchDocumentsTool`, the search tool over billing's collection) become `plugins/billing/service/`.
 - Fee adjustment moves with billing (§81, 5g): `BuiltIn/BillingBehaviour.cs`, `Agent/FeeAdjustmentFlow.cs`, and
   `PendingAdjustments` as `IContributesModel`. `FeeAdjustmentFlow` calls `A2A/ComplianceConsultant`, an Api type, so
   this change adds **one port** in `Maf.Lab.Plugins.Abstractions` for the reviewer consultation, implemented by the core
@@ -31,8 +35,13 @@ code; it changes no behaviour, except where a line below says so.
   line in the MCP Inspector's `start.mjs`.
 - The topology's domain-server nodes come from the catalogue (part C #10); `TopologyProbe.cs` still names codebase, so
   it stays allow-listed until extract-topology-plugin.
+- The A2A run-status skill now asks billing's server, like every other partner question: `BillingAgentHandler` (core
+  until extract-a2a-plugin) reaches billing's tools through `IToolSource` with a firm-scoped token, and names the
+  billing domain until then (allow-listed). Without billing, it answers out of scope and the card drops its billing
+  skills.
 - Not taken: `A2A/BillingAgentCard.cs` and `BillingAgentHandler.cs` — despite the name, they are the assistant's A2A
-  surface (extract-a2a-plugin).
+  surface (extract-a2a-plugin); billing's eval cases stay in `evals/` until extract-evals-plugin, which owns per-plugin
+  discovery (`make eval` needs the billing plugin until then).
 
 ## Capabilities
 

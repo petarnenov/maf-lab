@@ -17,6 +17,7 @@ public sealed class CoreNamesNoDomainTests
         ["Topology/TopologyProbe.cs"] = "topology",
         ["Agent/JevStatistics.cs"] = "insights",
         ["A2A/BillingAgentCard.cs"] = "a2a",
+        ["A2A/BillingAgentHandler.cs"] = "a2a",
     };
 
     private static readonly Regex NamesADomain =

@@ -407,7 +407,8 @@ public class GuardrailTests
             new HashSet<string> { A2AScopes.BillingRead });
         var handler = new BillingAgentHandler(
             new FixedPartner(partner),
-            new BillingSeedStore("[]"),
+            api.Services.GetRequiredService<IToolSource>(),
+            api.Services.GetRequiredService<IOptions<Maf.Lab.Domain.Configuration.AuthOptions>>(),
             Options.Create(new A2AOptions { SimulatedStepMs = 1 }),
             api.Services.GetRequiredService<ToolAudit>(),
             api.Services.GetRequiredService<AssistantBridge>(),

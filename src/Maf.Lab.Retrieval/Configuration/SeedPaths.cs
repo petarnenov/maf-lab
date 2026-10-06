@@ -1,9 +1,9 @@
 using Microsoft.Extensions.Configuration;
 
-namespace Maf.Lab.Retrieval.Billing;
+namespace Maf.Lab.Retrieval.Configuration;
 
 /// <summary>Where the seed files are. Configuration wins; otherwise the repository, then the published seed folder.</summary>
-internal static class SeedPaths
+public static class SeedPaths
 {
     public static string Resolve(IConfiguration configuration, string configurationKey, string fileName)
     {

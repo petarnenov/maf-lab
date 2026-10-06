@@ -10,7 +10,8 @@ code; it changes no behaviour, except where a line below says so.
 ## What Changes
 
 - `plugins/evals/` (app, installation, dev and qa): the eval reports screen and routes, `make eval*`, `DatasetWriter`
-  and the A2A probe. Suites and cases come from the installed plugins (billing's left with extract-billing-plugin).
+  and the A2A probe. Suites and cases come from the installed plugins: this change adds per-plugin discovery and moves billing's rows
+  (selection, retrieval, generation, injection, confirmation) and code's out of `evals/`.
 - The eval host reaches the code server through the catalogue's endpoint instead of `BuildApp`, which frees
   `src/Maf.Lab.CodeSearch`, the graph-tool tests (GraphBuildAndTool, GraphTraceEvent, GraphIntegration) and the code
   graph builder to move under the code plugin's folder.
