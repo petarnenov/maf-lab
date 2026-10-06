@@ -573,6 +573,10 @@ directions, and every item disappears from the code the day the SDK speaks 1.0 i
   `Create/Get/List/DeleteTaskPushNotificationConfigAsync` and `GetExtendedAgentCardAsync` throw
   `NotImplementedException` — while `IA2ARequestHandler` declares them and our card advertises them. They are
   implemented in `A2ARequestHandlerWithExtras`, which delegates everything else untouched.
+- **`GET /a2a/card` is the SDK's fixed copy.** `MapHttpA2A` takes an `AgentCard` at mapping time and preview2 has no
+  per-request hook, so that path serves the card as it was when the api started. The lab's discovery card
+  (`/.well-known/agent-card.json`) and the extended card are built per request from the installed set (extract-billing:
+  without the billing plugin the card offers none of billing's skills), and nothing in the lab reads `/a2a/card`.
 - **`ITaskStore` had to be ours.** The SDK ships only `InMemoryTaskStore`, which two replicas behind the balancer
   cannot share: a task started on one would not exist on the other. `SqliteTaskStore` keeps it in the database the
   replicas already share, and — being the one place every transition passes through — is also where push delivery

@@ -56,6 +56,7 @@ public partial class Program
         });
 
         builder.Services.AddSingleton(TestAgentCard.Descriptor);
+        builder.Services.AddSingleton<Func<AgentCardDescriptor>>(_ => () => TestAgentCard.Descriptor);
         builder.Services.TryAddSingleton<ITaskStore, RedisTaskStore>();
         builder.Services.TryAddSingleton<IPushConfigStore, RedisPushConfigStore>();
         builder.RequireSharedState<ITaskStore>();

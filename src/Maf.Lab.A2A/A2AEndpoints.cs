@@ -51,6 +51,8 @@ public static class A2AEndpoints
 
         app.MapA2A(handler, AgentCardFactory.A2APath)
             .RequireAuthorization(PartnerAuthentication.Policy);
+        // The SDK freezes this copy at mapping time (GET /a2a/card); discovery (the well-known card above) and the
+        // extended card are built per request. Nothing in the lab reads this one (DECISIONS §23).
         app.MapHttpA2A(handler, AgentCardFactory.Public(options, agent), AgentCardFactory.A2APath)
             .RequireAuthorization(PartnerAuthentication.Policy);
         return app;

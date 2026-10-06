@@ -35,6 +35,7 @@ public partial class Program
         builder.Services.AddSingleton(TimeProvider.System);
 
         builder.Services.AddSingleton(ComplianceAgentCard.Descriptor);
+        builder.Services.AddSingleton<Func<AgentCardDescriptor>>(_ => () => ComplianceAgentCard.Descriptor);
         // Two replicas serve one caller's review, so neither may be the only one that knows about it. Added with
         // TryAdd so a host that brought its own store — a test over one it can read — keeps it.
         builder.Services.TryAddSingleton<ITaskStore, RedisTaskStore>();

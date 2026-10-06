@@ -94,6 +94,26 @@ public class AgentCardTests
         Assert.True(AgentCardFactory.Verify(AgentCardFactory.Signed(card, new AuthOptions()), new AuthOptions()));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void The_card_offers_billing_s_skills_only_while_billing_is_installed(bool installed)
+    {
+        var descriptor = BillingAgentCard.Installed(new BillingInstalled(installed));
+        var billingSkills = BillingAgentCard.Descriptor.PublicSkills.Concat(BillingAgentCard.Descriptor.PrivateSkills)
+            .Select(s => s.Id).ToList();
+
+        var publicCard = AgentCardFactory.Public(Options(), descriptor);
+        var extended = AgentCardFactory.Extended(Options(), descriptor);
+
+        Assert.Equal(installed ? BillingAgentCard.Descriptor.PublicSkills.Select(s => s.Id) : [], publicCard.Skills.Select(s => s.Id));
+        Assert.Equal(installed ? billingSkills : [], extended.Skills.Select(s => s.Id));
+        // The agent's scope is its own, whatever is installed; each rendering is signed over what it serves.
+        Assert.Equal(BillingAgentCard.Descriptor.Scopes, descriptor.Scopes);
+        var auth = new AuthOptions();
+        Assert.True(AgentCardFactory.Verify(AgentCardFactory.Signed(publicCard, auth), auth));
+    }
+
     [Fact]
     public void A_signed_card_verifies_and_a_tampered_one_does_not()
     {
@@ -116,7 +136,12 @@ public class AgentCardTests
     [Fact]
     public async Task The_well_known_card_is_served_anonymously_and_deserialises_with_the_sdk()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        // With billing installed, whose skills the card offers (extract-billing).
+        using var api = new ApiFactory(ApiFactory.ProceduralModel())
+        {
+            InstalledPlugins = [new() { Name = "billing", Kind = "mcp", Scope = "tenant", Environments = ["dev"], Description = "billing",
+                Progress = "None — fixture", Stopping = "None — fixture" }],
+        };
 
         var response = await api.CreateClient().GetAsync(AgentCardFactory.WellKnownPath, Ct);
 
@@ -145,4 +170,12 @@ public class AgentCardTests
             new A2AEndpoints.TokenRequest("acme-portal", "guess"), Ct);
         Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
     }
+}
+
+/// <summary>An installed set that holds billing, or not.</summary>
+file sealed class BillingInstalled(bool installed) : Maf.Lab.Plugins.Abstractions.IInstalledPlugins
+{
+    public bool IsInstalled(string plugin) => installed && plugin == "billing";
+
+    public string? McpEndpoint(string plugin) => null;
 }

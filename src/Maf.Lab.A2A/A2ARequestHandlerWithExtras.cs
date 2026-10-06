@@ -17,7 +17,8 @@ public sealed class A2ARequestHandlerWithExtras(
     ITaskStore tasks,
     IPushConfigStore pushConfigs,
     IPartnerAccessor partners,
-    AgentCardDescriptor agent,
+    // Read per call, as IPartnerAccessor.Current is: an agent's card may follow what is installed (the api's does).
+    Func<AgentCardDescriptor> agent,
     IOptions<A2AOptions> a2a,
     IOptions<AuthOptions> auth,
     TimeProvider time) : IA2ARequestHandler
@@ -115,7 +116,7 @@ public sealed class A2ARequestHandlerWithExtras(
     public Task<AgentCard> GetExtendedAgentCardAsync(GetExtendedAgentCardRequest request, CancellationToken cancellationToken = default)
     {
         _ = partners.Current; // throws when the caller is not an authenticated partner
-        return Task.FromResult(AgentCardFactory.Signed(AgentCardFactory.Extended(a2a.Value, agent), auth.Value));
+        return Task.FromResult(AgentCardFactory.Signed(AgentCardFactory.Extended(a2a.Value, agent()), auth.Value));
     }
 
     public async Task<TaskPushNotificationConfig> CreateTaskPushNotificationConfigAsync(

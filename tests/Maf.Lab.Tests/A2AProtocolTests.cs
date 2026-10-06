@@ -115,10 +115,17 @@ public class A2AProtocolTests
         Assert.Contains("4417", message.GetProperty("parts")[0].GetProperty("text").GetString()!);
     }
 
+    /// <summary>A manifest named billing: the card offers billing's skills while it is installed (extract-billing).</summary>
+    private static readonly Maf.Lab.Plugins.Abstractions.PluginManifest Billing = new()
+    {
+        Name = "billing", Kind = "mcp", Scope = "tenant", Environments = ["dev"], Description = "billing",
+        Progress = "None — fixture", Stopping = "None — fixture",
+    };
+
     [Fact]
     public async Task The_extended_card_needs_the_token_and_carries_the_private_skill()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = [Billing] };
         var anonymous = api.CreateClient();
         var partner = await PartnerClientAsync(api);
 
@@ -132,6 +139,28 @@ public class A2AProtocolTests
         // …and the public card still does not mention it.
         var publicCard = await anonymous.GetStringAsync(AgentCardFactory.WellKnownPath, Ct);
         Assert.DoesNotContain(BillingAgentCard.PrivateSkillId, publicCard);
+    }
+
+    [Fact]
+    public async Task Without_billing_the_cards_offer_none_of_its_skills_and_a_switch_shows_without_a_restart()
+    {
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = [Billing] };
+        var anonymous = api.CreateClient();
+        var partner = await PartnerClientAsync(api);
+        Assert.Contains("billing_run_status", await anonymous.GetStringAsync(AgentCardFactory.WellKnownPath, Ct));
+
+        // The plugin leaves; the next fetch of either card says so, in the same host.
+        api.SetInstalled([]);
+        var publicCard = await anonymous.GetStringAsync(AgentCardFactory.WellKnownPath, Ct);
+        var extended = (await RpcAsync(partner, "agent/getAuthenticatedExtendedCard", new { })).GetRawText();
+        foreach (var skill in BillingAgentCard.Descriptor.PublicSkills.Concat(BillingAgentCard.Descriptor.PrivateSkills))
+        {
+            Assert.DoesNotContain($"\"{skill.Id}\"", publicCard);
+            Assert.DoesNotContain($"\"{skill.Id}\"", extended);
+        }
+
+        api.SetInstalled([Billing]);
+        Assert.Contains(BillingAgentCard.PrivateSkillId, (await RpcAsync(partner, "agent/getAuthenticatedExtendedCard", new { })).GetRawText());
     }
 
     [Fact]

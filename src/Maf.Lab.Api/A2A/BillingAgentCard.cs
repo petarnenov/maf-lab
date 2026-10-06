@@ -1,5 +1,6 @@
 using A2A;
 using Maf.Lab.A2A;
+using Maf.Lab.Plugins.Abstractions;
 
 namespace Maf.Lab.Api.A2A;
 
@@ -11,6 +12,14 @@ namespace Maf.Lab.Api.A2A;
 public static class BillingAgentCard
 {
     public const string PrivateSkillId = "start_billing_run";
+
+    /// <summary>
+    /// The card as the installed set allows it, built per request (well-known card, extended card): every skill is
+    /// billing's, so without the billing plugin the card offers none, and a switch shows on the next fetch, with no
+    /// restart. Its scope is the agent's own and stays.
+    /// </summary>
+    public static AgentCardDescriptor Installed(IInstalledPlugins plugins) =>
+        plugins.IsInstalled("billing") ? Descriptor : Descriptor with { PublicSkills = [], PrivateSkills = [] };
 
     public static AgentCardDescriptor Descriptor { get; } = new(
         Name: "maf-lab billing assistant",

@@ -98,7 +98,10 @@ public partial class Program
         builder.Services.Configure<Telemetry.TelemetryQueryOptions>(
             builder.Configuration.GetSection(Telemetry.TelemetryQueryOptions.Section));
         builder.Services.AddSingleton<Telemetry.TelemetryQueries>();
-        builder.Services.AddSingleton(A2A.BillingAgentCard.Descriptor);
+        // The card follows the installed set, per request (extract-billing): resolved for each well-known fetch, and read
+        // per call by the extended-card handler.
+        builder.Services.AddTransient(sp => A2A.BillingAgentCard.Installed(sp.GetRequiredService<Maf.Lab.Plugins.Abstractions.IInstalledPlugins>()));
+        builder.Services.AddSingleton<Func<Maf.Lab.A2A.AgentCardDescriptor>>(sp => () => sp.GetRequiredService<Maf.Lab.A2A.AgentCardDescriptor>());
         builder.Services.Configure<A2A.ComplianceOptions>(builder.Configuration.GetSection(A2A.ComplianceOptions.Section));
         builder.Services.AddHttpClient("a2a-consult");
         builder.Services.AddSingleton<A2A.ComplianceConsultant>();
