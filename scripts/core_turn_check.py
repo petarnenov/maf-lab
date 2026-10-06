@@ -2,7 +2,8 @@
 """make core-turn-check (introduce-plugins 7.1): on a core-only stack (`make core`: no plugin, no built-in domain), a
 turn declines with the fixed reply before any model, decision-engine or tool call.
 
-It asks /api/plugins first (no plugin and no domain must be in use, or the stack is not the core alone), then sends
+It asks /api/plugins first (no plugin and no domain must be in use, or the stack is not the core alone), checks that the
+balancer answers a plugin's route shape with 404 rather than the web app, then sends
 one English and one Cyrillic question through /api/chat. The stub's request journal (WireMock's GET/DELETE
 /__admin/requests) on both Ollama instances is reset just before each turn and read just after: it must stay empty.
 
@@ -101,6 +102,17 @@ def main() -> int:
     check("no domain is in use", in_use.get("domains") == [], json.dumps(in_use.get("domains")))
     if failures:
         return 1
+
+    # The balancer reserves the plugins' route shapes (introduce-plugins 2.1): with none installed, an MCP or A2A path
+    # answers 404 from the balancer itself, never the web app's page.
+    step("ask the balancer for plugin route shapes")
+    for path in ("/code/mcp", "/a-plugin-that-is-not-installed/mcp", "/a-plugin-that-is-not-installed/a2a"):
+        try:
+            with call(BASE + path, "POST", {}) as r:
+                status, body = r.status, r.read().decode(errors="replace")
+        except urllib.error.HTTPError as e:
+            status, body = e.code, e.read().decode(errors="replace")
+        check(f"{path} answers 404, not the web app", status == 404 and 'id="root"' not in body, f"HTTP {status}")
 
     for question, reply in QUESTIONS:
         step(f"ask {question!r}")

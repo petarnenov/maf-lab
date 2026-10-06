@@ -16,11 +16,14 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
 
 ## 2. Infrastructure seams (no behaviour change)
 
-- [ ] 2.1 nginx:
+- [x] 2.1 nginx:
   - a core-only `nginx.conf` with `include conf.d/http/*.conf` and `conf.d/server/*.conf`;
   - `return 404` reservations for the plugin route shapes (`/<name>/mcp`, the A2A agent paths).
 
   Verify that the lb loads with `conf.d` holding only the generated `00-api.conf`, and that `/code/mcp` answers 404, not the SPA, with no snippet.
+  Evidence (2026-10-06, `make ci-e2e-core`): the lb loaded and reloaded with `conf.d` holding only the generated api part
+  (`make core`, no plugin), and `/code/mcp`, `/<other>/mcp` and `/<other>/a2a` answered 404 from the balancer, never the
+  web app (scripts/core_turn_check.py).
 - [x] 2.2 Plugin settings from manifests:
   - a `PluginCatalogue` reads `plugins/.installed`, the manifests and `server.json` on a Redis `plugins-changed`
     message and every 30 seconds (no file watcher). A malformed manifest keeps the last good set and is reported;
@@ -84,7 +87,7 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   Widen the roots of the existing `AGUIProtocolOnlyTests` and tenant query-path tests from `src/` to `src/` plus
   `plugins/*/server/`. Verify each test fails once on a planted violation inside a plugin folder (then reverted).
 - [x] 3.4 `ApiFactory` takes the installed set. Add boot tests with no plugin and with all plugins.
-- [ ] 3.5 Web:
+- [x] 3.5 Web:
   - `web/src/plugins/api.ts` (`definePlugin`, registries);
   - `web/src/shared/` (moved `formatDate`, `Page.module.css`, `StopHint`, `useEscToStop`, `ErrorBoundary`);
   - a loader over `import.meta.glob` + `/api/plugins` (anonymous, then signed in);
@@ -95,6 +98,9 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   Vitest: the app with no plugins (nav = Chat, no aside) and with all.
   "nav = Chat only" lands as the 8.1 proposals move the remaining pages; until then the no-plugin test asserts the 11
   core links exactly, no side pane and no sidebar.
+  Evidence (2026-10-06): Vitest 693 green, including no plugins (no side pane, no sidebar, the 11 core links), every bundled
+  plugin registered, and an unavailable plugin shown greyed; the web image built from the repo root in `make ci-e2e`
+  and `make ci-e2e-core`.
 - [x] 3.6 `docs.py`:
   - validate manifests against `plugins/plugin.schema.json` (keys, scope, environments, `progress`, `stopping`,
     `depends`);
@@ -181,6 +187,11 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   pins keep billing and portfolio. This is the allowed move, as in 4.5.
 
   Verify the scenarios "A remote plugin is switched off" and "A plugin is deleted".
+  Evidence so far (2026-10-06, `make ci-e2e`, every plugin): code installed, indexed and graphed through its `plugin.mk`, and
+  its tests green in the coverage-runner's baseline. Root cause of that baseline's earlier 183 failures: plugin manifest
+  tests shell out to plugins.py; python3-minimal lacks json; hidden since C2 because the live checks were pending
+  (fixed 04db42a, guarded 754b539). Still open, not run live: the scenarios "A remote plugin is switched off"
+  (`make plugin-off NAME=code` on a running stack) and "A plugin is deleted" (`make test` with the folder moved aside).
 - [ ] 5.3 `monitor` (app):
   - split `TurnTrace` into the core record and `ITurnObserver`, and store reasoning on the core turn;
   - move into the plugin, with its own table: `LiveTrace`, the full model capture, the prompt dump, `TraceRetrieval`,
@@ -196,8 +207,10 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   retention, their tests, the docs and deltas) and C3b (web: the monitor's web part, run observers, the turn-view
   override, the review panel slot). Both are in; the box stays open for the live checks (a core-only turn
   making no Redis trace write and no trace request, on the running stack).
-
-- [ ] 5.4 `conversation-history` (app, installation scope, installed by default):
+  Evidence so far (2026-10-06): with the monitor on, its tests green (unit and the coverage-runner's baseline in
+  `make ci-e2e`); core-only turns on `make ci-e2e-core` made no model, Jev or tool call. Still open: an assertion that a
+  core-only turn writes no live trace to Redis and the page requests no trace.
+- [x] 5.4 `conversation-history` (app, installation scope, installed by default):
   - add `IConversationStore` to the abstractions (task 3.1), implemented by the core: page and search, rename, and a
     soft delete that records `conversation.delete` in the audit;
   - move `HistorySidebar*`, with its drawer, collapse, toggle and rail, into a `chatSidebars` entry; the core shows the
@@ -218,20 +231,27 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
 
   Done (design part C #13): the store reads the caller from the request; the chat owns the sidebar chrome; the routes,
   the sidebar and the list's refresh are the plugin's. The box stays open for the live checks on the running stack.
-
+  Evidence (2026-10-06): "Without the conversation list" and the chat-history scenarios with and without the plugin in the
+  api and web tests (Without_the_list_plugin_…, ConversationListTests, HistorySidebar.chat); `make test` green with the
+  folder moved aside (unit 1720, web 680); live, `make ci-e2e` with it installed and `make ci-e2e-core` without.
 ## 6. Writing your own
 
-- [ ] 6.1 `plugins/_example/`: a small MCP server with a domain descriptor, off by default. A CI leg installs it and
+- [x] 6.1 `plugins/_example/`: a small MCP server with a domain descriptor, off by default. A CI leg installs it and
       asks one routed question against the stub.
       Done: `service/` (C#, its own image, stock JwtBearer), the domain, `tests/e2e.py` joined to `make verify`, and
       `_example` in `CI_PLUGINS`. The image builds and answers (health, 401 without a token, the tool with one); the
       routed question through a running stack is the pending live check.
-- [ ] 6.2 `make plugin-new NAME= KIND=mcp|app` from templates. Verify that a scaffolded plugin builds, starts, and passes
+      Evidence (2026-10-06, `make ci-e2e`, `_example` in `CI_PLUGINS`): "the question reached get_example_fact", "get_example_fact
+      answered", "the run answered and finished".
+- [x] 6.2 `make plugin-new NAME= KIND=mcp|app` from templates. Verify that a scaffolded plugin builds, starts, and passes
       `make docs-check`.
       Done: `plugins.py new` (mcp copies `_example`, app renders `scripts/plugin-templates/app`), `make plugin-new`, and
       `make plugin-new-check` in CI (scaffold both, build, docs-check, remove, check again). A plugin's routes are
       documented in its folder and transcluded (monitor, conversation-history and code moved). A scaffolded app
       plugin's C# and web tests pass locally; the mcp kind's start is `_example`'s live check.
+      Evidence (2026-10-06): `make plugin-new-check` green (both kinds scaffold, validate, build, docs-check; removed, docs still
+      in sync); a scaffolded app plugin's C# test (through the api host) and web test green locally; the mcp kind's
+      start is `_example`'s, live in `make ci-e2e`.
 - [ ] 6.3 Write `docs/plugins.md`, and make the CLAUDE.md, project.md, README and DECISIONS §81 updates from the
       proposal.
       Done but CLAUDE.md: docs/plugins.md, project.md (stack, containers by plugin, the plugin convention), README
