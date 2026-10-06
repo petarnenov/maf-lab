@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.BuiltIn;
 using Maf.Lab.Domain.Chat;
 using Maf.Lab.Domain.Configuration;
 using Maf.Lab.Domain.Feedback;
@@ -353,8 +354,8 @@ public class PortfolioDomainTests
         Assert.Null(decision.Reason);
         Assert.Equal(["portfolio"], decision.Domains!.InScope);
         Assert.False(decision.Domains.Crossing);
-        // Billing's own answer is still kept where earlier traces and statistics read it.
-        Assert.Equal(0.03, decision.InDomain);
+        // The gate's input: the most probable domain's probability (4.6).
+        Assert.Equal(0.9, decision.InDomain);
     }
 
     [Fact]
@@ -441,7 +442,7 @@ public class PortfolioDomainTests
     [InlineData("run 4417 is not an account", new string[0])]
     [InlineData("ACME-TIER-2026 is a schedule", new string[0])]
     public void Account_ids_are_letter_dash_number(string question, string[] expected) =>
-        Assert.Equal(expected, DataToolRouter.AccountIds(question));
+        Assert.Equal(expected, PortfolioBehaviour.AccountIds(question));
 
     // ---- forcing across the boundary -------------------------------------------------------------------------------------
 
@@ -594,6 +595,7 @@ public class PortfolioDomainTests
         var prompt = trace.Single(t => t.Kind == TraceKinds.Prompt);
         Assert.Equal(["billing"], prompt.Data.GetProperty("domains").EnumerateArray().Select(e => e.GetString()));
         Assert.Equal(["portfolio"], prompt.Data.GetProperty("unavailableDomains").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(["portfolio"], trace.Single(t => t.Kind == TraceKinds.Domain).Data.GetProperty("unavailable").EnumerateArray().Select(e => e.GetString()));
         Assert.Equal(["search_documents"], tools.Invocations);
         Assert.Null(trace.Single(t => t.Kind == TraceKinds.TurnEnd).Data.GetProperty("error").GetString());
     }

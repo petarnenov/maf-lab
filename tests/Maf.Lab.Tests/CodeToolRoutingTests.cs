@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.BuiltIn;
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Domain.Code;
 using Maf.Lab.Domain.Graph;
 using Maf.Lab.Domain.Tenancy;
@@ -24,13 +26,13 @@ public class CodeToolRoutingTests
     private static readonly JevOptions Options_ = new();
 
     private static DomainVerdict Codebase(double p = 0.9) =>
-        DomainVerdict.From(new Dictionary<string, double> { [Domains.Codebase] = p, [Domains.Billing] = 0.05 }, 0.5, 0.2);
+        DomainVerdict.From(new Dictionary<string, double> { [BuiltInDomains.Codebase] = p, [BuiltInDomains.Billing] = 0.05 }, 0.5, 0.2);
 
-    private static CodeRouteAnswer Need(string choice, double confidence = 0.9) => new(choice, null, confidence);
+    private static DecisionAnswer Need(string choice, double confidence = 0.9) => new(choice, confidence, null, null);
 
-    private static (ToolRoute? Route, string? Reason) Route(string question, CodeRouteAnswer? answer, Intent intent = Intent.Procedural,
+    private static (ToolRoute? Route, string? Reason) Route(string question, DecisionAnswer? answer, Intent intent = Intent.Procedural,
         DomainVerdict? domains = null, JevOptions? o = null) =>
-        CodeToolRouter.Route(question, answer, intent, domains ?? Codebase(), o ?? Options_);
+        JevIntentClassifier.PrimaryRoute(new CodebaseBehaviour(), question, answer, intent, domains ?? Codebase(), o ?? Options_);
 
     [Fact]
     public void The_options_bind_from_configuration_with_routing_on_and_a_floor_of_0_55()
@@ -125,7 +127,7 @@ public class CodeToolRoutingTests
     public void Small_talk_another_primary_domain_or_no_answer_route_nothing()
     {
         const string question = "Who calls TenantScopedSearch.QueryAsync?";
-        var billing = DomainVerdict.From(new Dictionary<string, double> { [Domains.Billing] = 0.9, [Domains.Codebase] = 0.6 }, 0.5, 0.2);
+        var billing = DomainVerdict.From(new Dictionary<string, double> { [BuiltInDomains.Billing] = 0.9, [BuiltInDomains.Codebase] = 0.6 }, 0.5, 0.2);
 
         Assert.Equal("small talk", Route(question, Need("callers"), Intent.ChitChat).Reason);
         Assert.Equal("the codebase is not the primary domain", Route(question, Need("callers"), domains: billing).Reason);

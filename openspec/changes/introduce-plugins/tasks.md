@@ -71,7 +71,8 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
     (implemented by `add-white-labeling`);
   - `AddMafPlugins()` discovery;
   - `Directory.Build.targets` referencing `plugins/*/server/*.csproj`.
-- [x] 3.2 `GET /api/plugins`: the plugins in use, each one's health, domain ids and card ids, and any invalid manifest.
+- [x] 3.2 `GET /api/plugins`: the plugins in use, each one's health, domain ids and card ids, and any invalid manifest;
+      since task 4.11, signed in, also the domains in use (`domains: [{ id, scope }]`).
       Anonymous before sign-in, with only `public = true` plugins (only `dev-login`, so empty in stage and prod).
       Documented in `docs/http-api.md`.
 - [x] 3.3 Architecture tests:
@@ -95,7 +96,7 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
 - [x] 3.6 `docs.py`:
   - validate manifests against `plugins/plugin.schema.json` (keys, scope, environments, `progress`, `stopping`,
     `depends`);
-  - glob `plugin.mk` and `lb.conf`;
+  - glob `plugin.mk`, `lb.http.conf` and `lb.server.conf`;
   - widen `ROUTE_SOURCES`;
   - generate the README `plugins` block;
   - add a `[layout]` line for `plugins/`.
@@ -114,24 +115,46 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
 
 ## 4. Domains as data
 
-- [ ] 4.1 Build `IDomainCatalogue` from the installed plugins' descriptors. `Domains` reads it.
-- [ ] 4.2 `ChatTurnRunner`: the codebase and portfolio branches become descriptor and behaviour lookups. Portfolio's
+- [x] 4.1 Build the domain catalogue (`DomainCatalogue`, design §6) from the installed plugins' descriptors. `Domains` reads it.
+- [x] 4.2 `ChatTurnRunner`: the codebase and portfolio branches become descriptor and behaviour lookups. Portfolio's
       focus and summary logic goes behind `IDomainBehaviour`.
-- [ ] 4.3 The routers build their closed sets from the catalogue. The guard and the answer check read `GuardContext`.
-- [ ] 4.4 Offer fee adjustment only when `compliance` is in use.
-- [ ] 4.6 Remove every billing-first assumption:
+- [x] 4.3 The routers build their closed sets from the catalogue. The guard and the answer check read `GuardContext`.
+      Jev review (jev-usage §7) of `DataToolRouter`, `CodeToolRouter` and `JevIntentClassifier.DomainQuestions` as built
+      from the catalogue: the questions, ids, option sets and descriptions are the ones `main` sent, byte for byte
+      (`DomainRoutingPinTests` pins every set for billing, portfolio and codebase); each is still a closed, atomic Noul or
+      Choice with `none`/`other` where the list may be incomplete; every routing, domain and code-need question still
+      rides in the one intent request over the same state; arguments are taken by code (`IDomainBehaviour.BindRead`,
+      fixed patterns), never by Jev; a disabled domain is simply not an option; thresholds, pinned model and logging are
+      unchanged. Non-English inputs: the Bulgarian and Latin-script Bulgarian run-id cases in `DataToolRoutingTests`
+      and the selection eval's Bulgarian cases.
+- [x] 4.4 Offer fee adjustment only when `compliance` is in use.
+- [x] 4.6 Remove every billing-first assumption:
   - `AgentOptions.McpEndpoint` as the first server;
   - the billing fallback in `Domains.OfTool`;
   - the hard failure only billing has;
   - `Domains.Billing` in core files.
 
   Billing becomes a descriptor like the others, still served by `mcp-retrieval` until its follow-up.
-- [ ] 4.7 Split `Prompts/system.v5.md` into a generic core prompt plus the billing, portfolio and codebase fragments,
+  - `BuiltInDomains.*` and domain names outside `BuiltIn/` only in the allow-listed, annotated files; the architecture
+    test (`CoreNamesNoDomainTests`) enforces the list.
+
+  Behaviour removed, pinned by:
+  - `DomainRoutingPinTests`: an unknown tool → no domain (null);
+  - `CodebaseDomainTests`: an unreachable billing server → billing `Unavailable`, the turn's other tools offered; every
+    needed server down → the call fails; a configured server of a domain not in use → never contacted;
+  - `PluginHostTests`: no implied billing server;
+  - `PortfolioDomainTests`: `InDomain` = the most probable domain's probability;
+  - `AgentMcpIntegrationTests`: `propose_fee_adjustment` offered only with a compliance reviewer (4.4).
+- [x] 4.7 Split `Prompts/system.v5.md` into a generic core prompt plus the billing, portfolio and codebase fragments,
       assembled from the domains in use. Verify `make eval SUITE=selection` and the answer-quality suite are no worse
       than 1.2.
-- [ ] 4.11 No domain in use: the turn declines before any model or Jev call, and the chat page says so up
+- [x] 4.11 No domain in use: the turn declines before any model or Jev call, and the chat page says so up
       front. Verify with a test that the scripted model and the fake engine receive no request.
-- [ ] 4.5 Verify: the tests from 1.1 are unchanged and green, and `make eval SUITE=selection` is no worse than 1.2.
+- [x] 4.5 Verify: the tests from 1.1 are unchanged and green, and `make eval SUITE=selection` is no worse than 1.2.
+      "Unchanged" means unchanged except the 4.6 removals listed there; "unchanged" protects the pinned behaviour: the
+      tests' domain constants moved home (`Domains.X` →
+      `BuiltInDomains.X`), and the setups that set `AgentOptions.McpEndpoint` configure `Servers["billing"]` instead,
+      with every assertion untouched.
 
 ## 5. Proof extractions
 
@@ -194,15 +217,17 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
 ## 8. Follow-up changes (one plugin each, code moves only)
 
 - [ ] 8.1 Open proposals in this order:
-  1. `billing` (with `qdrant` and `neo4j`)
+  1. `billing` (with `qdrant` and `neo4j`); makes Jev's text domain-generic (design part B, decision 6) and re-measures
+     the guard, intent and answer-check suites; deletes the `Agent__Servers__billing__*` compose lines, which would
+     otherwise shadow its manifest's server
   2. `portfolio`
-  3. `compliance`
-  4. `a2a`
+  3. `compliance`; removes its `BuiltInDomains.LegacyCapabilities` entry
+  4. `a2a`; removes its line from the core-names-no-domain allow-list
   5. `coverage`
   6. `evals`
-  7. `insights`
-  8. `feedback-review`
+  7. `insights`; removes its line from the core-names-no-domain allow-list
+  8. `feedback-review`; removes its line from the core-names-no-domain allow-list
   9. `index-admin`
   10. `observability`
-  11. `topology`
+  11. `topology`; removes its line from the core-names-no-domain allow-list
   12. `curriculum`

@@ -1,5 +1,6 @@
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.BuiltIn;
 using Maf.Lab.Eval;
 using Maf.Lab.Eval.Judging;
 
@@ -7,9 +8,9 @@ namespace Maf.Lab.Tests;
 
 public class CitationsTests
 {
-    private static ReadItem Code(string path, int start, int end) => new($"code:{path}:{start}-{end}", $"{path}:{start}-{end} › X: code", [path], Domains.Codebase);
+    private static ReadItem Code(string path, int start, int end) => new($"code:{path}:{start}-{end}", $"{path}:{start}-{end} › X: code", [path], BuiltInDomains.Codebase);
 
-    private static ReadItem Doc(string docId, string section) => new($"doc:{docId}›{section}", $"{docId} › {section}: text", [], Domains.Billing);
+    private static ReadItem Doc(string docId, string section) => new($"doc:{docId}›{section}", $"{docId} › {section}: text", [], BuiltInDomains.Billing);
 
     private static readonly ReadItem[] Read =
     [
@@ -87,7 +88,7 @@ public class CitationsTests
     [Fact]
     public void A_whole_item_that_is_not_json_carries_no_place()
     {
-        var item = ReadItem.Whole("search_codebase", "Codebase search is unavailable right now.", Domains.Codebase);
+        var item = ReadItem.Whole("search_codebase", "Codebase search is unavailable right now.", BuiltInDomains.Codebase);
 
         Assert.False(Assert.Single(Citations.Find("See src/A.cs:1-9.", [item])).Found);
     }
@@ -99,7 +100,7 @@ public class CitationsTests
             "{\"symbol\":\"IGraphReader.ReadAsync\",\"direction\":\"callers\",\"depth\":2,"
             + "\"matched\":[{\"symbol\":\"IGraphReader.ReadAsync\",\"path\":\"src/Maf.Lab.Retrieval/Graph/IGraphReader.cs\",\"startLine\":8,\"endLine\":9}],"
             + "\"candidates\":[],\"reached\":[{\"symbol\":\"BillingGraphTools.TraceCoreAsync\",\"path\":\"src/Maf.Lab.Retrieval/Tools/BillingGraphTools.cs\","
-            + "\"startLine\":49,\"endLine\":86,\"hops\":1,\"isTest\":false}],\"truncated\":false,\"note\":null}", Domains.Codebase);
+            + "\"startLine\":49,\"endLine\":86,\"hops\":1,\"isTest\":false}],\"truncated\":false,\"note\":null}", BuiltInDomains.Codebase);
 
         var places = Citations.Find("It is called by `BillingGraphTools.TraceCoreAsync` (src/Maf.Lab.Retrieval/Tools/BillingGraphTools.cs:49-86), declared at src/Maf.Lab.Retrieval/Graph/IGraphReader.cs:8-9.", [trace]);
 

@@ -6,6 +6,7 @@ using Maf.Lab.Retrieval.Jev;
 using Maf.Lab.Api.Agent.Tracing;
 using Maf.Lab.Domain.Feedback;
 using Maf.Lab.Domain.Tracing;
+using Maf.Lab.Plugins.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace Maf.Lab.Api.Agent;
@@ -91,10 +92,10 @@ public sealed record PromptScreen(GuardDecision Decision, GuardScores Scores, do
 /// <summary>A tool result as the model will read it, and how each of its items was judged.</summary>
 /// <param name="Requests">How many Jev requests the screening made: one per item that had text.</param>
 /// <param name="ElapsedMs">From the first request to the last answer — the items run in parallel, so not their sum.</param>
-/// <param name="Context">The battery's context: <see cref="Guardrail.ContextCodebase"/> for a codebase search, billing otherwise.</param>
+/// <param name="Context">The battery's context (<see cref="GuardContexts"/>): code for a code domain's search, documents otherwise.</param>
 /// <param name="RecordOnly">The questions that were recorded but could not withhold an item.</param>
 public sealed record ScreenedToolResult(string Payload, JsonElement? Structured, GuardDecision Decision, IReadOnlyList<ScreenedItem> Items,
-    int Withheld, bool WholeWithheld, double Threshold, int Requests = 0, double ElapsedMs = 0, string Context = Guardrail.ContextBilling,
+    int Withheld, bool WholeWithheld, double Threshold, int Requests = 0, double ElapsedMs = 0, string Context = GuardContexts.Documents,
     IReadOnlyList<string>? RecordOnly = null);
 
 /// <summary>
@@ -109,17 +110,15 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
     public const string CheckToolResult = "tool_result";
     public const string CheckReviewer = "reviewer";
 
-    /// <summary>The content battery's contexts, as the trace names them.</summary>
-    public const string ContextBilling = "billing";
-    public const string ContextCodebase = "codebase";
+    /// <summary>The refusal, naming the domains in use as their descriptors name them for a user (introduce-plugins 5g).</summary>
+    public static string RefusalEnglish =>
+        "I can't help with that request. I answer questions about " + OutOfScope.Scopes("en", " and ")
+        + " from your organisation's own documents and data, and any change I propose needs your confirmation. Please rephrase what you need.";
 
-    public const string RefusalEnglish =
-        "I can't help with that request. I answer questions about your firm's billing from its own documents and data, "
-        + "and any change I propose needs your confirmation. Please rephrase what you need.";
-
-    public const string RefusalBulgarian =
-        "Не мога да помогна с тази заявка. Отговарям на въпроси за таксуването на Вашата фирма от нейните документи и "
-        + "данни, а всяка промяна, която предложа, изисква Вашето потвърждение. Моля, формулирайте отново какво Ви е нужно.";
+    public static string RefusalBulgarian =>
+        "Не мога да помогна с тази заявка. Мога да помагам само " + OutOfScope.Scopes("bg", " и ")
+        + " от документите и данните на Вашата организация, а всяка промяна, която предложа, изисква Вашето потвърждение. "
+        + "Моля, формулирайте отново какво Ви е нужно.";
 
     public const string WithheldNotice =
         "Withheld by the content guard: it contained instructions addressed to an AI assistant. Answer from the remaining data only.";
@@ -268,13 +267,13 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
         return stub;
     }
 
-    /// <summary>The questions that may not withhold an item of this tool on their own: the configured list for a codebase search, none otherwise.</summary>
+    /// <summary>The questions that may not withhold an item of this tool on their own: the configured list for a search of a code domain, none otherwise.</summary>
     private IReadOnlyList<string> RecordOnlyFor(string? tool) =>
-        tool == Domains.SearchTool[Domains.Codebase]
+        tool is not null && Domains.IsCodeSearch(tool)
             ? options.Value.RecordOnlyQuestions
             : [];
 
-    private static string ContextOf(string? tool) => tool == Domains.SearchTool[Domains.Codebase] ? ContextCodebase : ContextBilling;
+    private static string ContextOf(string? tool) => Domains.GuardContextOf(tool);
 
     /// <summary>
     /// A reviewer's words, judged before they are believed or put before the model. Flagged: the review failed — the
@@ -300,7 +299,7 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
             : GuardDecision.Pass;
         Trace(trace, CheckReviewer, null, callId, decision, threshold, [new ScreenedItem(0, decision, scores)],
             decision == GuardDecision.Withheld ? 1 : 0, scores.Failure, requests: scores.Skipped ? 0 : 1, elapsedMs: scores.DurationMs,
-            context: ContextBilling);
+            context: GuardContexts.Documents);
 
         return (decision, result) switch
         {

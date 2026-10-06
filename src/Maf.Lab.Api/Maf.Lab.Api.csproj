@@ -35,5 +35,8 @@
   </ItemGroup>
   <ItemGroup>
     <None Update="Prompts\*.md" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The built-in domains' data (introduce-plugins 5g): read at run time, like a plugin folder's manifest. -->
+    <None Update="BuiltIn\*\domain.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="BuiltIn\*\prompt.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

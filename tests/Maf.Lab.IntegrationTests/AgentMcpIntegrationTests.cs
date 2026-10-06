@@ -38,8 +38,10 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
                 s.AddSingleton<IDenseEncoder>(FakeDenseEncoder.Default());
             });
         });
-        var source = new McpToolSource(Options.Create(new AgentOptions { McpEndpoint = new Uri(server.Server.BaseAddress, "/mcp").ToString() }),
-            NullLoggerFactory.Instance, new ServerHttpClientFactory(server));
+        // A compliance reviewer is configured, so the fee adjustment that needs one is offered (introduce-plugins 4.4).
+        var source = new McpToolSource(Options.Create(new AgentOptions { Servers = { ["billing"] = new McpServerOptions { Domain = "billing", Endpoint = new Uri(server.Server.BaseAddress, "/mcp").ToString() } } }),
+            NullLoggerFactory.Instance, new ServerHttpClientFactory(server),
+            configuration: new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Compliance:BaseUrl"] = "http://compliance.test" }).Build());
         var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.USER);
 
         await using var tools = await source.GetToolsAsync(token, null, TestContext.Current.CancellationToken);
@@ -54,6 +56,13 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
         Assert.NotNull(structured);
         Assert.All(structured!.Value.GetProperty("results").EnumerateArray(), r => Assert.Matches("^(firm-c|shared)/", r.GetProperty("docId").GetString()!));
         Assert.DoesNotContain("NW-CANARY-7731-", payload);
+
+        // Without a reviewer the adjustment's review could never pass, so the tool is not offered at all (task 4.4).
+        var unreviewed = new McpToolSource(Options.Create(new AgentOptions { Servers = { ["billing"] = new McpServerOptions { Domain = "billing", Endpoint = new Uri(server.Server.BaseAddress, "/mcp").ToString() } } }),
+            NullLoggerFactory.Instance, new ServerHttpClientFactory(server), configuration: new ConfigurationBuilder().Build());
+        await using var withoutReviewer = await unreviewed.GetToolsAsync(token, null, TestContext.Current.CancellationToken);
+        Assert.DoesNotContain("propose_fee_adjustment", withoutReviewer.Names);
+        Assert.Contains("search_documents", withoutReviewer.Names);
     }
 
     [Fact]
@@ -83,7 +92,7 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
             });
         });
         var sending = new SendingHandler($"00-{traceId.ToHexString()}-{ActivitySpanId.CreateRandom().ToHexString()}-01");
-        var source = new McpToolSource(Options.Create(new AgentOptions { McpEndpoint = new Uri(server.Server.BaseAddress, "/mcp").ToString() }),
+        var source = new McpToolSource(Options.Create(new AgentOptions { Servers = { ["billing"] = new McpServerOptions { Domain = "billing", Endpoint = new Uri(server.Server.BaseAddress, "/mcp").ToString() } } }),
             NullLoggerFactory.Instance, new ServerHttpClientFactory(server, sending));
         var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.USER);
         await using var tools = await source.GetToolsAsync(token, null, TestContext.Current.CancellationToken);
@@ -130,7 +139,7 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
             });
         });
         var sending = new SendingHandler($"00-{traceId.ToHexString()}-{ActivitySpanId.CreateRandom().ToHexString()}-01");
-        var source = new McpToolSource(Options.Create(new AgentOptions { McpEndpoint = new Uri(server.Server.BaseAddress, "/mcp").ToString() }),
+        var source = new McpToolSource(Options.Create(new AgentOptions { Servers = { ["billing"] = new McpServerOptions { Domain = "billing", Endpoint = new Uri(server.Server.BaseAddress, "/mcp").ToString() } } }),
             NullLoggerFactory.Instance, new ServerHttpClientFactory(server, sending));
         var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.USER);
 

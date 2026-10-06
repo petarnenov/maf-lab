@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.BuiltIn;
 using Maf.Lab.Domain.Chat;
 using Maf.Lab.Domain.Code;
 using Maf.Lab.Domain.Tenancy;
@@ -45,7 +46,7 @@ public class CodebaseDomainTests
 
         var decision = await Classifier(jev).ClassifyAsync("как в кода се прави идемпотентност на тул?", Ct);
 
-        Assert.Equal([Domains.Codebase], decision.Domains!.InScope);
+        Assert.Equal([BuiltInDomains.Codebase], decision.Domains!.InScope);
         Assert.False(decision.OutsideDomains);
         var request = Assert.Single(jev.Requests).Body;
         Assert.Contains("\"in_codebase\"", request);
@@ -71,7 +72,7 @@ public class CodebaseDomainTests
 
         var decision = await Classifier(jev).ClassifyAsync("where does the retry live?", Ct);
 
-        Assert.Equal([Domains.Codebase], decision.Domains!.InScope);
+        Assert.Equal([BuiltInDomains.Codebase], decision.Domains!.InScope);
     }
 
     // ---- what a codebase question forces ------------------------------------------------------------------------------
@@ -89,11 +90,11 @@ public class CodebaseDomainTests
     public void A_codebase_question_searches_the_codebase_whatever_its_intent(Intent intent)
     {
         var tools = Offered(CodeTools.Search, "search_documents");
-        var decision = Decision(intent, (Domains.Codebase, 0.9), (Domains.Billing, 0.1));
+        var decision = Decision(intent, (BuiltInDomains.Codebase, 0.9), (BuiltInDomains.Billing, 0.1));
 
         var forced = IntentClassifier.ForcesRetrieval(intent)
             ? ChatTurnRunner.ForcedSearches(decision.Domains, tools)
-            : ChatTurnRunner.CodebaseSearch(decision, tools);
+            : ChatTurnRunner.AnyIntentSearch(decision, tools);
 
         Assert.Equal([CodeTools.Search], forced);
     }
@@ -103,8 +104,8 @@ public class CodebaseDomainTests
     {
         var tools = Offered(CodeTools.Search, "search_documents");
 
-        Assert.Empty(ChatTurnRunner.CodebaseSearch(Decision(Intent.ChitChat, (Domains.Codebase, 0.9)), tools));
-        Assert.Empty(ChatTurnRunner.CodebaseSearch(Decision(Intent.Data, (Domains.Billing, 0.9), (Domains.Codebase, 0.6)), tools));
+        Assert.Empty(ChatTurnRunner.AnyIntentSearch(Decision(Intent.ChitChat, (BuiltInDomains.Codebase, 0.9)), tools));
+        Assert.Empty(ChatTurnRunner.AnyIntentSearch(Decision(Intent.Data, (BuiltInDomains.Billing, 0.9), (BuiltInDomains.Codebase, 0.6)), tools));
     }
 
     [Fact]
@@ -112,7 +113,7 @@ public class CodebaseDomainTests
     {
         var tools = Offered(CodeTools.Search, "search_documents");
 
-        var forced = ChatTurnRunner.ForcedSearches(Decision(Intent.Procedural, (Domains.Billing, 0.8), (Domains.Codebase, 0.7)).Domains, tools);
+        var forced = ChatTurnRunner.ForcedSearches(Decision(Intent.Procedural, (BuiltInDomains.Billing, 0.8), (BuiltInDomains.Codebase, 0.7)).Domains, tools);
 
         Assert.Equal(["search_documents", CodeTools.Search], forced);
     }
@@ -122,21 +123,21 @@ public class CodebaseDomainTests
     [Fact]
     public void Domains_are_loaded_by_scope_then_by_conversation_then_all()
     {
-        var inScope = ChatTurnRunner.SelectDomains(DomainVerdict.From(new Dictionary<string, double> { [Domains.Codebase] = 0.9 }, 0.5, 0.2), [Domains.Portfolio]);
-        var followUp = ChatTurnRunner.SelectDomains(DomainVerdict.From(new Dictionary<string, double> { [Domains.Billing] = 0.05 }, 0.5, 0.2), [Domains.Portfolio]);
-        var fresh = ChatTurnRunner.SelectDomains(DomainVerdict.From(new Dictionary<string, double> { [Domains.Billing] = 0.05 }, 0.5, 0.2), []);
-        var noVerdict = ChatTurnRunner.SelectDomains(null, [Domains.Portfolio]);
-        var routed = ChatTurnRunner.SelectDomains(DomainVerdict.From(new Dictionary<string, double> { [Domains.Billing] = 0.9 }, 0.5, 0.2), [],
+        var inScope = ChatTurnRunner.SelectDomains(DomainVerdict.From(new Dictionary<string, double> { [BuiltInDomains.Codebase] = 0.9 }, 0.5, 0.2), [BuiltInDomains.Portfolio]);
+        var followUp = ChatTurnRunner.SelectDomains(DomainVerdict.From(new Dictionary<string, double> { [BuiltInDomains.Billing] = 0.05 }, 0.5, 0.2), [BuiltInDomains.Portfolio]);
+        var fresh = ChatTurnRunner.SelectDomains(DomainVerdict.From(new Dictionary<string, double> { [BuiltInDomains.Billing] = 0.05 }, 0.5, 0.2), []);
+        var noVerdict = ChatTurnRunner.SelectDomains(null, [BuiltInDomains.Portfolio]);
+        var routed = ChatTurnRunner.SelectDomains(DomainVerdict.From(new Dictionary<string, double> { [BuiltInDomains.Billing] = 0.9 }, 0.5, 0.2), [],
             Maf.Lab.Domain.Portfolio.PortfolioTools.ListAccounts);
 
-        Assert.Equal([Domains.Codebase], inScope.Domains!);
+        Assert.Equal([BuiltInDomains.Codebase], inScope.Domains!);
         Assert.Equal(ChatTurnRunner.LoadInScope, inScope.Reason);
-        Assert.Equal([Domains.Portfolio], followUp.Domains!);
+        Assert.Equal([BuiltInDomains.Portfolio], followUp.Domains!);
         Assert.Equal(ChatTurnRunner.LoadConversation, followUp.Reason);
         Assert.Equal((null, ChatTurnRunner.LoadAll), (fresh.Domains, fresh.Reason));
         Assert.Equal((null, ChatTurnRunner.LoadAll), (noVerdict.Domains, noVerdict.Reason));
         // A routed read tool's domain is loaded even when the verdict left it out.
-        Assert.Equal([Domains.Billing, Domains.Portfolio], routed.Domains!.Order(StringComparer.Ordinal));
+        Assert.Equal([BuiltInDomains.Billing, BuiltInDomains.Portfolio], routed.Domains!.Order(StringComparer.Ordinal));
     }
 
     private static List<TraceEvent> Trace(IEnumerable<SseEvent> events) =>
@@ -160,14 +161,14 @@ public class CodebaseDomainTests
         var events = await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN), "как в кода се прави идемпотентност на тул?");
 
         // Only the codebase server's tools were loaded, and its search was forced.
-        Assert.Equal([Domains.Codebase], tools.RequestedDomains.Single()!);
+        Assert.Equal([BuiltInDomains.Codebase], tools.RequestedDomains.Single()!);
         Assert.Equal([CodeTools.Search], tools.Invocations);
         var offered = api.Chat.Requests[^1].Options!.Tools!.Select(t => t.Name).ToList();
         Assert.Equal([CodeTools.Search], offered);
         Assert.Contains("ToolSource.cs:17-27", ApiFactory.AnswerOf(events));
 
         var domain = Trace(events).Single(t => t.Kind == TraceKinds.Domain);
-        Assert.Equal([Domains.Codebase], domain.Data.GetProperty("loaded").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal([BuiltInDomains.Codebase], domain.Data.GetProperty("loaded").EnumerateArray().Select(e => e.GetString()));
         Assert.Equal(ChatTurnRunner.LoadInScope, domain.Data.GetProperty("loadReason").GetString());
 
         // The guard screened the code snippet like any search excerpt: one item, checked.
@@ -192,10 +193,10 @@ public class CodebaseDomainTests
 
         var events = await ApiFactory.ChatAsync(client, "покажи още", conversationId);
 
-        Assert.Equal([Domains.Codebase], tools.RequestedDomains[^1]!);
+        Assert.Equal([BuiltInDomains.Codebase], tools.RequestedDomains[^1]!);
         var domain = Trace(events).Single(t => t.Kind == TraceKinds.Domain);
         Assert.Equal(ChatTurnRunner.LoadConversation, domain.Data.GetProperty("loadReason").GetString());
-        Assert.Equal([Domains.Codebase], domain.Data.GetProperty("storedDomains").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal([BuiltInDomains.Codebase], domain.Data.GetProperty("storedDomains").EnumerateArray().Select(e => e.GetString()));
 
         var history = await client.GetStringAsync($"/api/conversations/{conversationId}", Ct);
         Assert.Contains("\"startLine\":17", history);
@@ -210,7 +211,7 @@ public class CodebaseDomainTests
 
         await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "What is the procedure when a fee schedule is missing?");
 
-        Assert.Equal([Domains.Billing], tools.RequestedDomains.Single()!);
+        Assert.Equal([BuiltInDomains.Billing], tools.RequestedDomains.Single()!);
         Assert.DoesNotContain(CodeTools.Search, api.Chat.Requests[^1].Options!.Tools!.Select(t => t.Name));
     }
 
@@ -221,9 +222,9 @@ public class CodebaseDomainTests
     {
         DomainVerdict Verdict(params (string D, double P)[] ps) => DomainVerdict.From(ps.ToDictionary(p => p.D, p => p.P), 0.5, 0.2);
 
-        Assert.Equal("codebase", Maf.Lab.Eval.Suites.DomainSuite.Label(Verdict((Domains.Codebase, 0.9))));
-        Assert.Equal("both", Maf.Lab.Eval.Suites.DomainSuite.Label(Verdict((Domains.Portfolio, 0.9), (Domains.Billing, 0.8))));
-        Assert.Equal("billing+codebase", Maf.Lab.Eval.Suites.DomainSuite.Label(Verdict((Domains.Codebase, 0.9), (Domains.Billing, 0.8))));
+        Assert.Equal("codebase", Maf.Lab.Eval.Suites.DomainSuite.Label(Verdict((BuiltInDomains.Codebase, 0.9))));
+        Assert.Equal("both", Maf.Lab.Eval.Suites.DomainSuite.Label(Verdict((BuiltInDomains.Portfolio, 0.9), (BuiltInDomains.Billing, 0.8))));
+        Assert.Equal("billing+codebase", Maf.Lab.Eval.Suites.DomainSuite.Label(Verdict((BuiltInDomains.Codebase, 0.9), (BuiltInDomains.Billing, 0.8))));
         Assert.True(Maf.Lab.Eval.Datasets.DatasetLoader.IsDomainExpectation("billing+codebase"));
         Assert.False(Maf.Lab.Eval.Datasets.DatasetLoader.IsDomainExpectation("billing+billing"));
         Assert.False(Maf.Lab.Eval.Datasets.DatasetLoader.IsDomainExpectation("weather"));
@@ -249,20 +250,55 @@ public class CodebaseDomainTests
         var source = new McpToolSource(Options.Create(new AgentOptions
         {
             // Billing is unreachable: a turn that did not select it must neither contact it nor fail on it.
-            McpEndpoint = "http://billing.test/mcp",
-            Servers = new(StringComparer.Ordinal) { ["codebase"] = new McpServerOptions { Domain = Domains.Codebase, Endpoint = "http://code.test/mcp", Tools = [CodeTools.Search] } },
+            Servers = new(StringComparer.Ordinal) { ["billing"] = new McpServerOptions { Domain = BuiltInDomains.Billing, Endpoint = "http://billing.test/mcp" }, ["codebase"] = new McpServerOptions { Domain = BuiltInDomains.Codebase, Endpoint = "http://code.test/mcp", Tools = [CodeTools.Search] } },
         }), LoggerFactory.Create(_ => { }), new CodeTestClients(() => new HttpClient(router, disposeHandler: false)));
         var (token, _) = Maf.Lab.Retrieval.Auth.DevJwt.Issue(new Maf.Lab.Domain.Configuration.AuthOptions(), "alice", TenantId.Firm("firm-a"), Role.TENANT_ADMIN);
 
-        await using var set = await source.GetToolsAsync(token, null, Ct, new HashSet<string> { Domains.Codebase });
+        await using var set = await source.GetToolsAsync(token, null, Ct, new HashSet<string> { BuiltInDomains.Codebase });
 
         Assert.Equal([CodeTools.Search], set.Names);
-        Assert.Equal(Domains.Codebase, set.DomainOf(CodeTools.Search));
+        Assert.Equal(BuiltInDomains.Codebase, set.DomainOf(CodeTools.Search));
         Assert.DoesNotContain("billing.test", router.Hosts);
 
-        // Every server, as a confirmation asks: billing is contacted, and its failure fails the call as it always did.
-        await Assert.ThrowsAnyAsync<Exception>(() => source.GetToolsAsync(token, null, Ct));
+        // Every server, as a confirmation asks: billing is contacted, and its failure leaves only its tools out, as any
+        // other domain's does (introduce-plugins 4.6: no server is first).
+        await using var all = await source.GetToolsAsync(token, null, Ct);
         Assert.Contains("billing.test", router.Hosts);
+        Assert.Equal([CodeTools.Search], all.Names);
+        Assert.Equal([BuiltInDomains.Billing], all.Unavailable);
+
+        // Every server the turn needs is down: there is nothing to answer from, so the call fails as a whole.
+        await Assert.ThrowsAnyAsync<Exception>(() => source.GetToolsAsync(token, null, Ct, new HashSet<string> { BuiltInDomains.Billing }));
+    }
+
+    [Fact]
+    public async Task A_configured_server_of_a_domain_not_in_use_is_never_contacted()
+    {
+        await using var code = new WebApplicationFactory<Maf.Lab.CodeSearch.Program>().WithWebHostBuilder(b =>
+        {
+            b.UseEnvironment("Development");
+            b.UseSetting("Qdrant:GrpcPort", "1");
+            b.UseSetting(JevCredential.EnvironmentVariable, FakeJev.TestKey);
+            b.ConfigureLogging(l => l.SetMinimumLevel(LogLevel.Warning));
+        });
+        var router = new HostRouter(code.Server.CreateHandler());
+        // Billing is configured but not in use (Agent:BuiltInDomains=codebase): its compose entry stays inert.
+        var catalogue = new DomainCatalogue([BuiltInDomains.Codebase], BuiltInDomains.Behaviours, null, null);
+        var source = new McpToolSource(Options.Create(new AgentOptions
+        {
+            Servers = new(StringComparer.Ordinal)
+            {
+                ["billing"] = new McpServerOptions { Domain = BuiltInDomains.Billing, Endpoint = "http://billing.test/mcp" },
+                ["codebase"] = new McpServerOptions { Domain = BuiltInDomains.Codebase, Endpoint = "http://code.test/mcp", Tools = [CodeTools.Search] },
+            },
+        }), LoggerFactory.Create(_ => { }), new CodeTestClients(() => new HttpClient(router, disposeHandler: false)), domainCatalogue: catalogue);
+        var (token, _) = Maf.Lab.Retrieval.Auth.DevJwt.Issue(new Maf.Lab.Domain.Configuration.AuthOptions(), "alice", TenantId.Firm("firm-a"), Role.TENANT_ADMIN);
+
+        await using var set = await source.GetToolsAsync(token, null, Ct);
+
+        Assert.Equal([CodeTools.Search], set.Names);
+        Assert.Empty(set.Unavailable);
+        Assert.DoesNotContain("billing.test", router.Hosts);
     }
 
     /// <summary>Sends code.test to the in-process code server and refuses every other host, recording what was asked for.</summary>

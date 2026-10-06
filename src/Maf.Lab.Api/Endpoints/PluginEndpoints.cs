@@ -16,7 +16,8 @@ public static class PluginEndpoints
 
     public static IEndpointRouteBuilder MapPlugins(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/plugins", async (HttpContext http, PluginCatalogue catalogue, IHttpClientFactory clients, CancellationToken ct) =>
+        app.MapGet("/api/plugins", async (HttpContext http, PluginCatalogue catalogue, Agent.DomainCatalogue domains, IHttpClientFactory clients,
+            CancellationToken ct) =>
         {
             var signedIn = http.User.Identity?.IsAuthenticated == true;
             var set = catalogue.Current;
@@ -26,7 +27,9 @@ public static class PluginEndpoints
                 await HealthAsync(p, clients, ct),
                 p.Manifest.Domain?.Id,
                 p.Manifest.Domain?.CardTypes.Values.Distinct().ToList() ?? [])));
-            return Results.Ok(new PluginList(items, signedIn ? set.Problems : []));
+            // The domains in use, built-in ones included, so the chat page can say up front when there are none (5h).
+            var inUse = signedIn ? domains.All.Select(d => new DomainInfo(d.Id, d.ScopeSummary)).ToList() : [];
+            return Results.Ok(new PluginList(items, signedIn ? set.Problems : [], inUse));
         }).AllowAnonymous();
 
         var admin = app.MapGroup("/api/plugins/{name}/open-work").RequireAuthorization(AuthPolicies.TenantAdmin);
@@ -88,4 +91,7 @@ public static class PluginEndpoints
 public sealed record PluginInfo(string Name, string Kind, string Scope, string Description, string Health, string? Domain,
     IReadOnlyList<string> CardTypes);
 
-public sealed record PluginList(IReadOnlyList<PluginInfo> Plugins, IReadOnlyList<string> Problems);
+public sealed record PluginList(IReadOnlyList<PluginInfo> Plugins, IReadOnlyList<string> Problems, IReadOnlyList<DomainInfo> Domains);
+
+/// <summary>A domain in use: its id, and how it is named for a user, by language ("en", "bg").</summary>
+public sealed record DomainInfo(string Id, IReadOnlyDictionary<string, string> Scope);

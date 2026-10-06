@@ -68,8 +68,8 @@ public sealed class AnswerCheckSuite(IServiceProvider services)
     /// <summary>A source as the turn runner reads it: a search item by its place, any other result whole.</summary>
     internal static IEnumerable<ReadItem> Current(AnswerCheckSource s) =>
         s.Item is { } item
-            ? [ReadItem.FromSearchItem(item, s.Tool == Domains.SearchTool[Domains.Codebase] ? Domains.Codebase : Domains.OfTool(s.Tool))]
-            : [ReadItem.Whole(s.Tool, s.Text!, Domains.OfTool(s.Tool))];
+            ? [ReadItem.FromSearchItem(item, Domains.OfTool(s.Tool) ?? Domains.None)]
+            : [ReadItem.Whole(s.Tool, s.Text!, Domains.OfTool(s.Tool) ?? Domains.None)];
 
     /// <summary>A previous source as the stored trace holds it: that call's data envelope.</summary>
     internal static ReadItem Previous(AnswerCheckSource s) =>

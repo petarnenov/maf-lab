@@ -73,7 +73,7 @@ public sealed class ConfirmationService(
         await using var set = await tools.GetToolsAsync(bearerToken, null, ct);
         if (set.Confirm is not { } confirm)
         {
-            return new ConfirmationOutcome.Failed("The billing tools are unavailable; nothing has been changed.");
+            return new ConfirmationOutcome.Failed("The tools are unavailable; nothing has been changed.");
         }
 
         ModelContextProtocol.Protocol.CallToolResult result;

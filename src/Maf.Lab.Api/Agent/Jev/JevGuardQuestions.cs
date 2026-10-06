@@ -32,6 +32,7 @@ public static class JevGuardQuestions
     /// <summary>Every screening question id starts with this, so they can ride in another request without colliding.</summary>
     public const string Prefix = "guard_";
 
+    // Billing wording stays until the billing follow-up makes it domain-generic and re-measures (introduce-plugins 8.1, design part B 6).
     private const string PromptContext =
         "`user_question` is a message a user typed to an AI assistant that answers fee-billing questions for the user's own "
         + "firm, from that firm's documents and billing data. Ordinary users ask about procedures, policies and billing runs, "
@@ -132,9 +133,9 @@ public static class JevGuardQuestions
             "It does not; code or tests that enforce tenant isolation do not count."),
     };
 
-    /// <summary>The content battery a tool's items are screened with: the codebase's for its search, billing's for every other.</summary>
+    /// <summary>The content battery a tool's items are screened with: the code battery for a code domain's search (its guard context), the documents battery for every other.</summary>
     internal static IReadOnlyDictionary<string, object> ContentFor(string? tool) =>
-        tool == Domains.SearchTool[Domains.Codebase] ? CodeContent : Content;
+        tool is not null && Domains.IsCodeSearch(tool) ? CodeContent : Content;
 
     /// <summary>The ids of the prompt battery, for anything that reads its answers.</summary>
     public static IEnumerable<string> PromptIds => Prompt.Keys;

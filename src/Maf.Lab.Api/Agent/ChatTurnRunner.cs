@@ -13,6 +13,7 @@ using Maf.Lab.Domain.Billing;
 using Maf.Lab.Domain.Chat;
 using Maf.Lab.Domain.Feedback;
 using Maf.Lab.Domain.Portfolio;
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Retrieval.Models;
 using Microsoft.Agents.AI;
@@ -66,7 +67,8 @@ public sealed partial class ChatTurnRunner(
     IOptions<AgentOptions> options,
     IOptions<Telemetry.TelemetryQueryOptions> telemetry,
     TimeProvider time,
-    ILoggerFactory loggers)
+    ILoggerFactory loggers,
+    DomainCatalogue domainCatalogue)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private readonly ILogger _logger = loggers.CreateLogger<ChatTurnRunner>();
@@ -82,9 +84,12 @@ public sealed partial class ChatTurnRunner(
         LiveTrace? live = null)
     {
         var turnId = runId;
+        // One view of the domains for the whole turn, also for the static readers it calls (the per-turn snapshot).
+        var domains = domainCatalogue.Freeze();
+        using var domainScope = DomainCatalogue.Use(domains);
         var traceId = Activity.Current?.TraceId.ToHexString();
         var trace = new TurnTrace(live);
-        var state = new TurnState(principal, conversationId, turnId, output, trace);
+        var state = new TurnState(principal, conversationId, turnId, output, trace) { Domains = domains };
         // The state the turn starts with goes out first, right after the run starts (add-focus-state).
         await ResolveFocusAsync(state, clientState, ct);
         var chunker = state.Answer;
@@ -93,6 +98,8 @@ public sealed partial class ChatTurnRunner(
         PromptScreen? screen = null;
         // A first question Jev put in no domain: answered with the fixed reply, like a refused prompt, with no model call.
         var outOfScope = false;
+        // No domain in use at all: the fixed reply before anything else (introduce-plugins decision 5h).
+        var noDomain = false;
         trace.Add(TraceKinds.TurnStart, $"Turn started on {InstanceIdentity.Name}", new JsonObject
         {
             ["conversationId"] = conversationId,
@@ -121,208 +128,226 @@ public sealed partial class ChatTurnRunner(
             (state.PreviousQuestion, state.PreviousTurnId) = await MarkRephraseAsync(conversationId, message, ct);
             state.UserMessage = message;
 
-            await state.WriteAsync(TurnContents.StepStarted(Steps.Screening), ct);
-            try
+            if (domains.All.Count == 0)
             {
-                decision = await intents.ClassifyAsync(message, ct, state.Focus);
-            }
-            finally
-            {
-                // A step that starts also finishes, whatever happens in it: the protocol ends no run with one open.
-                await state.WriteAsync(TurnContents.StepFinished(Steps.Screening), CancellationToken.None);
-            }
-            // The prompt's screening answered in the same request; a refused prompt forces nothing and runs nothing.
-            screen = guardrail.JudgePrompt(decision);
-            // Only a conversation's first question: a follow-up ("and June?", "why?") can be about the domain without
-            // naming it, so from the second turn on the system prompt's scope rule is what keeps the model on topic.
-            outOfScope = !screen.Blocked && decision.OutsideDomains && state.PreviousQuestion is null;
-
-            // A refused prompt reaches no model, so this turn reads no tools over MCP and builds no prompt: the tool
-            // schemas and the system prompt — what an injection may be trying to extract — are neither fetched nor traced.
-            // A question outside every domain is not an attack, but it has nothing for the model either.
-            // Only the servers of the domains this conversation is about (add-codebase-domain): the question's own, a
-            // follow-up's conversation's, or — with no verdict to go on — all of them, as before.
-            var (loadDomains, loadReason) = SelectDomains(decision.Domains, state.StoredDomains, decision.Route?.Tool);
-            state.LoadedDomains = (loadDomains, loadReason);
-            if (decision.Domains is { InScope.Count: > 0 } inScope && !screen.Blocked)
-            {
-                await SaveDomainsAsync(conversationId, inScope.InScope, ct);
-            }
-            await using var tools = screen.Blocked || outOfScope ? null : await toolSource.GetToolsAsync(bearerToken, state.Confirmations, ct, loadDomains);
-            Jev.ToolRoute? route = null;
-            IReadOnlyList<string> forcedSearches = [];
-            IReadOnlyList<Jev.ToolRoute> alongside = [];
-            var (codeRoute, codeRouteReason) = (decision.CodeRoute, decision.CodeRouteReason);
-            if (tools is not null)
-            {
-                reachedModel = true;
-                state.KnownTools = tools.Names;
-                state.Tools = tools;
-                (codeRoute, codeRouteReason) = OfferedCodeRoute(decision, tools);
-                // A forcing intent searches every domain Jev put the question in, each through its own server's search.
-                forcedSearches = IntentClassifier.ForcesRetrieval(decision.Intent) ? ForcedSearches(decision.Domains, tools)
-                    : CodebaseSearch(decision, tools);
-                if (codeRoute is not null)
+                // No domain is in use (introduce-plugins decision 5h): there is nothing to answer from, so the turn ends
+                // with the fixed reply before any model or decision-engine call, and reads no tools.
+                noDomain = true;
+                trace.Add(TraceKinds.Intent, "No domain in use → fixed reply, no model or Jev call", new JsonObject
                 {
-                    // A structural code question starts with its graph call instead of the codebase search
-                    // (route-structural-code-questions); the other domains' searches still go out with it.
-                    forcedSearches = [.. forcedSearches.Where(s => s != Domains.SearchTool[Domains.Codebase])];
-                }
-                forced = forcedSearches.Count > 0;
-                alongside = forced ? [.. Alongside(decision, message, tools), .. codeRoute is null ? [] : new[] { codeRoute }] : [];
-                // A data turn Jev routed to a read tool this server offers, or a code question routed to the graph: the call
-                // is issued without the model's first call. Never a write — neither router has one to offer.
-                route = forced ? null : decision.Route is { } r && tools.Names.Contains(r.Tool) ? r : codeRoute;
-            }
-
-            var outside = decision.Reason?.StartsWith("outside the domain", StringComparison.Ordinal) == true
-                ? $", outside the domain {decision.Domains?.Highest ?? decision.InDomain ?? 0:F2}"
-                : "";
-            var jev = decision.Confidence is { } confidence ? $" (jev {confidence:F2}{outside}, {decision.DurationMs:F0} ms)" : "";
-            var routed = route is null || route == codeRoute ? "" : $" → routing {route.Tool} (jev {route.Probability:F2})";
-            var codeRouted = codeRoute is null ? ""
-                : $" → routed {codeRoute.Tool} ({codeRoute.Arguments.GetValueOrDefault("direction") ?? "impact"}, {codeRoute.Probability:F2})";
-            var refusedScope = outOfScope ? $" → outside every domain ({decision.Domains?.Highest ?? 0:F2}), fixed reply" : "";
-            trace.Add(TraceKinds.Intent, $"Intent {decision.Intent}{jev}{(forced ? $" → forcing {string.Join(" + ", forcedSearches.Concat(alongside.Select(a => a.Tool)))}" : "")}{routed}{codeRouted}{refusedScope}", new JsonObject
-            {
-                ["intent"] = decision.Intent.ToString(),
-                ["forcedRetrieval"] = forced,
-                ["forcedTool"] = forced ? forcedSearches[0] : null,
-                ["forcedTools"] = new JsonArray([.. forcedSearches.Concat(alongside.Select(a => a.Tool)).Select(t => (JsonNode)JsonValue.Create(t)!)]),
-                ["choice"] = decision.Choice,
-                ["probabilities"] = decision.Probabilities is { } p
-                    ? new JsonObject(p.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value)))
-                    : null,
-                ["confidence"] = decision.Confidence,
-                ["inDomain"] = decision.InDomain,
-                ["model"] = decision.Model,
-                ["durationMs"] = decision.DurationMs,
-                ["reason"] = decision.Reason,
-                ["routing"] = Routing(decision, route == codeRoute ? null : route),
-                ["codeRouting"] = CodeRouting(decision, codeRoute, codeRouteReason),
-                ["domains"] = decision.Domains is { } d
-                    ? new JsonObject(d.Probabilities.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value)))
-                    : null,
-                ["outsideDomains"] = decision.OutsideDomains,
-                ["outOfScopeReply"] = outOfScope,
-            });
-            TraceDomains(trace, decision.Domains, forcedSearches, tools, state);
-            guardrail.Trace(trace, Guardrail.CheckPrompt, null, null, screen.Decision, screen.Threshold,
-                [new ScreenedItem(0, screen.Decision, screen.Scores)], 0, screen.Reason);
-
-            IAsyncEnumerable<ChatResponseUpdate> stream;
-            if (tools is not null)
-            {
-                var chatOptions = models.BaseChatOptions();
-                chatOptions.Instructions = prompt.Text + FocusNote(state.Focus);
-                chatOptions.Tools = [.. tools.Tools];
-                chatOptions.ToolMode = forced ? ChatToolMode.RequireSpecific(forcedSearches[0])
-                    : route is not null ? ChatToolMode.RequireSpecific(route.Tool)
-                    : ChatToolMode.Auto;
-                trace.Add(TraceKinds.Prompt, $"System prompt {prompt.Version} + {tools.Tools.Count} tool(s) from {string.Join(" + ", tools.OfferedDomains)}", new JsonObject
-                {
-                    ["version"] = prompt.Version,
-                    // What the model is actually given, the focus note included.
-                    ["systemPrompt"] = chatOptions.Instructions,
-                    ["focusNote"] = state.FocusCleared ? ClearedFocusNote : null,
-                    ["toolMode"] = TraceMapping.ToolMode(chatOptions.ToolMode),
-                    ["domains"] = new JsonArray([.. tools.OfferedDomains.Select(x => (JsonNode)JsonValue.Create(x)!)]),
-                    ["unavailableDomains"] = new JsonArray([.. tools.Unavailable.Select(x => (JsonNode)JsonValue.Create(x)!)]),
-                    ["tools"] = new JsonArray(tools.Tools.OfType<AIFunctionDeclaration>().Select(t => (JsonNode)new JsonObject
-                    {
-                        ["name"] = t.Name, ["description"] = t.Description, ["inputSchema"] = TraceMapping.Node(t.JsonSchema),
-                        ["domain"] = tools.DomainOf(t.Name), ["server"] = tools.ServerOf(t.Name),
-                    }).ToArray()),
+                    ["intent"] = Intent.Other.ToString(), ["forcedRetrieval"] = false, ["noDomain"] = true,
                 });
-
-                // The GenAI span and its duration and token metrics belong to the provider call itself, so the
-                // framework's instrumentation sits innermost — below the trace, which is this system's own record.
-                // Sensitive data is never enabled: prompts and completions must not leave the process.
-                IChatClient chatClient = new TracingChatClient(new OpenTelemetryChatClient(models.CreateChatClient()), trace, () =>
+                await foreach (var update in Refused(NoDomain.Reply(message), answer, chunker).WithCancellation(ct))
                 {
-                    reasoning.Flush();
-                    chunker.Flush();
-                });
-                // Above the trace, so model.response keeps what the model wrote; everything after it sees the answer clean.
-                chatClient = new CitationMarkerChatClient(chatClient, n => state.CitationMarkersRemoved += n);
-                // tool_choice names one function: a turn that must issue several calls up front — a crossing's searches,
-                // a run's status beside them — is emulated whatever the provider supports, as a routed call is.
-                if (options.Value.EmulateRequiredToolMode || route is not null || forcedSearches.Count > 1 || alongside.Count > 0)
-                {
-                    chatClient = new RequiredToolModeChatClient(chatClient, call => trace.Add(TraceKinds.ToolForced,
-                        call.Name == route?.Tool || call.Name == codeRoute?.Tool ? $"Routed {call.Name} issued on the model's behalf" : $"Forced {call.Name} issued on the model's behalf",
-                        new JsonObject
-                        {
-                            ["callId"] = call.CallId,
-                            ["tool"] = call.Name,
-                            ["domain"] = tools.DomainOf(call.Name),
-                            ["server"] = tools.ServerOf(call.Name),
-                            ["arguments"] = TraceMapping.Node(call.Arguments),
-                            ["reason"] = call.Name == codeRoute?.Tool
-                                ? $"Structural code question routed by Jev ({codeRoute.Arguments.GetValueOrDefault("direction") ?? "impact"} {codeRoute.Probability:F2}); the graph call is issued instead of the codebase search, without asking the model."
-                                : call.Name == route?.Tool
-                                ? $"Data intent routed by Jev ({route.Tool} {route.Probability:F2}); the call is issued without asking the model which tool to use."
-                                : alongside.Any(a => a.Tool == call.Name)
-                                    ? "Mixed intent about one named run: its state is read together with the documentation, without asking the model."
-                                : forcedSearches.Count > 1
-                                    ? $"Procedural intent requires retrieval in every domain in scope ({string.Join(", ", decision.Domains?.InScope ?? [])}); the searches are issued together without asking the model."
-                                    : "Procedural intent requires retrieval; the provider ignores tool_choice, so the call is issued without asking the model.",
-                        }), route, forcedSearches, alongside);
+                    await output.WriteAsync(Redact(update, state), ct);
                 }
-
-                var agent = new ChatClientAgent(
-                        chatClient,
-                        new ChatClientAgentOptions
-                        {
-                            Name = "maf-lab-assistant",
-                            ChatOptions = chatOptions,
-                            ChatHistoryProvider = new SqliteChatHistoryProvider(db, tokens, conversationId, options.Value.HistoryTokenBudget, time, trace),
-                        },
-                        loggers)
-                    .AsBuilder()
-                    .Use((agent, context, next, token) => InvokeToolAsync(state, context, next, token))
-                    .UseOpenTelemetry()
-                    .Build();
-
-                var session = await agent.CreateSessionAsync(ct);
-                stream = Observed(agent, session, message, state, tools.Names, answer, chunker, reasoning, ct);
             }
             else
             {
-                // A refused prompt never reaches the model — not this turn, and not the next one's history, which is
-                // written only by a run of the agent. The same holds for a question outside every domain.
-                stream = Refused(outOfScope ? OutOfScope.Reply(message) : Guardrail.Refusal(message), answer, chunker);
-            }
-
-            // The official server maps the model's output to the protocol — message ids, ordering, when a text message
-            // opens and closes. What it must not carry out is taken out before it gets there (Redact).
-            await foreach (var update in stream.WithCancellation(ct))
-            {
-                await output.WriteAsync(Redact(update, state), ct);
-                // A carded result's card follows its tool-call result, so the card and the call it belongs to arrive
-                // together — before the model has written a word about them. The focus the read moved follows it.
-                foreach (var result in update.Contents.OfType<FunctionResultContent>())
+                await state.WriteAsync(TurnContents.StepStarted(Steps.Screening), ct);
+                try
                 {
-                    if (state.PendingCards.Remove(result.CallId, out var card))
+                    decision = await intents.ClassifyAsync(message, ct, state.Focus);
+                }
+                finally
+                {
+                    // A step that starts also finishes, whatever happens in it: the protocol ends no run with one open.
+                    await state.WriteAsync(TurnContents.StepFinished(Steps.Screening), CancellationToken.None);
+                }
+                // The prompt's screening answered in the same request; a refused prompt forces nothing and runs nothing.
+                screen = guardrail.JudgePrompt(decision);
+                // Only a conversation's first question: a follow-up ("and June?", "why?") can be about the domain without
+                // naming it, so from the second turn on the system prompt's scope rule is what keeps the model on topic.
+                outOfScope = !screen.Blocked && decision.OutsideDomains && state.PreviousQuestion is null;
+
+                // A refused prompt reaches no model, so this turn reads no tools over MCP and builds no prompt: the tool
+                // schemas and the system prompt — what an injection may be trying to extract — are neither fetched nor traced.
+                // A question outside every domain is not an attack, but it has nothing for the model either.
+                // Only the servers of the domains this conversation is about (add-codebase-domain): the question's own, a
+                // follow-up's conversation's, or — with no verdict to go on — all of them, as before.
+                var (loadDomains, loadReason) = SelectDomains(decision.Domains, state.StoredDomains, decision.Route?.Tool);
+                state.LoadedDomains = (loadDomains, loadReason);
+                if (decision.Domains is { InScope.Count: > 0 } inScope && !screen.Blocked)
+                {
+                    await SaveDomainsAsync(conversationId, inScope.InScope, domains, ct);
+                }
+                await using var tools = screen.Blocked || outOfScope ? null : await toolSource.GetToolsAsync(bearerToken, state.Confirmations, ct, loadDomains);
+                Jev.ToolRoute? route = null;
+                IReadOnlyList<string> forcedSearches = [];
+                IReadOnlyList<Jev.ToolRoute> alongside = [];
+                var (codeRoute, codeRouteReason) = (decision.CodeRoute, decision.CodeRouteReason);
+                if (tools is not null)
+                {
+                    reachedModel = true;
+                    state.KnownTools = tools.Names;
+                    state.Tools = tools;
+                    (codeRoute, codeRouteReason) = OfferedCodeRoute(decision, tools);
+                    // A forcing intent searches every domain Jev put the question in, each through its own server's search.
+                    forcedSearches = IntentClassifier.ForcesRetrieval(decision.Intent) ? ForcedSearches(decision.Domains, tools)
+                        : AnyIntentSearch(decision, tools, domains);
+                    if (codeRoute is not null)
                     {
-                        await state.WriteAsync(TurnContents.Activity(card.MessageId, card.ActivityType, card.Content), ct);
-                        if (state.PendingFocus.Remove(result.CallId, out var moved))
+                        // A structural code question starts with its graph call instead of the codebase search
+                        // (route-structural-code-questions); the other domains' searches still go out with it.
+                        var primarySearch = decision.Domains?.Primary is { } primary ? Domains.SearchTool.GetValueOrDefault(primary) : null;
+                    forcedSearches = [.. forcedSearches.Where(s => s != primarySearch)];
+                    }
+                    forced = forcedSearches.Count > 0;
+                    alongside = forced ? [.. Alongside(decision, message, tools, domains), .. codeRoute is null ? [] : new[] { codeRoute }] : [];
+                    // A data turn Jev routed to a read tool this server offers, or a code question routed to the graph: the call
+                    // is issued without the model's first call. Never a write — neither router has one to offer.
+                    route = forced ? null : decision.Route is { } r && tools.Names.Contains(r.Tool) ? r : codeRoute;
+                }
+
+                var outside = decision.Reason?.StartsWith("outside the domain", StringComparison.Ordinal) == true
+                    ? $", outside the domain {decision.InDomain ?? 0:F2}"
+                    : "";
+                var jev = decision.Confidence is { } confidence ? $" (jev {confidence:F2}{outside}, {decision.DurationMs:F0} ms)" : "";
+                var routed = route is null || route == codeRoute ? "" : $" → routing {route.Tool} (jev {route.Probability:F2})";
+                var codeRouted = codeRoute is null ? ""
+                    : $" → routed {codeRoute.Tool} ({codeRoute.Arguments.GetValueOrDefault("direction") ?? "impact"}, {codeRoute.Probability:F2})";
+                var refusedScope = outOfScope ? $" → outside every domain ({decision.Domains?.Highest ?? 0:F2}), fixed reply" : "";
+                trace.Add(TraceKinds.Intent, $"Intent {decision.Intent}{jev}{(forced ? $" → forcing {string.Join(" + ", forcedSearches.Concat(alongside.Select(a => a.Tool)))}" : "")}{routed}{codeRouted}{refusedScope}", new JsonObject
+                {
+                    ["intent"] = decision.Intent.ToString(),
+                    ["forcedRetrieval"] = forced,
+                    ["forcedTool"] = forced ? forcedSearches[0] : null,
+                    ["forcedTools"] = new JsonArray([.. forcedSearches.Concat(alongside.Select(a => a.Tool)).Select(t => (JsonNode)JsonValue.Create(t)!)]),
+                    ["choice"] = decision.Choice,
+                    ["probabilities"] = decision.Probabilities is { } p
+                        ? new JsonObject(p.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value)))
+                        : null,
+                    ["confidence"] = decision.Confidence,
+                    ["inDomain"] = decision.InDomain,
+                    ["model"] = decision.Model,
+                    ["durationMs"] = decision.DurationMs,
+                    ["reason"] = decision.Reason,
+                    ["routing"] = Routing(decision, route == codeRoute ? null : route),
+                    ["codeRouting"] = CodeRouting(decision, codeRoute, codeRouteReason),
+                    ["domains"] = decision.Domains is { } d
+                        ? new JsonObject(d.Probabilities.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value)))
+                        : null,
+                    ["outsideDomains"] = decision.OutsideDomains,
+                    ["outOfScopeReply"] = outOfScope,
+                });
+                TraceDomains(trace, decision.Domains, forcedSearches, tools, state);
+                guardrail.Trace(trace, Guardrail.CheckPrompt, null, null, screen.Decision, screen.Threshold,
+                    [new ScreenedItem(0, screen.Decision, screen.Scores)], 0, screen.Reason);
+
+                IAsyncEnumerable<ChatResponseUpdate> stream;
+                if (tools is not null)
+                {
+                    var chatOptions = models.BaseChatOptions();
+                    chatOptions.Instructions = prompt.Text + FocusNote(state.Focus, domains);
+                    chatOptions.Tools = [.. tools.Tools];
+                    chatOptions.ToolMode = forced ? ChatToolMode.RequireSpecific(forcedSearches[0])
+                        : route is not null ? ChatToolMode.RequireSpecific(route.Tool)
+                        : ChatToolMode.Auto;
+                    trace.Add(TraceKinds.Prompt, $"System prompt {prompt.Version} + {tools.Tools.Count} tool(s) from {string.Join(" + ", tools.OfferedDomains)}", new JsonObject
+                    {
+                        ["version"] = prompt.Version,
+                        // What the model is actually given, the focus note included.
+                        ["systemPrompt"] = chatOptions.Instructions,
+                        ["focusNote"] = state.FocusCleared ? ClearedFocusNoteOf(domains) : null,
+                        ["toolMode"] = TraceMapping.ToolMode(chatOptions.ToolMode),
+                        ["domains"] = new JsonArray([.. tools.OfferedDomains.Select(x => (JsonNode)JsonValue.Create(x)!)]),
+                        ["unavailableDomains"] = new JsonArray([.. tools.Unavailable.Select(x => (JsonNode)JsonValue.Create(x)!)]),
+                        ["tools"] = new JsonArray(tools.Tools.OfType<AIFunctionDeclaration>().Select(t => (JsonNode)new JsonObject
                         {
-                            await state.WriteAsync(TurnContents.Focus(moved), ct);
+                            ["name"] = t.Name, ["description"] = t.Description, ["inputSchema"] = TraceMapping.Node(t.JsonSchema),
+                            ["domain"] = tools.DomainOf(t.Name), ["server"] = tools.ServerOf(t.Name),
+                        }).ToArray()),
+                    });
+
+                    // The GenAI span and its duration and token metrics belong to the provider call itself, so the
+                    // framework's instrumentation sits innermost — below the trace, which is this system's own record.
+                    // Sensitive data is never enabled: prompts and completions must not leave the process.
+                    IChatClient chatClient = new TracingChatClient(new OpenTelemetryChatClient(models.CreateChatClient()), trace, () =>
+                    {
+                        reasoning.Flush();
+                        chunker.Flush();
+                    });
+                    // Above the trace, so model.response keeps what the model wrote; everything after it sees the answer clean.
+                    chatClient = new CitationMarkerChatClient(chatClient, n => state.CitationMarkersRemoved += n);
+                    // tool_choice names one function: a turn that must issue several calls up front — a crossing's searches,
+                    // a run's status beside them — is emulated whatever the provider supports, as a routed call is.
+                    if (options.Value.EmulateRequiredToolMode || route is not null || forcedSearches.Count > 1 || alongside.Count > 0)
+                    {
+                        chatClient = new RequiredToolModeChatClient(chatClient, call => trace.Add(TraceKinds.ToolForced,
+                            call.Name == route?.Tool || call.Name == codeRoute?.Tool ? $"Routed {call.Name} issued on the model's behalf" : $"Forced {call.Name} issued on the model's behalf",
+                            new JsonObject
+                            {
+                                ["callId"] = call.CallId,
+                                ["tool"] = call.Name,
+                                ["domain"] = tools.DomainOf(call.Name),
+                                ["server"] = tools.ServerOf(call.Name),
+                                ["arguments"] = TraceMapping.Node(call.Arguments),
+                                ["reason"] = call.Name == codeRoute?.Tool
+                                    ? $"Structural code question routed by Jev ({codeRoute.Arguments.GetValueOrDefault("direction") ?? "impact"} {codeRoute.Probability:F2}); the graph call is issued instead of the codebase search, without asking the model."
+                                    : call.Name == route?.Tool
+                                    ? $"Data intent routed by Jev ({route.Tool} {route.Probability:F2}); the call is issued without asking the model which tool to use."
+                                    : alongside.Any(a => a.Tool == call.Name)
+                                        ? "Mixed intent about one named run: its state is read together with the documentation, without asking the model."
+                                    : forcedSearches.Count > 1
+                                        ? $"Procedural intent requires retrieval in every domain in scope ({string.Join(", ", decision.Domains?.InScope ?? [])}); the searches are issued together without asking the model."
+                                        : "Procedural intent requires retrieval; the provider ignores tool_choice, so the call is issued without asking the model.",
+                            }), route, forcedSearches, alongside);
+                    }
+
+                    var agent = new ChatClientAgent(
+                            chatClient,
+                            new ChatClientAgentOptions
+                            {
+                                Name = "maf-lab-assistant",
+                                ChatOptions = chatOptions,
+                                ChatHistoryProvider = new SqliteChatHistoryProvider(db, tokens, conversationId, options.Value.HistoryTokenBudget, time, trace),
+                            },
+                            loggers)
+                        .AsBuilder()
+                        .Use((agent, context, next, token) => InvokeToolAsync(state, context, next, token))
+                        .UseOpenTelemetry()
+                        .Build();
+
+                    var session = await agent.CreateSessionAsync(ct);
+                    stream = Observed(agent, session, message, state, tools.Names, answer, chunker, reasoning, ct);
+                }
+                else
+                {
+                    // A refused prompt never reaches the model — not this turn, and not the next one's history, which is
+                    // written only by a run of the agent. The same holds for a question outside every domain.
+                    stream = Refused(outOfScope ? OutOfScope.Reply(message) : Guardrail.Refusal(message), answer, chunker);
+                }
+
+                // The official server maps the model's output to the protocol — message ids, ordering, when a text message
+                // opens and closes. What it must not carry out is taken out before it gets there (Redact).
+                await foreach (var update in stream.WithCancellation(ct))
+                {
+                    await output.WriteAsync(Redact(update, state), ct);
+                    // A carded result's card follows its tool-call result, so the card and the call it belongs to arrive
+                    // together — before the model has written a word about them. The focus the read moved follows it.
+                    foreach (var result in update.Contents.OfType<FunctionResultContent>())
+                    {
+                        if (state.PendingCards.Remove(result.CallId, out var card))
+                        {
+                            await state.WriteAsync(TurnContents.Activity(card.MessageId, card.ActivityType, card.Content), ct);
+                            if (state.PendingFocus.Remove(result.CallId, out var moved))
+                            {
+                                await state.WriteAsync(TurnContents.Focus(moved), ct);
+                            }
                         }
                     }
                 }
-            }
-            // A card whose result never came through still belongs to the turn.
-            foreach (var card in state.PendingCards.Values.ToList())
-            {
-                await state.WriteAsync(TurnContents.Activity(card.MessageId, card.ActivityType, card.Content), ct);
-            }
-            state.PendingCards.Clear();
-            if (state.PendingFocus.Count > 0)
-            {
-                await state.WriteAsync(TurnContents.Focus(state.Focus), ct);
-                state.PendingFocus.Clear();
+                // A card whose result never came through still belongs to the turn.
+                foreach (var card in state.PendingCards.Values.ToList())
+                {
+                    await state.WriteAsync(TurnContents.Activity(card.MessageId, card.ActivityType, card.Content), ct);
+                }
+                state.PendingCards.Clear();
+                if (state.PendingFocus.Count > 0)
+                {
+                    await state.WriteAsync(TurnContents.Focus(state.Focus), ct);
+                    state.PendingFocus.Clear();
+                }
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -362,7 +387,7 @@ public sealed partial class ChatTurnRunner(
             }
         }
         // A refused turn ran no tool on purpose: that is the guard's signal, not "how/why answered without a tool".
-        var signals = TurnSignals.Compute(screen?.Blocked == true || outOfScope ? Intent.Other : decision.Intent, state.ToolCalls.Count, state.Searched,
+        var signals = TurnSignals.Compute(screen?.Blocked == true || outOfScope || noDomain ? Intent.Other : decision.Intent, state.ToolCalls.Count, state.Searched,
             text.Length, sources.Count, options.Value.LongAnswerChars);
         if (outOfScope)
         {
@@ -426,13 +451,13 @@ public sealed partial class ChatTurnRunner(
 
     /// <summary>
     /// The documentation searches a forcing intent issues: one per domain in scope whose server is offering its search.
-    /// With no domain verdict at all the turn behaves as it did before domains existed — billing's search, if offered.
+    /// With no domain verdict at all, no domain is first (task 4.6): every offered domain's search goes out.
     /// </summary>
     internal static IReadOnlyList<string> ForcedSearches(DomainVerdict? domains, ToolSet tools)
     {
         if (domains is not { InScope.Count: > 0 })
         {
-            return tools.Names.Contains(Domains.SearchTool[Domains.Billing]) ? [Domains.SearchTool[Domains.Billing]] : [];
+            return [.. Domains.All.Select(d => Domains.SearchTool.GetValueOrDefault(d)).OfType<string>().Where(tools.Names.Contains)];
         }
         return [.. domains.InScope
             .Select(d => Domains.SearchTool.GetValueOrDefault(d))
@@ -444,10 +469,9 @@ public sealed partial class ChatTurnRunner(
     public const string LoadConversation = "conversation";
     public const string LoadAll = "all";
 
-    private static readonly IComparer<string> DomainOrder =
-        Comparer<string>.Create((a, b) => Order(a).CompareTo(Order(b)));
-
-    private static int Order(string domain) => Domains.All.ToList().IndexOf(domain) is var i && i < 0 ? int.MaxValue : i;
+    /// <summary>The domains' order in a catalogue: their place in traces.</summary>
+    private static IComparer<string> DomainOrder(DomainCatalogue catalogue) =>
+        Comparer<string>.Create((a, b) => catalogue.Order(a).CompareTo(catalogue.Order(b)));
 
     /// <summary>
     /// Which domains' servers a turn loads (add-codebase-domain): the domains in scope; for a follow-up Jev put in none,
@@ -475,24 +499,24 @@ public sealed partial class ChatTurnRunner(
     internal static IReadOnlyList<string> ParseDomains(string? stored) =>
         string.IsNullOrWhiteSpace(stored) ? [] : [.. stored.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(Domains.All.Contains)];
 
-    private async Task SaveDomainsAsync(string conversationId, IReadOnlyList<string> domains, CancellationToken ct)
+    private async Task SaveDomainsAsync(string conversationId, IReadOnlyList<string> domains, DomainCatalogue catalogue, CancellationToken ct)
     {
         await using var ctx = await db.CreateDbContextAsync(ct);
-        var value = string.Join(',', domains.Order(DomainOrder));
+        var value = string.Join(',', domains.Order(DomainOrder(catalogue)));
         await ctx.Conversations.Where(c => c.Id == conversationId)
             .ExecuteUpdateAsync(u => u.SetProperty(c => c.Domains, value), ct);
     }
 
     /// <summary>
-    /// A question whose primary domain is the codebase searches it whatever its intent but small talk
-    /// (add-codebase-domain): "show me the definition of X" — data, or no intent at all — has nothing to answer from
-    /// without its search. A structural question routed to the code graph starts with that call instead
-    /// (route-structural-code-questions); the turn drops this search for it.
+    /// A question whose primary domain searches whatever the intent (its descriptor says so: the codebase) is searched
+    /// there whatever its intent but small talk (add-codebase-domain): "show me the definition of X" — data, or no intent
+    /// at all — has nothing to answer from without its search. A question routed to the domain's primary call (the code
+    /// graph) starts with that call instead (route-structural-code-questions); the turn drops this search for it.
     /// </summary>
-    internal static IReadOnlyList<string> CodebaseSearch(IntentDecision decision, ToolSet tools)
+    internal static IReadOnlyList<string> AnyIntentSearch(IntentDecision decision, ToolSet tools, DomainCatalogue? catalogue = null)
     {
-        var search = Domains.SearchTool[Domains.Codebase];
-        return decision.Domains?.Primary == Domains.Codebase && decision.Intent != Intent.ChitChat && tools.Names.Contains(search)
+        var primary = decision.Domains?.Primary is { } p ? (catalogue ?? DomainCatalogue.Current).Get(p) : null;
+        return primary is { SearchAnyIntent: true, SearchTool: { } search } && decision.Intent != Intent.ChitChat && tools.Names.Contains(search)
             ? [search]
             : [];
     }
@@ -515,8 +539,8 @@ public sealed partial class ChatTurnRunner(
         };
 
     /// <summary>
-    /// The code route the turn can issue: the classifier's, when this turn offers its tool; otherwise none, with the reason.
-    /// A data route, which never goes to the codebase, takes precedence should both ever be set.
+    /// The primary domain's route the turn can issue (the code graph): the classifier's, when this turn offers its tool;
+    /// otherwise none, with the reason. A data route takes precedence should both ever be set.
     /// </summary>
     internal static (Jev.ToolRoute? Route, string? Reason) OfferedCodeRoute(IntentDecision decision, ToolSet tools) =>
         decision.CodeRoute is not { } r ? (null, decision.CodeRouteReason)
@@ -525,20 +549,19 @@ public sealed partial class ChatTurnRunner(
         : (r, null);
 
     /// <summary>
-    /// The read call a mixed question needs beside its documentation: the status of the one run it names, when billing is
-    /// in scope and the server offers the tool. The run id comes from the question through the router's fixed pattern,
-    /// never from the model; two run ids, or none, and the model decides as before.
+    /// The read calls a question needs beside its documentation, as each domain in scope says (a mixed question about one
+    /// named billing run reads its status): only tools the server offers. The arguments come from the question through
+    /// the domain's fixed patterns, never from the model.
     /// </summary>
-    internal static IReadOnlyList<Jev.ToolRoute> Alongside(IntentDecision decision, string question, ToolSet tools)
+    internal static IReadOnlyList<Jev.ToolRoute> Alongside(IntentDecision decision, string question, ToolSet tools,
+        DomainCatalogue? domainCatalogue = null)
     {
-        var status = Maf.Lab.Retrieval.Tools.BillingTools.GetStatusName;
-        if (decision.Intent != Intent.Mixed || !tools.Names.Contains(status)
-            || decision.Domains is { InScope.Count: > 0 } d && !d.InScope.Contains(Domains.Billing))
-        {
-            return [];
-        }
-        var runs = Jev.DataToolRouter.RunIds(question);
-        return runs.Count == 1 ? [new Jev.ToolRoute(status, new Dictionary<string, object?> { ["runId"] = runs[0] }, decision.Confidence ?? 0)] : [];
+        var catalogue = domainCatalogue ?? DomainCatalogue.Current;
+        var domains = decision.Domains is { InScope.Count: > 0 } d ? d.InScope : catalogue.Ids;
+        return [.. domains.Select(catalogue.Behaviour).OfType<IDomainBehaviour>()
+            .SelectMany(b => b.Alongside(decision.Intent.ToString(), question, decision.Confidence ?? 0))
+            .Where(r => tools.Names.Contains(r.Tool))
+            .Select(Jev.ToolRoute.From)];
     }
 
     /// <summary>
@@ -552,7 +575,7 @@ public sealed partial class ChatTurnRunner(
             return;
         }
         var scores = string.Join(" · ", domains.Probabilities
-            .OrderBy(p => Domains.All.ToList().IndexOf(p.Key))
+            .OrderBy(p => state.Domains.Order(p.Key))
             .Select(p => $"{p.Key} {p.Value:F2}"));
         var title = domains.Crossing ? $"Domains: {scores} → crosses {string.Join(" ↔ ", domains.InScope)}"
             : domains.Primary is { } primary ? $"Domain {primary} ({scores})"
@@ -568,7 +591,7 @@ public sealed partial class ChatTurnRunner(
             ["offered"] = tools is null ? null : new JsonArray([.. tools.OfferedDomains.Select(x => (JsonNode)JsonValue.Create(x)!)]),
             ["unavailable"] = tools is null ? null : new JsonArray([.. tools.Unavailable.Select(x => (JsonNode)JsonValue.Create(x)!)]),
             // Whose tools were loaded and why: the question's domains, the conversation's for a follow-up, or all of them.
-            ["loaded"] = state.LoadedDomains.Domains is { } loaded ? new JsonArray([.. loaded.Order(DomainOrder).Select(x => (JsonNode)JsonValue.Create(x)!)]) : null,
+            ["loaded"] = state.LoadedDomains.Domains is { } loaded ? new JsonArray([.. loaded.Order(DomainOrder(state.Domains)).Select(x => (JsonNode)JsonValue.Create(x)!)]) : null,
             ["loadReason"] = state.LoadedDomains.Reason,
             ["storedDomains"] = new JsonArray([.. state.StoredDomains.Select(x => (JsonNode)JsonValue.Create(x)!)]),
         });
@@ -589,8 +612,12 @@ public sealed partial class ChatTurnRunner(
             ["tools"] = decision.Routing is { } r
                 ? new JsonObject(r.Tools.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value)))
                 : null,
-            ["status"] = decision.Routing?.Status,
-            ["statusConfidence"] = decision.Routing?.StatusConfidence,
+            ["answers"] = decision.Routing is { Answers.Count: > 0 } ra
+                ? new JsonObject(ra.Answers.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)new JsonObject
+                {
+                    ["choice"] = kv.Value.Choice, ["confidence"] = kv.Value.Confidence, ["probability"] = kv.Value.Probability,
+                })))
+                : null,
             ["routedTool"] = route?.Tool,
             ["arguments"] = route is null ? null : TraceMapping.Node(route.Arguments),
             ["reason"] = route is null ? decision.RouteReason ?? (decision.Route is { } unoffered ? $"{unoffered.Tool} is not offered" : null) : null,
@@ -609,7 +636,7 @@ public sealed partial class ChatTurnRunner(
         // A cleared focus is said right before the question, where it outweighs the account the history keeps
         // mentioning. It is a system message, which the history provider does not store (add-focus-state).
         IEnumerable<ChatMessage> request = state.FocusCleared
-            ? [new ChatMessage(ChatRole.System, ClearedFocusNote), new ChatMessage(ChatRole.User, message)]
+            ? [new ChatMessage(ChatRole.System, ClearedFocusNoteOf(state.Domains)), new ChatMessage(ChatRole.User, message)]
             : [new ChatMessage(ChatRole.User, message)];
         await foreach (var update in agent.RunStreamingAsync(request, session, cancellationToken: ct))
         {
@@ -698,15 +725,13 @@ public sealed partial class ChatTurnRunner(
 
         // The user let go of the account in focus and this question names none: code, not the model's reading of the
         // history, decides that no account is assumed (add-focus-state). The model is told to ask instead.
-        if (state.FocusCleared && name is PortfolioTools.GetPortfolio or PortfolioTools.AumHistory
-            && Jev.DataToolRouter.AccountIds(state.UserMessage).Count == 0)
+        if (state.FocusCleared && state.Domains.FocusOwner is { } owner && owner.NeedsFocus(name) && owner.FocusIds(state.UserMessage).Count == 0)
         {
-            state.Trace.Add(TraceKinds.Focus, $"{name} not called: the user cleared the account in focus", new JsonObject
+            state.Trace.Add(TraceKinds.Focus, $"{name} not called: the user cleared the focus", new JsonObject
             {
                 ["callId"] = callId, ["tool"] = name, ["source"] = "cleared",
             });
-            return ToolDataEnvelope.Wrap(name,
-                "Not called: the user cleared the account in focus and this question names no account. Ask which account they mean.");
+            return ToolDataEnvelope.Wrap(name, owner.ClearedFocusToolNote);
         }
 
         state.Answer.Flush();
@@ -728,7 +753,7 @@ public sealed partial class ChatTurnRunner(
         Func<FunctionInvocationContext, CancellationToken, ValueTask<object?>> next, string name, string callId, string args,
         CancellationToken ct)
     {
-        var domain = state.Tools?.DomainOf(name) ?? Domains.Billing;
+        var domain = state.Tools?.DomainOf(name) ?? Domains.OfTool(name) ?? Domains.None;
         var server = state.Tools?.ServerOf(name) ?? ToolSet.DefaultServer;
         EnterDomain(state, domain, name, callId);
         state.Trace.Add(TraceKinds.ToolCall, $"Calling {name} over MCP ({domain})", new JsonObject
@@ -777,7 +802,7 @@ public sealed partial class ChatTurnRunner(
 
         // A proposal is not a result: the server asked for a person, and the client took the question down
         // rather than answering it. What happens next is the flow's business, not the model's.
-        if (state.Confirmations.Captured is { } captured && name == FeeAdjustmentTool.Name)
+        if (state.Confirmations.Captured is { } captured && Jev.DataToolRouter.WriteTools.Contains(name))
         {
             return await ProposedAsync(state, captured, callId, name, latency, ct);
         }
@@ -796,7 +821,7 @@ public sealed partial class ChatTurnRunner(
         }
         var (summary, sources) = screened is { WholeWithheld: true }
             ? ("withheld by the content guard", new List<SourceRef>())
-            : Summarise(name, structured, isError);
+            : Summarise(name, structured, isError, state.Domains);
         state.Sources.AddRange(sources);
         // A result the client may see whole becomes a data card: only an allow-listed tool's successful, structured
         // result the guard let through. It is sent right after this call's result event (see the run loop).
@@ -805,9 +830,8 @@ public sealed partial class ChatTurnRunner(
             var card = new TurnCard(callId, DataCards.MessageId(callId), carded.ActivityType, data.Clone());
             state.Cards.Add(card);
             state.PendingCards[callId] = card;
-            // A read of one account's portfolio or AUM puts that account in focus; the list of accounts does not.
-            if (name is PortfolioTools.GetPortfolio or PortfolioTools.AumHistory
-                && data.TryGetProperty("accountId", out var read) && read.GetString() is { } readId && readId != state.Focus)
+            // A read the focus owner says moves the focus (one account's portfolio or AUM) puts that entity in focus.
+            if (state.Domains.FocusOwner?.FocusFrom(name, data) is { } readId && readId != state.Focus)
             {
                 state.Trace.Add(TraceKinds.Focus, $"Focus moved to {readId} by {name}", new JsonObject
                 {
@@ -1018,7 +1042,7 @@ public sealed partial class ChatTurnRunner(
         }
 
         var told = ((FlowOutcome.TellModel)outcome).Message;
-        state.Read.Add(Jev.ReadItem.Whole(name, told, state.Tools?.DomainOf(name) ?? Domains.Billing));
+        state.Read.Add(Jev.ReadItem.Whole(name, told, state.Tools?.DomainOf(name) ?? Domains.OfTool(name) ?? Domains.None));
         var envelope = ToolDataEnvelope.Wrap(name, told);
         state.Trace.Add(TraceKinds.Envelope, $"Data envelope handed to the model ({envelope.Length} chars)", new JsonObject
         {
@@ -1027,7 +1051,7 @@ public sealed partial class ChatTurnRunner(
         return envelope;
     }
 
-    private static (string Summary, List<SourceRef> Sources) Summarise(string tool, JsonElement? structured, bool isError)
+    private static (string Summary, List<SourceRef> Sources) Summarise(string tool, JsonElement? structured, bool isError, DomainCatalogue catalogue)
     {
         var sources = new List<SourceRef>();
         if (isError || structured is not { } s)
@@ -1047,27 +1071,10 @@ public sealed partial class ChatTurnRunner(
                     // Documentation and codebase results alike (add-codebase-domain): a code snippet keeps its place.
                     sources.Add(SourceRef.FromSearchItem(r));
                 }
-                return (sources.Count == 0 ? (tool == Domains.SearchTool[Domains.Codebase] ? "no matching code" : "no matching documentation")
+                return (sources.Count == 0 ? (Domains.IsCodeSearch(tool) ? "no matching code" : "no matching documentation")
                     : $"{sources.Count} snippet(s)", sources);
-            case "get_billing_run_status":
-                return ($"run {Str(s, "runId")}: {Str(s, "status")}", sources);
-            case "search_billing_runs" when s.TryGetProperty("runs", out var runs):
-                return ($"{runs.GetArrayLength()} run(s)", sources);
-            case Maf.Lab.Domain.Portfolio.PortfolioTools.GetPortfolio:
-                return ($"{Str(s, "accountId")}: {Str(s, "modelPortfolio")}"
-                    + (s.TryGetProperty("outsideTolerance", out var drift) && drift.ValueKind == JsonValueKind.True ? ", outside tolerance" : ""), sources);
-            case Maf.Lab.Domain.Portfolio.PortfolioTools.AumHistory when s.TryGetProperty("valuations", out var valuations):
-                return ($"{Str(s, "accountId")}: {valuations.GetArrayLength()} quarter-end valuation(s)", sources);
-            case Maf.Lab.Domain.Portfolio.PortfolioTools.ListAccounts when s.TryGetProperty("count", out var count):
-                return ($"{count.GetInt32()} account(s)", sources);
-            case FeeAdjustmentTool.Name:
-                return (Str(s, "status") switch
-                {
-                    "applied" => "applied",
-                    "already_applied" => "already applied",
-                    "declined" => "declined by the advisor",
-                    _ => "nothing applied",
-                }, sources);
+            case var _ when catalogue.OfTool(tool) is { } owner && catalogue.Behaviour(owner)?.Summarize(tool, s) is { } summary:
+                return (summary, sources);
             default:
                 return ("done", sources);
         }
@@ -1200,9 +1207,6 @@ public sealed partial class ChatTurnRunner(
 
     // ---- The account in focus (add-focus-state) ----------------------------------------------------------------------
 
-    [System.Text.RegularExpressions.GeneratedRegex(@"^[A-Z]-\d{2,}$")]
-    private static partial System.Text.RegularExpressions.Regex AccountIdPattern();
-
     /// <summary>What the client's state says about the focus: nothing, a clear, or an account it asks for.</summary>
     private static (bool Sent, string? AccountId) ClientFocus(JsonElement? clientState)
     {
@@ -1242,8 +1246,8 @@ public sealed partial class ChatTurnRunner(
         }
         else if (sent)
         {
-            var offered = asked!.Length > 0 && AccountIdPattern().IsMatch(asked)
-                && (await OfferedAccountsAsync(ctx, state.ConversationId, ct)).Contains(asked);
+            var offered = asked!.Length > 0 && state.Domains.FocusOwner is { } owner && owner.IsFocusId(asked)
+                && (await OfferedAccountsAsync(ctx, state.ConversationId, owner, ct)).Contains(asked);
             if (offered)
             {
                 (focus, source, accepted) = (asked, "client", true);
@@ -1267,8 +1271,9 @@ public sealed partial class ChatTurnRunner(
             new JsonObject { ["accountId"] = focus, ["source"] = source, ["accepted"] = accepted });
     }
 
-    /// <summary>Every account id a card in this conversation has shown: what the user may put in focus.</summary>
-    private static async Task<HashSet<string>> OfferedAccountsAsync(MafDbContext ctx, string conversationId, CancellationToken ct)
+    /// <summary>Every focus id a card in this conversation has shown, as the focus owner reads its cards: what the user may put in focus.</summary>
+    private static async Task<HashSet<string>> OfferedAccountsAsync(MafDbContext ctx, string conversationId, IDomainBehaviour owner,
+        CancellationToken ct)
     {
         var offered = new HashSet<string>(StringComparer.Ordinal);
         var stored = await ctx.Turns.AsNoTracking().Where(t => t.ConversationId == conversationId).Select(t => t.ActivitiesJson).ToListAsync(ct);
@@ -1277,38 +1282,24 @@ public sealed partial class ChatTurnRunner(
             using var doc = JsonDocument.Parse(json);
             foreach (var activity in doc.RootElement.EnumerateArray())
             {
-                if (!activity.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Object)
+                if (activity.TryGetProperty("content", out var content))
                 {
-                    continue;
-                }
-                if (content.TryGetProperty("accountId", out var id) && id.GetString() is { } one)
-                {
-                    offered.Add(one);
-                }
-                if (content.TryGetProperty("accounts", out var accounts) && accounts.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var a in accounts.EnumerateArray())
-                    {
-                        if (a.TryGetProperty("accountId", out var aid) && aid.GetString() is { } listed)
-                        {
-                            offered.Add(listed);
-                        }
-                    }
+                    offered.UnionWith(owner.FocusIdsIn(content));
                 }
             }
         }
         return offered;
     }
 
+
     /// <summary>The note the model gets with a focus: the validated id, and nothing else interpolated.</summary>
-    internal static string FocusNote(string? focus) => focus is null
-        ? ""
-        : $"\n\n## Conversation focus\nIf the question names no account, it is about account {focus}.";
+    internal static string FocusNote(string? focus, DomainCatalogue? catalogue = null) =>
+        focus is null || (catalogue ?? DomainCatalogue.Current).FocusOwner is not { } owner ? "" : owner.FocusNote(focus);
 
     /// <summary>Said right before the question on the turn the user cleared the focus.</summary>
-    internal const string ClearedFocusNote =
-        "The user has just cleared the account in focus. If this question names no account, ask which account they mean. "
-        + "Do not assume an account from earlier in the conversation, and do not call a per-account tool until they name one.";
+    internal static string ClearedFocusNote => ClearedFocusNoteOf(DomainCatalogue.Current);
+
+    private static string ClearedFocusNoteOf(DomainCatalogue catalogue) => catalogue.FocusOwner?.ClearedFocusNote ?? "";
 
     private async Task SaveFocusAsync(string conversationId, string? focus, CancellationToken ct)
     {
@@ -1319,6 +1310,9 @@ public sealed partial class ChatTurnRunner(
 
     private sealed class TurnState(Principal principal, string conversationId, string turnId, ChannelWriter<ChatResponseUpdate> output, TurnTrace trace)
     {
+        /// <summary>The turn's frozen view of the domains in use: what every step of the turn reads.</summary>
+        public required DomainCatalogue Domains { get; init; }
+
         public TurnTrace Trace { get; } = trace;
         public AnswerChunker Answer { get; } = new(trace);
 

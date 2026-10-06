@@ -3181,3 +3181,46 @@ be re-run then.
   - Accepted (20261004-180311, r1…r5): grade accuracy 0.9487, pointAccuracy 0.9211,
     sentenceAccuracy 0.9226, citationDetection 1.
 
+
+## 81. Plugins: a domain-agnostic core, every domain a plugin (introduce-plugins, 2026-10-06)
+
+Written as the change lands, section by section; task 6.3 completes it. The design's "Decisions taken during
+implementation" (parts A and B) holds each choice in full.
+
+- **Part A (manifests, `MAF_PLUGINS`, `conf.d`, the contract and its checks).**
+  - `IMafPlugin` carries only `Name`; the manifest is resolved from `plugins/.installed` by name. Rejected: a manifest
+    property duplicating `plugin.toml` in code.
+  - copilot-runtime re-reads `.installed` when its inode or mtime changes. Rejected: a FileSystemWatcher (unreliable
+    over bind mounts), a Redis client in a wiring-only service.
+  - The plugins→core web boundary is a Vitest scanner, ESLint covers core→plugins. Rejected: dependency-cruiser.
+  - A plugin's nginx parts are `lb.http.conf` and `lb.server.conf`. Rejected: one `lb.conf` (it cannot be included in
+    both `http{}` and `server{}`).
+  - The manifest validator is a stdlib subset of JSON Schema 2020-12. Rejected: `jsonschema` (the first third-party
+    Python package).
+- **Part B (domains as data, task 4).**
+  - `src/Maf.Lab.Api/BuiltIn/` is the transitional, test-fenced home of the shipped domains' ids, descriptors
+    (`domain.json`, `prompt.md`), behaviours and chunk stores. `CoreNamesNoDomainTests` fails on a domain name anywhere
+    else in the api except four annotated consumers whose contract a follow-up moves (feedback-review, topology,
+    insights, a2a). Rejected: generalizing those contracts now; a core `Domains.Billing` alias.
+  - No server is first: `Agent:McpEndpoint` is gone, billing is `Agent:Servers:billing`, an unknown tool belongs to no
+    domain, and a turn fails only when every server of its selected domains is down. **Supersedes §40 (add-portfolio-domain):
+    "If billing's server fails, the turn fails, as before" and "`Agent:McpEndpoint` stays billing's".**
+  - `IntentDecision.InDomain` is the most probable domain's probability, the gate's input. **Supersedes §40's
+    add-portfolio-domain note that `in_domain` stays billing's "so older traces and statistics still read"**: older
+    traces hold billing's answer, newer ones the highest; the dev-only insights page has the discontinuity, with no
+    migration. Billing's Jev key `in_domain` is unchanged. Rejected: a descriptor flag naming a legacy domain; dropping
+    the field.
+  - The content guard's and the answer check's trace contexts are `documents` and `code` (`GuardContexts`), named by
+    the battery, not by a domain; old traces keep `billing`/`codebase`. Only the label changed, no Jev text.
+    Rejected: renamed duplicate constants.
+  - A tool's required capability that is not a plugin yet is an explicit map, `BuiltInDomains.LegacyCapabilities`
+    (`compliance` → `Compliance:BaseUrl`). Rejected: deriving a setting from the plugin's name.
+  - The system prompt is `core.v6`, assembled from the core template and the fragments of the domains in use (Template
+    Method); `Agent:SystemPrompt=system.v5` rolls back.
+  - The domain catalogue is a class, taken by constructor by DI-built services; a request and a turn read a frozen
+    view (`Freeze()`), put in an Ambient Context for the static facades only. Rejected: a process-global catalogue
+    (test hosts would see each other's).
+  - With no domain in use, a turn declines before any model, Jev or tool call; `/api/plugins` lists `domains`, and
+    the chat page says so up front and disables the composer.
+  - Deferred to the billing follow-up: domain-generic Jev text (guard, intent options, answer check) with re-measured
+    thresholds, and the domain-specific core web labels and cards.

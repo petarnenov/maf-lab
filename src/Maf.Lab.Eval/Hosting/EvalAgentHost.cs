@@ -1,6 +1,7 @@
 using System.Threading.Channels;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.BuiltIn;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.Domain.Chat;
 using Maf.Lab.Domain.Tenancy;
@@ -103,14 +104,17 @@ public sealed class EvalAgentHost : IAsyncDisposable
         services.Configure<AgentOptions>(configuration.GetSection(AgentOptions.Section));
         services.PostConfigure<AgentOptions>(o =>
         {
-            o.McpEndpoint = endpoint;
             o.Servers = new(StringComparer.Ordinal)
             {
-                ["portfolio"] = new McpServerOptions { Domain = Domains.Portfolio, Endpoint = portfolioEndpoint },
-                ["codebase"] = new McpServerOptions { Domain = Domains.Codebase, Endpoint = codeEndpoint, Tools = [Maf.Lab.Domain.Code.CodeTools.Search, Maf.Lab.Domain.Graph.GraphTools.TraceCodeSymbol, Maf.Lab.Domain.Graph.GraphTools.ChangeImpact] },
+                ["billing"] = new McpServerOptions { Domain = BuiltInDomains.Billing, Endpoint = endpoint },
+                ["portfolio"] = new McpServerOptions { Domain = BuiltInDomains.Portfolio, Endpoint = portfolioEndpoint },
+                ["codebase"] = new McpServerOptions { Domain = BuiltInDomains.Codebase, Endpoint = codeEndpoint, Tools = [Maf.Lab.Domain.Code.CodeTools.Search, Maf.Lab.Domain.Graph.GraphTools.TraceCodeSymbol, Maf.Lab.Domain.Graph.GraphTools.ChangeImpact] },
             };
         });
         services.AddDbContextFactory<MafDbContext>(o => o.UseSqlite($"Data Source={Path.Combine(workDir, "eval.db")}"));
+        // The domains the eval turns read, as the api builds them (Agent:BuiltInDomains, no plugins): each turn takes a frozen
+        // view of it, as an api turn does.
+        services.AddSingleton(sp => new DomainCatalogue(sp.GetRequiredService<IOptions<AgentOptions>>(), []));
         services.AddSingleton<SystemPrompt>();
         services.AddSingleton<TokenCounter>();
         services.AddSingleton<ToolAudit>();
@@ -118,9 +122,10 @@ public sealed class EvalAgentHost : IAsyncDisposable
         services.AddSingleton<IToolSource, McpToolSource>();
         services.AddSingleton<ConversationService>();
         services.AddJevIntentClassifier(configuration);
-        // The write flow: an eval turn can propose an adjustment, so the turn runner needs it. No compliance
-        // agent is configured here, so a proposal over the threshold ends as "unreachable" — which is an
-        // honest outcome for a suite that measures which tool the model picks, not what a reviewer says.
+        // The write flow: an eval turn can propose an adjustment, so the turn runner needs it. Compliance is wired like the
+        // api's (make eval passes the stack's Compliance:*), so the fee adjustment that needs a reviewer is offered, and a
+        // case over the review threshold consults the stack's reviewer. A stop reaches it too: the eval exits 130 on
+        // Ctrl+C or SIGTERM, and the consultant sends A2A tasks/cancel within 5 s.
         services.Configure<FeeAdjustmentOptions>(configuration.GetSection("FeeAdjustments"));
         services.Configure<Maf.Lab.Api.A2A.ComplianceOptions>(configuration.GetSection("Compliance"));
         services.AddHttpClient("a2a-consult");

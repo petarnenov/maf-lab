@@ -3,10 +3,12 @@ using System.Text.Json.Nodes;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Jev;
 using Maf.Lab.Api.Agent.Tracing;
+using Maf.Lab.Api.BuiltIn;
 using Maf.Lab.Domain.Code;
 using Maf.Lab.Domain.Feedback;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Domain.Tracing;
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Retrieval.Jev;
 using Maf.Lab.TestSupport;
 using Microsoft.Extensions.AI;
@@ -73,7 +75,7 @@ public class CodeAnswerChecksTests
         Assert.DoesNotContain(TurnSignal.GuardrailWithheld, Signals(events));
         var guard = CodeGuard(events);
         Assert.Equal("pass", guard.GetProperty("decision").GetString());
-        Assert.Equal(Guardrail.ContextCodebase, guard.GetProperty("context").GetString());
+        Assert.Equal(GuardContexts.Code, guard.GetProperty("context").GetString());
         Assert.Equal(["guard_to_ai"], guard.GetProperty("recordOnly").EnumerateArray().Select(e => e.GetString()));
         Assert.Equal(0.97, guard.GetProperty("items")[0].GetProperty("scores").GetProperty("guard_to_ai").GetDouble());
         Assert.Contains("record-only", Trace(events).Single(t => t.Kind == TraceKinds.Guardrail && t.Data.GetProperty("tool").GetString() == CodeTools.Search).Title);
@@ -98,7 +100,7 @@ public class CodeAnswerChecksTests
 
         Assert.Contains(TurnSignal.GuardrailWithheld, Signals(events));
         var guard = Trace(events).Single(t => t.Kind == TraceKinds.Guardrail && t.Data.GetProperty("check").GetString() == Guardrail.CheckToolResult).Data;
-        Assert.Equal(Guardrail.ContextBilling, guard.GetProperty("context").GetString());
+        Assert.Equal(GuardContexts.Documents, guard.GetProperty("context").GetString());
         Assert.Empty(guard.GetProperty("recordOnly").EnumerateArray());
         // The model reads the excerpt's stub: its document id, withheld, and nothing of its text.
         var result = Trace(events).Single(t => t.Kind == TraceKinds.ToolResult && t.Data.GetProperty("tool").GetString() == "search_documents")
@@ -259,14 +261,14 @@ public class CodeAnswerChecksTests
         Assert.Equal(answer, ApiFactory.AnswerOf(events));
         var check = Bodies(api).Single(b => b.GetProperty("state").TryGetProperty("answer", out _));
         Assert.Equal("The guard withholds in src/Maf.Lab.Api/Agent/ToolSource.cs:17-27.", check.GetProperty("state").GetProperty("answer").GetString());
-        Assert.Equal(AnswerContext.Codebase, Trace(events).Single(t => t.Kind == TraceKinds.AnswerCheck).Data.GetProperty("context").GetString());
+        Assert.Equal(GuardContexts.Code, Trace(events).Single(t => t.Kind == TraceKinds.AnswerCheck).Data.GetProperty("context").GetString());
     }
 
     private static ReadItem Code(string path, int start, int end, string snippet, string symbol = "S") =>
-        ReadItem.FromSearchItem(JsonSerializer.SerializeToElement(new { path, startLine = start, endLine = end, symbol, snippet }), Domains.Codebase);
+        ReadItem.FromSearchItem(JsonSerializer.SerializeToElement(new { path, startLine = start, endLine = end, symbol, snippet }), BuiltInDomains.Codebase);
 
     private static ReadItem Doc(string docId, string section, string snippet) =>
-        ReadItem.FromSearchItem(JsonSerializer.SerializeToElement(new { docId, sectionPath = section, snippet }), Domains.Billing);
+        ReadItem.FromSearchItem(JsonSerializer.SerializeToElement(new { docId, sectionPath = section, snippet }), BuiltInDomains.Billing);
 
     [Fact]
     public void The_same_place_three_times_is_sent_once_and_the_repeats_are_counted()
@@ -307,8 +309,8 @@ public class CodeAnswerChecksTests
         Assert.False(selection.OverCap);
         Assert.Equal([cited], selection.Previous);
         Assert.Equal(["src/Maf.Lab.Api/Agent/Guardrail.cs", "Guardrail.cs"], cited.CitationNames);
-        Assert.Equal(Domains.Codebase, cited.Domain);
-        Assert.Equal(Domains.Billing, uncited.Domain);
+        Assert.Equal(BuiltInDomains.Codebase, cited.Domain);
+        Assert.Equal(BuiltInDomains.Billing, uncited.Domain);
     }
 
     [Fact]
@@ -334,7 +336,7 @@ public class CodeAnswerChecksTests
 
         var read = Assert.Single(ChatTurnRunner.PreviousRead(json));
         Assert.Equal(envelope, read.Text);
-        Assert.Equal(Domains.Codebase, read.Domain);
+        Assert.Equal(BuiltInDomains.Codebase, read.Domain);
         Assert.Equal(["src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs", "TenantScopedSearch.cs", "src/Maf.Lab.Api/Agent/Guardrail.cs", "Guardrail.cs"],
             read.CitationNames);
         Assert.StartsWith("text:", read.Key);

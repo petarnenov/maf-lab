@@ -43,6 +43,11 @@ public partial class Program
         // The installed plugins: read at run time, composed here (introduce-plugins decision 5).
         builder.AddMafPlugins(plugins);
         builder.Services.AddHttpClient("plugins");
+        // The domains in use, as data (introduce-plugins decision 6): the built-in ones this deployment keeps and every
+        // installed plugin's, rebuilt when the installed set changes.
+        builder.Services.AddSingleton(sp => new DomainCatalogue(sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AgentOptions>>(),
+            sp.GetServices<Maf.Lab.Plugins.Abstractions.IDomainBehaviour>(), sp.GetService<Plugins.PluginCatalogue>(),
+            sp.GetService<Microsoft.Extensions.Options.IOptions<Plugins.PluginOptions>>()));
 
         builder.Services.AddMafIndexing(builder.Configuration);
         builder.Services.AddDevJwtAuthentication(builder.Configuration);
@@ -55,18 +60,8 @@ public partial class Program
             .UseSqlite(builder.Configuration["Storage:ConnectionString"] ?? "Data Source=maf-lab.db")
             .AddInterceptors(new SqlitePragmaInterceptor()));
 
-        // The portfolio domain's own chunks, for the review queue to resolve a portfolio search's sources where they live.
-        builder.Services.AddKeyedSingleton(Domains.Portfolio, (sp, _) =>
-        {
-            var qdrant = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Maf.Lab.Retrieval.Configuration.QdrantOptions>>().Value;
-            return new Maf.Lab.Retrieval.Store.TenantScopedMaintenance(sp.GetRequiredService<Qdrant.Client.QdrantClient>(),
-                Microsoft.Extensions.Options.Options.Create(new Maf.Lab.Retrieval.Configuration.QdrantOptions
-                {
-                    Host = qdrant.Host, GrpcPort = qdrant.GrpcPort, Https = qdrant.Https, ApiKey = qdrant.ApiKey, PayloadM = qdrant.PayloadM,
-                    Collection = builder.Configuration["Portfolio:Collection"] ?? Maf.Lab.Domain.Portfolio.PortfolioCollections.Chunks,
-                    MetaCollection = builder.Configuration["Portfolio:MetaCollection"] ?? Maf.Lab.Domain.Portfolio.PortfolioCollections.Meta,
-                }));
-        });
+        // Each built-in domain's chunks, keyed by domain, for the review queue to resolve a search's sources where they live.
+        Maf.Lab.Api.BuiltIn.BuiltInDomains.AddStores(builder.Services, builder.Configuration);
         builder.Services.AddSingleton<SystemPrompt>();
         builder.Services.AddSingleton<TokenCounter>();
         builder.Services.AddSingleton<ToolAudit>();
@@ -158,6 +153,14 @@ public partial class Program
             DatabaseInitializer.InitializeAsync(db).GetAwaiter().GetResult();
         }
 
+        // Every request, and the work it starts, reads this host's domains (ambient per flow, so two hosts in one test
+        // process never see each other's).
+        var domains = app.Services.GetRequiredService<DomainCatalogue>();
+        app.Use(async (context, next) =>
+        {
+            using var _ = DomainCatalogue.Use(domains.Freeze());
+            await next(context);
+        });
         app.UseInstanceHeader();
         app.UseA2ASpecWire();
         app.UseAuthentication();

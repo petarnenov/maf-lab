@@ -36,7 +36,7 @@ import { Progress } from '../components/Progress';
 import { StopHint } from '../shared/StopHint';
 import { useEscToStop } from '../shared/useEscToStop';
 import type { ChatContext } from '../plugins/api';
-import { usePlugins } from '../plugins/context';
+import { useDomains, usePlugins } from '../plugins/context';
 import { PluginBoundary } from '../plugins/PluginBoundary';
 import { contributions } from '../plugins/registry';
 
@@ -57,6 +57,10 @@ export function ChatPage() {
   const queryClient = useQueryClient();
   const userKey = useUserKey();
   const pluginPanes = contributions(usePlugins(), 'chatPanes');
+  // With no domain in use the assistant answers nothing (introduce-plugins 5h): say so before anyone types.
+  const domains = useDomains();
+  const noDomain = domains?.length === 0;
+  const scopes = listed((domains ?? []).flatMap((d) => (d.scope.en ? [d.scope.en] : [])));
   const { state, send, cancel, reset, hydrate, answer, loadPending, toggleReasoning, setFocus } =
     useChatStream();
   const [draft, setDraft] = useState('');
@@ -271,7 +275,7 @@ export function ChatPage() {
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (state.streaming || loadingConversation || !draft.trim()) return;
+    if (noDomain || state.streaming || loadingConversation || !draft.trim()) return;
     setSelectedKey(null);
     // Sending from /chat creates a conversation; its id belongs in the URL once the answer arrives.
     urlNeedsId.current = !routeId;
@@ -336,11 +340,16 @@ export function ChatPage() {
           <div className={styles.transcript} aria-live="polite">
             {loadingConversation && <p className={styles.empty}>Loading conversation…</p>}
             {!loadingConversation && state.turns.length === 0 && (
-              <p className={styles.empty}>
-                Ask a procedural question, e.g. “What is the procedure when a fee schedule is
-                missing?” — or one that crosses into the portfolio domain: “Why did the fee on
-                A-1042 go up this quarter? Did its AUM cross a tier?” — or ask about this lab’s
-                code: “How does the code make a tool call idempotent?”
+              <p
+                id={noDomain ? 'no-domain-notice' : undefined}
+                className={styles.empty}
+                role={noDomain ? 'status' : undefined}
+              >
+                {noDomain
+                  ? NO_DOMAIN
+                  : scopes
+                    ? `Ask a question about ${scopes}.`
+                    : 'Ask a question to start.'}
               </p>
             )}
             {!loadingConversation &&
@@ -409,7 +418,15 @@ export function ChatPage() {
             aria-label="Message"
             value={draft}
             rows={2}
-            placeholder="Ask about billing, portfolios or the lab’s code: procedures, runs, fees, holdings, AUM, where something is implemented…"
+            disabled={noDomain}
+            aria-describedby={noDomain ? 'no-domain-notice' : undefined}
+            placeholder={
+              noDomain
+                ? 'No domain is enabled'
+                : scopes
+                  ? `Ask about ${scopes}…`
+                  : 'Ask a question…'
+            }
             onChange={(e) => {
               // An edit makes the text a new draft: the next ArrowUp starts again from the newest prompt.
               recall.current = idle;
@@ -422,7 +439,9 @@ export function ChatPage() {
           />
           <button
             type="submit"
-            disabled={state.streaming || loadingConversation || notFound || !draft.trim()}
+            disabled={
+              noDomain || state.streaming || loadingConversation || notFound || !draft.trim()
+            }
           >
             {state.streaming ? 'Answering…' : 'Send'}
           </button>
@@ -760,4 +779,15 @@ function FocusChip({
       </button>
     </div>
   );
+}
+
+/** The api's own reply to a turn with no domain in use (NoDomain.ReplyEnglish), shown before the first message. */
+export const NO_DOMAIN =
+  'No domain is enabled for this assistant yet, so it cannot answer questions. Your administrator can enable one.';
+
+/** "a", "a and b", "a, b and c". */
+function listed(items: readonly string[]): string {
+  return items.length <= 1
+    ? (items[0] ?? '')
+    : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }

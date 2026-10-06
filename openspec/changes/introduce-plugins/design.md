@@ -477,7 +477,14 @@ A tenant with no domain plugin in use gets no answer from a model. The turn ends
 call, with a fixed message: no domain is enabled, ask the administrator. The message is shown in the chat's own
 design, and the turn is recorded with no tool call.
 
-The chat page says the same before the first message, so nobody types into an assistant that cannot answer. A tenant that
+The fixed message, once: "No domain is enabled for this assistant yet, so it cannot answer questions. Your
+administrator can enable one." (`NoDomain.ReplyEnglish`; the turn answers in Bulgarian to a Cyrillic question.)
+
+The chat page says the same before the first message, so nobody types into an assistant that cannot answer: on a
+signed-in `/api/plugins` answer whose `domains` is empty, it shows that sentence (English, as the UI is) and disables the
+composer's text and send button. While the domains are not known (signed out, loading) it keeps today's behaviour. A
+domain turned on reaches the page through the query's 30 s staleness and refetch on focus — no push, no event stream of
+our own. A tenant that
 wants open conversation without sources gets it only from a deliberately allowed and enabled plugin (for example
 `general-chat`), never from the core.
 
@@ -604,8 +611,16 @@ allowed only in dev and qa, so all four are absent from the `product` images. Ea
 
 ### 6. Domains become data: `IDomainDescriptor`
 
-`Domains` (static) is replaced by an `IDomainCatalogue` built from the core billing descriptor and every enabled
-plugin's `[domain]` table:
+`Domains` (static) is replaced by a domain catalogue built from the built-in descriptors and every enabled plugin's
+`[domain]` table. It is the class `DomainCatalogue`, not an interface: there is one implementation, in one assembly, and
+tests build their own with `DomainCatalogue.Of(...)`. DI-built services take it by constructor (`ChatTurnRunner`,
+`McpToolSource`, the plugins endpoint); a request and a turn each read a frozen view (`Freeze()`), which a middleware
+and the turn runner put in an Ambient Context (`DomainCatalogue.Use`, like `Activity.Current`) for the static facades
+only: `Domains`, `DataToolRouter`, `DataCards`, `SystemPrompt`, `OutOfScope`, `JevIntentClassifier`'s and
+`ChatTurnRunner`'s static helpers (only the entry points the 1.1 pin tests call read the scope; whatever an
+instance method calls gets the turn's view passed in). Those helpers become instance methods when the pin tests are
+rewritten, in the billing follow-up. When `enable-plugins-per-tenant` narrows the set by tenant, the snapshot moves after
+authentication.
 
 ```csharp
 public sealed record DomainDescriptor(
@@ -659,7 +674,8 @@ and codebase before and after.
   - the web image's build context moves to the repository root, with a `.dockerignore`;
   - Vite's `server.fs.allow` covers `plugins/`;
   - `tsconfig` includes it.
-- At start-up the web asks `GET /api/plugins` (the names in use, plus each one's domain and card ids). It then calls
+- At start-up the web asks `GET /api/plugins` (the names in use, plus each one's domain and card ids, and the domains
+  in use as `domains: [{ id, scope }]` — built-in ones included, nothing else of a descriptor on the wire). It then calls
   `register` only for those, so switching a plugin needs no web rebuild.
   - **Before sign-in** the route answers anonymously with only the plugins whose manifest says `public = true`. Only
     `dev-login` does, and it is absent from stage and prod, so in prod the anonymous answer is empty (re-review).
@@ -791,6 +807,56 @@ These choices deviate from the text above. Each is kept, with the rejected alter
 
 **Corrected back to the design:** qa defaults to the `product` image, as stage and prod do (5e).
 
+### Decisions taken during implementation (part B, task 4, 2026-10-06, decided by the reviewing session)
+
+1. **`src/Maf.Lab.Api/BuiltIn/` is the transitional, test-fenced home of the shipped domains.** It holds their ids
+   (`BuiltInDomains.Billing|Portfolio|Codebase`), their descriptors (`<id>/domain.json`, `<id>/prompt.md`), their
+   behaviours (`IDomainBehaviour`) and their chunk stores (keyed by domain id, registered by
+   `BuiltInDomains.AddStores`). `CoreNamesNoDomainTests` scans source text (the ids are inlined constants) and fails
+   on a domain name anywhere else in the api, except in four consumers whose contract a follow-up moves, each marked
+   in its file:
+   - `Endpoints/FeedbackEndpoints.cs`: the retrieval label's domain and the dataset row's billing default
+     (feedback-review);
+   - `Topology/TopologyProbe.cs`: the drawn node list (topology);
+   - `Agent/JevStatistics.cs`: `DomainStats`' fixed counts (insights);
+   - `A2A/BillingAgentCard.cs`: the agent card's tags (a2a).
+
+   An allowed file that no longer names a domain fails the test, and `Program.cs` is never on the list. Where a
+   consumer's contract does not move, it is generalized now: the review queue resolves a search's chunks in the store
+   keyed by the search's domain, and topology probes billing's server as it probes the others'. `Maf.Lab.Eval`
+   is outside the rule; it becomes the `evals` plugin.
+
+   Rejected: generalizing the insights, topology and feedback-label contracts in this change, and a core
+   `Domains.Billing` alias.
+2. **`IntentDecision.InDomain` is the most probable domain's probability**, the gate's input since add-portfolio-domain.
+   It supersedes DECISIONS.md:1263, where it was billing's own `in_domain` answer. The insights page has a known
+   discontinuity (older traces hold billing's answer) and no migration, since it is dev-only. Billing's Jev key
+   `in_domain` stays in `BuiltIn/billing/domain.json` as a stored key (the recorded selection eval ran with it), not as a
+   privilege. Rejected: a descriptor flag naming a legacy domain, and dropping the field (the insights contract, 8.1).
+3. **The content battery's and the answer check's contexts take the one existing vocabulary,** `GuardContexts.Documents`
+   (`documents`) and `GuardContexts.Code` (`code`). This replaces `Guardrail.ContextBilling|ContextCodebase` and
+   `AnswerContext.Billing|Codebase`, because a battery is named by what it screens, and billing and portfolio already
+   share one. Only the trace label changes; no Jev question text does. Old traces keep `billing`/`codebase`, the monitor
+   is dev-only, and there is no migration. Rejected: renamed duplicate constants, and allow-listing the old names.
+4. **A tool's required capability that is not a plugin yet is an explicit transitional map,**
+   `BuiltInDomains.LegacyCapabilities` (`compliance` → `Compliance:BaseUrl`), next to the plugin catalogue. The
+   compliance follow-up removes it. Rejected: deriving a configuration section from the plugin's name (an invented
+   convention).
+5. **A turn fails only when every server of its selected domains is down;** any other unreachable server leaves its
+   domain out and is listed as unavailable. A configured server whose domain is not in use is never contacted. This
+   replaces "the billing server failing fails the turn" (chat-agent delta).
+6. **Billing wording in Jev's text is deferred to the billing follow-up** (8.1 item 1), not changed here: no Jev question
+   text changes in this change, and the guard thresholds were tuned on this text. It lives in
+   `JevGuardQuestions` (the prompt and content contexts), `JevIntentClassifier.Criteria` (a domain-bound taxonomy) and
+   `JevAnswerCheck`'s context. The follow-up composes the contexts from the catalogue's scope summaries (as
+   `OutOfScope.Scopes` and the guard's refusal already are), moves the intent option text into the descriptor, and
+   re-measures the thresholds, Bulgarian included. Likewise the core web's tool labels (`chat/toolLabels.ts`), the
+   portfolio cards (`chat/cards/CardView.tsx`) and `admin/toolNames.ts` move to their domains' plugin web parts with
+   those follow-ups.
+7. **`Domains.OfTool` answers null for a tool no domain in use names** (an API answer). `ToolSet.DomainOf` records such
+   a tool under `none` (a trace label). `none` never leaks into `OfTool` or into `DomainStats.none`, which counts
+   verdicts.
+
 ## Principles and patterns
 
 Every plugin, and every change to the core's seams, is reviewed against this section. A plugin that needs to break it
@@ -822,7 +888,7 @@ needs a design decision first.
 | Open/closed | A new domain or tool is a new folder with no core change. The "delete the folder, everything stays green" test proves it. |
 | Liskov substitution | Every `DomainDescriptor` is used the same way, and no domain is a special case (5g). |
 | Interface segregation | `IMafPlugin` is identity only, and each `IContributes*` is one small capability. On the web, each `definePlugin` field is its own small type and every field is optional. |
-| Dependency inversion | The core depends on `IDomainCatalogue`, `ITurnObserver` and the registries, never on `Maf.Lab.Plugins.*`. An architecture test enforces it. |
+| Dependency inversion | The core depends on the domain catalogue (data, not a domain), `ITurnObserver` and the registries, never on `Maf.Lab.Plugins.*`. An architecture test enforces it. |
 
 **Patterns in use.**
 - Strategy: `IDomainBehaviour` per domain.

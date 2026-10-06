@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.BuiltIn;
 using Maf.Lab.Retrieval.Jev;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -12,7 +13,8 @@ namespace Maf.Lab.Tests;
 /// Pins today's domain routing before the domains become data (introduce-plugins task 1.1): the domain list, each
 /// domain's search and graph tools, the tool → domain fallback, the data and code routers' closed question sets, the
 /// domain questions and the data cards. A later change that builds these from plugin manifests must leave every pin as
-/// it is for billing, portfolio and codebase.
+/// it is for billing, portfolio and codebase — but one: introduce-plugins task 4.6 removes the billing fallback on purpose,
+/// so an unknown tool belongs to no domain.
 /// </summary>
 public class DomainRoutingPinTests
 {
@@ -58,9 +60,10 @@ public class DomainRoutingPinTests
     [InlineData("trace_billing_relationships", "billing")]
     [InlineData("trace_code_symbol", "codebase")]
     [InlineData("change_impact", "codebase")]
-    // Today an unknown tool falls back to billing; introduce-plugins task 4.6 removes that fallback on purpose.
-    [InlineData("some_unknown_tool", "billing")]
-    public void A_stored_tool_is_attributed_to_its_domain(string tool, string domain)
+    // An unknown tool used to fall back to billing; introduce-plugins task 4.6 removed that fallback on purpose: it belongs
+    // to no domain.
+    [InlineData("some_unknown_tool", null)]
+    public void A_stored_tool_is_attributed_to_its_domain(string tool, string? domain)
     {
         Assert.Equal(domain, Domains.OfTool(tool));
     }

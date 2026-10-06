@@ -37,7 +37,7 @@ public static partial class AnswerText
 /// <param name="Key"><c>code:path:start-end</c>, <c>doc:docId›section</c>, or <c>text:</c> and a hash of the text.</param>
 /// <param name="Text">What is sent: <c>path:start-end › symbol: code</c>, <c>docId › section: text</c>, or <c>tool: result</c>.</param>
 /// <param name="CitationNames">For code, the paths and file names an answer would cite it by; empty otherwise.</param>
-/// <param name="Domain"><see cref="Domains.Codebase"/> for a codebase search, the tool's domain otherwise.</param>
+/// <param name="Domain">The tool's domain; <see cref="Domains.None"/> for a tool no domain in use names.</param>
 public sealed partial record ReadItem(string Key, string Text, IReadOnlyList<string> CitationNames, string Domain)
 {
     /// <summary>What the answer check reads in place of an item the content guard withheld: the place, never the text.</summary>
@@ -56,8 +56,7 @@ public sealed partial record ReadItem(string Key, string Text, IReadOnlyList<str
         if (!isError && Domains.IsSearch(tool) && structured is { ValueKind: JsonValueKind.Object } s && s.TryGetProperty("results", out var results)
             && results.ValueKind == JsonValueKind.Array && results.GetArrayLength() > 0)
         {
-            var itemDomain = tool == Domains.SearchTool[Domains.Codebase] ? Domains.Codebase : domain;
-            return [.. results.EnumerateArray().Select(r => FromSearchItem(r, itemDomain))];
+            return [.. results.EnumerateArray().Select(r => FromSearchItem(r, domain))];
         }
         return [Whole(tool, payload, domain)];
     }
@@ -88,9 +87,9 @@ public sealed partial record ReadItem(string Key, string Text, IReadOnlyList<str
     public static ReadItem FromEnvelope(string envelope)
     {
         var tool = EnvelopeTool().Match(envelope) is { Success: true } m ? m.Groups[1].Value : "";
-        var domain = Domains.OfTool(tool);
+        var domain = Domains.OfTool(tool) ?? Domains.None;
         var names = new List<string>();
-        if (tool == Domains.SearchTool[Domains.Codebase])
+        if (Domains.IsCodeSearch(tool))
         {
             foreach (Match path in PathField().Matches(envelope))
             {
@@ -169,7 +168,7 @@ public static class AnswerSources
 
         var sources = now.Where(Cited).Concat(now.Where(i => !Cited(i))).ToList();
         var citedBefore = before.Where(Cited).ToList();
-        static bool Code(IEnumerable<ReadItem> items) => items.Any(i => i.Domain == Domains.Codebase);
+        static bool Code(IEnumerable<ReadItem> items) => items.Any(i => Domains.IsCode(i.Domain));
         var left = Math.Max(0, maxChars);
         var chars = sources.Sum(i => i.Text.Length) + citedBefore.Sum(i => i.Text.Length);
         if (chars > left)

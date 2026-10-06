@@ -2,8 +2,10 @@ using System.Text.Json;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Jev;
 using Maf.Lab.Api.Agent.Tracing;
+using Maf.Lab.Api.BuiltIn;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Domain.Tracing;
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Retrieval.Jev;
 using Maf.Lab.TestSupport;
 using Microsoft.Extensions.AI;
@@ -24,12 +26,17 @@ public class DataToolRoutingTests
     private static readonly JevOptions Routing = new() { RouteDataTools = true };
 
     private static RoutingAnswer Answer(double status = 0.1, double runs = 0.1, double write = 0.02, string? runStatus = "none", double confidence = 1.0) =>
-        new(new Dictionary<string, double>
+        Billing(new Dictionary<string, double>
         {
             ["get_billing_run_status"] = status,
             ["search_billing_runs"] = runs,
             ["propose_fee_adjustment"] = write,
         }, runStatus, confidence);
+
+    /// <summary>The routing answer as it was before the domains' own questions moved behind their behaviour (introduce-plugins 4.3).</summary>
+    private static RoutingAnswer Billing(Dictionary<string, double> tools, string? runStatus, double confidence) =>
+        new(tools, runStatus is null ? new Dictionary<string, DecisionAnswer>()
+            : new Dictionary<string, DecisionAnswer> { [BillingBehaviour.StatusQuestionId] = new(runStatus, confidence, null, null) });
 
     [Fact]
     public void Status_of_one_run_routes_to_get_billing_run_status_with_its_id()
@@ -156,7 +163,7 @@ public class DataToolRoutingTests
     // ── the account in focus (add-focus-state) ─────────────────────────────────────────────────────────────────
 
     private static RoutingAnswer PortfolioAnswer(string tool) =>
-        new(new Dictionary<string, double>
+        Billing(new Dictionary<string, double>
         {
             ["get_billing_run_status"] = 0.05, ["search_billing_runs"] = 0.05, ["propose_fee_adjustment"] = 0.02,
             ["get_household_portfolio"] = tool == "get_household_portfolio" ? 0.92 : 0.05,

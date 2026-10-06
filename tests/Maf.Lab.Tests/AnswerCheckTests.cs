@@ -6,6 +6,7 @@ using Maf.Lab.Domain.Billing;
 using Maf.Lab.Domain.Feedback;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Domain.Tracing;
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.TestSupport;
 using Microsoft.Extensions.AI;
 
@@ -72,7 +73,7 @@ public class AnswerCheckTests
         Assert.Equal(0.3, check.Data.GetProperty("groundedFloor").GetDouble());
         Assert.Equal(0.8, check.Data.GetProperty("relevantPassAt").GetDouble());
         Assert.Equal(0.5, check.Data.GetProperty("groundedPassAt").GetDouble());
-        Assert.Equal("billing", check.Data.GetProperty("context").GetString());
+        Assert.Equal(GuardContexts.Documents, check.Data.GetProperty("context").GetString());
         Assert.Equal(0, check.Data.GetProperty("duplicates").GetInt32());
         Assert.Equal("jev-1.13.0", check.Data.GetProperty("model").GetString());
         Assert.Equal(1, check.Data.GetProperty("requests").GetInt32());

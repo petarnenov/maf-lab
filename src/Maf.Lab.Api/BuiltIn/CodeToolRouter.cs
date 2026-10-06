@@ -1,8 +1,9 @@
 using System.Text.RegularExpressions;
 using Maf.Lab.Domain.Graph;
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Retrieval.Jev;
 
-namespace Maf.Lab.Api.Agent.Jev;
+namespace Maf.Lab.Api.BuiltIn;
 
 /// <summary>
 /// Turns Jev's answer to what a codebase question needs into a code graph call the turn can issue without asking the
@@ -42,26 +43,18 @@ public static partial class CodeToolRouter
     internal static KeyValuePair<string, object> Question() =>
         KeyValuePair.Create(QuestionId, (object)new JevChoiceQuestion(Instructions, Criteria));
 
-    /// <summary>Jev's answer to the code-route question; null when it gave none.</summary>
-    internal static CodeRouteAnswer? Read(IReadOnlyDictionary<string, JevAnswer> answers) =>
-        answers.GetValueOrDefault(QuestionId) is { Choice: { } choice } a ? new CodeRouteAnswer(choice, a.Probabilities, a.Confidence) : null;
-
     /// <summary>
-    /// The graph call a codebase question starts with, or why there is none. Whether the turn offers the tool is the
-    /// turn's to check: the classifier runs before the tools are loaded.
+    /// The graph call a codebase question starts with, or why there is none. That the codebase is the primary domain is
+    /// the core's to check before asking, and whether the turn offers the tool is the turn's: the classifier runs before
+    /// the tools are loaded.
     /// </summary>
-    internal static (ToolRoute? Route, string? Reason) Route(string question, CodeRouteAnswer? answer, Intent intent, DomainVerdict? domains,
-        JevOptions o)
+    internal static (DomainRoute? Route, string? Reason) Route(string question, DecisionAnswer? answer, string intent, double minConfidence)
     {
         if (answer is null)
         {
             return (null, "no code-route answer");
         }
-        if (domains?.Primary != Domains.Codebase)
-        {
-            return (null, "the codebase is not the primary domain");
-        }
-        if (intent == Intent.ChitChat)
+        if (intent == "ChitChat")
         {
             return (null, "small talk");
         }
@@ -69,7 +62,7 @@ public static partial class CodeToolRouter
         {
             return (null, $"needs {answer.Choice}, not the graph");
         }
-        if (answer.Confidence is not { } confidence || confidence < o.MinCodeRouteConfidence)
+        if (answer.Confidence is not { } confidence || confidence < minConfidence)
         {
             return (null, $"low confidence ({answer.Confidence?.ToString("F2") ?? "none"})");
         }
@@ -77,12 +70,12 @@ public static partial class CodeToolRouter
         {
             var paths = Paths(question);
             return paths.Count == 1
-                ? (new ToolRoute(GraphTools.ChangeImpact, new Dictionary<string, object?> { ["path"] = paths[0] }, confidence), null)
+                ? (new DomainRoute(GraphTools.ChangeImpact, new Dictionary<string, object?> { ["path"] = paths[0] }, confidence), null)
                 : (null, paths.Count == 0 ? "no file path in the question" : $"{paths.Count} file paths in the question");
         }
         var symbols = Symbols(question);
         return symbols.Count == 1
-            ? (new ToolRoute(GraphTools.TraceCodeSymbol, new Dictionary<string, object?> { ["symbol"] = symbols[0], ["direction"] = answer.Choice },
+            ? (new DomainRoute(GraphTools.TraceCodeSymbol, new Dictionary<string, object?> { ["symbol"] = symbols[0], ["direction"] = answer.Choice },
                 confidence), null)
             : (null, symbols.Count == 0 ? "no Type.Member symbol in the question" : $"{symbols.Count} symbols in the question");
     }
@@ -110,6 +103,3 @@ public static partial class CodeToolRouter
     [GeneratedRegex(@"(?<![\w.])[A-Z][A-Za-z0-9_]*(?:\.[A-Z][A-Za-z0-9_]*)+(?![\w])")]
     private static partial Regex DottedSymbol();
 }
-
-/// <summary>Jev's answer to the code-route question, as given.</summary>
-public sealed record CodeRouteAnswer(string Choice, IReadOnlyDictionary<string, double>? Probabilities, double? Confidence);

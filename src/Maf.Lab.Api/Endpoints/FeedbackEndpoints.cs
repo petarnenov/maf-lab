@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Maf.Lab.Api.Endpoints;
 
+// names a domain until the feedback-review follow-up moves it (introduce-plugins 8.1)
 public static class FeedbackEndpoints
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -56,8 +57,7 @@ public static class FeedbackEndpoints
 
         var admin = app.MapGroup("/api/admin/feedback").RequireAuthorization(AuthPolicies.TenantAdmin);
 
-        admin.MapGet("/queue", async (IPrincipalAccessor principals, IDbContextFactory<MafDbContext> db, TenantScopedMaintenance store,
-            [Microsoft.Extensions.DependencyInjection.FromKeyedServices(Domains.Portfolio)] TenantScopedMaintenance portfolioStore, CancellationToken ct) =>
+        admin.MapGet("/queue", async (IPrincipalAccessor principals, IDbContextFactory<MafDbContext> db, IServiceProvider services, CancellationToken ct) =>
         {
             var principal = principals.Current;
             await using var ctx = await db.CreateDbContextAsync(ct);
@@ -76,14 +76,17 @@ public static class FeedbackEndpoints
                 var resolved = new List<ToolCallRecord>();
                 foreach (var c in toolCalls)
                 {
-                    // A codebase search's sources are places in files, not chunks of a labelled corpus: nothing to resolve.
-                    if (!Domains.IsSearch(c.ToolName) || c.ToolName == Domains.SearchTool[Domains.Codebase])
+                    // A code search's sources are places in files, not chunks of a labelled corpus: nothing to resolve. A
+                    // domain with no chunk store leaves the chunk ids to the reviewer, as an unavailable store does.
+                    if (!Domains.IsSearch(c.ToolName) || Domains.IsCodeSearch(c.ToolName)
+                        || Domains.OfTool(c.ToolName) is not { } domain
+                        || services.GetKeyedService<TenantScopedMaintenance>(domain) is not { } store)
                     {
                         resolved.Add(c);
                         continue;
                     }
                     var own = sources.Where(s => c.DocIds.Contains(s.DocId)).ToList();
-                    var chunkIds = await ResolveChunkIdsAsync(principal, own, c.ToolName == Domains.SearchTool[Domains.Portfolio] ? portfolioStore : store, ct);
+                    var chunkIds = await ResolveChunkIdsAsync(principal, own, store, ct);
                     resolved.Add(c with { ChunkIds = chunkIds.Where(id => c.DocIds.Any(d => id.StartsWith(d + "#", StringComparison.Ordinal))).ToList() });
                 }
                 toolCalls = resolved;
@@ -139,15 +142,15 @@ public static class FeedbackEndpoints
     {
         if (request.Dataset != EvalDataset.Retrieval || request.RelevantChunkIds is not { Count: > 0 } chunks)
         {
-            return Domains.Billing;
+            return BuiltIn.BuiltInDomains.Billing;
         }
         var calls = JsonSerializer.Deserialize<List<ToolCallRecord>>(turn.ToolCallsJson, Json) ?? [];
-        var portfolioDocs = calls.Where(c => c.ToolName == Domains.SearchTool[Domains.Portfolio]).SelectMany(c => c.DocIds).ToHashSet();
+        var portfolioDocs = calls.Where(c => c.ToolName == Domains.SearchTool.GetValueOrDefault(BuiltIn.BuiltInDomains.Portfolio)).SelectMany(c => c.DocIds).ToHashSet();
         var inPortfolio = chunks.Count(id => portfolioDocs.Contains(id.Split('#')[0]));
-        return inPortfolio == 0 ? Domains.Billing : inPortfolio == chunks.Count ? Domains.Portfolio : null;
+        return inPortfolio == 0 ? BuiltIn.BuiltInDomains.Billing : inPortfolio == chunks.Count ? BuiltIn.BuiltInDomains.Portfolio : null;
     }
 
-    public static (JsonObject? Row, string? Error) BuildRow(TurnRow turn, LabelRequest request, string? domain = Domains.Billing)
+    public static (JsonObject? Row, string? Error) BuildRow(TurnRow turn, LabelRequest request, string? domain = BuiltIn.BuiltInDomains.Billing)
     {
         if (domain is null)
         {
@@ -168,7 +171,7 @@ public static class FeedbackEndpoints
                     ["id"] = id, ["query"] = turn.Question, ["relevantChunkIds"] = Array(request.RelevantChunkIds),
                     ["tenantId"] = turn.TenantId, ["source"] = "feedback",
                 };
-                if (domain != Domains.Billing)
+                if (domain != BuiltIn.BuiltInDomains.Billing)
                 {
                     retrieval["domain"] = domain;
                 }

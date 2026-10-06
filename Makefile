@@ -289,10 +289,15 @@ verify: ## Verify the running stack through the load balancer (37 checks), then 
 	@[ -d copilot-runtime/node_modules ] || (cd copilot-runtime && $(NPM) ci --no-audit --no-fund >/dev/null)
 	MODEL_FREE=$(CI_MODE) node copilot-runtime/conformance.mjs $(BASE_URL)
 
-eval: require-dotnet ## Run evals (SUITE=all|selection|retrieval|generation|injection|confirmation|intent|domain|presentation|guardrail|answer-check|code-route|graph-depth|generation-judge) against the stack's MCP servers
-	Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval -- --suite $(SUITE)$(if $(REPEAT), --repeat $(REPEAT))
+# The eval's agent wires the stack's compliance reviewer as the api does (compose: Compliance__*), so the fee adjustment
+# that needs a reviewer is offered to it, as in a deployment (introduce-plugins 4.4).
+EVAL_COMPLIANCE := Compliance__BaseUrl=$(BASE_URL)/compliance Compliance__ClientId=maf-lab-assistant \
+	Compliance__ClientSecret=$${COMPLIANCE_CLIENT_SECRET:-assistant-dev-secret}
 
-EVAL_HOST = Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval --
+eval: require-dotnet ## Run evals (SUITE=all|selection|retrieval|generation|injection|confirmation|intent|domain|presentation|guardrail|answer-check|code-route|graph-depth|generation-judge) against the stack's MCP servers
+	Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp $(EVAL_COMPLIANCE) $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval -- --suite $(SUITE)$(if $(REPEAT), --repeat $(REPEAT))
+
+EVAL_HOST = Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp $(EVAL_COMPLIANCE) $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval --
 EVAL = $(EVAL_HOST) --suite
 
 ask: require-dotnet ## Ask one question through the agent and print its trace (Q="…" TENANT=firm-a), e.g. a cross-domain one

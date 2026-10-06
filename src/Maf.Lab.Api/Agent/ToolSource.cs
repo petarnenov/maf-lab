@@ -42,15 +42,18 @@ public sealed class ToolSet(IReadOnlyList<AITool> tools, IAsyncDisposable? owner
     /// <summary>Domains whose server could not be reached this turn: their tools are simply not offered.</summary>
     public IReadOnlyList<string> Unavailable { get; } = unavailable ?? [];
 
-    /// <summary>The domain that owns a tool. A source that names none serves the billing domain, as the lab always did.</summary>
-    public string DomainOf(string tool) => origins?.GetValueOrDefault(tool)?.Domain ?? Domains.Billing;
+    /// <summary>
+    /// The domain that owns a tool: the server's that offered it, else the domain whose descriptor names it, else
+    /// <see cref="Domains.None"/> — no domain is where unclaimed tools go (task 4.6).
+    /// </summary>
+    public string DomainOf(string tool) => origins?.GetValueOrDefault(tool)?.Domain ?? Domains.OfTool(tool) ?? Domains.None;
 
     /// <summary>The MCP server that owns a tool, by the name it gave itself.</summary>
     public string ServerOf(string tool) => origins?.GetValueOrDefault(tool)?.Server ?? DefaultServer;
 
     /// <summary>The domains this turn is offered tools of, in the catalogue's order.</summary>
     public IReadOnlyList<string> OfferedDomains =>
-        [.. Names.Select(DomainOf).Distinct().OrderBy(d => Domains.All.ToList().IndexOf(d) is var i && i < 0 ? int.MaxValue : i)];
+        [.. Names.Select(DomainOf).Distinct().OrderBy(DomainCatalogue.Current.Order)];
 
     public const string DefaultServer = "maf-lab-retrieval";
 
@@ -61,34 +64,50 @@ public sealed class ToolSet(IReadOnlyList<AITool> tools, IAsyncDisposable? owner
 public sealed record ToolOrigin(string Domain, string Server);
 
 /// <summary>
-/// Consumes every domain's MCP server through the MCP client integration: billing first, then each configured domain.
-/// The user's bearer token is forwarded to each, so every server derives the tenant itself; the agent host never
-/// passes a tenant. The billing server failing fails the turn as it always did; another domain's server failing leaves
-/// its tools out of the turn, which then runs with what it has.
+/// Consumes every domain's MCP server through the MCP client integration, every server alike (task 4.6). The user's
+/// bearer token is forwarded to each, so every server derives the tenant itself; the agent host never passes a tenant. A
+/// server that fails leaves its domain's tools out of the turn, which runs with what it has; only when every server the
+/// turn needs fails does the turn fail. A server whose domain is not in use is not contacted, and a tool whose descriptor
+/// requires a plugin that is not in use (fee adjustment without a compliance reviewer, task 4.4) is not offered.
 /// </summary>
 public sealed class McpToolSource(IOptions<AgentOptions> options, ILoggerFactory loggers, IHttpClientFactory http,
-    Plugins.PluginCatalogue? plugins = null) : IToolSource
+    Plugins.PluginCatalogue? plugins = null, DomainCatalogue? domainCatalogue = null, IConfiguration? configuration = null) : IToolSource
 {
+    /// <summary>
+    /// Whether a plugin (or capability) a tool requires is in use: installed as a plugin, or — until it becomes one — the
+    /// setting that wires it today configured (<see cref="BuiltIn.BuiltInDomains.LegacyCapabilities"/>).
+    /// </summary>
+    internal static bool InUse(string name, Plugins.PluginCatalogue? plugins, IConfiguration? configuration) =>
+        plugins?.Current.Contains(name) == true
+        || (BuiltIn.BuiltInDomains.LegacyCapabilities.GetValueOrDefault(name) is { } setting && configuration?[setting] is { Length: > 0 });
+
     private readonly ILogger _logger = loggers.CreateLogger<McpToolSource>();
 
     public async Task<ToolSet> GetToolsAsync(string bearerToken, ConfirmationSink? confirmations, CancellationToken ct,
         IReadOnlySet<string>? domains = null)
     {
-        var servers = options.Value.AllServers(plugins?.McpServers()).Where(s => domains is null || domains.Contains(s.Domain)).ToList();
-        // The billing server failing fails the turn only when the turn needs it: it is the first server only if selected.
-        var billingFirst = servers.Count > 0 && servers[0].Domain == Domains.Billing;
-        var connected = await Task.WhenAll(servers.Select(async (server, index) =>
+        var catalogue = domainCatalogue ?? DomainCatalogue.AllBuiltIn;
+        var servers = options.Value.AllServers(plugins?.McpServers())
+            .Where(s => catalogue.Get(s.Domain) is not null && (domains is null || domains.Contains(s.Domain)))
+            .OrderBy(s => catalogue.Order(s.Domain))
+            .ToList();
+        var connected = await Task.WhenAll(servers.Select(async server =>
         {
             try
             {
                 return (server, Client: ((McpClient Client, IList<McpClientTool> Tools)?)await ConnectAsync(server, bearerToken, confirmations, ct),
                     Error: (Exception?)null);
             }
-            catch (Exception ex) when ((index > 0 || !billingFirst) && ex is not OperationCanceledException)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 return (server, Client: ((McpClient Client, IList<McpClientTool> Tools)?)null, Error: (Exception?)ex);
             }
         }));
+        if (connected.Length > 0 && connected.All(c => c.Client is null))
+        {
+            // Every server this turn needs is down: there is nothing to answer from, so the turn fails as a whole.
+            throw connected[0].Error!;
+        }
 
         var tools = new List<AITool>();
         var origins = new Dictionary<string, ToolOrigin>(StringComparer.Ordinal);
@@ -106,6 +125,12 @@ public sealed class McpToolSource(IOptions<AgentOptions> options, ILoggerFactory
             var serverName = c.Client.ServerInfo?.Name is { Length: > 0 } n ? n : server.Domain;
             foreach (var tool in c.Tools)
             {
+                var descriptor = catalogue.Get(server.Domain);
+                if (descriptor?.ToolRequires.GetValueOrDefault(tool.Name) is { } required && !InUse(required, plugins, configuration))
+                {
+                    // Offered only while what it needs is in use: a fee adjustment needs a reviewer to pass (task 4.4).
+                    continue;
+                }
                 if (server.Tools.Count > 0 && !server.Tools.Contains(tool.Name, StringComparer.Ordinal))
                 {
                     // Not offered to the agent: the server keeps it for its other clients (ask_codebase writes its own answer).

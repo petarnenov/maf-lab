@@ -12,6 +12,7 @@ using Qdrant.Client;
 
 namespace Maf.Lab.Api.Topology;
 
+// names a domain until the topology follow-up moves it (introduce-plugins 8.1)
 /// <summary>Resolves a compose service name to one address per replica; the balancer relies on the same fact.</summary>
 public interface IServiceResolver
 {
@@ -154,9 +155,9 @@ public sealed class TopologyProbe(
         var api = ReplicasAsync("api", "api", apiAddresses, timeout, ct);
         // One tools/list per server for the whole report: each domain's node reads its own tools from the same answer.
         var offered = OfferedAsync(bearerToken, timeout, ct);
-        var mcp = McpAsync(mcpAddresses, offered, timeout, ct);
-        var portfolio = DomainServerAsync("mcp-portfolio", Domains.Portfolio, portfolioAddresses, offered, timeout, ct);
-        var code = DomainServerAsync("mcp-code", Domains.Codebase, codeAddresses, offered, timeout, ct);
+        var mcp = DomainServerAsync("mcp", BuiltIn.BuiltInDomains.Billing, mcpAddresses, offered, timeout, ct, "mcp-retrieval");
+        var portfolio = DomainServerAsync("mcp-portfolio", BuiltIn.BuiltInDomains.Portfolio, portfolioAddresses, offered, timeout, ct);
+        var code = DomainServerAsync("mcp-code", BuiltIn.BuiltInDomains.Codebase, codeAddresses, offered, timeout, ct);
         var compliance = ComplianceAsync(complianceAddresses, timeout, ct);
         var agentNode = TestAgentAsync(testAgentAddresses, timeout, ct);
         var runnerNode = ReplicasAsync("coverage-runner", "coverage runner", runnerAddresses, timeout, ct);
@@ -314,18 +315,15 @@ public sealed class TopologyProbe(
         }
     }
 
-    private async Task<TopologyNode> McpAsync(IReadOnlyList<string> addresses, Task<Offered> offered, TimeSpan timeout, CancellationToken ct)
-    {
-        var node = await ReplicasAsync("mcp", "mcp-retrieval", addresses, timeout, ct);
-        return WithTools(node, await offered, Domains.Billing, agent.Value.McpEndpoint);
-    }
-
-    /// <summary>A domain's own MCP server beside billing's (portfolio, codebase): configured through Agent:Servers.</summary>
+    /// <summary>
+    /// A domain's MCP server (billing, portfolio, codebase), configured through Agent:Servers: every one alike, so an
+    /// unconfigured billing server degrades like any other (introduce-plugins 4.6).
+    /// </summary>
     private async Task<TopologyNode> DomainServerAsync(string id, string domain, IReadOnlyList<string> addresses, Task<Offered> offered,
-        TimeSpan timeout, CancellationToken ct)
+        TimeSpan timeout, CancellationToken ct, string? name = null)
     {
         var endpoint = agent.Value.Servers.Values.FirstOrDefault(s => s.Domain == domain)?.Endpoint;
-        var node = await ReplicasAsync(id, id, addresses, timeout, ct);
+        var node = await ReplicasAsync(id, name ?? id, addresses, timeout, ct);
         if (string.IsNullOrWhiteSpace(endpoint))
         {
             return node with

@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using Maf.Lab.Api.Agent.Tracing;
 using Maf.Lab.Domain.Feedback;
 using Maf.Lab.Domain.Tracing;
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Retrieval.Jev;
 using Microsoft.Extensions.Options;
 
@@ -70,12 +71,6 @@ public static class AnswerVerdict
     public const string Unchecked = "unchecked";
 }
 
-/// <summary>Which context the two questions were asked in: chosen by what the model read (D5).</summary>
-public static class AnswerContext
-{
-    public const string Billing = "billing";
-    public const string Codebase = "codebase";
-}
 
 /// <summary>
 /// What Jev made of one answer: both probabilities against their band, the verdict, and — when there is no usable
@@ -98,8 +93,11 @@ public sealed record AnswerCheck(string Verdict, double? Relevant, double? Groun
     /// <summary>The grounding pass threshold; 0 on a check built without one.</summary>
     public double GroundedPassAt { get; init; }
 
-    /// <summary><see cref="AnswerContext.Billing"/> or <see cref="AnswerContext.Codebase"/>.</summary>
-    public string Context { get; init; } = AnswerContext.Billing;
+    /// <summary>
+    /// Which context the two questions were asked in, chosen by what the model read (D5): <see cref="GuardContexts.Code"/>
+    /// when any source came from a code domain, <see cref="GuardContexts.Documents"/> otherwise.
+    /// </summary>
+    public string Context { get; init; } = GuardContexts.Documents;
 
     /// <summary>Sources dropped because the same source came first.</summary>
     public int Duplicates { get; init; }
@@ -147,6 +145,7 @@ public sealed class JevAnswerCheck(JevClient jev, IOptions<AnswerCheckOptions> o
     public const string GroundedId = "answer_grounded";
     public const string OverCap = "sources over cap";
 
+    // Billing wording stays until the billing follow-up makes it domain-generic and re-measures (introduce-plugins 8.1, design part B 6).
     private const string Context =
         "`user_question` is what a user asked an AI assistant that answers questions about fee billing and investment "
         + "portfolios for the user's own firm. `previous_question` is what the user asked just before, in the same "
@@ -231,7 +230,7 @@ public sealed class JevAnswerCheck(JevClient jev, IOptions<AnswerCheckOptions> o
     {
         var o = options.Value;
         var selection = AnswerSources.Select(sources, previousSources ?? [], answer, o.MaxSourceChars);
-        var context = selection.Codebase ? AnswerContext.Codebase : AnswerContext.Billing;
+        var context = selection.Codebase ? GuardContexts.Code : GuardContexts.Documents;
         AnswerCheck Build(string verdict, double? relevant, double? grounded, string? model, double ms, string? reason, int requests) =>
             new(verdict, relevant, grounded, o.NotRelevantAt, o.NotGroundedAt, model, ms, reason, selection.Sources.Count, selection.Chars, requests)
             {

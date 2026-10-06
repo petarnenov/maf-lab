@@ -1,0 +1,23 @@
+{
+  "id": "portfolio",
+  "order": 20,
+  "question_key": "in_portfolio",
+  "description": "Investment portfolios on a wealth-management platform: what accounts and households hold, model portfolios and target weights, asset allocation, drift and tolerance bands, rebalancing, market value and quarter-end AUM valuations and their price corrections, why an account's market value or AUM changed (market movement, contributions, withdrawals), cash sweep, held-away assets, and investment performance and returns.",
+  "search_tool": "search_portfolio_documents",
+  "read_tools": {
+    "get_household_portfolio": "Returns one account's current portfolio by its account id: holdings, allocation against its model, drift and total value.",
+    "get_aum_history": "Returns one account's quarter-end AUM valuations by its account id, oldest first, with each quarter's change.",
+    "list_my_accounts": "Lists the accounts the signed-in user can access: id, name, household, model portfolio and currency. Takes no account id."
+  },
+  "card_types": {
+    "get_household_portfolio": "maf-lab/holdings",
+    "get_aum_history": "maf-lab/aum-history",
+    "list_my_accounts": "maf-lab/accounts"
+  },
+  "guard_context": "documents",
+  "prompt": "prompt.md",
+  "scope_summary": {
+    "en": "portfolios (holdings, model portfolios, drift, rebalancing, quarter-end AUM)",
+    "bg": "с портфейлите (позиции, моделни портфейли, отклонение, ребалансиране, AUM към края на тримесечието)"
+  }
+}

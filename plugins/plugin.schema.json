@@ -34,7 +34,16 @@
         "graph_tools": { "type": "array", "items": { "type": "string" } },
         "guard_context": { "type": "string" },
         "routing": { "type": "array", "items": { "type": "string" } },
-        "card_types": { "type": "object", "additionalProperties": { "type": "string" } }
+        "card_types": { "type": "object", "additionalProperties": { "type": "string" } },
+        "question_key": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+        "description": { "type": "string", "minLength": 1 },
+        "order": { "type": "integer" },
+        "read_tools": { "type": "object", "additionalProperties": { "type": "string" } },
+        "write_tools": { "type": "object", "additionalProperties": { "type": "string" } },
+        "search_any_intent": { "type": "boolean" },
+        "tool_requires": { "type": "object", "additionalProperties": { "type": "string" } },
+        "prompt": { "type": "string", "minLength": 1 },
+        "scope_summary": { "type": "object", "additionalProperties": { "type": "string" } }
       }
     },
     "agent": {

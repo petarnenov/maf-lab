@@ -55,6 +55,37 @@ public sealed record DomainTable
     [JsonPropertyName("routing")] public IReadOnlyList<string> Routing { get; init; } = [];
     /// <summary>Tool name → AG-UI activity type of the card its result travels as.</summary>
     [JsonPropertyName("card_types")] public IReadOnlyDictionary<string, string> CardTypes { get; init; } = new Dictionary<string, string>();
+    /// <summary>The domain question's key in the routing request; `in_{id}` when not set.</summary>
+    [JsonPropertyName("question_key")] public string? QuestionKey { get; init; }
+    /// <summary>What the domain covers, as the domain question reads it; the first routing question when not set.</summary>
+    [JsonPropertyName("description")] public string? Description { get; init; }
+    [JsonPropertyName("order")] public int Order { get; init; } = 100;
+    /// <summary>Read tools a data question may be routed to → their description for the routing question.</summary>
+    [JsonPropertyName("read_tools")] public IReadOnlyDictionary<string, string> ReadTools { get; init; } = new Dictionary<string, string>();
+    /// <summary>Write tools, asked about only as a veto → their description.</summary>
+    [JsonPropertyName("write_tools")] public IReadOnlyDictionary<string, string> WriteTools { get; init; } = new Dictionary<string, string>();
+    [JsonPropertyName("search_any_intent")] public bool SearchAnyIntent { get; init; }
+    /// <summary>Tool → the plugin that must be in use for the tool to be offered.</summary>
+    [JsonPropertyName("tool_requires")] public IReadOnlyDictionary<string, string> ToolRequires { get; init; } = new Dictionary<string, string>();
+    /// <summary>The prompt fragment's file, relative to the plugin folder (or the built-in domain's folder).</summary>
+    [JsonPropertyName("prompt")] public string? Prompt { get; init; }
+    /// <summary>The domain named for a user, by language, as the out-of-scope reply lists it.</summary>
+    [JsonPropertyName("scope_summary")] public IReadOnlyDictionary<string, string> ScopeSummary { get; init; } = new Dictionary<string, string>();
+
+    /// <summary>The descriptor the core reads, with the prompt fragment's text when it was found.</summary>
+    public DomainDescriptor ToDescriptor(string? promptFragment = null) =>
+        new(Id, SearchTool, Tools, GraphTools, Routing, GuardContext ?? GuardContexts.Documents, CardTypes)
+        {
+            QuestionKey = string.IsNullOrWhiteSpace(QuestionKey) ? $"in_{Id}" : QuestionKey,
+            Description = Description ?? (Routing.Count > 0 ? Routing[0] : null),
+            Order = Order,
+            ReadTools = ReadTools,
+            WriteTools = WriteTools,
+            SearchAnyIntent = SearchAnyIntent,
+            ToolRequires = ToolRequires,
+            PromptFragment = promptFragment,
+            ScopeSummary = ScopeSummary,
+        };
 }
 
 /// <summary>An AG-UI agent a plugin serves: the runtime maps its name to this path (decision 3).</summary>

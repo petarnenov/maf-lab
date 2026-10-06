@@ -18,7 +18,7 @@ public enum Intent
 /// <paramref name="Confidence"/> are Jev's answer as given, kept even when it was not acted on; <paramref name="Reason"/>
 /// says why the turn proceeded with no recognised intent (low confidence, outside the domain, timeout, rejection, no key)
 /// and is null when the answer was used. <paramref name="InDomain"/> is Jev's probability that the question is about
-/// the documented domain. <paramref name="Screen"/> holds the answers to the prompt-screening questions that rode in the
+/// the most probable domain. <paramref name="Screen"/> holds the answers to the prompt-screening questions that rode in the
 /// same request (injection-defense), kept whether or not the intent was used; null when Jev gave none. With tool routing
 /// on, <paramref name="Routing"/> is Jev's answer to the routing questions, <paramref name="Route"/> the read call to
 /// issue on the model's behalf, and <paramref name="RouteReason"/> why there is none. <paramref name="Domains"/> is Jev's
@@ -43,7 +43,7 @@ public readonly record struct IntentDecision(
     string? RouteReason = null,
     DomainVerdict? Domains = null,
     bool OutsideDomains = false,
-    Jev.CodeRouteAnswer? CodeRouting = null,
+    Maf.Lab.Plugins.Abstractions.DecisionAnswer? CodeRouting = null,
     Jev.ToolRoute? CodeRoute = null,
     string? CodeRouteReason = null);
 
@@ -67,7 +67,7 @@ public sealed record DomainVerdict(IReadOnlyDictionary<string, double> Probabili
     /// </summary>
     public static DomainVerdict From(IReadOnlyDictionary<string, double> probabilities, double scopeFloor, double gateFloor)
     {
-        var ranked = probabilities.OrderByDescending(p => p.Value).ThenBy(p => Agent.Domains.All.ToList().IndexOf(p.Key)).ToList();
+        var ranked = probabilities.OrderByDescending(p => p.Value).ThenBy(p => DomainCatalogue.Current.Order(p.Key)).ToList();
         var inScope = ranked.Where(p => p.Value >= scopeFloor).Select(p => p.Key).ToList();
         if (inScope.Count == 0 && ranked.Count > 0 && ranked[0].Value >= gateFloor && ranked[0].Value > 0)
         {
@@ -97,21 +97,45 @@ public static class IntentClassifier
 
 /// <summary>
 /// The fixed reply to a question outside every domain (refuse-off-domain-questions). Like the guard's refusal it repeats
-/// nothing of the question, and it says what the assistant does answer, so the user can ask that instead.
+/// nothing of the question, and it says what the assistant does answer — the domains in use, each as its descriptor
+/// names it for a user — so the user can ask that instead.
 /// </summary>
 public static class OutOfScope
 {
-    public const string ReplyEnglish =
-        "I can only help with your firm's billing (fees, fee schedules, billing runs, fee adjustments), portfolios "
-        + "(holdings, model portfolios, drift, rebalancing, quarter-end AUM) and questions about this lab's own code. "
-        + "Please ask about one of those.";
+    public static string ReplyEnglish => "I can only help with " + Scopes("en", " and ") + ". Please ask about one of those.";
 
-    public const string ReplyBulgarian =
-        "Мога да помагам само с таксуването на Вашата фирма (такси, тарифи, билинг цикли, корекции на такси), с "
-        + "портфейлите (позиции, моделни портфейли, отклонение, ребалансиране, AUM към края на тримесечието) и с въпроси "
-        + "за собствения код на лабораторията. Моля, задайте въпрос по една от тези теми.";
+    public static string ReplyBulgarian => "Мога да помагам само " + Scopes("bg", " и ") + ". Моля, задайте въпрос по една от тези теми.";
+
+    /// <summary>The domains in use, each as its descriptor names it for a user in this language, joined as a list.</summary>
+    public static string Scopes(string language, string last) => Join(Summaries(language), last);
 
     /// <summary>In Bulgarian when the question is written in Cyrillic, as the guard's refusal is.</summary>
+    public static string Reply(string question) =>
+        question.Any(c => c is >= 'Ѐ' and <= 'ӿ') ? ReplyBulgarian : ReplyEnglish;
+
+    private static IReadOnlyList<string> Summaries(string language) =>
+        [.. DomainCatalogue.Current.All.Select(d => d.ScopeSummary.GetValueOrDefault(language) ?? d.ScopeSummary.GetValueOrDefault("en") ?? d.Id)];
+
+    private static string Join(IReadOnlyList<string> parts, string last) => parts.Count switch
+    {
+        0 => "",
+        1 => parts[0],
+        _ => string.Join(", ", parts.Take(parts.Count - 1)) + last + parts[^1],
+    };
+}
+
+/// <summary>
+/// The fixed reply when no domain is in use (introduce-plugins decision 5h): the assistant answers nothing without a
+/// domain, so the turn ends before any model or decision-engine call.
+/// </summary>
+public static class NoDomain
+{
+    public const string ReplyEnglish =
+        "No domain is enabled for this assistant yet, so it cannot answer questions. Your administrator can enable one.";
+
+    public const string ReplyBulgarian =
+        "За този асистент още няма включена област, затова той не може да отговаря на въпроси. Администраторът Ви може да включи такава.";
+
     public static string Reply(string question) =>
         question.Any(c => c is >= 'Ѐ' and <= 'ӿ') ? ReplyBulgarian : ReplyEnglish;
 }

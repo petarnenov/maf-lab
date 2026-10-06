@@ -26,7 +26,7 @@ What the web and make learn about the installed plugins (introduce-plugins). The
 
 | Method | Path | Body | Response |
 |---|---|---|---|
-| GET | `/api/plugins` | — | `{ plugins: [{ name, kind, scope, description, health, domain, cardTypes }], problems }`. Anonymous: only plugins whose manifest says `public = true` (none in stage or prod), and no problems. Signed in: every installed plugin, and any manifest problem of the last read. `health` is `ok` for a plugin whose code runs in the api, the probe of its topology address for a remote one (cached 15 s), else `unknown` |
+| GET | `/api/plugins` | — | `{ plugins: [{ name, kind, scope, description, health, domain, cardTypes }], problems, domains: [{ id, scope: { en, bg } }] }`. Anonymous: only plugins whose manifest says `public = true` (none in stage or prod), no problems and no domains. Signed in: every installed plugin, any manifest problem of the last read, and every domain in use (built-in ones included, in order; empty means the assistant declines every turn). `health` is `ok` for a plugin whose code runs in the api, the probe of its topology address for a remote one (cached 15 s), else `unknown` |
 | GET | `/api/plugins/{name}/open-work` | — | `[{ kind, id, state }]` the plugin's open long work; TENANT_ADMIN only, otherwise `403`. Empty for a plugin with none |
 | POST | `/api/plugins/{name}/open-work/cancel` | — | `202`: every open item is marked cancelled in the store that owns it; poll the list until it is empty. TENANT_ADMIN only |
 

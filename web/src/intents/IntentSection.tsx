@@ -77,7 +77,8 @@ export function IntentSection({ r, period }: { r: IntentStatsReport; period: str
         <h2 className={styles.panelTitle}>How a question becomes a forced search</h2>
         <p className={styles.panelNote}>
           {period} · turns along each edge. One Jev call asks for the intent (a Choice) and for the
-          probability the question is about billing (a Noul); code applies the floors.
+          probability the question is about each domain in use (a Noul each); code applies the
+          floors.
         </p>
         <PipelineDiagram counts={r.pipeline} settings={r.settings} />
       </section>
@@ -227,8 +228,8 @@ export function IntentSection({ r, period }: { r: IntentStatsReport; period: str
         </Panel>
 
         <Panel
-          title="In the billing domain"
-          note={`${period} · Jev's probability the question is about billing, floor marked`}
+          title="In a domain"
+          note={`${period} · Jev's probability of the most probable domain, floor marked`}
         >
           <Legend series={[OUTCOMES.used, OUTCOMES.gated]} />
           <ProbabilityHistogram

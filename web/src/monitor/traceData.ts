@@ -215,7 +215,7 @@ export interface AnswerCheckData {
   /** The pass thresholds: at or above both the answer passes; in between it is uncertain. */
   relevantPassAt?: number;
   groundedPassAt?: number;
-  /** billing or codebase: the context the two questions were asked in. */
+  /** documents or code (billing or codebase before introduce-plugins): the context the two questions were asked in. */
   context?: string;
   /** Sources dropped because the same source came first. */
   duplicates?: number;

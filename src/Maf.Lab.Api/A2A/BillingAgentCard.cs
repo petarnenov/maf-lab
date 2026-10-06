@@ -3,6 +3,7 @@ using Maf.Lab.A2A;
 
 namespace Maf.Lab.Api.A2A;
 
+// names a domain until the a2a follow-up moves it (introduce-plugins 8.1)
 /// <summary>
 /// Who this agent says it is. Each skill states what it is for *and* what it is not for, because a caller choosing
 /// a skill from a one-line description is how the wrong agent gets asked the wrong question.

@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { apiRequest } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import type { MafWebPlugin } from './api';
-import { PluginsContext } from './context';
+import { DomainsContext, PluginsContext, type DomainInUse } from './context';
 import { emptyRegistry, type PluginRegistry } from './registry';
 
 /** One plugin's web module, loaded on demand. */
@@ -21,6 +21,7 @@ const bundled: Record<string, PluginModuleLoader> = Object.fromEntries(
 
 interface PluginList {
   plugins: { name: string }[];
+  domains?: DomainInUse[];
 }
 
 /**
@@ -61,5 +62,12 @@ export function PluginsProvider({
     };
   }, [names, modules]);
 
-  return <PluginsContext.Provider value={registry}>{children}</PluginsContext.Provider>;
+  // Known only once a signed-in answer is in: an anonymous one lists no domains (introduce-plugins 5h).
+  const domains = token && inUse.data ? (inUse.data.domains ?? []) : undefined;
+
+  return (
+    <PluginsContext.Provider value={registry}>
+      <DomainsContext.Provider value={domains}>{children}</DomainsContext.Provider>
+    </PluginsContext.Provider>
+  );
 }

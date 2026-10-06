@@ -159,7 +159,20 @@ public class PluginHostTests
         var options = new Maf.Lab.Api.Agent.AgentOptions();
         configuration.GetSection("Agent").Bind(options);
 
-        Assert.Equal(["billing", "codebase", "portfolio"], options.AllServers().Select(s => s.Domain).Order(StringComparer.Ordinal));
+        // No server is implied any more (introduce-plugins 4.6): billing is configured like the others.
+        Assert.Equal(["codebase", "portfolio"], options.AllServers().Select(s => s.Domain).Order(StringComparer.Ordinal));
+
+        var withBilling = new Maf.Lab.Api.Agent.AgentOptions();
+        new Microsoft.Extensions.Configuration.ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Agent:Servers:0:Domain"] = "portfolio",
+            ["Agent:Servers:0:Endpoint"] = "http://lb/portfolio/mcp",
+            ["Agent:Servers:billing:Domain"] = "billing",
+            ["Agent:Servers:billing:Endpoint"] = "http://lb/mcp",
+            ["Agent:Servers:codebase:Domain"] = "codebase",
+            ["Agent:Servers:codebase:Endpoint"] = "http://lb/code/mcp",
+        }).Build().GetSection("Agent").Bind(withBilling);
+        Assert.Equal(["billing", "codebase", "portfolio"], withBilling.AllServers().Select(s => s.Domain).Order(StringComparer.Ordinal));
     }
 
     [Fact]

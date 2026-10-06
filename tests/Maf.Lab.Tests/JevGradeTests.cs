@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Maf.Lab.Api.Agent.Jev;
 using Maf.Lab.Api.Agent;
+using Maf.Lab.Api.BuiltIn;
 using Maf.Lab.Eval;
 using Maf.Lab.Eval.Judging;
 using Maf.Lab.Eval.Suites;
@@ -20,9 +21,9 @@ public class JevGradeTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private static readonly ReadItem FeeDoc = new("doc:fees›Missing", "fees › Missing: Assign the agreed schedule, then re-run.", [], Domains.Billing);
-    private static readonly ReadItem OtherDoc = new("doc:aum›Stale", "aum › Stale: A valuation older than three days is stale.", [], Domains.Billing);
-    private static readonly ReadItem CodeItem = new("code:src/A.cs:1-9", "src/A.cs:1-9 › A: class A {}", ["src/A.cs", "A.cs"], Domains.Codebase);
+    private static readonly ReadItem FeeDoc = new("doc:fees›Missing", "fees › Missing: Assign the agreed schedule, then re-run.", [], BuiltInDomains.Billing);
+    private static readonly ReadItem OtherDoc = new("doc:aum›Stale", "aum › Stale: A valuation older than three days is stale.", [], BuiltInDomains.Billing);
+    private static readonly ReadItem CodeItem = new("code:src/A.cs:1-9", "src/A.cs:1-9 › A: class A {}", ["src/A.cs", "A.cs"], BuiltInDomains.Codebase);
 
     private const string Answer = "Open the failed run. Assign the agreed schedule. Re-run it. Then pay the fee twice.";
 

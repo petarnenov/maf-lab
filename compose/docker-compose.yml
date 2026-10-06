@@ -271,9 +271,9 @@ services:
       # Writable by any user; a uid with no passwd entry would otherwise get HOME=/.
       HOME: /tmp
       # Tool calls go through the balancer too, so they are spread over the mcp-retrieval replicas.
-      Agent__McpEndpoint: http://lb/mcp
-      # The second domain's server, also through the balancer, keyed by name (introduce-plugins decision 3). The billing
-      # server above keeps the domain "billing".
+      # Every domain's server, keyed by name (introduce-plugins decision 3); none is first (task 4.6).
+      Agent__Servers__billing__Domain: billing
+      Agent__Servers__billing__Endpoint: http://lb/mcp
       Agent__Servers__portfolio__Domain: portfolio
       Agent__Servers__portfolio__Endpoint: http://lb/portfolio/mcp
       # The codebase as the agent's third domain (add-codebase-domain): its search and the code-graph tools

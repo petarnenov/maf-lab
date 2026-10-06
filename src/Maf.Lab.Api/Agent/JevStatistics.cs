@@ -5,6 +5,8 @@ using Maf.Lab.Domain.Tracing;
 
 namespace Maf.Lab.Api.Agent;
 
+// names a domain until the insights follow-up moves it (introduce-plugins 8.1)
+// (DomainStats' fixed billing and portfolio counts; legacy rows without a domain count as billing; not a default for new rows)
 /// <summary>
 /// Aggregates every Jev call site of a set of turns into a <see cref="JevStatsReport"/>. A pure function of its input:
 /// it reuses <see cref="IntentStatistics"/> for the intent section and reads only the <c>guardrail</c>, <c>relevance</c>,
@@ -37,6 +39,8 @@ public static class JevStatistics
         int Items, int UnscreenedItems, IReadOnlyList<double> ItemDurations, int Requests, int SkippedItems = 0);
 
     /// <param name="Unavailable">Left ungated because Jev did not answer — skipped by an open circuit included.</param>
+    /// <param name="Domain">The search's domain; the default reads rows stored before the domain field existed, when
+    /// every search was billing's.</param>
     private sealed record RelevanceFact(DateTime At, bool Silenced, bool Unavailable, bool RerankJev, double? Max,
         double? DurationMs, double? Floor, string? CallId = null, string Domain = "billing", bool Skipped = false)
     {
@@ -133,8 +137,8 @@ public static class JevStatistics
 
     private static DomainStats Domains(List<DomainFact> domains) => new(
         domains.Count,
-        domains.Count(d => d.Verdict == Agent.Domains.Billing),
-        domains.Count(d => d.Verdict == Agent.Domains.Portfolio),
+        domains.Count(d => d.Verdict == BuiltIn.BuiltInDomains.Billing),
+        domains.Count(d => d.Verdict == BuiltIn.BuiltInDomains.Portfolio),
         domains.Count(d => d.Verdict == "both"),
         domains.Count(d => d.Verdict == "none"),
         domains.Count(d => d.Crossed),
