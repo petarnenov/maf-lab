@@ -1,0 +1,9 @@
+/* Text a screen reader reads and the eye does not see: part of a control's accessible name, never hidden content. */
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

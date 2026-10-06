@@ -1,8 +1,16 @@
 import type { MafWebPlugin } from './api';
 
+/**
+ * How the api last saw a plugin's own service (GET /api/plugins): `unavailable` only when its probe failed; `unknown`
+ * when it has none, which is never shown as a fault.
+ */
+export type PluginHealth = 'ok' | 'unavailable' | 'unknown';
+
 /** Every contribution of the plugins in use, each tagged with the plugin it came from (for its error boundary). */
 export interface PluginRegistry {
   plugins: readonly MafWebPlugin[];
+  /** Each plugin's health, by name; a plugin not named here is `unknown`. */
+  health?: Readonly<Record<string, PluginHealth>>;
 }
 
 export const emptyRegistry: PluginRegistry = { plugins: [] };
@@ -13,11 +21,19 @@ export function contributions<K extends keyof MafWebPlugin>(
   kind: K,
 ): {
   plugin: string;
+  health: PluginHealth;
   item: NonNullable<MafWebPlugin[K]> extends readonly (infer T)[] ? T : never;
 }[] {
   return registry.plugins.flatMap((plugin) =>
     Array.isArray(plugin[kind])
-      ? (plugin[kind] as unknown[]).map((item) => ({ plugin: plugin.name, item }) as never)
+      ? (plugin[kind] as unknown[]).map(
+          (item) =>
+            ({
+              plugin: plugin.name,
+              health: registry.health?.[plugin.name] ?? 'unknown',
+              item,
+            }) as never,
+        )
       : [],
   );
 }

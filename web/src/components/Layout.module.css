@@ -53,6 +53,13 @@
   background: var(--surface-2);
 }
 
+.unavailable,
+.unavailable:hover {
+  color: var(--muted);
+  background: none;
+  cursor: default;
+}
+
 .external {
   margin-left: 4px;
   color: var(--muted);

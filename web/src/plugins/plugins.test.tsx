@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
@@ -13,7 +14,7 @@ import { CardView } from '../chat/cards/CardView';
 import { agentFetch } from '../test/agentFetch';
 import { jsonResponse, makeSession } from '../test/render';
 import { definePlugin, type MafWebPlugin } from './api';
-import { PluginsContext } from './context';
+import { PluginsContext, usePlugins } from './context';
 import { PluginBoundary } from './PluginBoundary';
 import { PluginsProvider, type PluginModuleLoader } from './PluginsProvider';
 
@@ -37,11 +38,17 @@ const fixture = definePlugin({
 
 const modules: Record<string, PluginModuleLoader> = { fixture: async () => ({ default: fixture }) };
 
-function stubApi(plugins: string[]) {
+function stubApi(plugins: string[], health: Record<string, string> = {}) {
   const fetch = vi.fn(async (url: string, init?: RequestInit) => {
     void init;
     if (String(url).startsWith('/api/plugins'))
-      return jsonResponse({ plugins: plugins.map((name) => ({ name })), problems: [] });
+      return jsonResponse({
+        plugins: plugins.map((name) => ({
+          name,
+          ...(health[name] ? { health: health[name] } : {}),
+        })),
+        problems: [],
+      });
     if (String(url).startsWith('/api/conversations'))
       return jsonResponse({ conversations: [], nextCursor: null });
     return jsonResponse([]);
@@ -50,15 +57,22 @@ function stubApi(plugins: string[]) {
   return fetch;
 }
 
-function renderApp(route: string, session: Session | null = makeSession('USER')) {
+function renderApp(
+  route: string,
+  session: Session | null = makeSession('USER'),
+  /** The modules to load; null for PluginsProvider's own (every bundled plugin). */
+  using: Record<string, PluginModuleLoader> | null = modules,
+  extra?: ReactNode,
+) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AuthProvider initialSession={session}>
         <AgentsProvider>
-          <PluginsProvider modules={modules}>
+          <PluginsProvider modules={using ?? undefined}>
             <MemoryRouter initialEntries={[route]}>
               <App />
+              {extra}
             </MemoryRouter>
           </PluginsProvider>
         </AgentsProvider>
@@ -74,7 +88,88 @@ describe('web plugins', () => {
     const nav = screen.getByRole('navigation', { name: 'Main' });
     await waitFor(() => expect(within(nav).queryByRole('link', { name: 'Fixture' })).toBeNull());
     expect(screen.queryByRole('tab', { name: 'Fixture pane' })).toBeNull();
+    // No side pane and no sidebar: the main navigation is the only landmark of its kind.
+    expect(screen.queryByRole('tablist', { name: 'Right pane' })).toBeNull();
+    expect(screen.getAllByRole('navigation')).toHaveLength(1);
+    // Only the core's own links. "Chat" alone arrives as the follow-up changes move the rest into plugins (8.1).
+    expect(
+      within(nav)
+        .getAllByRole('link')
+        .map((l) => l.textContent),
+    ).toEqual([
+      'Chat',
+      'Evals',
+      'Topology',
+      'Telemetry',
+      'Coverage',
+      'Index admin',
+      'Feedback review',
+      'Compliance',
+      'Jev',
+      'Agent to agent',
+      'Curriculum',
+    ]);
   });
+
+  it('shows a plugin whose service is down as unavailable, not hidden, and not as a link to follow', async () => {
+    stubApi(['fixture'], { fixture: 'unavailable' });
+    renderApp('/chat');
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    const entry = await within(nav).findByRole('link', { name: 'Fixture (unavailable)' });
+    expect(entry).toHaveAttribute('aria-disabled', 'true');
+    expect(entry).not.toHaveAttribute('href');
+  });
+
+  it.each(['ok', 'unknown'])(
+    'shows a plugin whose health is %s as an ordinary link',
+    async (health) => {
+      stubApi(['fixture'], { fixture: health });
+      renderApp('/chat');
+      const nav = screen.getByRole('navigation', { name: 'Main' });
+      const link = await within(nav).findByRole('link', { name: 'Fixture' });
+      expect(link).toHaveAttribute('href', '/fixture');
+      expect(link).not.toHaveAttribute('aria-disabled');
+    },
+  );
+
+  it(
+    'runs with every bundled plugin that has a web part, each registered and none failing',
+    { timeout: 30_000 },
+    async () => {
+      const repo = join(__dirname, '..', '..', '..');
+      const names = readdirSync(join(repo, 'plugins'), { withFileTypes: true })
+        .filter(
+          (d) => d.isDirectory() && existsSync(join(repo, 'plugins', d.name, 'web', 'index.ts')),
+        )
+        .map((d) => d.name);
+      // No silent pass: the bundled plugins with a web part are found.
+      expect(names.length).toBeGreaterThan(0);
+      stubApi(names);
+      function Probe() {
+        return (
+          <p data-testid="registered">
+            {usePlugins()
+              .plugins.map((p) => p.name)
+              .sort()
+              .join(',')}
+          </p>
+        );
+      }
+      // PluginsProvider's own modules: every plugins/*/web/index.ts this build bundles.
+      renderApp('/chat', makeSession('USER'), null, <Probe />);
+      await waitFor(
+        () =>
+          expect(screen.getByTestId('registered')).toHaveTextContent([...names].sort().join(',')),
+        // The first import of every plugin's module compiles it.
+        { timeout: 15_000 },
+      );
+      expect(screen.queryByText(/could not be shown/i)).toBeNull();
+      const pane = screen.getByRole('tablist', { name: 'Right pane' });
+      expect(within(pane).getByRole('tab', { name: 'Behind the scenes' })).toBeInTheDocument();
+      expect(within(pane).getByRole('tab', { name: /Code snippets/ })).toBeInTheDocument();
+      expect(screen.getByRole('navigation', { name: 'History' })).toBeInTheDocument();
+    },
+  );
 
   it('shows a plugin in use: its link, its page and its chat pane', async () => {
     stubApi(['fixture']);

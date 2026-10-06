@@ -1088,6 +1088,11 @@ needs a design decision first.
   - **Behaviour:** the core already degrades for MCP and A2A.
   - **Shown:** `/api/plugins` reports `enabled` and `healthy` separately, so the nav greys the plugin out instead of
     hiding it.
+  - **As built (3.5):** `/api/plugins`' `health` (`ok`, `unavailable`, `unknown`) reaches the registry. A plugin whose
+    service is `unavailable` keeps its nav entry as a placeholder link (no href, `role="link"`, `aria-disabled="true"`,
+    muted, named "… (unavailable)"), so it is shown and not followed; `unknown` (no probe) is ordinary. Only the nav
+    is marked: every plugin that can be unavailable is a remote one, and its panes, cards and actions keep rendering
+    as the core degrades for MCP and A2A. A change shows on the next `/api/plugins` read (30 s, or on focus).
 - **Two ways to add a tool (remote or in-process).**
   - **Risk:** authors may not know which to choose.
   - **Mitigation:** the guide says to start remote, and to go in-process only for a screen or an api route.

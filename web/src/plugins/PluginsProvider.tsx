@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { apiRequest } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import type { MafWebPlugin } from './api';
 import { DomainsContext, PluginsContext, type DomainInUse } from './context';
-import { emptyRegistry, type PluginRegistry } from './registry';
+import type { PluginHealth, PluginRegistry } from './registry';
 
 /** One plugin's web module, loaded on demand. */
 export type PluginModuleLoader = () => Promise<{ default: MafWebPlugin }>;
@@ -20,7 +20,7 @@ const bundled: Record<string, PluginModuleLoader> = Object.fromEntries(
 );
 
 interface PluginList {
-  plugins: { name: string }[];
+  plugins: { name: string; health?: PluginHealth }[];
   domains?: DomainInUse[];
 }
 
@@ -43,7 +43,9 @@ export function PluginsProvider({
     queryFn: ({ signal }) => apiRequest<PluginList>(token, '/api/plugins', { signal }),
     staleTime: 30_000,
   });
-  const [registry, setRegistry] = useState<PluginRegistry>(emptyRegistry);
+  // The modules loaded, by the names in use; the registry is derived from them and the latest health, so a plugin whose
+  // health changes re-renders without being imported again.
+  const [loaded, setLoaded] = useState<readonly MafWebPlugin[]>([]);
   const names = (inUse.data?.plugins ?? []).map((p) => p.name).join(',');
 
   useEffect(() => {
@@ -51,16 +53,23 @@ export function PluginsProvider({
     const wanted = names ? names.split(',').filter((name) => name in modules) : [];
     Promise.allSettled(wanted.map((name) => modules[name]())).then((loaded) => {
       if (!current) return;
-      setRegistry({
-        plugins: loaded.flatMap((result) =>
-          result.status === 'fulfilled' ? [result.value.default] : [],
-        ),
-      });
+      setLoaded(
+        loaded.flatMap((result) => (result.status === 'fulfilled' ? [result.value.default] : [])),
+      );
     });
     return () => {
       current = false;
     };
   }, [names, modules]);
+
+  const listed = inUse.data?.plugins;
+  const registry = useMemo<PluginRegistry>(
+    () => ({
+      plugins: loaded,
+      health: Object.fromEntries((listed ?? []).map((p) => [p.name, p.health ?? 'unknown'])),
+    }),
+    [loaded, listed],
+  );
 
   // Known only once a signed-in answer is in: an anonymous one lists no domains (introduce-plugins 5h).
   const domains = token && inUse.data ? (inUse.data.domains ?? []) : undefined;

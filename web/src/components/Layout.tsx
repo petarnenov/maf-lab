@@ -3,6 +3,7 @@ import { NavLink, Outlet } from 'react-router';
 import { DevTokenPicker } from './DevTokenPicker';
 import { ThemeButton } from '../theme/ThemeButton';
 import styles from './Layout.module.css';
+import hidden from '../shared/VisuallyHidden.module.css';
 import { useStickyHeader } from './useStickyHeader';
 import { usePlugins } from '../plugins/context';
 import { contributions } from '../plugins/registry';
@@ -46,8 +47,25 @@ export function Layout() {
               {link.label}
             </NavLink>
           ))}
-          {pluginLinks.map(({ plugin, item }) =>
-            item.to ? (
+          {pluginLinks.map(({ plugin, item, health }) =>
+            // A plugin whose own service is down is shown, not hidden, and cannot be followed: a placeholder link
+            // (no href), disabled the WAI-ARIA way and muted in the page's theme.
+            health === 'unavailable' ? (
+              <a
+                key={`${plugin}:${item.to ?? item.href}`}
+                role="link"
+                aria-disabled="true"
+                className={`${styles.link} ${styles.unavailable}`}
+              >
+                {item.label}
+                {item.href && (
+                  <span className={styles.external} aria-hidden="true">
+                    ↗
+                  </span>
+                )}{' '}
+                <span className={hidden.visuallyHidden}>(unavailable)</span>
+              </a>
+            ) : item.to ? (
               <NavLink
                 key={`${plugin}:${item.to}`}
                 to={item.to}

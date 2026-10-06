@@ -93,6 +93,8 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   - the web image context at the repository root, with a `.dockerignore`.
 
   Vitest: the app with no plugins (nav = Chat, no aside) and with all.
+  "nav = Chat only" lands as the 8.1 proposals move the remaining pages; until then the no-plugin test asserts the 11
+  core links exactly, no side pane and no sidebar.
 - [x] 3.6 `docs.py`:
   - validate manifests against `plugins/plugin.schema.json` (keys, scope, environments, `progress`, `stopping`,
     `depends`);
