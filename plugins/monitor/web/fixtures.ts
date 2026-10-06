@@ -1,4 +1,4 @@
-import type { AguiFrame, TraceEvent } from '../api/types';
+import type { AguiFrame, TraceEvent } from './types';
 
 let seq = 0;
 const ev = (

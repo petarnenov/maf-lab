@@ -1,11 +1,10 @@
 import { EventType } from '@ag-ui/core';
-import { screen, waitFor, within } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
-import type { ConversationDetail, TraceEvent } from '../api/types';
-import { fixtureTrace } from '../monitor/fixtures';
-import { jsonResponse, renderWithProviders, run, sse, streamResponse } from '../test/render';
+import type { ConversationDetail } from '../api/types';
+import { jsonResponse, renderWithProviders, run, sse } from '../test/render';
 import { agentFetch } from '../test/agentFetch';
 import { ChatPage } from './ChatPage';
 
@@ -106,7 +105,6 @@ describe('ChatPage data cards', () => {
           toolCalls: [],
           sources: [],
           feedbackKinds: [],
-          traceAvailable: false,
           activities: [{ messageId: 'card-c1', activityType: 'maf-lab/holdings', content }],
         },
       ],
@@ -131,51 +129,5 @@ describe('ChatPage data cards', () => {
 
     const shown = await screen.findByTestId('data-card');
     expect(within(shown).getByText('Sell')).toBeInTheDocument();
-  });
-
-  it('hides the card when time travel goes back before it, and shows it again at its step', async () => {
-    const cardEvent: TraceEvent = {
-      seq: fixtureTrace.length + 1,
-      atMs: 5000,
-      kind: 'card',
-      title: 'Data card maf-lab/holdings',
-      data: { callId: 'c1', messageId: 'card-c1', activityType: 'maf-lab/holdings', content },
-      truncated: false,
-    };
-    const trace = [...fixtureTrace, cardEvent];
-    vi.stubGlobal(
-      'fetch',
-      agentFetch(
-        vi.fn(async (url: string) =>
-          url === '/api/chat'
-            ? streamResponse([
-                ...trace.map((e) => run.trace(e)),
-                card,
-                run.delta('Done.'),
-                run.done(),
-              ])
-            : jsonResponse({}, 404),
-        ),
-      ),
-    );
-    renderWithProviders(<ChatPage />);
-    await userEvent.type(screen.getByLabelText('Message'), 'Rebalance A-1043');
-    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
-    const turn = await screen.findByTestId('assistant-turn');
-    await within(turn).findByText('Done.');
-    expect(within(turn).getByTestId('data-card')).toBeInTheDocument();
-    // The trace arrives from the trace API (agui-protocol-only); time travel moves through it once it is there.
-    await waitFor(() =>
-      expect(screen.getByTestId('tt-step')).toHaveTextContent(
-        `step ${trace.length} / ${trace.length}`,
-      ),
-    );
-
-    screen.getByRole('region', { name: 'Behind the scenes' }).focus();
-    await userEvent.keyboard('{Home}');
-    expect(within(turn).queryByTestId('data-card')).not.toBeInTheDocument();
-
-    await userEvent.keyboard('{End}');
-    expect(within(turn).getByTestId('data-card')).toBeInTheDocument();
   });
 });

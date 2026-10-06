@@ -4,7 +4,9 @@ import type { LabelRequest, ReviewQueueItem } from '../api/types';
 import { useApi, useAuth } from '../auth/useAuth';
 import styles from '../shared/Page.module.css';
 import { formatDate } from '../shared/format';
-import { StoredTracePanel } from '../monitor/StoredTracePanel';
+import { usePlugins } from '../plugins/context';
+import { PluginBoundary } from '../plugins/PluginBoundary';
+import { contributions } from '../plugins/registry';
 import { LabelForm } from './LabelForm';
 
 const SIGNAL_LABELS: Record<string, string> = {
@@ -26,7 +28,9 @@ export function FeedbackAdminPage() {
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
-  const [traceOpen, setTraceOpen] = useState(false);
+  /** The plugin panel open for the selected turn, by plugin and id; none while the turn is just read. */
+  const [openPanel, setOpenPanel] = useState<string | null>(null);
+  const reviewPanels = contributions(usePlugins(), 'reviewPanels');
 
   const queue = useQuery({
     queryKey: ['admin', 'feedback', 'queue', session?.token],
@@ -85,7 +89,7 @@ export function FeedbackAdminPage() {
                 onClick={() => {
                   setSelectedId(item.turnId);
                   setSavedId(null);
-                  setTraceOpen(false);
+                  setOpenPanel(null);
                   label.reset();
                 }}
               >
@@ -122,21 +126,29 @@ export function FeedbackAdminPage() {
             <summary>Answer given</summary>
             <p style={{ whiteSpace: 'pre-wrap' }}>{selected.answer}</p>
           </details>
-          <button
-            type="button"
-            aria-expanded={traceOpen}
-            onClick={() => setTraceOpen((open) => !open)}
-          >
-            {traceOpen ? 'Hide trace' : 'Open trace'}
-          </button>
-          {traceOpen && (
-            <div style={{ height: '70vh', margin: '10px 0' }}>
-              <StoredTracePanel
-                turnId={selected.turnId}
-                title={`Behind the scenes — turn ${selected.turnId}`}
-              />
-            </div>
-          )}
+          {/* What the plugins in use show of a reviewed turn (the monitor's stored trace, say). */}
+          {reviewPanels.map(({ plugin, item }) => {
+            const id = `${plugin}:${item.id}`;
+            const open = openPanel === id;
+            return (
+              <div key={id}>
+                <button
+                  type="button"
+                  aria-expanded={open}
+                  onClick={() => setOpenPanel(open ? null : id)}
+                >
+                  {open ? `Hide ${item.label}` : `Open ${item.label}`}
+                </button>
+                {open && (
+                  <div style={{ height: '70vh', margin: '10px 0' }}>
+                    <PluginBoundary plugin={plugin}>
+                      {item.render({ turnId: selected.turnId })}
+                    </PluginBoundary>
+                  </div>
+                )}
+              </div>
+            );
+          })}
           <LabelForm
             key={selected.turnId}
             item={selected}

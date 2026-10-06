@@ -1,4 +1,4 @@
-import { ApiError } from '../api/client';
+import { ApiError } from '@maf/plugin-api';
 import { MonitorPanel } from './MonitorPanel';
 import { useTurnTrace } from './useTurnTrace';
 

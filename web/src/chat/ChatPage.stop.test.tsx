@@ -157,7 +157,7 @@ describe('ChatPage: Esc stops the answer in progress', () => {
     act(() => streams[0].push(run.delta('Looking')));
     await screen.findByText('Looking');
 
-    await userEvent.click(screen.getByRole('tab', { name: 'Behind the scenes' }));
+    await userEvent.click(screen.getByRole('heading', { name: 'Chat' }));
     expect(screen.getByLabelText('Message')).not.toHaveFocus();
     await userEvent.keyboard('{Escape}');
 

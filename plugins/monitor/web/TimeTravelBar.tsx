@@ -1,5 +1,5 @@
 import type { Dispatch } from 'react';
-import type { TraceEvent } from '../api/types';
+import type { TraceEvent } from './types';
 import styles from './MonitorPanel.module.css';
 import { SPEEDS, type Speed, type TimeTravelAction, type TimeTravelState } from './timeTravel';
 

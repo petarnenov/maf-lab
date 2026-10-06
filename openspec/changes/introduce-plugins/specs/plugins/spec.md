@@ -151,7 +151,8 @@ or removing a plugin without a `server/` part SHALL NOT recreate or restart them
 
 ### Requirement: The web shows only plugins in use
 The web SHALL read `GET /api/plugins` and register only the plugins in use. Registration covers routes, nav links,
-chat panes, turn actions, monitor tabs, cards and run observers. Before sign-in the route SHALL answer only with
+chat panes and sidebars, turn actions, source actions, tool labels, monitor tabs, cards, run observers and review
+panels. Before sign-in the route SHALL answer only with
 plugins whose manifest declares `public = true`, which is none in stage and prod. Each plugin SHALL render inside its own error boundary. A plugin that is in use but
 whose service is unhealthy SHALL be shown as unavailable, not hidden.
 

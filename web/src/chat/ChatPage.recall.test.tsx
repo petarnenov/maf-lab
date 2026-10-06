@@ -21,7 +21,6 @@ const detail: ConversationDetail = {
     toolCalls: [],
     sources: [],
     feedbackKinds: [],
-    traceAvailable: false,
   })),
 };
 

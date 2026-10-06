@@ -14,16 +14,13 @@ import {
   type ToolCallStartEvent,
 } from '@ag-ui/core';
 import type {
-  AguiFrame,
   DataCard,
   FocusAccount,
   FeedbackKind,
   HistoryTurn,
   SourceRef,
   ConfirmationRequiredData,
-  TraceEvent,
 } from '../api/types';
-import { initialTraceState, traceReducer, type TraceState } from '../monitor/traceReducer';
 
 export interface ToolCallView {
   callId: string;
@@ -75,8 +72,6 @@ export interface AssistantTurn {
   stopped?: boolean;
   /** Which of the three faces this error wears. */
   errorKind?: FailureKind;
-  /** Restored turns: false once the stored trace has passed its retention period. */
-  traceAvailable?: boolean;
   /** Restored turns: feedback the user already sent for this turn. */
   feedbackKinds?: FeedbackKind[];
   /** True for turns loaded from conversation history rather than streamed in this session. */
@@ -92,8 +87,6 @@ export interface ChatState {
   conversationId?: string;
   turns: Turn[];
   streaming: boolean;
-  /** Behind-the-scenes trace events, keyed by assistant turn (see traceReducer). */
-  traces: TraceState;
   /**
    * The account in focus (add-focus-state): as the server last said, or as the user just chose. It is sent with the
    * next message, and the server's snapshot for that run replaces it.
@@ -120,10 +113,6 @@ export type ChatAction =
   | { type: 'send'; userTurnId: string; assistantTurnId: string; text: string }
   /** One of the run's own events, exactly as the protocol defines it (agui-protocol-only). */
   | { type: 'event'; event: BaseEvent }
-  /** One event of the run as it crossed the wire, for the monitor's event log. */
-  | { type: 'frame'; frame: AguiFrame }
-  /** The run's trace as written so far, read from the trace API while the run is live. */
-  | { type: 'live_trace'; turnKey: string; events: TraceEvent[] }
   | { type: 'stream_error'; message: string; kind?: FailureKind }
   /** The person asked for the run in progress to stop; only the run's own terminal event ends it. */
   | { type: 'stop_requested' }
@@ -149,7 +138,6 @@ export type ChatAction =
 export const initialChatState: ChatState = {
   turns: [],
   streaming: false,
-  traces: initialTraceState,
   focus: null,
 };
 
@@ -177,29 +165,6 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case 'event':
       return applyEvent(state, action.event);
 
-    // A frame belongs to the turn whose run wrote it; the terminal frame is recorded before the turn closes.
-    case 'frame': {
-      const active = activeTurn(state);
-      if (!active) return state;
-      return {
-        ...state,
-        traces: traceReducer(state.traces, {
-          type: 'appendFrame',
-          key: active.id,
-          frame: action.frame,
-        }),
-      };
-    }
-
-    case 'live_trace':
-      return {
-        ...state,
-        traces: action.events.reduce(
-          (traces, event) => traceReducer(traces, { type: 'append', key: action.turnKey, event }),
-          state.traces,
-        ),
-      };
-
     case 'stream_error':
       return failed(state, action.message, action.kind ?? 'unexpected');
 
@@ -213,7 +178,6 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return {
         conversationId: action.conversationId,
         streaming: false,
-        traces: initialTraceState,
         turns: action.turns.flatMap((t) => hydrateTurn(t)),
         focus: action.focus ?? null,
       };
@@ -313,12 +277,11 @@ export function hydrateTurn(turn: HistoryTurn): Turn[] {
       id: `ha-${turn.turnId}`,
       role: 'assistant',
       text: turn.answer,
-      // A restored turn's reasoning lives in its stored trace, not in the conversation history.
-      reasoning: '',
+      reasoning: turn.reasoning ?? '',
+      reasoningMs: turn.reasoningMs ?? undefined,
       turnId: turn.turnId,
       status: 'done',
       restored: true,
-      traceAvailable: turn.traceAvailable,
       feedbackKinds: turn.feedbackKinds,
       sources: turn.sources.map((s) => ({
         docId: s.docId,
@@ -502,11 +465,7 @@ function finished(state: ChatState, event: RunFinishedEvent): ChatState {
   const confirmation = interrupt ? confirmationOf(interrupt) : undefined;
   const active = activeTurn(state);
   const turnId = active && !active.answer ? event.runId || active.runId : undefined;
-  const traces =
-    active && turnId
-      ? traceReducer(state.traces, { type: 'attach', key: active.id, turnId })
-      : state.traces;
-  const next = updateActiveTurn({ ...state, traces }, (turn) => ({
+  const next = updateActiveTurn(state, (turn) => ({
     ...turn,
     ...stopThinking(turn),
     turnId,

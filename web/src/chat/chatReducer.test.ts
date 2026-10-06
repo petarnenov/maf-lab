@@ -360,10 +360,11 @@ describe('hydrate', () => {
     ],
     sources: [{ docId: 'd1', sectionPath: 'Fees', sourcePath: 'shared/fees.md', snippet: 's' }],
     feedbackKinds: ['wrong_document'],
-    traceAvailable: true,
+    reasoning: 'Fees first.',
+    reasoningMs: 1200,
   };
 
-  it('restores finished turns with tools, sources, feedback and trace availability', () => {
+  it('restores finished turns with tools, sources, feedback and reasoning', () => {
     const state = chatReducer(send(), {
       type: 'hydrate',
       conversationId: 'conv-9',
@@ -379,7 +380,8 @@ describe('hydrate', () => {
       text: stored.answer,
       status: 'done',
       restored: true,
-      traceAvailable: true,
+      reasoning: 'Fees first.',
+      reasoningMs: 1200,
       feedbackKinds: ['wrong_document'],
       sources: stored.sources,
     });
@@ -410,7 +412,8 @@ describe('hydrate', () => {
       ],
       sources: [{ docId: 'd1', sectionPath: 'Fees', sourcePath: 'shared/fees.md', snippet: '' }],
       feedbackKinds: [],
-      traceAvailable: false,
+      reasoning: null,
+      reasoningMs: null,
     };
     const turn = assistant(
       chatReducer(initialChatState, { type: 'hydrate', conversationId: 'c', turns: [old] }),
@@ -422,7 +425,8 @@ describe('hydrate', () => {
       status: 'finished',
     });
     expect(turn.sources[0].snippet).toBe('');
-    expect(turn.traceAvailable).toBe(false);
+    expect(turn.reasoning).toBe('');
+    expect(turn.reasoningMs).toBeUndefined();
   });
 });
 
@@ -512,7 +516,6 @@ describe('a write waiting for a person', () => {
           toolCalls: [],
           sources: [],
           feedbackKinds: [],
-          traceAvailable: true,
         },
       ],
     });
@@ -594,7 +597,6 @@ describe('a write waiting for a person', () => {
       toolCalls: [],
       sources: [],
       feedbackKinds: [],
-      traceAvailable: false,
       activities,
     });
     const withCard = hydrateTurn(

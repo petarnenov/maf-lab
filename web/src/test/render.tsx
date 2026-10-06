@@ -133,4 +133,8 @@ export const run = {
     sse(EventType.RUN_FINISHED, { threadId, runId: turnId, outcome: { type: 'success' } }),
 
   error: (message: string) => sse(EventType.RUN_ERROR, { message }),
+
+  /** A data card (AG-UI `ACTIVITY_SNAPSHOT`). */
+  card: (messageId: string, activityType: string, content: unknown) =>
+    sse(EventType.ACTIVITY_SNAPSHOT, { messageId, activityType, content }),
 };

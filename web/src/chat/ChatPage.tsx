@@ -1,5 +1,5 @@
-import { useQueryClient } from '@tanstack/react-query';
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -12,11 +12,6 @@ import { ApiError } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { useConversation, useUserKey } from '../history/historyApi';
 import { HistorySidebar } from '../history/HistorySidebar';
-import { MonitorPanel } from '../monitor/MonitorPanel';
-import { reasoningOf, reconstructTurn, type ReconstructedTurn } from '../monitor/reconstructTurn';
-import { useTimeTravel } from '../monitor/useTimeTravel';
-import { framesFor, traceFor } from '../monitor/traceReducer';
-import { useTurnTrace } from '../monitor/useTurnTrace';
 import type { AssistantTurn, ChatState } from './chatReducer';
 import styles from './ChatPage.module.css';
 import { idle, step, type RecallState } from './promptHistory';
@@ -32,23 +27,18 @@ import { stepLabel } from './runStep';
 import { Progress } from '../components/Progress';
 import { StopHint } from '../shared/StopHint';
 import { useEscToStop } from '../shared/useEscToStop';
-import type { ChatContext, ChatTurnView } from '../plugins/api';
+import type { ChatContext, ChatTurnView, TurnViewOverride } from '../plugins/api';
 import { useDomains, usePlugins } from '../plugins/context';
 import { PluginBoundary } from '../plugins/PluginBoundary';
 import { contributions } from '../plugins/registry';
 
-export const TRACE_EXPIRED = 'Trace expired (kept 7 days).';
-
-/** The right pane's core view; plugins add theirs (the code plugin's Code snippets). The monitor keeps its state meanwhile. */
-const PANE_TABS = [{ id: 'scenes', label: 'Behind the scenes' }] as const;
-/** A core tab, or a plugin's pane by its id (introduce-plugins decision 8). */
-type PaneTab = (typeof PANE_TABS)[number]['id'] | `plugin:${string}`;
+/** A plugin's pane, by the plugin and the pane's own id (introduce-plugins decision 8). */
+type PaneTab = `plugin:${string}:${string}`;
 
 export function ChatPage() {
   const { session } = useAuth();
   const { conversationId: routeId } = useParams();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const userKey = useUserKey();
   const pluginPanes = contributions(usePlugins(), 'chatPanes');
   // With no domain in use the assistant answers nothing (introduce-plugins 5h): say so before anyone types.
@@ -58,23 +48,36 @@ export function ChatPage() {
   const { state, send, cancel, reset, hydrate, answer, loadPending, toggleReasoning, setFocus } =
     useChatStream();
   const [draft, setDraft] = useState('');
-  /** Assistant turn the monitor shows; null = follow the latest turn. */
+  /** Assistant turn the side pane shows; null = follow the latest turn. */
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  /** The monitor is a panel a person opens and closes; it follows the latest turn while it is open. */
-  const [monitorOpen, setMonitorOpen] = useState(true);
-  /** Which view the right pane shows: the turn's trace, or the code that answers its question. */
-  const [paneTab, setPaneTab] = useState<PaneTab>('scenes');
+  /** The side pane is a panel a person opens and closes; it follows the latest turn while it is open. */
+  const [paneOpen, setPaneOpen] = useState(true);
+  /** Which plugin pane the side pane shows; the first one until a person or a plugin picks another. */
+  const [paneTab, setPaneTab] = useState<PaneTab | null>(null);
+  const paneIds = pluginPanes.map(({ plugin, item }) => `plugin:${plugin}:${item.id}` as const);
+  const activePane = paneTab && paneIds.includes(paneTab) ? paneTab : paneIds[0];
+  const activePaneLabel = pluginPanes[paneIds.indexOf(activePane)]?.item.label;
+  // With no plugin pane in use there is no side pane at all.
+  const sidePane = paneOpen && paneIds.length > 0;
   /** The value each pane was last opened with (a source to show, say), by pane id. */
   const [paneValues, setPaneValues] = useState<Record<string, unknown>>({});
-  /** Opens a pane by id — a core one or a plugin's — with an optional value for it. */
+  /** Opens a plugin's pane by its id, with an optional value for it. */
   const openPane = (id: string, value?: unknown) => {
-    const core = PANE_TABS.find((t) => t.id === id);
     const plugin = pluginPanes.find(({ item }) => item.id === id);
-    if (core) setPaneTab(core.id);
-    else if (plugin) setPaneTab(`plugin:${plugin.plugin}:${plugin.item.id}`);
+    if (!plugin) return;
+    setPaneTab(`plugin:${plugin.plugin}:${plugin.item.id}`);
     if (value !== undefined) setPaneValues((values) => ({ ...values, [id]: value }));
-    setMonitorOpen(true);
+    setPaneOpen(true);
   };
+  /** Turns a pane shows as they were at an earlier step (the monitor's time travel), by turn key. */
+  const [turnViews, setTurnViews] = useState<Record<string, TurnViewOverride>>({});
+  const setTurnView = useCallback((turnKey: string, view: TurnViewOverride | null) => {
+    setTurnViews((views) => {
+      if ((views[turnKey] ?? null) === view) return views;
+      if (view) return { ...views, [turnKey]: view };
+      return Object.fromEntries(Object.entries(views).filter(([key]) => key !== turnKey));
+    });
+  }, []);
   const [historyCollapsed, setHistoryCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
@@ -184,13 +187,6 @@ export function ChatPage() {
 
   const assistantTurns = state.turns.filter((t): t is AssistantTurn => t.role === 'assistant');
   const latest = assistantTurns[assistantTurns.length - 1];
-
-  // A finished live turn changes the history list (new conversation, last activity, turn count).
-  const latestFinishedTurnId =
-    latest && !latest.restored && latest.status !== 'streaming' ? latest.turnId : undefined;
-  useEffect(() => {
-    if (latestFinishedTurnId) void queryClient.invalidateQueries({ queryKey: ['conversations'] });
-  }, [latestFinishedTurnId, queryClient]);
   const selected = assistantTurns.find((t) => t.id === selectedKey) ?? latest;
   const selectedIndex = selected ? state.turns.indexOf(selected) : -1;
   const selectedQuestion =
@@ -203,44 +199,17 @@ export function ChatPage() {
     question,
     sources: turn.sources,
     restored: turn.restored === true,
+    turnId: turn.turnId,
+    streaming: turn.status === 'streaming',
+    text: turn.text,
   });
   /** What a plugin's pane is told about the chat: the selected turn, and how it opens a pane. */
   const chatContext: ChatContext = {
     conversationId: state.conversationId ?? routeId,
     turn: selected ? turnView(selected, selectedQuestion) : undefined,
     openPane,
+    setTurnView,
   };
-  const liveEvents = selected ? traceFor(state.traces, selected.id) : [];
-  const liveFrames = selected ? framesFor(state.traces, selected.id) : [];
-  const isStreaming = selected?.status === 'streaming';
-  const traceExpired = selected?.traceAvailable === false;
-  // Finished turns load their stored trace; live events show instantly meanwhile.
-  const stored = useTurnTrace(selected?.turnId, {
-    enabled: !isStreaming && !traceExpired,
-    placeholder: liveEvents,
-    placeholderFrames: liveFrames,
-  });
-  const events =
-    isStreaming || !selected?.turnId || traceExpired
-      ? liveEvents
-      : (stored.data?.events ?? liveEvents);
-  // The client's own copy is what actually arrived, malformed frames included, so it wins while this session has it.
-  const frames = liveFrames.length > 0 ? liveFrames : (stored.data?.aguiFrames ?? []);
-  // "None" means "not recorded" only once the server has answered and said so.
-  const framesRecorded =
-    liveFrames.length > 0 || isStreaming || !stored.isFetched || stored.data?.aguiFrames != null;
-  // A turn that streamed in this session carries its own reasoning; a restored one reads it from its trace.
-  const storedReasoning = reasoningOf(events);
-  // Shared with the monitor: rewinding the trace also rewinds the selected answer in the chat.
-  const timeTravel = useTimeTravel(events, selected?.id);
-  const rewound: ReconstructedTurn | null =
-    // Only a cursor the user moved rewinds the chat; one that follows the newest step never does.
-    selected && timeTravel.state.cursor !== 'live' && timeTravel.cursor < events.length
-      ? reconstructTurn(events, timeTravel.cursor, {
-          text: selected.text,
-          sources: selected.sources,
-        })
-      : null;
 
   if (!session) {
     return <p className={styles.empty}>Pick a dev persona in the header to start chatting.</p>;
@@ -279,7 +248,7 @@ export function ChatPage() {
   return (
     <div
       className={`${styles.page} ${historyCollapsed ? styles.historyCollapsed : ''} ${
-        monitorOpen ? '' : styles.monitorClosed
+        sidePane ? '' : styles.monitorClosed
       }`}
     >
       <div className={`${styles.historyPane} ${drawerOpen ? styles.drawerOpen : ''}`}>
@@ -358,23 +327,24 @@ export function ChatPage() {
                       state.turns[index - 1]?.role === 'user' ? state.turns[index - 1].text : ''
                     }
                     conversationId={state.conversationId}
-                    selected={monitorOpen && turn.id === selected?.id}
-                    rewound={monitorOpen && turn.id === selected?.id ? rewound : null}
-                    storedReasoning={turn.id === selected?.id ? storedReasoning : undefined}
+                    selected={sidePane && turn.id === selected?.id}
+                    paneLabel={activePaneLabel}
+                    override={
+                      sidePane && turn.id === selected?.id ? (turnViews[turn.id] ?? null) : null
+                    }
                     onToggleReasoning={(open) => toggleReasoning(turn.id, open)}
-                    onReturnToNow={() => timeTravel.dispatch({ type: 'goLive' })}
                     onShow={() => {
                       setSelectedKey(turn.id === latest?.id ? null : turn.id);
-                      setMonitorOpen(true);
+                      setPaneOpen(true);
                     }}
                     onToggle={() => {
-                      // The button on the turn already showing closes the panel; any other turn opens it there.
-                      if (monitorOpen && turn.id === selected?.id) {
-                        setMonitorOpen(false);
+                      // The button on the turn already showing closes the pane; any other turn opens it there.
+                      if (sidePane && turn.id === selected?.id) {
+                        setPaneOpen(false);
                         return;
                       }
                       setSelectedKey(turn.id === latest?.id ? null : turn.id);
-                      setMonitorOpen(true);
+                      setPaneOpen(true);
                     }}
                     onAnswer={answer}
                     sourceContext={{
@@ -441,23 +411,9 @@ export function ChatPage() {
         </form>
       </div>
 
-      {monitorOpen && (
+      {sidePane && (
         <aside className={styles.monitorPane}>
           <div className={styles.paneTabs} role="tablist" aria-label="Right pane">
-            {PANE_TABS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                role="tab"
-                id={`pane-tab-${t.id}`}
-                aria-selected={paneTab === t.id}
-                aria-controls={`pane-${t.id}`}
-                className={`${styles.paneTab} ${paneTab === t.id ? styles.paneTabActive : ''}`}
-                onClick={() => setPaneTab(t.id)}
-              >
-                {t.label}
-              </button>
-            ))}
             {pluginPanes.map(({ plugin, item }) => {
               const id = `plugin:${plugin}:${item.id}` as const;
               const badge = item.badge?.(chatContext);
@@ -467,9 +423,9 @@ export function ChatPage() {
                   type="button"
                   role="tab"
                   id={`pane-tab-${id}`}
-                  aria-selected={paneTab === id}
+                  aria-selected={activePane === id}
                   aria-controls={`pane-${id}`}
-                  className={`${styles.paneTab} ${paneTab === id ? styles.paneTabActive : ''}`}
+                  className={`${styles.paneTab} ${activePane === id ? styles.paneTabActive : ''}`}
                   onClick={() => setPaneTab(id)}
                 >
                   {item.label}
@@ -491,41 +447,18 @@ export function ChatPage() {
                 role="tabpanel"
                 id={`pane-${id}`}
                 aria-labelledby={`pane-tab-${id}`}
-                hidden={paneTab !== id}
+                hidden={activePane !== id}
               >
                 {/* Mounted while hidden, so a pane keeps its state and can open itself (introduce-plugins 5.2). */}
                 <PluginBoundary plugin={plugin}>
                   {item.render({
                     ...chatContext,
-                    pane: { active: paneTab === id, value: paneValues[item.id] },
+                    pane: { active: activePane === id, value: paneValues[item.id] },
                   })}
                 </PluginBoundary>
               </div>
             );
           })}
-          <div
-            className={styles.paneBody}
-            role="tabpanel"
-            id="pane-scenes"
-            aria-labelledby="pane-tab-scenes"
-            hidden={paneTab !== 'scenes'}
-          >
-            <MonitorPanel
-              events={events}
-              frames={frames}
-              framesRecorded={framesRecorded}
-              live={isStreaming}
-              timeTravel={timeTravel}
-              loading={!traceExpired && stored.isFetching && events.length === 0}
-              error={
-                traceExpired
-                  ? TRACE_EXPIRED
-                  : stored.isError && events.length === 0
-                    ? 'Could not load the trace for this turn.'
-                    : null
-              }
-            />
-          </div>
         </aside>
       )}
     </div>
@@ -536,10 +469,9 @@ function AssistantBubble({
   turn,
   conversationId,
   selected,
-  storedReasoning,
+  paneLabel,
   onToggleReasoning,
-  rewound,
-  onReturnToNow,
+  override,
   onShow,
   onToggle,
   onAnswer,
@@ -553,15 +485,14 @@ function AssistantBubble({
   question: string;
   conversationId?: string;
   selected: boolean;
-  /** The reasoning out of this turn's stored trace, for a turn that did not stream in this session. */
-  storedReasoning?: { text: string; ms?: number };
+  /** The side pane's label, for the button that opens it on this turn; none when no plugin has a pane. */
+  paneLabel?: string;
   onToggleReasoning: (open: boolean) => void;
-  /** Set when time travel shows this turn at an earlier step. */
-  rewound: ReconstructedTurn | null;
-  onReturnToNow: () => void;
-  /** Clicking the bubble shows this turn in the monitor; it never closes it. */
+  /** Set when a pane shows this turn as it was at an earlier step; the bubble is read-only meanwhile. */
+  override: TurnViewOverride | null;
+  /** Clicking the bubble shows this turn in the side pane; it never closes it. */
   onShow: () => void;
-  /** The button opens the monitor on this turn, or closes it when this turn is the one showing. */
+  /** The button opens the side pane on this turn, or closes it when this turn is the one showing. */
   onToggle: () => void;
   onAnswer: (adjustmentId: string, approve: boolean) => void;
   /** What a source's action is told: this turn, and how to open a pane beside it (introduce-plugins 5.2). */
@@ -570,16 +501,14 @@ function AssistantBubble({
   focus: string | null;
   onFocus: (accountId: string) => void;
 }) {
+  const rewound = override;
   const toolCalls = rewound ? rewound.toolCalls : turn.toolCalls;
   const text = rewound ? rewound.text : turn.text;
   const sources = rewound ? rewound.sources : turn.sources;
   const cards = rewound ? rewound.cards : (turn.cards ?? []);
-  // What the turn itself streamed wins; a restored turn has only what its trace kept.
   const reasoning = rewound
-    ? { text: rewound.reasoning, ms: rewound.reasoningMs }
-    : turn.reasoning
-      ? { text: turn.reasoning, ms: turn.reasoningMs }
-      : (storedReasoning ?? { text: '' });
+    ? (rewound.reasoning ?? { text: '' })
+    : { text: turn.reasoning, ms: turn.reasoningMs };
   return (
     <div
       className={`${styles.bubble} ${styles.assistant} ${selected ? styles.selected : ''}`}
@@ -587,28 +516,28 @@ function AssistantBubble({
       data-selected={selected}
       onClick={onShow}
     >
-      <button
-        type="button"
-        className={styles.traceButton}
-        aria-pressed={selected}
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggle();
-        }}
-      >
-        {selected ? 'Showing behind the scenes' : 'Behind the scenes'}
-      </button>
+      {paneLabel && (
+        <button
+          type="button"
+          className={styles.traceButton}
+          aria-pressed={selected}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle();
+          }}
+        >
+          {selected ? `Showing ${paneLabel.toLowerCase()}` : paneLabel}
+        </button>
+      )}
       {rewound && (
         <div className={styles.rewindBanner} role="status" data-testid="rewind-banner">
-          <span>⏪ Viewing {rewound.stepLabel}</span>
-          {!rewound.textRecorded && (
-            <span className={styles.rewindNote}>answer text not recorded for this turn</span>
-          )}
+          <span>⏪ Viewing {rewound.label}</span>
+          {rewound.note && <span className={styles.rewindNote}>{rewound.note}</span>}
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onReturnToNow();
+              rewound.onExit();
             }}
           >
             Return to now

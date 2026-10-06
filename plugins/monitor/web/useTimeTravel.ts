@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useState, type Dispatch } from 'react';
-import type { TraceEvent } from '../api/types';
+import type { TraceEvent } from './types';
 import {
   effectiveCursor,
   initialTimeTravel,

@@ -1,8 +1,9 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { ReviewQueueItem } from '../api/types';
-import { fixtureTrace } from '../monitor/fixtures';
+import { definePlugin } from '../plugins/api';
+import { PluginsContext } from '../plugins/context';
 import { jsonResponse, makeSession, renderWithProviders } from '../test/render';
 import { FeedbackAdminPage } from './FeedbackAdminPage';
 
@@ -115,29 +116,38 @@ describe('LabelForm retrieval without returned chunks', () => {
     expect(submit).toBeEnabled();
   });
 
-  it('opens the stored trace of the selected turn', async () => {
-    const fetchMock = vi.fn(async (url: string) => {
-      if (url === '/api/admin/feedback/queue') return jsonResponse([item]);
-      if (url === '/api/turns/turn-42/trace') {
-        return jsonResponse({
-          turnId: 'turn-42',
-          conversationId: 'conv-1',
-          createdAt: '',
-          events: fixtureTrace,
-        });
-      }
-      return jsonResponse({}, 404);
+  it("opens a plugin's review panel for the selected turn, and shows none without a plugin", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url === '/api/admin/feedback/queue' ? jsonResponse([item]) : jsonResponse({}, 404),
+      ),
+    );
+    const notes = definePlugin({
+      name: 'notes',
+      reviewPanels: [
+        { id: 'notes', label: 'notes', render: ({ turnId }) => <p>Notes on {turnId}</p> },
+      ],
     });
-    vi.stubGlobal('fetch', fetchMock);
 
-    renderWithProviders(<FeedbackAdminPage />, { session: makeSession('TENANT_ADMIN') });
+    const { unmount } = renderWithProviders(<FeedbackAdminPage />, {
+      session: makeSession('TENANT_ADMIN'),
+    });
     await userEvent.click(await screen.findByText(item.question));
-    await userEvent.click(screen.getByRole('button', { name: 'Open trace' }));
+    expect(screen.queryByRole('button', { name: /^Open / })).not.toBeInTheDocument();
+    unmount();
 
-    const panel = await screen.findByRole('region', { name: 'Behind the scenes — turn turn-42' });
-    expect(await within(panel).findByText(`${fixtureTrace.length} events`)).toBeInTheDocument();
-    expect(fetchMock.mock.calls.map((c) => c[0])).toContain('/api/turns/turn-42/trace');
-    expect(screen.getByRole('button', { name: 'Hide trace' })).toHaveAttribute(
+    renderWithProviders(
+      <PluginsContext.Provider value={{ plugins: [notes] }}>
+        <FeedbackAdminPage />
+      </PluginsContext.Provider>,
+      { session: makeSession('TENANT_ADMIN') },
+    );
+    await userEvent.click(await screen.findByText(item.question));
+    await userEvent.click(screen.getByRole('button', { name: 'Open notes' }));
+
+    expect(screen.getByText('Notes on turn-42')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Hide notes' })).toHaveAttribute(
       'aria-expanded',
       'true',
     );

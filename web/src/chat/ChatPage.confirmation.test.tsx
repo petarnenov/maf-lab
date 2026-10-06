@@ -87,7 +87,6 @@ describe('ChatPage reopened with a write waiting', () => {
         toolCalls: [],
         sources: [],
         feedbackKinds: [],
-        traceAvailable: true,
       },
     ],
   };
@@ -229,86 +228,5 @@ describe('ChatPage with a write waiting', () => {
     const [first, second] = bodies.slice(1).map((b) => JSON.parse(b).resume[0].payload);
     expect(second).toEqual(first);
     expect(second).toEqual({ approve: true, idempotencyKey: 'adj_1:approve' });
-  });
-
-  it('monitor panel stays visible and receives streamed tool events while the answer runs', async () => {
-    const resume = controlledStreamResponse();
-    let chatCalls = 0;
-    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-      if (url.startsWith('/api/conversations')) return jsonResponse(emptyHistory);
-      if (url.startsWith('/api/turns')) return jsonResponse({ events: [] });
-      chatCalls += 1;
-      if (chatCalls === 1) {
-        return streamResponse([run.started(), ...run.text('I have put it to you.'), paused()]);
-      }
-      expect(JSON.parse(init!.body as string).resume).toEqual([
-        {
-          interruptId: 'adj_1',
-          status: 'resolved',
-          payload: { approve: true, idempotencyKey: 'adj_1:approve' },
-        },
-      ]);
-      return resume.response;
-    });
-    vi.stubGlobal('fetch', agentFetch(fetchMock));
-
-    renderWithProviders(<ChatPage />);
-    await userEvent.type(screen.getByLabelText('Message'), 'credit 200 off A-1042');
-    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
-    await screen.findByTestId('confirmation-card');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Approve' }));
-
-    const monitor = await screen.findByRole('region', { name: 'Behind the scenes' });
-    expect(within(monitor).getByText(/live/)).toBeInTheDocument();
-
-    resume.push(
-      run.started(),
-      run.trace({
-        seq: 1,
-        atMs: 5,
-        kind: 'tool.call',
-        title: 'search_documents',
-        durationMs: null,
-        data: {
-          callId: 'tc1',
-          tool: 'search_documents',
-          arguments: { accountId: 'A-1042' },
-        },
-        truncated: false,
-      }),
-      ...run.toolCall('tc1', 'search_documents'),
-    );
-
-    expect(await screen.findByTestId('tool-call-card')).toBeInTheDocument();
-    expect(await within(monitor).findByTestId('monitor-stats')).toHaveTextContent('1 tool calls');
-    expect(within(monitor).getByText(/live/)).toBeInTheDocument();
-
-    resume.push(
-      run.toolResult('tc1', 'Found 2 docs', 'search_documents', 2),
-      ...run.text('Applied. The fee on A-1042 is now adjusted.'),
-      run.done('conv-1', 't2'),
-    );
-    resume.close();
-
-    expect(await screen.findByText(/Applied\. The fee on A-1042/)).toBeInTheDocument();
-
-    // The answer is a run of its own, and its frames reach the monitor like any other run's — the protocol's own events
-    // only: its trace is read from the trace API, not carried on the stream (agui-protocol-only).
-    await userEvent.click(within(monitor).getByRole('tab', { name: 'AG-UI' }));
-    const frames = within(
-      await within(monitor).findByRole('list', { name: 'AG-UI frames' }),
-    ).getAllByRole('listitem');
-    expect(frames.map((f) => f.getAttribute('data-type'))).toEqual([
-      'RUN_STARTED',
-      'TOOL_CALL_START',
-      'TOOL_CALL_ARGS',
-      'TOOL_CALL_END',
-      'TOOL_CALL_RESULT',
-      'TEXT_MESSAGE_START',
-      'TEXT_MESSAGE_CONTENT',
-      'TEXT_MESSAGE_END',
-      'RUN_FINISHED',
-    ]);
   });
 });

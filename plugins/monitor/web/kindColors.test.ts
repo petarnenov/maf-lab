@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { domainColor } from './domainData';
 import { kindColor } from './kindColors';
 
-// The tokens the theme defines; a colour helper may only hand these out, so every mark follows light and dark.
-const css = readFileSync(resolve(import.meta.dirname, '../index.css'), 'utf8');
+// The tokens the core's theme defines; a colour helper may only hand these out, so every mark follows light and dark.
+const css = readFileSync(resolve(import.meta.dirname, '../../../web/src/index.css'), 'utf8');
 const defined = new Set([...css.matchAll(/(--kind-[a-z]+):\s*light-dark\(/g)].map((m) => m[1]));
 
 const token = (value: string) => /^var\((--kind-[a-z]+)\)$/.exec(value)?.[1];

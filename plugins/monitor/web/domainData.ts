@@ -1,4 +1,4 @@
-import type { TraceEvent } from '../api/types';
+import type { TraceEvent } from './types';
 import { byKind, dataOf, firstOf } from './traceData';
 
 // Typed views over the domain-boundary events (add-portfolio-domain): Jev's verdict, the tools' domains, the crossings.

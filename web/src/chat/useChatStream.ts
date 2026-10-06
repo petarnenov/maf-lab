@@ -1,12 +1,16 @@
 import type { AbstractAgent } from '@ag-ui/client';
 import type { BaseEvent } from '@ag-ui/core';
 import { useCopilotKit } from '@copilotkit/react-core/v2/context';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { authHeaders } from '../api/client';
-import type { ConversationDetail, FocusAccount, PendingProposal, TraceEvent } from '../api/types';
+import type { ConversationDetail, FocusAccount, PendingProposal } from '../api/types';
 import { agentNamed } from '../agents/agents';
 import { useAuth } from '../auth/useAuth';
-import { chatReducer, initialChatState, type ChatAction } from './chatReducer';
+import type { PluginRunObserver } from '../plugins/api';
+import { usePlugins } from '../plugins/context';
+import { contributions } from '../plugins/registry';
+import { chatReducer, initialChatState } from './chatReducer';
 import { expired, faceOf, type FailureKind } from './chatReducer';
 
 let counter = 0;
@@ -16,21 +20,25 @@ const nextId = (prefix: string) =>
 /** The chat agent, as CopilotKit's runtime names it (agui-protocol-only). */
 export const CHAT_AGENT = 'chat';
 
-/** How often the monitor reads a live run's trace. */
-const TRACE_POLL_MS = 500;
-
 /** A new conversation's id: AG-UI clients name their own threads, and the server claims it for this user. */
 const newThreadId = () => `c_${crypto.randomUUID().replaceAll('-', '')}`;
 
 /**
  * The chat, as the user sees it, fed by the chat agent through CopilotKit (agui-protocol-only): every event the run
- * carries goes to the screen exactly as the protocol defines it, and the run's trace is read from the trace API.
+ * carries goes to the screen exactly as the protocol defines it, and to the run observers of the plugins in use.
  */
 export function useChatStream() {
   const { session } = useAuth();
   const token = session?.token ?? null;
   const { copilotkit } = useCopilotKit();
   const [state, dispatch] = useReducer(chatReducer, initialChatState);
+  const queryClient = useQueryClient();
+  const plugins = usePlugins();
+  // Read when a run starts, so a run is observed by the plugins in use as it began.
+  const observersRef = useRef<PluginRunObserver[]>([]);
+  useEffect(() => {
+    observersRef.current = contributions(plugins, 'runObservers').map(({ item }) => item);
+  }, [plugins]);
   const agentRef = useRef<AbstractAgent | null>(null);
   const conversationRef = useRef<string | undefined>(undefined);
   const focusRef = useRef<FocusAccount | null>(null);
@@ -95,9 +103,10 @@ export function useChatStream() {
       agentRef.current = agent;
       const runId = nextId('r');
       prepare(agent);
-      const trace = liveTrace(runId, assistantTurnId, token, dispatch);
-      let seq = 0;
-      const startedAt = performance.now();
+      const observers = observersRef.current;
+      notify(observers, (o) =>
+        o.onRunStart?.({ runId, turnKey: assistantTurnId, conversationId: agent.threadId }),
+      );
       let ended = false;
       let stoppedRun = false;
       let failure: [string, FailureKind] | null = null;
@@ -105,8 +114,10 @@ export function useChatStream() {
         onEvent: ({ event }: { event: BaseEvent }) => {
           // A run another one replaced may still be winding down; what it says now belongs to no turn on screen.
           if (agentRef.current !== agent) return;
-          dispatch({ type: 'frame', frame: frameOf(++seq, performance.now() - startedAt, event) });
           dispatch({ type: 'event', event });
+          notify(observers, (o) =>
+            o.onEvent?.(runId, event as BaseEvent & Record<string, unknown>),
+          );
           observe?.(event);
           if (event.type === 'RUN_FINISHED' || event.type === 'RUN_ERROR') {
             ended = true;
@@ -123,10 +134,14 @@ export function useChatStream() {
         failure ??= failureOf(error);
       } finally {
         subscription.unsubscribe();
-        // The rest of the trace is read once more without holding up the turn.
-        void trace.stop();
       }
-      if (agentRef.current !== agent) return 'stopped';
+      const replaced = agentRef.current !== agent;
+      const outcome = replaced || stoppedRun ? 'stopped' : ended ? 'finished' : 'failed';
+      notify(observers, (o) => o.onRunEnd?.(runId, outcome));
+      // A finished run changes the history list (new conversation, last activity, turn count).
+      if (outcome === 'finished')
+        void queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      if (replaced) return 'stopped';
       agentRef.current = null;
       if (stoppedRun) return 'stopped';
       if (!ended) {
@@ -138,7 +153,7 @@ export function useChatStream() {
       }
       return ended;
     },
-    [copilotkit, token, stop],
+    [copilotkit, queryClient, stop],
   );
 
   const send = useCallback(
@@ -306,57 +321,13 @@ function statusOf(error: unknown): number | undefined {
   return undefined;
 }
 
-/** One event of a run as the monitor's event log shows it: what crossed the wire, in order, with its size. */
-function frameOf(seq: number, atMs: number, event: BaseEvent) {
-  const payload = JSON.parse(JSON.stringify(event)) as Record<string, unknown>;
-  return {
-    seq,
-    atMs: Math.round(atMs),
-    type: event.type,
-    bytes: JSON.stringify(event).length,
-    payload,
-  };
-}
-
-/**
- * Follows a run's trace while it runs: the trace API, polled, from wherever the run is (agui-protocol-only — the
- * trace no longer travels on the run's stream). Stopping reads once more, so the end of the trace is not lost.
- */
-function liveTrace(
-  runId: string,
-  turnKey: string,
-  token: string | null,
-  dispatch: (action: ChatAction) => void,
-) {
-  let after = 0;
-  let stopped = false;
-  let reading: Promise<void> = Promise.resolve();
-  const readOnce = async () => {
+/** Tells each plugin's run observer; one that throws is left out of this call and the chat goes on. */
+function notify(observers: readonly PluginRunObserver[], call: (o: PluginRunObserver) => void) {
+  for (const observer of observers) {
     try {
-      const response = await fetch(`/api/runs/${encodeURIComponent(runId)}/trace?after=${after}`, {
-        headers: authHeaders(token),
-      });
-      if (!response.ok) return;
-      const body = (await response.json()) as { events: TraceEvent[] };
-      const fresh = body.events.filter((e) => e.seq > after);
-      if (fresh.length > 0) {
-        after = fresh[fresh.length - 1].seq;
-        dispatch({ type: 'live_trace', turnKey, events: fresh });
-      }
+      call(observer);
     } catch {
-      // The monitor is a view; a missed read is caught up by the next one.
+      // A plugin's view of the run is its own; the run is unaffected.
     }
-  };
-  // One read at a time, so each picks up where the last one stopped.
-  const read = () => (reading = reading.then(readOnce));
-  const timer = setInterval(() => {
-    if (!stopped) void read();
-  }, TRACE_POLL_MS);
-  return {
-    stop: () => {
-      stopped = true;
-      clearInterval(timer);
-      return read();
-    },
-  };
+  }
 }

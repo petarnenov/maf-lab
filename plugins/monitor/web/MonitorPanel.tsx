@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import type { AguiFrame, TraceEvent } from '../api/types';
-import { ErrorBoundary } from '../shared/ErrorBoundary';
+import type { AguiFrame, TraceEvent } from './types';
+import { ErrorBoundary } from '@maf/shared/ErrorBoundary';
 import { JsonView } from './JsonView';
 import styles from './MonitorPanel.module.css';
 import { TimeTravelBar } from './TimeTravelBar';

@@ -3275,4 +3275,12 @@ implementation" (parts A and B) holds each choice in full.
     plugin assembly off the core's (`Maf.Lab.Api`, Hosting, Indexing, A2A, TestGen).
   - The `TurnTraces` table of before 5.3 is dropped by the initializer: its full traces would otherwise outlive every
     retention. They are discarded, not migrated (at or past the monitor's seven days).
+  - The monitor's web part sees the chat's runs through `runObservers` (`onRunStart`, `onEvent` with the official
+    AG-UI event object, `onRunEnd` with the outcome), called by the core from its own `agent.subscribe` callback, and
+    keeps the frames in its own external store (`useSyncExternalStore`). Rejected: the core building frame rows for the
+    monitor, and a CUSTOM event. It reads the live trace only while its pane shows, plus once at the run's end, with an
+    `AbortSignal`.
+  - Time travel shows a rewound turn through a core-owned override, `ChatContext.setTurnView(turnKey, view | null)`;
+    the core renders the banner and keeps the bubble read-only. Rejected: a plugin rendering inside the core's bubble.
+    The review queue's trace is a plugin `reviewPanels` entry.
 

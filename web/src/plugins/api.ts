@@ -1,8 +1,14 @@
 import type { ComponentType, ReactNode } from 'react';
-import type { SourceRef } from '../api/types';
+import type { DataCard, SourceRef } from '../api/types';
+import type { ToolCallView } from '../chat/chatReducer';
 
 /** A source of an answer, as the chat holds it: what a plugin's source action and panes read. */
 export type { SourceRef };
+/** A data card and a tool call as the chat shows them: what a turn-view override carries. */
+export type { DataCard, ToolCallView };
+
+/** The error the api client throws, with its HTTP status: how a plugin tells a 404 from a failure. */
+export { ApiError } from '../api/client';
 
 /** The signed-in user's api client: a plugin's own routes, called as the user, with the core's errors and stop. */
 export { useApi } from '../auth/useAuth';
@@ -38,6 +44,29 @@ export interface ChatTurnView {
   sources: readonly SourceRef[];
   /** True for a turn reopened from history rather than answered in this session. */
   restored: boolean;
+  /** The turn's server id, once the run has started; what a plugin's own routes know it by. */
+  turnId?: string;
+  /** True while the turn's run is going. */
+  streaming: boolean;
+  /** The answer as it stands. */
+  text: string;
+}
+
+/**
+ * How a plugin shows a turn as it was at an earlier step (time travel): the core renders it in the turn's bubble with a
+ * banner saying `label` and a way back (`onExit`), and keeps the bubble read-only while it is shown.
+ */
+export interface TurnViewOverride {
+  text: string;
+  reasoning?: { text: string; ms?: number };
+  toolCalls: readonly ToolCallView[];
+  sources: readonly SourceRef[];
+  cards: readonly DataCard[];
+  /** What the banner says, e.g. "step 4 of 12". */
+  label: string;
+  /** A second line for the banner, when the view is partial. */
+  note?: string;
+  onExit: () => void;
 }
 
 /** What the chat gives a pane or a sidebar about the conversation on screen. */
@@ -47,6 +76,8 @@ export interface ChatContext {
   turn?: ChatTurnView;
   /** Opens one of the chat's panes by id, with an optional value for it (a source to show, say). */
   openPane: (id: string, value?: unknown) => void;
+  /** Shows a turn as it was at an earlier step, or (null) as it is: state the chat owns, set by a pane. */
+  setTurnView?: (turnKey: string, view: TurnViewOverride | null) => void;
   /**
    * For a pane's own render only: whether it is the pane showing, and `value`, whatever that pane's own last `openPane`
    * call passed (the core never reads it). A pane stays mounted while hidden, so it keeps its state and can open itself.
@@ -103,11 +134,22 @@ export interface PluginMonitorTab {
   render: (context: { events: readonly unknown[] }) => ReactNode;
 }
 
-/** An observer of chat runs: how a plugin sees a run's AG-UI events without the core knowing why. */
+/**
+ * An observer of chat runs: how a plugin sees a run's AG-UI events — the official event objects CopilotKit delivered —
+ * without the core knowing why. `turnKey` is the chat's assistant turn the run answers into.
+ */
 export interface PluginRunObserver {
-  onRunStart?: (runId: string) => void;
-  onEvent?: (runId: string, event: unknown) => void;
-  onRunEnd?: (runId: string) => void;
+  onRunStart?: (run: { runId: string; turnKey: string; conversationId?: string }) => void;
+  onEvent?: (runId: string, event: { type: string } & Record<string, unknown>) => void;
+  onRunEnd?: (runId: string, outcome: 'finished' | 'stopped' | 'failed') => void;
+}
+
+/** A panel of the feedback review queue, for one reviewed turn (another user's, by its server id). */
+export interface PluginReviewPanel {
+  id: string;
+  /** The toggle's label, e.g. "trace". */
+  label: string;
+  render: (context: { turnId: string }) => ReactNode;
 }
 
 export interface MafWebPlugin {
@@ -123,6 +165,7 @@ export interface MafWebPlugin {
   toolLabels?: PluginToolLabels;
   monitorTabs?: readonly PluginMonitorTab[];
   runObservers?: readonly PluginRunObserver[];
+  reviewPanels?: readonly PluginReviewPanel[];
 }
 
 /** Declares a plugin's web part. An identity function: the type is the contract. */

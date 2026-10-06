@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
-import type { AguiFrame, TraceEvent } from '../api/types';
+import type { AguiFrame, TraceEvent } from './types';
 import { JsonView } from './JsonView';
 import styles from './MonitorPanel.module.css';
 import { kindColor } from './kindColors';

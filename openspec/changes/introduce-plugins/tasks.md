@@ -192,7 +192,8 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
 
   Done in two commits: C3a (server: the core record, the observer host, the monitor's server part, table, routes and
   retention, their tests, the docs and deltas) and C3b (web: the monitor's web part, run observers, the turn-view
-  override, the review panel slot).
+  override, the review panel slot). Both are in; the box stays open for the live checks (a core-only turn
+  making no Redis trace write and no trace request, on the running stack).
 
 - [ ] 5.4 `conversation-history` (app, installation scope, installed by default):
   - add `IConversationStore` to the abstractions (task 3.1), implemented by the core: page and search, rename, and a

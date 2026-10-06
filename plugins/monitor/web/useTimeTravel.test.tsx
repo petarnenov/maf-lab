@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { TraceEvent } from '../api/types';
+import type { TraceEvent } from './types';
 import { useTimeTravel } from './useTimeTravel';
 
 const make = (atMs: number[]): TraceEvent[] =>

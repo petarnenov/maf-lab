@@ -17,7 +17,7 @@ export function SourcesPanel({
   sources,
   context,
 }: {
-  sources: SourceRef[];
+  sources: readonly SourceRef[];
   context?: ChatContext;
 }) {
   const actions = contributions(usePlugins(), 'sourceActions');

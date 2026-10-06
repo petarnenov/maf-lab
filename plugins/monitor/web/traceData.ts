@@ -1,4 +1,4 @@
-import type { TraceEvent } from '../api/types';
+import type { TraceEvent } from './types';
 
 // Typed views over TraceEvent.data per kind (docs/trace-events.md). Data can be truncated to
 // { truncated: true }, so every accessor tolerates missing fields.

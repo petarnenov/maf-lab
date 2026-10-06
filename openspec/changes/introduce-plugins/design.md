@@ -936,6 +936,30 @@ These choices deviate from the text above. Each is kept, with the rejected alter
       two sites build the context bare. Rejected: one DbContext per plugin. An architecture test keeps every plugin
       assembly off the core's assemblies.
     - The pre-5.3 `TurnTraces` table is dropped by the initializer, so its full traces never outlive a retention.
+12. **The monitor's web part (task 5.3, C3b).**
+    - The core calls each plugin's `runObservers` from its own `agent.subscribe` callback:
+      `onRunStart({ runId, turnKey, conversationId })`, `onEvent(runId, event)` with the official event object
+      CopilotKit delivered, and `onRunEnd(runId, 'finished' | 'stopped' | 'failed')`. An observer that throws is left
+      out of that call. The monitor builds its own AG-UI frame rows from the events, in an external store it reads
+      with React's `useSyncExternalStore`, holding the last 50 runs. `chatReducer` loses `traces`, `live_trace` and
+      `frame`. Rejected: the core building frames for the monitor (a monitor concept in the core), and a CUSTOM event.
+    - The monitor reads a run's live trace only while its pane is showing, and once more when the run has ended or the
+      pane opens on it; each read carries an `AbortSignal` that closing the pane, another turn or the run's end aborts.
+    - Time travel goes through a core-owned override: `ChatContext.setTurnView(turnKey, view | null)` with
+      `TurnViewOverride { text; reasoning?; toolCalls; sources; cards; label; note?; onExit }`. The core renders the
+      "Viewing …" banner with its way back and keeps the bubble read-only while it shows; it shows an override only
+      while the side pane is open, as before. Rejected: a plugin rendering inside the core's bubble.
+    - The side pane holds plugin panes only; it is absent with none, and the bubble's control is named after the pane
+      it opens. A stored trace the monitor no longer keeps is a 404 the pane reads as expired (no retry).
+    - The review queue renders `reviewPanels: [{ id, label, render: ({ turnId }) }]` as generic open/hide controls;
+      the monitor contributes the stored trace.
+    - The conversation list's refresh moves from a `ChatPage` effect to the core's run end (a finished run), until
+      task 5.4 moves it to the conversation-history plugin's `runObservers.onRunEnd`.
+    - `monitorTabs` stays declared and unused: no plugin contributes a monitor tab yet, and the monitor reading another
+      plugin's contributions needs a registry seam of its own (YAGNI until one does).
+    - Known gap: ESLint's flat config in `web/` does not lint `plugins/*/web` (files outside its base path), so the
+      React hooks rules do not run on plugin code; Prettier is run on it with the web's config by hand. Raised with the
+      reviewing session.
 
 ## Principles and patterns
 

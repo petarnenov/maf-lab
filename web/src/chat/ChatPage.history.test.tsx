@@ -4,7 +4,6 @@ import { Route, Routes, useLocation } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import type { ConversationDetail, ConversationPage } from '../api/types';
 import { useAuth } from '../auth/useAuth';
-import { fixtureFrames, fixtureTrace } from '../monitor/fixtures';
 import {
   jsonResponse,
   makeSession,
@@ -38,7 +37,6 @@ const detail: ConversationDetail = {
       ],
       sources: [{ docId: 'd1', sectionPath: 'Fees', sourcePath: 'shared/fees.md', snippet: '' }],
       feedbackKinds: ['wrong_document'],
-      traceAvailable: false,
     },
     {
       turnId: 't2',
@@ -48,7 +46,8 @@ const detail: ConversationDetail = {
       toolCalls: [],
       sources: [],
       feedbackKinds: [],
-      traceAvailable: true,
+      reasoning: 'The failure code says FS-REQUIRED, so the schedule is missing.',
+      reasoningMs: 200,
     },
   ],
 };
@@ -82,17 +81,10 @@ function renderChat(route: string, extra?: React.ReactNode) {
 }
 
 describe('ChatPage with history', () => {
-  it('reloading /chat/:id restores the turns, feedback and trace availability', async () => {
+  it('reloading /chat/:id restores the turns and their feedback', async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url.startsWith('/api/conversations?')) return jsonResponse(page('conv-7'));
       if (url === '/api/conversations/conv-7') return jsonResponse(detail);
-      if (url === '/api/turns/t2/trace')
-        return jsonResponse({
-          turnId: 't2',
-          conversationId: 'conv-7',
-          createdAt: '',
-          events: fixtureTrace,
-        });
       return jsonResponse({}, 404);
     });
     vi.stubGlobal('fetch', agentFetch(fetchMock));
@@ -109,14 +101,9 @@ describe('ChatPage with history', () => {
     expect(within(turns[0]).getByRole('button', { name: '✓ Wrong document' })).toBeDisabled();
     expect(screen.getByText('What if a fee schedule is missing?')).toBeInTheDocument();
 
-    // The latest turn's stored trace opens in the monitor.
-    const monitor = screen.getByRole('region', { name: 'Behind the scenes' });
-    expect(await within(monitor).findByText(`${fixtureTrace.length} events`)).toBeInTheDocument();
-
-    // The expired trace is not fetched; the monitor says why.
-    await userEvent.click(within(turns[0]).getByRole('button', { name: 'Behind the scenes' }));
-    expect(within(monitor).getByRole('alert')).toHaveTextContent('Trace expired (kept 7 days)');
-    expect(fetchMock.mock.calls.map((c) => c[0])).not.toContain('/api/turns/t1/trace');
+    // With no plugin pane in use there is no side pane, and no button that would open one.
+    expect(screen.queryByRole('tablist', { name: 'Right pane' })).not.toBeInTheDocument();
+    expect(within(turns[0]).queryByRole('button', { name: /behind the scenes/i })).toBeNull();
 
     // The active conversation is highlighted in the sidebar.
     const history = screen.getByRole('navigation', { name: 'Conversation history' });
@@ -291,71 +278,13 @@ describe('ChatPage with history', () => {
     expect(screen.queryAllByTestId('assistant-turn')).toHaveLength(0);
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/chat$/);
   });
-  it('a reopened turn shows the AG-UI frames stored with its trace, and says when there are none', async () => {
-    const fetchMock = vi.fn(async (url: string) => {
-      if (url.startsWith('/api/conversations?')) return jsonResponse(page('conv-7'));
-      if (url === '/api/conversations/conv-7') return jsonResponse(detail);
-      if (url === '/api/turns/t2/trace')
-        return jsonResponse({
-          turnId: 't2',
-          conversationId: 'conv-7',
-          createdAt: '',
-          events: fixtureTrace,
-          aguiFrames: fixtureFrames,
-        });
-      return jsonResponse({}, 404);
-    });
-    vi.stubGlobal('fetch', agentFetch(fetchMock));
-
-    renderChat('/chat/conv-7');
-    const monitor = screen.getByRole('region', { name: 'Behind the scenes' });
-    await within(monitor).findByText(`${fixtureTrace.length} events`);
-
-    await userEvent.click(within(monitor).getByRole('tab', { name: 'AG-UI' }));
-    const rows = within(
-      await within(monitor).findByRole('list', { name: 'AG-UI frames' }),
-    ).getAllByRole('listitem');
-    expect(rows).toHaveLength(fixtureFrames.length);
-    expect(rows[0]).toHaveAttribute('data-type', 'RUN_STARTED');
-  });
-
-  it('a stored turn whose frames were never recorded says so', async () => {
-    const fetchMock = vi.fn(async (url: string) => {
-      if (url.startsWith('/api/conversations?')) return jsonResponse(page('conv-7'));
-      if (url === '/api/conversations/conv-7') return jsonResponse(detail);
-      if (url === '/api/turns/t2/trace')
-        return jsonResponse({
-          turnId: 't2',
-          conversationId: 'conv-7',
-          createdAt: '',
-          events: fixtureTrace,
-          aguiFrames: null,
-        });
-      return jsonResponse({}, 404);
-    });
-    vi.stubGlobal('fetch', agentFetch(fetchMock));
-
-    renderChat('/chat/conv-7');
-    const monitor = screen.getByRole('region', { name: 'Behind the scenes' });
-    await within(monitor).findByText(`${fixtureTrace.length} events`);
-
-    await userEvent.click(within(monitor).getByRole('tab', { name: 'AG-UI' }));
-    expect(await within(monitor).findByText(/were not recorded/)).toBeInTheDocument();
-  });
-  it('a reopened turn shows the reasoning its trace kept, collapsed, and none when the trace expired', async () => {
+  it('a reopened turn shows the reasoning the conversation kept, collapsed, and none when it had none', async () => {
     vi.stubGlobal(
       'fetch',
       agentFetch(
         vi.fn(async (url: string) => {
           if (url.startsWith('/api/conversations?')) return jsonResponse(page('conv-7'));
           if (url === '/api/conversations/conv-7') return jsonResponse(detail);
-          if (url === '/api/turns/t2/trace')
-            return jsonResponse({
-              turnId: 't2',
-              conversationId: 'conv-7',
-              createdAt: '',
-              events: fixtureTrace,
-            });
           return jsonResponse({}, 404);
         }),
       ),
@@ -364,7 +293,7 @@ describe('ChatPage with history', () => {
     renderChat('/chat/conv-7');
     const turns = await screen.findAllByTestId('assistant-turn');
 
-    // The latest turn is the one the monitor follows, so its stored trace is loaded.
+    // The turn's reasoning comes with the conversation itself, whatever plugins are in use.
     const block = await within(turns[1]).findByTestId('reasoning');
     const summary = within(block).getByRole('button');
     expect(summary).toHaveAttribute('aria-expanded', 'false');
@@ -373,7 +302,7 @@ describe('ChatPage with history', () => {
     await userEvent.click(summary);
     expect(block).toHaveTextContent('The failure code says FS-REQUIRED');
 
-    // t1's trace expired, so there is nothing to show for it.
+    // t1's model did not reason, so there is nothing to show for it.
     expect(within(turns[0]).queryByTestId('reasoning')).not.toBeInTheDocument();
   });
 });

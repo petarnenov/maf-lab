@@ -56,7 +56,6 @@ describe('ChatPage markdown answers', () => {
           toolCalls: [],
           sources: [],
           feedbackKinds: [],
-          traceAvailable: false,
         },
       ],
     };

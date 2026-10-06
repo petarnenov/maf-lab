@@ -11,6 +11,7 @@ import {
   run,
   streamResponse,
 } from '@maf/testing';
+import { definePlugin } from '@maf/plugin-api';
 import codePlugin from './index';
 import { codeSnippetsOf, groupByFile } from './codeSnippets';
 import { CodeSnippetsPanel } from './CodeSnippetsPanel';
@@ -58,6 +59,18 @@ function Harness({ question }: { question: string }) {
 }
 
 const emptyHistory = { conversations: [], nextCursor: null };
+
+/** Another plugin's pane, first in the side pane as the monitor's is: what the code pane shares the pane with. */
+const scenes = definePlugin({
+  name: 'scenes',
+  chatPanes: [
+    {
+      id: 'scenes',
+      label: 'Behind the scenes',
+      render: () => <section aria-label="Behind the scenes">another plugin’s pane</section>,
+    },
+  ],
+});
 
 describe('groupByFile', () => {
   it('groups per file in rank order, each file in line order', () => {
@@ -124,7 +137,7 @@ describe('CodeSnippetsPanel', () => {
 });
 
 describe('ChatPage right pane', () => {
-  it('opens on Behind the scenes and shows the code for the turn’s question on Code snippets', async () => {
+  it('opens on the first plugin’s pane and shows the code for the turn’s question on Code snippets', async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (url.startsWith('/api/conversations')) return jsonResponse(emptyHistory);
       if (url === '/api/code/snippets') {
@@ -140,7 +153,7 @@ describe('ChatPage right pane', () => {
     });
     vi.stubGlobal('fetch', agentFetch(fetchMock));
 
-    renderChat([codePlugin]);
+    renderChat([scenes, codePlugin]);
     const tabs = screen.getByRole('tablist', { name: 'Right pane' });
     expect(within(tabs).getByRole('tab', { name: 'Behind the scenes' })).toHaveAttribute(
       'aria-selected',
@@ -159,7 +172,7 @@ describe('ChatPage right pane', () => {
       screen.getByRole('region', { name: 'Behind the scenes', hidden: true }),
     ).not.toBeVisible();
 
-    // Back to the monitor: it is still there, unchanged.
+    // Back to the other pane: it is still there, unchanged.
     await userEvent.click(within(tabs).getByRole('tab', { name: 'Behind the scenes' }));
     expect(screen.getByRole('region', { name: 'Behind the scenes' })).toBeVisible();
   });
@@ -235,7 +248,7 @@ describe('ChatPage with an answer from the codebase', () => {
     });
     vi.stubGlobal('fetch', agentFetch(fetchMock));
 
-    renderChat([codePlugin]);
+    renderChat([scenes, codePlugin]);
     await userEvent.type(
       screen.getByLabelText('Message'),
       'как в кода се прави идемпотентност на тул?',

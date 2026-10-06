@@ -1,5 +1,6 @@
-import type { DataCard, SourceRef, TraceEvent } from '../api/types';
-import type { ToolCallView } from '../chat/chatReducer';
+import type { TraceEvent } from './types';
+import type { DataCard, SourceRef } from '@maf/plugin-api';
+import type { ToolCallView } from '@maf/plugin-api';
 import {
   byKind,
   dataOf,

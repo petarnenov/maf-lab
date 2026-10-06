@@ -1,4 +1,4 @@
-import type { TraceEvent } from '../api/types';
+import type { TraceEvent } from './types';
 import panel from './MonitorPanel.module.css';
 import styles from './DomainsTab.module.css';
 import {

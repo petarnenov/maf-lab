@@ -1,9 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { framesFor, traceFor } from '../monitor/traceReducer';
 import type { BaseEvent } from '@ag-ui/core';
-import type { TraceEvent } from '../api/types';
 import { chatReducer, initialChatState, type AssistantTurn, type ChatState } from './chatReducer';
 
 /** One run captured from the stack by `scripts/capture_ui_events.sh`. */
@@ -13,8 +11,8 @@ interface RecordedRun {
   /** When the run happened. Its frames carry real timestamps, so it is replayed at its own moment. */
   capturedAt: string;
   frames: { event: string; data: unknown }[];
-  /** The run's trace as the trace API served it once the run had ended. */
-  trace: TraceEvent[];
+  /** The run's trace as the trace API served it once the run had ended (the monitor plugin's tests read it). */
+  trace: unknown[];
   expect: {
     answer: string;
     /** What the model thought on its way to it; empty when it did not reason. */
@@ -36,7 +34,7 @@ const runs: RecordedRun[] = readFileSync(
   .filter((line) => line.trim().length > 0)
   .map((line) => JSON.parse(line) as RecordedRun);
 
-/** Replays a recorded run the way useChatStream does: events → frames and reducer, at the time it happened. */
+/** Replays a recorded run the way useChatStream does: each event to the reducer, at the time it happened. */
 function replay(run: RecordedRun): ChatState {
   // A proposal's expiry is a real moment; a recording replayed on today's clock would always be past it.
   vi.setSystemTime(new Date(run.capturedAt));
@@ -46,22 +44,9 @@ function replay(run: RecordedRun): ChatState {
     assistantTurnId: 'a1',
     text: 'recorded',
   });
-  // As useChatStream does it: each event as a frame for the monitor, then as itself for the chat; the trace from the
-  // trace API (agui-protocol-only).
-  run.frames.forEach((f, i) => {
-    state = chatReducer(state, {
-      type: 'frame',
-      frame: {
-        seq: i + 1,
-        atMs: i,
-        type: f.event,
-        bytes: JSON.stringify(f.data).length,
-        payload: f.data,
-      },
-    });
+  for (const f of run.frames) {
     state = chatReducer(state, { type: 'event', event: f.data as BaseEvent });
-  });
-  state = chatReducer(state, { type: 'live_trace', turnKey: 'a1', events: run.trace });
+  }
   return state;
 }
 
@@ -107,14 +92,6 @@ describe('runs recorded from the running stack', () => {
       } else {
         expect(turn.confirmation).toBeUndefined();
       }
-
-      // The monitor saw the same run the chat did.
-      expect(traceFor(state.traces, 'a1')).toHaveLength(run.expect.traceSteps);
-      // And every frame that crossed the wire, including the ones the chat itself makes no use of.
-      expect(framesFor(state.traces, 'a1')).toHaveLength(run.expect.aguiFrames);
-      expect(framesFor(state.traces, 'a1').map((f) => f.seq)).toEqual(
-        run.frames.map((_, i) => i + 1),
-      );
     },
   );
 

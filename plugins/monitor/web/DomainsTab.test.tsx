@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import type { TraceEvent } from '../api/types';
+import type { TraceEvent } from './types';
 import { DomainsTab } from './DomainsTab';
 import { domainPath } from './domainData';
 import { MonitorPanel } from './MonitorPanel';
