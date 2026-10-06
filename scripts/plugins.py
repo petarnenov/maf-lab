@@ -31,7 +31,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 ENVIRONMENTS = ("dev", "qa", "stage", "prod")
-EXAMPLE = "_example"
+# A leading underscore marks a bundled plugin that MAF_PLUGINS unset never installs: _example, the authoring template.
+OPT_IN_PREFIX = "_"
 
 
 class PluginError(Exception):
@@ -189,7 +190,7 @@ def resolve(available: dict[str, Plugin] | None = None) -> list[Plugin]:
     elif raw:
         requested = [n.strip() for n in raw.split(",") if n.strip()]
     else:
-        requested = [n for n, p in available.items() if n != EXAMPLE and env in p.environments]
+        requested = [n for n, p in available.items() if not n.startswith(OPT_IN_PREFIX) and env in p.environments]
 
     order: list[str] = []
     visiting: list[str] = []

@@ -3294,4 +3294,14 @@ implementation" (parts A and B) holds each choice in full.
     delete and its audit. The chat owns the sidebar's chrome (column, collapse, rail, drawer, landmark, toggle), named
     after the sidebar's label; a plugin renders content only and asks the chat to open or start a conversation.
     Rejected: plugin-owned layout CSS, a sidebar context object, a plugin navigating with react-router.
+  - `_example`, the authoring template, is a C# MCP server in its own container on the official
+    ModelContextProtocol.AspNetCore SDK and stock JwtBearer, referencing no core project (rejected: Python, a second
+    image, new pins and a second token-validation implementation). It reads the platform's `Auth` section, so
+    `platform.env` names the issuer and audience the core defaults to (rejected: constants in the plugin). Its server
+    is `service/`, not `server/`, which the api compiles in.
+  - A plugin name may start with an underscore, which marks a bundled plugin `MAF_PLUGINS` unset never installs
+    (`^_?[a-z0-9][a-z0-9-]*$`; rejected: renaming the folder the spec and design name).
+  - The sample's end-to-end question lives in its own folder (`plugin.mk` joins `verify`, skipping itself when the
+    plugin is not in use), and CI installs it in its one stack; the routing comes from forced retrieval, so the stub
+    learns no plugin's tool (rejected: keywords in the core's stub, a separate CI job).
 

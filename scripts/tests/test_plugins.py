@@ -127,6 +127,13 @@ class ManifestTests(PluginsTestCase):
         self.add("jev", manifest("jev", kind="provider"))
         self.assertIn("/provides: a provider plugin names what it provides", plugins.discover()["jev"].problems)
 
+    def test_a_leading_underscore_names_a_plugin_installed_only_when_asked_for(self):
+        self.add("_sample")
+        self.assertEqual([], plugins.discover()["_sample"].problems)
+        self.assertEqual([], self.resolved())
+        self.add("__twice", manifest("__twice"))
+        self.assertTrue(any(p.startswith("/name") for p in plugins.discover()["__twice"].problems))
+
     def test_the_folder_and_the_name_agree(self):
         self.add("x", manifest("y"))
         self.assertTrue(any("differs from the folder name" in p for p in plugins.discover()["x"].problems))

@@ -1,0 +1,13 @@
+# The sample plugin's only service, merged after the core's compose file by make. Paths resolve against compose/.
+# Its environment is platform.env alone (token validation, telemetry, the shared store): it reads no model, Jev,
+# retrieval or billing setting, so it is given none.
+services:
+  mcp-example:
+    build:
+      context: ..
+      dockerfile: plugins/_example/service/Dockerfile
+    deploy:
+      replicas: 1
+    env_file: [env/platform.env]
+    environment:
+      Urls: http://+:8080

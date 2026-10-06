@@ -133,6 +133,7 @@ The balancer's routes, as `compose/lb/nginx.conf`, the api upstream template and
 | `/v1/traces` | prefix | `otel-collector` |
 | `/jaeger` | prefix | `jaeger` |
 | `/` | prefix | `web` |
+| `/example/mcp` | exact | `mcp-example` at `/mcp` (plugin `_example`) |
 | `/code/mcp` | exact | `mcp-code` at `/mcp` (plugin `code`) |
 <!-- /generated:lb-routes -->
 
@@ -253,6 +254,7 @@ allows, `none` means the core alone (`make core`), otherwise a comma-separated l
 <!-- generated:plugins — edit plugins/<name>/plugin.toml, then run make docs -->
 | Plugin | Kind | Scope | Environments | What it is |
 |---|---|---|---|---|
+| `_example` | mcp | tenant | dev, qa | The authoring template: a small MCP server in its own container with one tool, get_example_fact, and a domain descriptor that routes questions about the sample fact to it. Off unless asked for. |
 | `a2a-inspector` | infra | installation | dev, qa | The A2A Inspector (a2aproject), opened on the lab's agent cards with a fresh partner token: a dev and qa tool. |
 | `code` | mcp | installation | dev, qa | The lab's own source code as a domain: the codebase MCP server (search_codebase and the code-graph tools), its domain descriptor and routing, and the chat's Code snippets pane. |
 | `conversation-history` | app | installation | dev, qa, stage, prod | The chat's conversation list: the caller's own conversations, searched and paged, renamed and deleted, beside the chat. Without it, a conversation is still reopened by its URL and a new one started from the chat's header. |

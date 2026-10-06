@@ -67,6 +67,7 @@ MCP note: workspace MCP server config lives in `.mcp.json` (Playwright server vi
 | `/v1/traces` | prefix | `otel-collector` |
 | `/jaeger` | prefix | `jaeger` |
 | `/` | prefix | `web` |
+| `/example/mcp` | exact | `mcp-example` at `/mcp` (plugin `_example`) |
 | `/code/mcp` | exact | `mcp-code` at `/mcp` (plugin `code`) |
 <!-- /generated:lb-routes -->
 

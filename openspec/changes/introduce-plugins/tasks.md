@@ -221,6 +221,9 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
 
 - [ ] 6.1 `plugins/_example/`: a small MCP server with a domain descriptor, off by default. A CI leg installs it and
       asks one routed question against the stub.
+      Done: `service/` (C#, its own image, stock JwtBearer), the domain, `tests/e2e.py` joined to `make verify`, and
+      `_example` in `CI_PLUGINS`. The image builds and answers (health, 401 without a token, the tool with one); the
+      routed question through a running stack is the pending live check.
 - [ ] 6.2 `make plugin-new NAME= KIND=mcp|app` from templates. Verify that a scaffolded plugin builds, starts, and passes
       `make docs-check`.
 - [ ] 6.3 Write `docs/plugins.md`, and make the CLAUDE.md, project.md, README and DECISIONS §81 updates from the

@@ -1,0 +1,27 @@
+# The authoring template (introduce-plugins 6.1): the smallest MCP plugin there is — one server in its own container,
+# one tool, one domain. MAF_PLUGINS unset never installs it (a leading underscore); CI installs it and asks it one
+# question. `make plugin-new KIND=mcp` starts a new plugin from a copy of this folder.
+schema = 1
+name = "_example"
+kind = "mcp"
+# Tenant-scoped, as a domain a tenant takes up is: today an installed tenant-scoped plugin is in use for every tenant;
+# per-tenant allow and enable arrive with enable-plugins-per-tenant.
+scope = "tenant"
+environments = ["dev", "qa"]
+description = "The authoring template: a small MCP server in its own container with one tool, get_example_fact, and a domain descriptor that routes questions about the sample fact to it. Off unless asked for."
+progress = "None — every call is short (one fact per request)"
+stopping = "None — no long work; a call stops with its MCP request (the api's cancellation), and SIGTERM stops the container through the generic host"
+
+[domain]
+id = "example"
+order = 90
+question_key = "in_example"
+description = "The sample fact the authoring template serves: questions that ask for the example fact, the template's sample data, or what the sample plugin knows. Not in it: billing, fees, accounts, portfolios or this lab's source code."
+search_tool = "get_example_fact"
+tools = ["get_example_fact"]
+guard_context = "documents"
+prompt = "prompt.md"
+
+[domain.scope_summary]
+en = "questions about the sample fact"
+bg = "с въпроси за примерния факт"
