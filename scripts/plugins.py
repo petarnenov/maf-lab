@@ -12,6 +12,7 @@ the files the core services read at run time.
   plugins.py services NAME  print the compose services a plugin's compose.yml defines
   plugins.py has-server NAME  exit 0 when the plugin has an in-process server part (an api restart is needed)
   plugins.py product-servers  the server projects the product image keeps, as |A|B| for MafProductPlugins
+  plugins.py new NAME KIND  start a plugin: KIND=mcp copies _example, KIND=app renders scripts/plugin-templates/app
 
 Inputs: MAF_PLUGINS (unset or empty: every bundled plugin allowed in MAF_ENV except _example; "none": no plugin;
 otherwise a comma-separated list) and MAF_ENV (dev | qa | stage | prod; default dev). MAF_PLUGINS_ROOT overrides the
@@ -24,7 +25,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
+import string
 import sys
+import tempfile
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,6 +37,8 @@ ROOT = Path(__file__).resolve().parent.parent
 ENVIRONMENTS = ("dev", "qa", "stage", "prod")
 # A leading underscore marks a bundled plugin that MAF_PLUGINS unset never installs: _example, the authoring template.
 OPT_IN_PREFIX = "_"
+# The authoring template, the one plugin MAF_PLUGINS unset is named for leaving out; `new KIND=mcp` copies it.
+EXAMPLE_NAME = "_example"
 
 
 class PluginError(Exception):
@@ -288,6 +294,106 @@ def services(plugin: Plugin) -> list[str]:
 
 # ── commands ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
+# ── a new plugin (make plugin-new) ───────────────────────────────────────────────────────────────────────────────
+
+TEMPLATES = ROOT / "scripts" / "plugin-templates"
+KINDS_NEW = ("mcp", "app")
+# The prompt's section marker is a word, not the template's name.
+SECTION_MARKER = "<!-- examples -->"
+
+
+class Names:
+    """A plugin's name in each form its files spell it: weather-report, weather_report, WeatherReport, Weather report."""
+
+    def __init__(self, name: str):
+        self.name = name
+        self.snake = name.replace("-", "_")
+        self.pascal = "".join(part.capitalize() for part in name.split("-"))
+        self.title = " ".join(name.split("-")).capitalize()
+        self.upper = self.snake.upper()
+
+
+def new_plugin_problem(name: str, kind: str) -> str | None:
+    """Why a plugin cannot be started under this name and kind, naming the fix; None when it can."""
+    if kind not in KINDS_NEW:
+        return f"KIND={kind!r} is not one of {', '.join(KINDS_NEW)}: use make plugin-new NAME=<name> KIND=mcp|app"
+    if name.startswith(OPT_IN_PREFIX):
+        return f"NAME={name!r}: a leading underscore is reserved for bundled opt-in plugins; drop it"
+    pattern = load_schema()["properties"]["name"]["pattern"]
+    if not re.fullmatch(pattern, name) or not name[0].isalpha():
+        return f"NAME={name!r} is not a plugin name: lower-case letters, digits and hyphens, starting with a letter"
+    if (plugins_root() / name).exists():
+        return f"plugins/{name} already exists: pick another NAME or remove that folder first"
+    return None
+
+
+def mcp_tokens(n: Names) -> list[tuple[str, str]]:
+    """The template's own name, in every form it is spelled, most specific first."""
+    template = EXAMPLE_NAME
+    word = template.lstrip(OPT_IN_PREFIX)
+    return [
+        (f"get_{word}_fact", f"get_{n.snake}_fact"),
+        (f"in_{word}", f"in_{n.snake}"),
+        (f"mcp_{word}_pool", f"mcp_{n.snake}_pool"),
+        (template, n.name),
+        (word.upper(), n.upper),
+        (word.capitalize(), n.pascal),
+        (word, n.name),
+    ]
+
+
+def rendered_files(name: str, kind: str) -> dict[str, bytes]:
+    """The new plugin's files, by path inside its folder."""
+    n = Names(name)
+    files: dict[str, bytes] = {}
+    if kind == "mcp":
+        source = plugins_root() / EXAMPLE_NAME
+        tokens = mcp_tokens(n)
+        for path in sorted(source.rglob("*")):
+            rel = path.relative_to(source)
+            if not path.is_file() or {"bin", "obj", "__pycache__"} & set(rel.parts):
+                continue
+            text = path.read_text(encoding="utf-8").replace(SECTION_MARKER, "\0")
+            target = str(rel)
+            for old, new in tokens:
+                text, target = text.replace(old, new), target.replace(old, new)
+            if rel.name == "plugin.toml":
+                # The template's own header and opt-in note belong to it, not to the plugin made from it.
+                text = "schema = 1" + text.split("schema = 1", 1)[1]
+                text = re.sub(r'(?m)^description = ".*"$', f'description = "{n.title}: an MCP server in its own container '
+                              f'with one tool and a domain descriptor. Say here what it serves."', text, count=1)
+            files[target] = text.replace("\0", SECTION_MARKER).encode("utf-8")
+    else:
+        source = TEMPLATES / "app"
+        values = {"name": n.name, "Name": n.pascal, "title": n.title, "snake": n.snake}
+        for path in sorted(source.rglob("*")):
+            if path.is_file():
+                target = str(path.relative_to(source)).replace("__Name__", n.pascal)
+                files[target] = string.Template(path.read_text(encoding="utf-8")).substitute(values).encode("utf-8")
+    return files
+
+
+def new_plugin(name: str, kind: str) -> list[str]:
+    """Writes the new plugin into a temporary folder beside plugins/<name> and renames it into place last, so a stop
+    part-way leaves nothing half-made. Returns the files written."""
+    problem = new_plugin_problem(name, kind)
+    if problem:
+        raise PluginError(problem)
+    files = rendered_files(name, kind)
+    root = plugins_root()
+    staging = Path(tempfile.mkdtemp(prefix=f".new-{name}-", dir=root))
+    try:
+        for rel, content in files.items():
+            path = staging / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
+        os.rename(staging, root / name)
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    return sorted(files)
+
+
 def main(argv: list[str]) -> int:
     command = argv[1] if len(argv) > 1 else "resolve"
     try:
@@ -354,6 +460,13 @@ def main(argv: list[str]) -> int:
         elif command == "product-plugins":
             # The plugins the product image variant keeps (decision 5e), as |a|b|: those whose manifest allows stage or prod.
             print("|" + "|".join(n for n, p in discover().items() if {"stage", "prod"} & set(p.environments)) + "|")
+        elif command == "new":
+            if len(argv) < 4:
+                raise PluginError("usage: make plugin-new NAME=<name> KIND=mcp|app")
+            name, kind = argv[2], argv[3]
+            for rel in new_plugin(name, kind):
+                print(f"  wrote plugins/{name}/{rel}")
+            print(f"✓ plugins/{name} ({kind}) — run `make docs`, then `make plugin-on NAME={name}`")
         elif command == "has-server":
             plugin = discover().get(argv[2])
             return 0 if plugin is not None and plugin.has_server else 1
@@ -363,6 +476,9 @@ def main(argv: list[str]) -> int:
     except PluginError as e:
         print(f"✗ {e}", file=sys.stderr)
         return 2
+    except KeyboardInterrupt:
+        print("\n✗ Stopped. Nothing was left half-written; run the command again.", file=sys.stderr)
+        return 130
     return 0
 
 

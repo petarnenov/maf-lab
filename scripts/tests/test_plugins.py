@@ -216,3 +216,60 @@ class ComposeTests(PluginsTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NewPluginTests(PluginsTestCase):
+    """make plugin-new (introduce-plugins 6.2): KIND=mcp copies _example under the new name, KIND=app renders the app
+    template; both validate, neither keeps the template's name, and a bad request is refused before anything is written."""
+
+    def setUp(self):
+        super().setUp()
+        shutil.copytree(ROOT / "plugins" / plugins.EXAMPLE_NAME, self.root / plugins.EXAMPLE_NAME,
+                        ignore=shutil.ignore_patterns("bin", "obj", "__pycache__"))
+
+    def residue(self, folder: Path, word: str) -> list[str]:
+        return [f"{p.relative_to(folder)}: {line.strip()}" for p in folder.rglob("*") if p.is_file()
+                for line in p.read_text(encoding="utf-8").splitlines()
+                if word in line.lower() and plugins.SECTION_MARKER not in line] + \
+               [str(p.relative_to(folder)) for p in folder.rglob("*") if word in p.name.lower()]
+
+    def test_an_mcp_plugin_is_the_template_under_its_own_name(self):
+        written = plugins.new_plugin("weather-report", "mcp")
+        folder = self.root / "weather-report"
+        self.assertIn("service/WeatherReport.McpServer.csproj", written)
+        self.assertEqual([], plugins.discover()["weather-report"].problems)
+        self.assertEqual([], self.residue(folder, "example"))
+        toml = (folder / "plugin.toml").read_text(encoding="utf-8")
+        self.assertIn('question_key = "in_weather_report"', toml)
+        self.assertIn('tools = ["get_weather_report_fact"]', toml)
+        self.assertIn("location = /weather-report/mcp", (folder / "lb.server.conf").read_text(encoding="utf-8"))
+        self.assertTrue((folder / "prompt.md").read_text(encoding="utf-8").count(plugins.SECTION_MARKER) == 1)
+        # Not opt-in: an ordinary plugin MAF_PLUGINS unset installs.
+        self.assertEqual(["weather-report"], self.resolved())
+
+    def test_an_app_plugin_is_rendered_from_the_template(self):
+        written = plugins.new_plugin("notes", "app")
+        folder = self.root / "notes"
+        self.assertEqual(sorted(["docs/http-api.md", "plugin.toml", "server/Maf.Lab.Plugins.Notes.csproj", "server/NotesPlugin.cs",
+                                 "tests/unit/NotesPluginTests.cs", "web/NotesPage.test.tsx", "web/NotesPage.tsx",
+                                 "web/index.ts"]), written)
+        self.assertEqual([], plugins.discover()["notes"].problems)
+        self.assertEqual([], [p for p in folder.rglob("*") if "$" in p.name or "__Name__" in p.name])
+        self.assertIn('"/api/notes/summary"', (folder / "server" / "NotesPlugin.cs").read_text(encoding="utf-8"))
+
+    def test_a_bad_request_is_refused_and_writes_nothing(self):
+        plugins.new_plugin("notes", "app")
+        for name, kind, says in [("notes", "app", "already exists"), ("_mine", "app", "reserved"),
+                                 ("Bad_Name", "mcp", "not a plugin name"), ("9lives", "mcp", "not a plugin name"),
+                                 ("fine", "a2a", "KIND=")]:
+            with self.subTest(name=name, kind=kind):
+                with self.assertRaises(plugins.PluginError) as raised:
+                    plugins.new_plugin(name, kind)
+                self.assertIn(says, str(raised.exception))
+        self.assertEqual(sorted([plugins.EXAMPLE_NAME, "notes"]), sorted(p.name for p in self.root.iterdir()))
+
+    def test_the_command_exits_2_with_one_line_naming_the_fix(self):
+        result = subprocess.run([sys.executable, str(ROOT / "scripts" / "plugins.py"), "new", "x", "a2a"],
+                                capture_output=True, text=True, env={**os.environ})
+        self.assertEqual(2, result.returncode)
+        self.assertIn("make plugin-new NAME=<name> KIND=mcp|app", result.stderr)

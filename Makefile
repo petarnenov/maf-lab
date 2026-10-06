@@ -119,7 +119,7 @@ INDEXER_SRC  := $(shell find src/Maf.Lab.Indexing src/Maf.Lab.Retrieval src/Maf.
                 Directory.Build.props Directory.Packages.props global.json
 INDEXER      := $(DOTNET) $(INDEXER_DLL)
 
-.PHONY: all help up core plugins plugin-on plugin-off product-check down restart ps logs print-compose-file clean infra index index-portfolio indexer graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
+.PHONY: all help up core plugins plugin-new plugin-new-check plugin-on plugin-off product-check down restart ps logs print-compose-file clean infra index index-portfolio indexer graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
         coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-answer-check eval-code-route eval-graph-depth eval-retrieval-backends eval-a2a neo4j-chunks dev doctor banner index-if-empty \
         specs docs docs-check lint-dotnet lint-web build-web ci ci-e2e setup \
         require-docker require-dotnet require-npm require-python
@@ -149,7 +149,7 @@ up: require-docker ## Build and start the stack (replicas via API_REPLICAS/MCP_R
 	@# Every replica re-reads plugins/.installed now rather than at its next 30-second check.
 	@$(COMPOSE) exec -T redis redis-cli PUBLISH plugins-changed up >/dev/null 2>&1 || true
 
-core: ## Start the core with no plugin (MAF_PLUGINS=none): a shell that declines every turn, for checking the core
+core: ## Start the core with no plugin (MAF_PLUGINS=none), for checking the core; billing and portfolio stay built in until their follow-ups
 	@$(MAKE) --no-print-directory up MAF_PLUGINS=none
 
 product-check: require-docker ## Build the product image variant (api, web) and check it holds no dev-or-qa-only plugin code
@@ -158,6 +158,12 @@ product-check: require-docker ## Build the product image variant (api, web) and 
 
 plugins: ## List every plugin: kind, scope, environments, whether installed, dependencies, description
 	@$(PLUGINS_PY) list
+
+plugin-new: ## Start a new plugin (NAME=…, KIND=mcp|app): mcp copies _example, app renders the app template; prints the files written
+	@$(PLUGINS_PY) new '$(NAME)' '$(KIND)'
+
+plugin-new-check: require-dotnet ## Scaffold one plugin of each kind, build them, check the docs, then remove them (CI)
+	@DOTNET=$(DOTNET) scripts/plugin_new_check.sh
 
 plugin-on: require-docker ## Install one plugin into the running stack (NAME=…): its services, healthy, then its routes; ALLOW_DOWNTIME=1 for one api replica
 	@scripts/plugin_switch.sh on "$(NAME)"

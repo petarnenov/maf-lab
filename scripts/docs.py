@@ -32,9 +32,10 @@ REQUIRED_BLOCKS = {
     ".github/copilot-instructions.md": ("lb-routes",),
     "openspec/project.md": ("repo-layout",),
     "openspec/config.yaml": ("project-context",),
+    HTTP_API: ("plugin-routes",),
 }
-BLOCK_ORDER = ("make-targets", "repo-layout", "lb-routes", "plugins", "project-context")
-GENERATED_FILES = ("README.md", ".github/copilot-instructions.md", "openspec/project.md", "openspec/config.yaml")
+BLOCK_ORDER = ("make-targets", "repo-layout", "lb-routes", "plugins", "plugin-routes", "project-context")
+GENERATED_FILES = ("README.md", ".github/copilot-instructions.md", "openspec/project.md", "openspec/config.yaml", HTTP_API)
 
 
 @dataclass(frozen=True)
@@ -250,6 +251,20 @@ def gen_plugins(repo: Repo, findings: list[Finding]) -> str:
     return "\n".join(rows)
 
 
+PLUGIN_ROUTE_DOCS = "plugins/*/docs/http-api.md"
+
+
+def gen_plugin_routes(repo: Repo, findings: list[Finding]) -> str:
+    """Each plugin's routes, as it documents them in its own folder (introduce-plugins 6.2): a heading per plugin and its
+    text, so the core's API document is whole while the rows leave with the plugin's folder."""
+    sections = []
+    for path in sorted(repo.root.glob(PLUGIN_ROUTE_DOCS)):
+        name = path.parent.parent.name
+        text = repo.read(str(path.relative_to(repo.root))).strip()
+        sections.append(f"### {name}\n\n{text}")
+    return "\n\n".join(sections) if sections else "No plugin present serves a route of its own."
+
+
 def plugin_module():
     """scripts/plugins.py, imported: the one reader of plugin manifests, shared with make."""
     import importlib.util
@@ -306,6 +321,7 @@ GENERATORS = {
     "repo-layout": gen_repo_layout,
     "lb-routes": gen_lb_routes,
     "plugins": gen_plugins,
+    "plugin-routes": gen_plugin_routes,
     "project-context": gen_project_context,
 }
 
@@ -446,7 +462,8 @@ def check_routes(repo: Repo) -> tuple[list[Finding], int]:
     for (method, path), (rel, line) in sorted(registered.items()):
         if (method, path) not in documented and f"{method} {path}" not in undocumented:
             findings.append(Finding(rel, line, "routes", f"{method} {path} is registered but not in {HTTP_API}",
-                                    f"add a row for it, or list `{method} {path}` under [routes.undocumented]"))
+                                    f"add a row for it (a plugin's route: to the plugin's docs/http-api.md, then make docs), "
+                                    f"or list `{method} {path}` under [routes.undocumented]"))
     for (method, path), line in sorted(documented.items(), key=lambda kv: kv[1]):
         if (method, path) in registered:
             continue

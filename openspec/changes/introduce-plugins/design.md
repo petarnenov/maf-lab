@@ -736,6 +736,8 @@ All of these run in `make test`, `make docs-check` and CI.
   - `docs.py` globs `plugins/*/plugin.mk` for make targets and `plugins/*/lb.http.conf` and `plugins/*/lb.server.conf` for routes. Each route row names its
     plugin.
   - `ROUTE_SOURCES` includes `plugins/*/server`.
+  - A plugin documents its routes in its own `docs/http-api.md`; `docs/http-api.md` transcludes every plugin's in the
+    generated `plugin-routes` block, so deleting a folder leaves the docs in sync (task 6.2).
   - Documentation describes every plugin present, whether enabled or not.
 - **CI.**
   - The e2e job runs with every plugin (unchanged behaviour).

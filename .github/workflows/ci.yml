@@ -54,6 +54,8 @@ jobs:
         run: make lint-dotnet
       - name: Unit and integration tests (Testcontainers Qdrant)
         run: make test-dotnet
+      - name: A scaffolded plugin of each kind builds and keeps the docs in sync
+        run: make plugin-new-check
 
   web:
     name: Web lint, tests and build

@@ -44,8 +44,8 @@ def main() -> int:
             return 0
 
     print(f"…     asking {QUESTION!r}", flush=True)
-    run = {"threadId": None, "runId": "r_example_" + uuid.uuid4().hex[:12],
-           "messages": [{"id": "u_example", "role": "user", "content": QUESTION}]}
+    run = {"threadId": None, "runId": "r_e2e_" + uuid.uuid4().hex[:12],
+           "messages": [{"id": "u_e2e", "role": "user", "content": QUESTION}]}
     events = []
     with urllib.request.urlopen(request("/api/chat", run, token), timeout=300) as resp:
         for raw in resp:

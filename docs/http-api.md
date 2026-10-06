@@ -50,7 +50,6 @@ CopilotKit's runtime at `/copilotkit/` (below); any AG-UI client may call `/api/
 |---|---|---|---|
 | POST | `/api/conversations` | — | `201 { conversationId }` |
 | POST | `/api/chat` | `RunAgentInput` | `text/event-stream` of AG-UI events; `400` without a message (max 4000 chars) or with a malformed `runId`; `404` for another principal's thread or an unknown parent run; `409` for a `runId` used before |
-| GET | `/api/runs/{runId}/trace?after=` | — | `{ runId, turnId, ended, events: TraceEvent[] }` — the run's trace while it is written, events after `seq` `after`; the run's owner only, otherwise `404`. A route of the `monitor` plugin: `404` while it is not installed |
 
 `RunAgentInput` carries `threadId` (the conversation), `runId` (this run — and the id of the turn it records),
 `messages` (the last user message is the question; the rest is ignored, the server keeps the conversation), `state`
@@ -115,11 +114,9 @@ An unknown `activityType` is ignored. A snapshot for a `messageId` already shown
 
 ### The trace
 
-A turn's behind-the-scenes trace never travels on the stream, and is the `monitor` plugin's (introduce-plugins 5.3):
-while it is installed, the run's owner reads it while the run is going from `GET /api/runs/{runId}/trace?after=<seq>`,
-from any replica (the trace is kept in the shared store for the run's grace period), and afterwards from the kept turn
-(`GET /api/turns/{turnId}/trace`). The monitor polls the first while its pane is open and the run is live. Without the
-monitor both routes answer `404`; the turn keeps only its core record. See [trace-events.md](trace-events.md).
+A turn's behind-the-scenes trace never travels on the stream. It is the `monitor` plugin's (introduce-plugins 5.3), and
+its routes are under [Plugin routes](#plugin-routes); without it, a turn keeps only its core record. See
+[trace-events.md](trace-events.md).
 
 ### A run that waits for a person
 
@@ -202,33 +199,21 @@ keeps threads in memory with no owner, so serving them would let one firm read a
 
 ## Conversation history (owner only)
 
-Reopening a conversation is the core's. The list, rename and delete are routes of the `conversation-history` plugin
-(installed by default), over the core's conversation store; while it is not installed they are not served.
+Reopening a conversation is the core's. Listing, renaming and deleting are the `conversation-history` plugin's
+(installed by default), under [Plugin routes](#plugin-routes).
 
 | Method | Path | Body | Response |
 |---|---|---|---|
-| GET | `/api/conversations?search=&limit=&before=` | — | `conversation-history`: `{ conversations: [{ conversationId, title, createdAt, lastActivityAt, turnCount }], nextCursor }` — own, non-deleted, non-empty conversations, newest activity first; `search` matches title, questions and answers (case-insensitive); `limit` default 30, max 100; pass `nextCursor` as `before` for the next page |
 | GET | `/api/conversations/{id}` | — | `{ conversationId, title, createdAt, lastActivityAt, turns: [HistoryTurn] }`; `404` when not owned or deleted |
-| PATCH | `/api/conversations/{id}` | `{ title }` (1–120 chars) | `conversation-history`: `204`; `400` invalid title; `404` |
-| DELETE | `/api/conversations/{id}` | — | `conversation-history`: `204` (soft delete: hidden, cannot be continued; turns stay for the review queue; recorded as `conversation.delete` in the audit); `404` |
 
 `HistoryTurn` = `{ turnId, question, answer, createdAt, toolCalls: [{ callId?, toolName, argumentSummary, outcome,
 resultSummary?, sourceCount }], sources: [{ docId, sectionPath, sourcePath, snippet }], feedbackKinds: [string],
 activities: [{ messageId, activityType, content }], reasoning?, reasoningMs? }` — `activities` are the turn's data
 cards, empty for turns stored before cards existed; `reasoning` is what the model reasoned before it answered and
 `reasoningMs` how long it took, both absent for a model that did not reason (and for turns stored before
-introduce-plugins 5.3). Whether a turn's trace is still kept is the monitor's to say (its route answers `404`). The conversation detail also carries `focus: { accountId } | null`. Turns stored before this change may have empty `sourcePath`/`snippet` and null `callId`/`resultSummary`.
+introduce-plugins 5.3). Whether a turn's trace is still kept is the monitor's to say. The conversation detail also carries `focus: { accountId } | null`. Turns stored before this change may have empty `sourcePath`/`snippet` and null `callId`/`resultSummary`.
 The default title is the first question (≤ 80 chars, cut at a word boundary with "…"). A run on a deleted
 conversation's id returns `404`.
-
-## Turn traces
-
-| Method | Path | Response |
-|---|---|---|
-| GET | `/api/turns/{turnId}/trace` | `{ turnId, conversationId, createdAt, events: TraceEvent[], aguiFrames: RunFrame[] \| null }` — the turn's owner, or a TENANT_ADMIN of the same firm for turns in the review queue; otherwise `404`. A route of the `monitor` plugin (`404` while it is not installed); kept for `Tracing:RetentionDays` (7). `aguiFrames` is the run's own events as they crossed the wire, and is `null` for a turn answered before they were kept. |
-
-`RunFrame` = `{ seq, atMs, type, bytes, payload?, truncated }` — see [trace-events.md](trace-events.md). Turns recorded
-before agui-protocol-only may also carry `name` and `traceSeq` on their custom-event frames.
 
 ## Runs
 
@@ -300,7 +285,16 @@ every verdict but `unchecked`, the two "not" counts are taken against the floor 
 `uncertain` — optional, so an older client still reads the response — counts the checked answers in the review band,
 which raise no review signal. An answer left unchecked because its sources were over the cap sent no request.
 
-## Code (any authenticated role)
+## Plugin routes
+
+A plugin documents its own routes in its folder; this section is generated from them. A plugin's routes are not served
+while it is not installed: a path that is the plugin's alone answers `404`, and a method a plugin adds to a core path
+answers `405`, with `Allow` naming the core's methods.
+
+<!-- generated:plugin-routes — edit a plugin's docs/http-api.md, then run make docs -->
+### code
+
+For any authenticated role.
 
 | Method | Path | Body | Response |
 |---|---|---|---|
@@ -313,6 +307,33 @@ totalMatches, truncated, refineHint? }` — snippets only, never a synthesized a
 `CodeSearch:SnippetMaxChars` (1200) comes back as the window of whole lines around the lines that match the query's
 terms, with `…` where lines were cut, and `startLine`/`endLine` are the window's; a query with no matching line gets the
 chunk's first lines.
+
+### conversation-history
+
+The caller's own conversations, listed, renamed and deleted, over the core's conversation store (owner only).
+Reopening one by its id is the core's (`GET /api/conversations/{id}`).
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | `/api/conversations?search=&limit=&before=` | — | `{ conversations: [{ conversationId, title, createdAt, lastActivityAt, turnCount }], nextCursor }` — own, non-deleted, non-empty conversations, newest activity first; `search` matches title, questions and answers (case-insensitive); `limit` default 30, max 100; pass `nextCursor` as `before` for the next page |
+| PATCH | `/api/conversations/{id}` | `{ title }` (1–120 chars) | `204`; `400` invalid title; `404` |
+| DELETE | `/api/conversations/{id}` | — | `204` (soft delete: hidden, cannot be continued; turns stay for the review queue; recorded as `conversation.delete` in the audit); `404` |
+
+### monitor
+
+A turn's behind-the-scenes trace never travels on the run's stream (agui-protocol-only). While the monitor is
+installed, the run's owner reads it while the run is going, from any replica (the trace is kept in the shared store for
+the run's grace period), and afterwards from the kept turn. The monitor's pane polls the first while it is open and the
+run is live. See [trace-events.md](trace-events.md).
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | `/api/runs/{runId}/trace?after=` | — | `{ runId, turnId, ended, events: TraceEvent[] }` — the run's trace while it is written, events after `seq` `after`; the run's owner only, otherwise `404` |
+| GET | `/api/turns/{turnId}/trace` | — | `{ turnId, conversationId, createdAt, events: TraceEvent[], aguiFrames: RunFrame[] \| null }` — the turn's owner, or a TENANT_ADMIN of the same tenant for turns in the review queue; otherwise `404`, as for a turn whose trace is no longer kept (`Tracing:RetentionDays`, 7). `aguiFrames` is the run's own events as they crossed the wire, and is `null` for a turn answered before they were kept |
+
+`RunFrame` = `{ seq, atMs, type, bytes, payload?, truncated }` — see [trace-events.md](trace-events.md). Turns recorded
+before agui-protocol-only may also carry `name` and `traceSeq` on their custom-event frames.
+<!-- /generated:plugin-routes -->
 
 ## Topology (any authenticated role)
 

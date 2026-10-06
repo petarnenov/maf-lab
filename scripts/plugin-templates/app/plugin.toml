@@ -1,0 +1,8 @@
+schema = 1
+name = "$name"
+kind = "app"
+scope = "installation"
+environments = ["dev", "qa"]
+description = "$title: a page of its own, with one route over a core port. Say here what it gives a user."
+progress = "Page: the $title page shows its loading state while its one request answers"
+stopping = "None — one short read that aborts with its request (React Query's signal); nothing outlives it"

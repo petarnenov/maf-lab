@@ -226,6 +226,10 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
       routed question through a running stack is the pending live check.
 - [ ] 6.2 `make plugin-new NAME= KIND=mcp|app` from templates. Verify that a scaffolded plugin builds, starts, and passes
       `make docs-check`.
+      Done: `plugins.py new` (mcp copies `_example`, app renders `scripts/plugin-templates/app`), `make plugin-new`, and
+      `make plugin-new-check` in CI (scaffold both, build, docs-check, remove, check again). A plugin's routes are
+      documented in its folder and transcluded (monitor, conversation-history and code moved). A scaffolded app
+      plugin's C# and web tests pass locally; the mcp kind's start is `_example`'s live check.
 - [ ] 6.3 Write `docs/plugins.md`, and make the CLAUDE.md, project.md, README and DECISIONS §81 updates from the
       proposal.
 

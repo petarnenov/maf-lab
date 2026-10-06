@@ -3294,6 +3294,7 @@ implementation" (parts A and B) holds each choice in full.
     delete and its audit. The chat owns the sidebar's chrome (column, collapse, rail, drawer, landmark, toggle), named
     after the sidebar's label; a plugin renders content only and asks the chat to open or start a conversation.
     Rejected: plugin-owned layout CSS, a sidebar context object, a plugin navigating with react-router.
+- **Part D (writing your own, task 6).**
   - `_example`, the authoring template, is a C# MCP server in its own container on the official
     ModelContextProtocol.AspNetCore SDK and stock JwtBearer, referencing no core project (rejected: Python, a second
     image, new pins and a second token-validation implementation). It reads the platform's `Auth` section, so
@@ -3304,4 +3305,9 @@ implementation" (parts A and B) holds each choice in full.
   - The sample's end-to-end question lives in its own folder (`plugin.mk` joins `verify`, skipping itself when the
     plugin is not in use), and CI installs it in its one stack; the routing comes from forced retrieval, so the stub
     learns no plugin's tool (rejected: keywords in the core's stub, a separate CI job).
-
+  - `make plugin-new NAME= KIND=mcp|app`: `mcp` copies `_example` under the new name (one source, no drift; rejected: a
+    second mcp template), `app` renders `scripts/plugin-templates/app` with the standard library's `string.Template`
+    (rejected: cookiecutter or Jinja, a dependency). It writes into a temporary folder and renames it into place last.
+  - A plugin documents its routes in its folder (`docs/http-api.md`); `docs/http-api.md` transcludes them in a generated
+    block, so the API document stays whole and a deleted folder leaves it in sync. Rejected: rows in the core file,
+    `[routes.undocumented]`, OpenAPI (a new package, a host or generator, and no prose).

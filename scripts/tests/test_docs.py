@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import shutil
 import sys
 import tempfile
 import textwrap
@@ -86,6 +87,11 @@ HTTP_API = """\
 |---|---|---|
 | GET | `/api/me` | — |
 | POST | `/api/chat/{runId}/stop` | — |
+
+## Plugin routes
+
+<!-- generated:plugin-routes — edit a plugin's docs/http-api.md, then run make docs -->
+<!-- /generated:plugin-routes -->
 """
 
 PROJECT_MD = """\
@@ -820,7 +826,24 @@ class PluginTests(DocsTestCase):
         self.fx.write("plugins/weather/server/WeatherPlugin.cs",
                       'public sealed class WeatherPlugin { void M(IEndpointRouteBuilder r) { r.MapGet("/api/weather", () => 1); } }\n')
         self.generated()
-        self.assertCheckFails("GET /api/weather is registered but not in docs/http-api.md")
+        self.assertCheckFails("GET /api/weather is registered but not in docs/http-api.md",
+                              "to the plugin's docs/http-api.md")
+
+    def test_a_plugin_documents_its_routes_in_its_folder_and_they_leave_with_it(self):
+        self.fx.write("plugins/weather/plugin.toml", GOOD_MANIFEST)
+        self.fx.write("plugins/weather/server/WeatherPlugin.cs",
+                      'public sealed class WeatherPlugin { void M(IEndpointRouteBuilder r) { r.MapGet("/api/weather", () => 1); } }\n')
+        self.fx.write("plugins/weather/docs/http-api.md",
+                      "The forecast.\n\n| Method | Path | Body | Response |\n|---|---|---|---|\n| GET | `/api/weather` | — | `200` |\n")
+        self.generated()
+        api = self.fx.read("docs/http-api.md")
+        self.assertIn("### weather\n\nThe forecast.", api)
+        self.assertCheckPasses()
+
+        shutil.rmtree(self.fx.root / "plugins" / "weather")
+        self.generated()
+        self.assertIn("No plugin present serves a route of its own.", self.fx.read("docs/http-api.md"))
+        self.assertCheckPasses()
 
 
 if __name__ == "__main__":
