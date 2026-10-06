@@ -25,6 +25,7 @@ public sealed class CliCancelTests
     {
         private readonly TcpListener listener = new(IPAddress.Loopback, 0);
         private readonly List<TcpClient> held = [];
+        private readonly TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public BlackHole()
         {
@@ -34,6 +35,9 @@ public sealed class CliCancelTests
 
         public int Port => ((IPEndPoint)listener.LocalEndpoint).Port;
 
+        /// <summary>Completes once something has connected: whatever did is now waiting on it.</summary>
+        public Task Reached => reached.Task;
+
         private async Task AcceptAsync()
         {
             try
@@ -41,6 +45,7 @@ public sealed class CliCancelTests
                 while (true)
                 {
                     held.Add(await listener.AcceptTcpClientAsync());
+                    reached.TrySetResult();
                 }
             }
             catch (Exception ex) when (ex is ObjectDisposedException or SocketException)
@@ -73,7 +78,8 @@ public sealed class CliCancelTests
     private const string DefaultSigint =
         "import os, signal, sys; signal.signal(signal.SIGINT, signal.SIG_DFL); os.execvp(sys.argv[1], sys.argv[1:])";
 
-    private static async Task<(int Exit, string Stderr)> InterruptAsync(string signal, string tool, string[] args, Dictionary<string, string> env)
+    private static async Task<(int Exit, string Stderr)> InterruptAsync(string signal, BlackHole hole, string tool, string[] args,
+        Dictionary<string, string> env)
     {
         var (file, argv) = signal == "INT"
             ? ("python3", (string[])["-c", DefaultSigint, "dotnet", tool, .. args])
@@ -99,8 +105,10 @@ public sealed class CliCancelTests
         using var process = Process.Start(start)!;
         var stderr = process.StandardError.ReadToEndAsync(Ct);
         _ = process.StandardOutput.ReadToEndAsync(Ct);
-        // Long enough to be caught waiting on the black hole, not long enough to give up on it.
-        await Task.Delay(TimeSpan.FromSeconds(4), Ct);
+        // Caught waiting: every tool takes its signals before it first connects, so once the black hole is reached a
+        // signal finds the tool's handler, however slowly the machine started it. The bound only keeps a tool that
+        // never connects from hanging the run.
+        await Task.WhenAny(hole.Reached, process.WaitForExitAsync(Ct)).WaitAsync(TimeSpan.FromSeconds(60), Ct);
         if (process.HasExited)
         {
             Assert.Fail($"{Path.GetFileName(tool)} ended before it was interrupted: {await stderr}");
@@ -124,7 +132,7 @@ public sealed class CliCancelTests
     {
         using var hole = new BlackHole();
 
-        var (exit, stderr) = await InterruptAsync(signal, ToolPath("tools/Maf.Lab.A2AProbe", "Maf.Lab.A2AProbe.dll"),
+        var (exit, stderr) = await InterruptAsync(signal, hole, ToolPath("tools/Maf.Lab.A2AProbe", "Maf.Lab.A2AProbe.dll"),
             [$"http://127.0.0.1:{hole.Port}"], new());
 
         Assert.Equal(130, exit);
@@ -139,7 +147,7 @@ public sealed class CliCancelTests
     {
         using var hole = new BlackHole();
 
-        var (exit, stderr) = await InterruptAsync(signal, ToolPath("src/Maf.Lab.Eval", "Maf.Lab.Eval.dll"),
+        var (exit, stderr) = await InterruptAsync(signal, hole, ToolPath("src/Maf.Lab.Eval", "Maf.Lab.Eval.dll"),
             ["--ask", "what is the procedure when a fee schedule is missing"], new()
         {
             ["Qdrant__Host"] = "127.0.0.1",
@@ -158,7 +166,7 @@ public sealed class CliCancelTests
     {
         using var hole = new BlackHole();
 
-        var (exit, stderr) = await InterruptAsync(signal, ToolPath("src/Maf.Lab.Indexing", "Maf.Lab.Indexing.dll"), ["index"], new()
+        var (exit, stderr) = await InterruptAsync(signal, hole, ToolPath("src/Maf.Lab.Indexing", "Maf.Lab.Indexing.dll"), ["index"], new()
         {
             ["Qdrant__Host"] = "127.0.0.1",
             ["Qdrant__GrpcPort"] = hole.Port.ToString(),

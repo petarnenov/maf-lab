@@ -3,6 +3,8 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Maf.Lab.Api.A2A;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Maf.Lab.Tests;
 
@@ -100,8 +102,14 @@ public class A2AStreamingTests
     [Fact]
     public async Task A_dropped_stream_loses_nothing_the_resubscription_cannot_recover()
     {
-        // Slow enough that the caller can disappear in the middle of the run.
-        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { SimulatedStepMs = 120 };
+        // The run's steps wait on this clock, so it stays in the middle until the test moves the clock on.
+        var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var step = TimeSpan.FromMilliseconds(120);
+        using var api = new ApiFactory(ApiFactory.ProceduralModel())
+        {
+            SimulatedStepMs = (int)step.TotalMilliseconds,
+            ConfigureTestServices = s => s.AddSingleton<TimeProvider>(time),
+        };
         var client = await PartnerClientAsync(api);
 
         var seen = await EventsAsync(client, new
@@ -115,13 +123,22 @@ public class A2AStreamingTests
         Assert.Equal("working", State(seen[1]));
 
         // Resubscribing: the first event is the whole task as it stands, so nothing before it has to be replayed.
-        var resumed = await EventsAsync(client, new
+        var snapshot = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var resuming = EventsAsync(client, new
         {
             jsonrpc = "2.0",
             id = 2,
             method = "tasks/resubscribe",
             @params = new { id = taskId },
-        });
+        }, until: events => { snapshot.TrySetResult(); return false; });
+        await snapshot.Task.WaitAsync(TimeSpan.FromSeconds(30), Ct);
+        // Only now does the run move on, one step at a time, until the resubscribed stream has seen it end.
+        while (!resuming.IsCompleted)
+        {
+            time.Advance(step);
+            await Task.WhenAny(resuming, Task.Delay(10, Ct));
+        }
+        var resumed = await resuming.WaitAsync(TimeSpan.FromSeconds(30), Ct);
 
         Assert.Equal("task", resumed[0].GetProperty("kind").GetString());
         Assert.Equal(taskId, resumed[0].GetProperty("id").GetString());

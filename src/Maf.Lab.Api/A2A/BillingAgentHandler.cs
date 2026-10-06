@@ -185,7 +185,7 @@ public sealed partial class BillingAgentHandler(
         foreach (var step in new[] { "Loading accounts", "Applying fee schedules", "Producing invoices" })
         {
             work.ThrowIfCancellationRequested();
-            await System.Threading.Tasks.Task.Delay(TimeSpan.FromMilliseconds(options.Value.SimulatedStepMs), work);
+            await System.Threading.Tasks.Task.Delay(TimeSpan.FromMilliseconds(options.Value.SimulatedStepMs), time, work);
             await updater.StartWorkAsync(Say($"{step}…"), work);
         }
 

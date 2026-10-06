@@ -3356,3 +3356,21 @@ No package version moves in this change.
   .NET's `TimeProvider`, from dotnet/extensions, on the same version line as `Microsoft.Extensions.AI` 10.10.0.
   Rejected: a home-grown fake clock (the platform ships one), longer delays (slower and still a race), retrying flaky
   tests (hides a real failure).
+
+## 83. The CLI cancel and A2A resubscribe tests wait on effects, not time (deterministic-cli-and-a2a-tests, 2026-10-06)
+
+- **Why.** The proof runs of §82 found two more tests that lose under load. `CliCancelTests` signalled each tool after
+  a fixed 4 s: a tool that had not yet installed its handlers was killed by the default SIGINT (exit 130, empty
+  stderr). `A2AStreamingTests.A_dropped_stream_loses_nothing…` raced its run's real-clock steps against
+  `tasks/resubscribe`.
+- **Now.**
+  - The CLI tests signal once the black hole has accepted the tool's first connection. Every tool installs its handlers
+    before it first connects, so that is the moment a signal is sure to be caught. Bounded at 60 s.
+  - `BillingAgentHandler`'s simulated steps wait on its injected `TimeProvider` (`Task.Delay(delay, time, ct)`), as its
+    cancel watch already did. The streaming test holds a `FakeTimeProvider` until it has resubscribed. Production
+    keeps `TimeProvider.System`.
+- **Rejected.** Longer fixed delays and slower simulated steps (they narrow the race and slow the suite), and a
+  readiness line printed by each tool (a new protocol between the tools and their tests, where the connection already
+  says it).
+- **Not here.** `FeeAdjustmentLedgerTests.Two_replicas_confirming_at_once_apply_it_once` ("cannot start a transaction
+  within a transaction") is billing's, moves with extract-billing, and looks like a concurrency bug, not timing.
