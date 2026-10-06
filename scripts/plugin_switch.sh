@@ -136,7 +136,9 @@ if [[ "$ACTION" == on ]]; then
   checkpoint
   if [[ "$restart" == 1 ]]; then
     step "restarting the api replicas"
-    shielded "$ROOT/scripts/api_restart.sh"
+    # The new set, not the environment's: make exported the set it started with, and api_restart.sh regenerates the
+    # balancer's parts from MAF_PLUGINS after each replica.
+    MAF_PLUGINS="$new_set" shielded "$ROOT/scripts/api_restart.sh"
     checkpoint
   fi
   step "telling the running services"
@@ -198,7 +200,8 @@ else
   fi
   if [[ "$restart" == 1 ]]; then
     step "restarting the api replicas"
-    shielded "$ROOT/scripts/api_restart.sh"
+    # The new set, not the environment's (see plugin-on): the removed plugin's parts must not come back.
+    MAF_PLUGINS="${next:-none}" shielded "$ROOT/scripts/api_restart.sh"
     checkpoint
   fi
   step "done"

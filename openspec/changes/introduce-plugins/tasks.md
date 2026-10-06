@@ -170,7 +170,7 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
       its service and nav link. The mcp-inspector's server list comes from the installed manifests. Verify that
       `make core` runs none of them, that each `make plugin-on NAME=…` brings back only its own, and that
       `MAF_ENV=stage` refuses each.
-- [ ] 5.2 `code` (mcp + app). Moves:
+- [x] 5.2 `code` (mcp + app). Moves:
   - the mcp-code service and its lb snippet;
   - the code index and graph targets;
   - its `[domain]` table;
@@ -190,9 +190,18 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   Evidence so far (2026-10-06, `make ci-e2e`, every plugin): code installed, indexed and graphed through its `plugin.mk`, and
   its tests green in the coverage-runner's baseline. Root cause of that baseline's earlier 183 failures: plugin manifest
   tests shell out to plugins.py; python3-minimal lacks json; hidden since C2 because the live checks were pending
-  (fixed 04db42a, guarded 754b539). Still open, not run live: the scenarios "A remote plugin is switched off"
-  (`make plugin-off NAME=code` on a running stack) and "A plugin is deleted" (`make test` with the folder moved aside).
-- [ ] 5.3 `monitor` (app):
+  (fixed 04db42a, guarded 754b539). Live (2026-10-06, `make plugin-switch-check` on the dev stack): plugin-off — "PASS the api answered through the
+  balancer throughout (58 polls) — 0 failed", "PASS the run in flight ended finished — RUN_FINISHED", "PASS mcp-code:
+  none", "PASS /code/mcp answers 404, not the web app — 404 nospa", "PASS 4 answers in a row: the codebase domain is
+  absent", "PASS lb untouched", "PASS copilot-runtime untouched", "PASS each api replica is the same container",
+  "PASS each api replica was restarted"; plugin-on — the inverse, all PASS ("76 polls — 0 failed", "/code/mcp … 401
+  nospa", "present"). The check's first runs found two real bugs, fixed here: `api_restart.sh`'s `write_without`
+  looped over the global `id`, so it restarted the last replica while the first was out of rotation (502s, the first
+  never restarted); and `plugin_switch.sh` let `api_restart.sh` regenerate the balancer from make's exported (old)
+  set, putting the removed plugin's upstream back (nginx -t failed). "A plugin is deleted" (scratch worktree with
+  `plugins/code` removed; tests ran first, then docs generate and check): .NET unit 1557 passed, web 685 passed,
+  docs-check in sync (55 routes).
+- [x] 5.3 `monitor` (app):
   - split `TurnTrace` into the core record and `ITurnObserver`, and store reasoning on the core turn;
   - move into the plugin, with its own table: `LiveTrace`, the full model capture, the prompt dump, `TraceRetrieval`,
     `RunFrameRecorder`, the trace routes and retention;
@@ -208,8 +217,10 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   override, the review panel slot). Both are in; the box stays open for the live checks (a core-only turn
   making no Redis trace write and no trace request, on the running stack).
   Evidence so far (2026-10-06): with the monitor on, its tests green (unit and the coverage-runner's baseline in
-  `make ci-e2e`); core-only turns on `make ci-e2e-core` made no model, Jev or tool call. Still open: an assertion that a
-  core-only turn writes no live trace to Redis and the page requests no trace.
+  `make ci-e2e`); core-only turns on `make ci-e2e-core` made no model, Jev or tool call. Live (2026-10-06, `make ci-e2e-core`): "PASS no live trace was written to the shared store —
+  runtrace:r_core_b3375aa8e0eb", the same for r_core_b8ccf1246e42, and "PASS no live trace appeared in the shared store
+  under any id". The page: `web/src/chat/ChatPage.notrace.test.tsx` (core, no plugin: no /api/runs|turns/*/trace
+  request, recorded above the test runtime); the plugin-side complement is `MonitorPane.test.tsx`.
 - [x] 5.4 `conversation-history` (app, installation scope, installed by default):
   - add `IConversationStore` to the abstractions (task 3.1), implemented by the core: page and search, rename, and a
     soft delete that records `conversation.delete` in the audit;

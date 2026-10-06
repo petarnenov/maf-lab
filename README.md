@@ -190,6 +190,7 @@ make help                  # every target
 | `make product-check` | Build the product image variant (api, web) and check it holds no dev-or-qa-only plugin code |
 | `make plugins` | List every plugin: kind, scope, environments, whether installed, dependencies, description |
 | `make plugin-new` | Start a new plugin (NAME=…, KIND=mcp\|app): mcp copies _example, app renders the app template; prints the files written |
+| `make plugin-switch-check` | On the running dev stack: switch the code plugin off and on, checking a run in flight, availability and that nothing else restarts |
 | `make plugin-new-check` | Scaffold one plugin of each kind, build them, check the docs, then remove them (CI) |
 | `make plugin-on` | Install one plugin into the running stack (NAME=…): its services, healthy, then its routes; ALLOW_DOWNTIME=1 for one api replica |
 | `make plugin-off` | Remove one plugin from the running stack (NAME=…); refuses while it has open work unless STOP_WORK=1 |

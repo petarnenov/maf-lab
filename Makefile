@@ -119,7 +119,7 @@ INDEXER_SRC  := $(shell find src/Maf.Lab.Indexing src/Maf.Lab.Retrieval src/Maf.
                 Directory.Build.props Directory.Packages.props global.json
 INDEXER      := $(DOTNET) $(INDEXER_DLL)
 
-.PHONY: all help up core plugins plugin-new plugin-new-check plugin-on plugin-off product-check down restart ps logs print-compose-file clean infra index index-portfolio indexer graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
+.PHONY: all help up core plugins plugin-new plugin-new-check plugin-switch-check plugin-on plugin-off product-check down restart ps logs print-compose-file clean infra index index-portfolio indexer graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
         coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-answer-check eval-code-route eval-graph-depth eval-retrieval-backends eval-a2a neo4j-chunks dev doctor banner index-if-empty \
         specs docs docs-check lint-dotnet lint-web build-web ci ci-e2e ci-e2e-core core-turn-check setup \
         require-docker require-dotnet require-npm require-python
@@ -161,6 +161,9 @@ plugins: ## List every plugin: kind, scope, environments, whether installed, dep
 
 plugin-new: ## Start a new plugin (NAME=…, KIND=mcp|app): mcp copies _example, app renders the app template; prints the files written
 	@$(PLUGINS_PY) new '$(NAME)' '$(KIND)'
+
+plugin-switch-check: require-docker ## On the running dev stack: switch the code plugin off and on, checking a run in flight, availability and that nothing else restarts
+	@scripts/plugin_switch_check.sh
 
 plugin-new-check: require-dotnet ## Scaffold one plugin of each kind, build them, check the docs, then remove them (CI)
 	@DOTNET=$(DOTNET) scripts/plugin_new_check.sh

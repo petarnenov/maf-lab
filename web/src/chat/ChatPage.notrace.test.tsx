@@ -22,7 +22,8 @@ describe('ChatPage without the monitor', () => {
             ])
           : jsonResponse({}, 404),
     );
-    // Every request the page makes, before the test runtime answers any of them (it answers a trace request itself).
+    // Every request the page makes, recorded ABOVE the test runtime: agentFetch answers a trace request itself, so a spy
+    // below it (the handler) would never see one and this test would pass whatever the page does. Keep it here.
     const runtime = agentFetch(fetchMock);
     const requests = vi.fn((url: string, init?: RequestInit) => runtime(url, init));
     vi.stubGlobal('fetch', requests);

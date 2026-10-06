@@ -35,13 +35,15 @@ fi
 address() { docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "$1" | awk '{print $1}'; }
 health() { docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$1"; }
 write_without() {
-  local skip="$1" tmp="$CONF.tmp-$$"
+  # `other` is local: a loop over the global `id` would leave it naming the last replica, and the caller would then
+  # restart that one while this one is out of rotation (both out at once: 502s, and this one never restarted).
+  local skip="$1" tmp="$CONF.tmp-$$" other
   {
     echo "# Transient (scripts/api_restart.sh): the replicas other than the one restarting. make restores the template."
     echo "upstream api_pool {"
     echo "    zone api_pool 64k;"
     echo "    least_conn;"
-    for id in "${replicas[@]}"; do [[ "$id" == "$skip" ]] || echo "    server $(address "$id"):8080 max_fails=1 fail_timeout=10s;"; done
+    for other in "${replicas[@]}"; do [[ "$other" == "$skip" ]] || echo "    server $(address "$other"):8080 max_fails=1 fail_timeout=10s;"; done
     echo "    keepalive 32;"
     echo "}"
   } >"$tmp"
