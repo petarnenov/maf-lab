@@ -25,11 +25,25 @@ public sealed class AgentOptions
 
     /// <summary>
     /// Every server of the turn, in configuration order, then the installed MCP plugins' that no configured key already
-    /// names. The first server to offer a tool name keeps it; a server whose domain is not in use is not contacted.
+    /// names. A configured key that names an installed plugin overrides only what it sets — typically just the endpoint
+    /// (`make dev`'s local server) — and takes the domain and tools from the plugin's manifest. The first server to offer
+    /// a tool name keeps it; a server whose domain is not in use is not contacted.
     /// </summary>
-    public IReadOnlyList<McpServerOptions> AllServers(IReadOnlyDictionary<string, McpServerOptions>? plugins = null) =>
-        [.. Servers.Values.Concat((plugins ?? new Dictionary<string, McpServerOptions>()).Where(p => !Servers.ContainsKey(p.Key)).Select(p => p.Value))
+    public IReadOnlyList<McpServerOptions> AllServers(IReadOnlyDictionary<string, McpServerOptions>? plugins = null)
+    {
+        plugins ??= new Dictionary<string, McpServerOptions>();
+        return [.. Servers.Select(s => plugins.TryGetValue(s.Key, out var plugin) ? Over(plugin, s.Value) : s.Value)
+            .Concat(plugins.Where(p => !Servers.ContainsKey(p.Key)).Select(p => p.Value))
             .Where(s => !string.IsNullOrWhiteSpace(s.Endpoint) && !string.IsNullOrWhiteSpace(s.Domain))];
+    }
+
+    /// <summary>A plugin's server with what the configuration sets over it.</summary>
+    private static McpServerOptions Over(McpServerOptions plugin, McpServerOptions configured) => new()
+    {
+        Domain = string.IsNullOrWhiteSpace(configured.Domain) ? plugin.Domain : configured.Domain,
+        Endpoint = string.IsNullOrWhiteSpace(configured.Endpoint) ? plugin.Endpoint : configured.Endpoint,
+        Tools = configured.Tools.Count > 0 ? configured.Tools : plugin.Tools,
+    };
     public int HistoryTokenBudget { get; set; } = 3000;
     public int LongAnswerChars { get; set; } = 800;
     /// <summary>Issue the forced search_documents call on the model's behalf (Ollama ignores tool_choice).</summary>

@@ -34,6 +34,8 @@ public sealed class CodeRouteSuite(EvalAgentHost host)
         {
             throw new InvalidOperationException("The code-route suite measures Jev:RouteCodeTools, which is off.");
         }
+        host.RequireDomain("codebase", "code");
+        using var domains = host.UseDomains();
         var classifier = host.Services.GetRequiredService<IIntentClassifier>();
         var cases = ctx.Take(DatasetLoader.CodeRoute(ctx.DatasetRoot)).ToList();
         using var bar = new ConsoleProgress(Name);

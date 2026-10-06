@@ -15,7 +15,7 @@ public sealed class InstalledPlugins(PluginCatalogue catalogue, IOptions<AgentOp
         {
             return null;
         }
-        // The same rule as AgentOptions.AllServers: a configured key shadows the manifest's server of that name.
+        // The same rule as AgentOptions.AllServers: a configured key overrides what it sets of the manifest's server.
         return agent.Value.Servers.TryGetValue(plugin, out var configured) && !string.IsNullOrWhiteSpace(configured.Endpoint)
             ? configured.Endpoint
             : catalogue.McpServers().GetValueOrDefault(plugin)?.Endpoint;

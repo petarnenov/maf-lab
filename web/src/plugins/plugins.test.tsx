@@ -183,6 +183,21 @@ describe('plugin import boundary', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('a plugin imports test support only from its tests', () => {
+    const testOnly = (spec: string) =>
+      spec === '@maf/testing' || spec === 'vitest' || spec.startsWith('@testing-library/');
+    const offenders = readdirSync(join(repo, 'plugins'), { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .flatMap((d) => files(join(repo, 'plugins', d.name, 'web')))
+      .filter((path) => !/\.test\.tsx?$/.test(path))
+      .flatMap((path) =>
+        imports(path)
+          .filter(testOnly)
+          .map((spec) => `${relative(repo, path)} → ${spec}`),
+      );
+    expect(offenders).toEqual([]);
+  });
+
   function isOwn(path: string, spec: string) {
     const folder = relative(repo, path).split('/').slice(0, 3).join('/');
     return relative(repo, join(path, '..', spec)).startsWith(folder);

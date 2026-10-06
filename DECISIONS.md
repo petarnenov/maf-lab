@@ -3252,7 +3252,8 @@ implementation" (parts A and B) holds each choice in full.
   - The web plugin API adds `toolLabels`, `ChatContext.turn` and `ChatContext.pane`, and exports `SourceRef` and
     `useApi`. A plugin's pane stays mounted while hidden. A plugin's web part resolves packages from the web project
     (Vite `resolve.dedupe`, a tsconfig `paths` fallback), and its tests import the core's test support as
-    `@maf/testing`. Rejected: deriving the selected turn in a run observer.
+    `@maf/testing`. Rejected: deriving the selected turn in a run observer; npm workspaces (it hoists node_modules and changes
+    the whole web's install and lockfile).
   - A plugin's tests compile into the core's test projects from its folder (`tests/unit`, `tests/integration`), with
     no project of their own, so nothing outside the folder names them.
 

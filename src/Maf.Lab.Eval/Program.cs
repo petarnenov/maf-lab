@@ -79,12 +79,19 @@ public static class Program
     private static async Task<int> RunAsync(string[] args, CancellationToken ct)
     {
         var flags = ParseFlags(args);
-        var configuration = new ConfigurationBuilder()
+        IConfiguration configuration = new ConfigurationBuilder()
             .AddJsonFile(Path.Combine(AppContext.BaseDirectory, "eval.json"), optional: true)
             .AddEnvironmentVariables()
             .Build();
         var options = configuration.GetSection(EvalOptions.Section).Get<EvalOptions>() ?? new EvalOptions();
         var root = DatasetWriter.ResolveRoot(string.IsNullOrWhiteSpace(options.Root) ? null : options.Root);
+        if (string.IsNullOrWhiteSpace(configuration["Plugins:Root"]))
+        {
+            // The installed plugins are the repository's, wherever the eval runs from: never a silently empty set.
+            configuration = new ConfigurationBuilder().AddConfiguration(configuration)
+                .AddInMemoryCollection(new Dictionary<string, string?> { ["Plugins:Root"] = Path.Combine(Path.GetDirectoryName(root)!, "plugins") })
+                .Build();
+        }
 
         if (flags.ContainsKey("import-feedback"))
         {
@@ -143,7 +150,12 @@ public static class Program
                 {
                     Console.WriteLine($"   run {run}/{repeat}");
                 }
-                var one = await RunSuiteAsync(name, thisRun);
+                IReadOnlyList<EvalVariantResult> one;
+                // Every suite reads the host's domains, built-in and installed, as an api request does.
+                using (host.UseDomains())
+                {
+                    one = await RunSuiteAsync(name, thisRun);
+                }
                 runs.Add(one);
                 if (repeat > 1)
                 {

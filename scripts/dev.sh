@@ -59,8 +59,7 @@ run portfolio "$ROOT/src/Maf.Lab.Portfolio" "$DOTNET" run --no-build
 # The codebase's server runs only while the code plugin is installed. Its server.json names the balancer, which make dev
 # bypasses, so the api is pointed at the local one by the configured override of that plugin's server.
 if installed code; then
-  export Agent__Servers__code__Domain=codebase Agent__Servers__code__Endpoint=http://localhost:5092/mcp \
-    Agent__Servers__code__Tools__0=search_codebase Agent__Servers__code__Tools__1=trace_code_symbol Agent__Servers__code__Tools__2=change_impact
+  export Agent__Servers__code__Endpoint=http://localhost:5092/mcp
   run code "$ROOT/src/Maf.Lab.CodeSearch" "$DOTNET" run --no-build
 fi
 run api "$ROOT/src/Maf.Lab.Api" "$DOTNET" run --no-build

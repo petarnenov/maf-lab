@@ -206,6 +206,7 @@ public sealed class GraphDepthSuite(IConfiguration configuration, JevGrader? gra
         bar.Layer(variant, "end-to-end");
         var host = await StartAsync(variant, async () => await EvalAgentHost.StartAsync(configuration, ct, codeSettings: PinOf(variant)));
         await using var _ = host;
+        host.RequireDomain("codebase", "code");
         var answers = new List<(TurnResult?, JudgeScore, bool)>();
         foreach (var c in cases)
         {

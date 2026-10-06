@@ -48,8 +48,8 @@ export interface ChatContext {
   /** Opens one of the chat's panes by id, with an optional value for it (a source to show, say). */
   openPane: (id: string, value?: unknown) => void;
   /**
-   * For a pane's own render only: whether it is the pane showing, and the value it was last opened with. A pane stays
-   * mounted while hidden, so it keeps its state and can open itself.
+   * For a pane's own render only: whether it is the pane showing, and `value`, whatever that pane's own last `openPane`
+   * call passed (the core never reads it). A pane stays mounted while hidden, so it keeps its state and can open itself.
    */
   pane?: { active: boolean; value?: unknown };
 }

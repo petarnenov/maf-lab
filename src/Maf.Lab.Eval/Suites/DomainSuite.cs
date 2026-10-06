@@ -21,6 +21,9 @@ public sealed class DomainSuite(EvalAgentHost host)
         {
             throw new InvalidOperationException($"The domain suite needs {JevCredential.EnvironmentVariable} in the environment.");
         }
+        // Its cases include codebase questions: without the code plugin they would all score as misses.
+        host.RequireDomain("codebase", "code");
+        using var domains = host.UseDomains();
         var classifier = host.Services.GetRequiredService<IIntentClassifier>();
         var cases = ctx.Take(DatasetLoader.Domain(ctx.DatasetRoot)).ToList();
         var outcomes = new List<(DomainCase Case, string Actual)>();

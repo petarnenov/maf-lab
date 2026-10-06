@@ -44,6 +44,25 @@ public sealed class EvalAgentHost : IAsyncDisposable
 
     public ServiceProvider Services { get; }
 
+    /// <summary>
+    /// Puts this host's domains in scope for a suite that asks the classifier directly (outside a turn, which scopes its
+    /// own): the same frozen view an api request reads.
+    /// </summary>
+    public IDisposable UseDomains() => DomainCatalogue.Use(Services.GetRequiredService<DomainCatalogue>().Freeze());
+
+    /// <summary>
+    /// Refuses a suite that measures a domain the stack has not installed: it fails loudly, naming the plugin, instead of
+    /// scoring every case zero.
+    /// </summary>
+    public void RequireDomain(string domain, string plugin)
+    {
+        if (Services.GetRequiredService<DomainCatalogue>().Get(domain) is null)
+        {
+            throw new InvalidOperationException(
+                $"the {plugin} plugin is not installed (no {domain} domain in plugins/.installed): install it (make plugin-on NAME={plugin}) or run make up first");
+        }
+    }
+
     /// <param name="codeSettings">
     /// Settings for an in-process codebase server, which is then always started here, whatever Evals:CodeMcpEndpoint
     /// says: the graph-depth suite's pin (add-graph-depth-eval) only exists on a server it starts itself.

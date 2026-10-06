@@ -171,6 +171,8 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   - the `search_codebase` label and any code card or label from the core web into the plugin's web part;
   - its line in plugins/mcp-inspector/files/start.mjs (the code plugin's server.json lists it instead);
   - `code` added to `CI_PLUGINS`.
+  - Known gap: `make lint-web` runs `eslint .` inside `web/`, so plugin web files are not linted; the import boundary
+    for them is the Vitest scanner in `web/src/plugins/plugins.test.tsx` (test-only imports included).
 
   The codebase domain's pin assertions (1.1: `DomainRoutingPinTests`, the code-request part of `DataToolRoutingTests`,
   the codebase fragment of `SystemPromptTests`) moved verbatim into the plugin, run in the three-domain view; the core

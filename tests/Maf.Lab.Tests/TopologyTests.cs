@@ -142,9 +142,9 @@ public class TopologyTests
         using var api = Api(StubHandler.AllHealthy(), new Dictionary<string, string[]> { ["mcp-code"] = ["10.0.0.21", "10.0.0.22"] },
             tools: new FakeToolSource { WithCodebase = true }, withCodeDomain: true, settings: new Dictionary<string, string?>
             {
-                // The code domain's server, configured as `make dev` configures it.
-                ["Agent:Servers:code:Domain"] = "codebase",
-                ["Agent:Servers:code:Endpoint"] = "http://localhost:5092/mcp",
+                // A code domain's server, configured (no plugin manifest here to take the domain from).
+                ["Agent:Servers:codebase:Domain"] = "codebase",
+                ["Agent:Servers:codebase:Endpoint"] = "http://localhost:5092/mcp",
             });
 
         var report = await GetAsync(api);

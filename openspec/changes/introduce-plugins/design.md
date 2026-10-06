@@ -902,8 +902,13 @@ These choices deviate from the text above. Each is kept, with the rejected alter
    - `SourceRef` and `useApi` exported from `@maf/plugin-api`.
 
    A plugin's web part resolves packages from the web project (Vite's `resolve.dedupe`, a `paths` fallback in
-   tsconfig). Rejected: deriving the selected turn in a run observer, which would duplicate the chat reducer.
+   tsconfig). Rejected: deriving the selected turn in a run observer, which would duplicate the chat reducer; npm
+   workspaces (it hoists node_modules and changes the whole web's install and lockfile).
 10. **A domain that is not installed is reported as such** by the topology probe (`not installed`, not a fault).
+    Transitional: the probe still hard-codes the codebase domain and the mcp-code node and edges, a core-to-plugin
+    name that `CoreNamesNoDomainTests` does not cover (the file is allow-listed). The billing and portfolio follow-ups
+    derive the domain-server nodes from the catalogue and the agent's servers, after which a plugin that is not
+    installed has no node.
 
 ## Principles and patterns
 

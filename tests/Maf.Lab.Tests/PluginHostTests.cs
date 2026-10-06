@@ -147,6 +147,22 @@ public class PluginHostTests
     }
 
     [Fact]
+    public void A_configured_endpoint_over_an_installed_plugin_keeps_the_manifests_domain_and_tools()
+    {
+        var options = new Maf.Lab.Api.Agent.AgentOptions();
+        options.Servers["weather"] = new Maf.Lab.Api.Agent.McpServerOptions { Endpoint = "http://localhost:5099/mcp" };
+        var plugins = new Dictionary<string, Maf.Lab.Api.Agent.McpServerOptions>
+        {
+            ["weather"] = new() { Domain = "weather", Endpoint = "http://lb/weather/mcp", Tools = ["forecast"] },
+        };
+
+        var server = Assert.Single(options.AllServers(plugins));
+
+        Assert.Equal(("weather", "http://localhost:5099/mcp"), (server.Domain, server.Endpoint));
+        Assert.Equal(["forecast"], server.Tools);
+    }
+
+    [Fact]
     public void The_indexed_and_the_keyed_server_settings_both_bind()
     {
         var configuration = new Microsoft.Extensions.Configuration.ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
