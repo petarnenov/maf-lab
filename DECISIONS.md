@@ -14,7 +14,7 @@ Pinned versions and the architectural decisions of maf-lab. **If a version moves
 | Test runner | Microsoft.Testing.Platform (required by `dotnet test` on .NET 10 SDK) | `global.json` `test.runner` |
 | Qdrant | `qdrant/qdrant:v1.19.1` (compose and Testcontainers) | `compose/docker-compose.yml`, `tests/.../QdrantFixture.cs` |
 | Ollama | `ollama/ollama:0.34.2` | `compose/docker-compose.yml` |
-| Node (build) | `node:24.21.0-alpine` (local dev: Node 24.21.0) | `web/Dockerfile` |
+| Node (build and runtime) | `node:24.21.0-alpine`, `node:24.21.0-bookworm-slim` (CI: Node 24; this dev machine: 24.11.0) | `web/Dockerfile`, `copilot-runtime/Dockerfile`, `src/Maf.Lab.CoverageRunner/Dockerfile`, `.github/workflows/ci.yml` |
 | nginx (web runtime and load balancer) | `nginx:1.30.5-alpine` | `web/Dockerfile`, `compose/docker-compose.yml` (`lb`) |
 | OpenTelemetry Collector | `otel/opentelemetry-collector-contrib:0.161.0` | `compose/docker-compose.yml` |
 | Prometheus | `prom/prometheus:v3.14.0` | `compose/docker-compose.yml` |
@@ -86,7 +86,8 @@ eslint-plugin-react-hooks 7.1.1 · eslint-plugin-react-refresh 0.5.7 · globals 
 @opentelemetry/semantic-conventions 1.43.0 · @opentelemetry/exporter-trace-otlp-http, -instrumentation, -instrumentation-fetch 0.222.0
 
 - **TypeScript 6.0.3, not 7.x**: typescript-eslint 8.70 supports `<6.1`.
-- **jsdom 29.1.1, not 30.x**: jsdom 30 requires Node ≥ 24.15; the dev machine runs 24.11.
+- **jsdom 29.1.1, not 30.x**: jsdom 30 requires Node ≥ 24.15; the images run 24.21.0, but the dev machine runs
+  24.11.0, where the web tests run too.
 - **The OpenTelemetry browser packages split at 0.x and 2.x**: the SDK and the semantic conventions are stable,
   the exporters and instrumentations are not, and they version separately. Both lines are pinned exactly, as
   everything here is.
