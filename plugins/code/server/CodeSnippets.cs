@@ -1,17 +1,13 @@
 using System.Text.Json;
 using Maf.Lab.Domain.Code;
-using Microsoft.Extensions.Options;
+using Maf.Lab.Plugins.Abstractions;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 
-namespace Maf.Lab.Api.Code;
-
-public sealed class CodeSearchClientOptions
-{
-    public const string Section = "CodeSearch";
-
-    /// <summary>The codebase MCP server (compose: http://lb/code/mcp; dev: http://localhost:5092/mcp). Empty: no code search.</summary>
-    public string Endpoint { get; set; } = "http://localhost:5092/mcp";
-}
+namespace Maf.Lab.Plugins.Code;
 
 /// <summary>Why the code search could not answer, in words that name no host.</summary>
 public sealed class CodeSearchUnavailableException(string message, Exception? inner = null) : Exception(message, inner);
@@ -24,15 +20,17 @@ public interface ICodeSnippetSource
 
 /// <summary>
 /// Calls search_codebase on the codebase MCP server with the user's own bearer token, as the agent's tool source calls
-/// every other server: the server derives the principal itself and the api never passes a tenant.
+/// every other server: the server derives the principal itself and the api never passes a tenant. The endpoint is the
+/// one the core connects the agent to (<see cref="IInstalledPlugins.McpEndpoint"/>: a configured override, else this
+/// plugin's server.json), read on every call so a changed installed set applies at once.
 /// </summary>
-public sealed class McpCodeSnippetSource(IOptions<CodeSearchClientOptions> options, IHttpClientFactory http, ILoggerFactory loggers) : ICodeSnippetSource
+public sealed class McpCodeSnippetSource(IInstalledPlugins installed, IHttpClientFactory http, ILoggerFactory loggers) : ICodeSnippetSource
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     public async Task<CodeSearchResult> SearchAsync(string bearerToken, string question, int? maxResults, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(options.Value.Endpoint))
+        if (installed.McpEndpoint(CodePlugin.PluginName) is not { Length: > 0 } endpoint)
         {
             throw new CodeSearchUnavailableException("Code search is not configured.");
         }
@@ -40,7 +38,7 @@ public sealed class McpCodeSnippetSource(IOptions<CodeSearchClientOptions> optio
         {
             var transport = new HttpClientTransport(new HttpClientTransportOptions
             {
-                Endpoint = new Uri(options.Value.Endpoint),
+                Endpoint = new Uri(endpoint),
                 TransportMode = HttpTransportMode.StreamableHttp,
                 AdditionalHeaders = new Dictionary<string, string> { ["Authorization"] = $"Bearer {bearerToken}" },
                 Name = "maf-lab-code",
@@ -69,7 +67,7 @@ public static class CodeSnippetsEndpoints
 {
     public sealed record CodeSnippetsRequest(string? Question, int? MaxResults);
 
-    public static IEndpointRouteBuilder MapCodeSnippets(this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapCodeSnippets(IEndpointRouteBuilder app)
     {
         // The Code snippets tab: the repository's answer to a chat question, fetched as the user who asked it.
         app.MapPost("/api/code/snippets", async (CodeSnippetsRequest request, HttpContext http, ICodeSnippetSource source,

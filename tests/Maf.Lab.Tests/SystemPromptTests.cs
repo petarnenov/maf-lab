@@ -10,43 +10,36 @@ public class SystemPromptTests
         .AddInMemoryCollection(new Dictionary<string, string?> { ["Agent:SystemPrompt"] = version }).Build());
 
     [Fact]
-    public void The_default_is_v6_assembled_from_the_domains_in_use_with_everything_v5_said()
+    public void The_default_is_v6_assembled_from_the_built_in_domains()
     {
         var prompt = Load(null);
 
         Assert.Equal("core.v6", prompt.Version);
         Assert.DoesNotContain("{{", prompt.Text);
         Assert.DoesNotContain("<!--", prompt.Text);
-        // add-neo4j-graph: the graph tools are named, and coverage and callers come from them, not from a snippet.
         Assert.Contains("trace_billing_relationships", prompt.Text);
-        Assert.Contains("trace_code_symbol", prompt.Text);
-        Assert.Contains("change_impact", prompt.Text);
-        Assert.Contains("not from search_codebase", prompt.Text);
         Assert.Contains("## Data cards", prompt.Text);
         Assert.Contains("never calculate trades", prompt.Text);
-        // add-codebase-domain: the codebase is a domain with its search, code is cited by place, general programming stays out.
-        Assert.Contains("search_codebase", prompt.Text);
-        Assert.Contains("path:start-end", prompt.Text);
+        Assert.Contains("cross from one domain", prompt.Text);
         Assert.Contains("general programming that is not about these domains", prompt.Text);
         Assert.DoesNotContain("travel, coding,", prompt.Text);
+        // A domain that is not in use is not in the prompt (introduce-plugins 5g): without the code plugin, no code.
+        Assert.DoesNotContain("search_codebase", prompt.Text);
     }
 
     [Fact]
     public void Only_the_domains_in_use_are_in_the_prompt()
     {
-        var prompt = Load(null);
-        var code = DomainCatalogue.Current.Get(Maf.Lab.Api.BuiltIn.BuiltInDomains.Codebase)!;
+        var portfolio = DomainCatalogue.Current.Get(Maf.Lab.Api.BuiltIn.BuiltInDomains.Portfolio)!;
 
-        var text = SystemPrompt.Assemble(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Prompts", "core.v6.md")), [code]);
+        var text = SystemPrompt.Assemble(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Prompts", "core.v6.md")), [portfolio]);
 
-        Assert.Contains("search_codebase", text);
-        Assert.DoesNotContain("search_documents", text);
-        Assert.DoesNotContain("get_household_portfolio", text);
-        Assert.DoesNotContain("## Data cards", text);
+        Assert.Contains("get_household_portfolio", text);
+        Assert.DoesNotContain("get_billing_run_status", text);
+        Assert.DoesNotContain("search_codebase", text);
         // One domain: nothing crosses into another.
         Assert.DoesNotContain("cross from one domain", text);
-        Assert.Contains("cross from one domain", prompt.Text);
-        Assert.Contains("You answer only about this lab's own code, as covered", text);
+        Assert.Contains("You answer only about its portfolios, as covered", text);
     }
 
     [Fact]

@@ -1,8 +1,20 @@
+import type { PluginToolLabels } from '../plugins/api';
 import type { ToolCallView } from './chatReducer';
 
-/** Human label for a tool call, e.g. "Searching documentation…" or "Checking run 4417". */
-export function toolCallLabel(call: Pick<ToolCallView, 'toolName' | 'argumentSummary' | 'status'>) {
+// The built-in domains' labels (billing, portfolio) stay here until the billing and portfolio follow-ups move them into
+// their plugins' web parts (introduce-plugins 8.1).
+
+/**
+ * Human label for a tool call, e.g. "Searching documentation…" or "Checking run 4417": a plugin in use labels its own
+ * tools; the built-in domains' are below; any other tool reads with the generic label.
+ */
+export function toolCallLabel(
+  call: Pick<ToolCallView, 'toolName' | 'argumentSummary' | 'status'>,
+  pluginLabels: PluginToolLabels = {},
+) {
   const running = call.status === 'running';
+  const plugin = pluginLabels[call.toolName];
+  if (plugin) return plugin({ running, argumentSummary: call.argumentSummary });
   switch (call.toolName) {
     case 'search_documents':
       return running ? 'Searching documentation…' : 'Searched documentation';
@@ -13,8 +25,6 @@ export function toolCallLabel(call: Pick<ToolCallView, 'toolName' | 'argumentSum
     }
     case 'search_billing_runs':
       return running ? 'Searching billing runs…' : 'Searched billing runs';
-    case 'search_codebase':
-      return running ? 'Searching the codebase…' : 'Searched the codebase';
     case 'search_portfolio_documents':
       return running ? 'Searching portfolio documentation…' : 'Searched portfolio documentation';
     case 'get_household_portfolio':

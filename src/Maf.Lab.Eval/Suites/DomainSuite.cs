@@ -38,7 +38,7 @@ public sealed class DomainSuite(EvalAgentHost host)
                 var p = decision.Domains?.Probabilities;
                 failures.Add(new EvalCaseFailure(c.Id,
                     $"expected {c.Expected}, got {actual} — billing={p?.GetValueOrDefault(BuiltInDomains.Billing):0.00} "
-                    + $"portfolio={p?.GetValueOrDefault(BuiltInDomains.Portfolio):0.00} codebase={p?.GetValueOrDefault(BuiltInDomains.Codebase):0.00} "
+                    + $"portfolio={p?.GetValueOrDefault(BuiltInDomains.Portfolio):0.00} codebase={p?.GetValueOrDefault("codebase"):0.00} "
                     + $"intent={decision.Intent} reason={decision.Reason ?? "-"}"));
             }
             ctx.Progress($"domain {i + 1}/{cases.Count} {c.Id}: {actual}{(actual == c.Expected ? "" : $" (expected {c.Expected})")}");

@@ -6,49 +6,8 @@ name: maf-lab
 # Models are pulled by the ollama-init service on first start, and loaded into both Ollama instances by ollama-warm.
 # To reuse models already pulled by a host Ollama: OLLAMA_MODELS_DIR=$HOME/.ollama docker compose ... up
 
-x-app-env: &app-env
-  Qdrant__Host: qdrant
-  Qdrant__GrpcPort: "6334"
-  Models__Provider: ${MODELS_PROVIDER:-ollama}
-  # Two Ollama instances serve the same embedding model: `ollama` embeds search queries only, `ollama-batch` embeds
-  # documents (indexing, migration, admin index runs), so a batch never queues in front of a search. Each runs on its own
-  # CPUs and every request names its thread count: a request without it reloads the runner with all 16 threads.
-  Models__OllamaEndpoint: http://ollama:11434
-  Models__OllamaNumThread: ${OLLAMA_INTERACTIVE_THREADS:-4}
-  Models__BatchOllamaEndpoint: http://ollama-batch:11434
-  Models__BatchOllamaNumThread: ${OLLAMA_BATCH_THREADS:-12}
-  Models__ChatModel: ${CHAT_MODEL:-gpt-oss:120b}
-  # Chat runs on Ollama Cloud; the key is passed through from the host environment, never written to a file.
-  Models__ChatEndpoint: ${CHAT_ENDPOINT:-https://ollama.com}
-  OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
-  # Intent is classified by TypeSafe's Jev, and by nothing else; the retrieval server asks Jev whether a search's
-  # candidates are relevant. Same rule as above: passed through from the host environment, never written to a file;
-  # the api and mcp-retrieval send it only as the bearer header to the Jev endpoint.
-  JEV_MAF_LAB: ${JEV_MAF_LAB:-}
-  Models__OpenAIApiKey: ${OPENAI_API_KEY:-}
-  Models__OpenAIEndpoint: ${OPENAI_ENDPOINT:-}
-  Auth__SigningKey: ${AUTH_SIGNING_KEY:-maf-lab-dev-signing-key-change-me-0123456789}
-  Billing__SeedPath: /seed/billing-runs.json
-  Billing__AccountsSeedPath: /seed/billing-accounts.json
-  # One A2A partner, so the agent card has something to authenticate. A dev secret, like the signing key above.
-  A2A__PublicBaseUrl: ${A2A_PUBLIC_BASE_URL:-http://localhost:7171}
-  A2A__Partners__acme-portal__Secret: ${A2A_PARTNER_SECRET:-acme-portal-dev-secret}
-  A2A__Partners__acme-portal__Firms__0: firm-a
-  A2A__Partners__acme-portal__Scopes__0: a2a.billing.read
-  # The assistant's own credentials at the compliance reviewer: it consults as a system, never as a user.
-  Compliance__BaseUrl: ${COMPLIANCE_BASE_URL:-http://lb/compliance}
-  Compliance__ClientId: maf-lab-assistant
-  Compliance__ClientSecret: ${COMPLIANCE_CLIENT_SECRET:-assistant-dev-secret}
-  # Where the signals go. Unset it and the services export nothing, which is what the tests do.
-  Telemetry__Endpoint: ${TELEMETRY_ENDPOINT:-http://otel-collector:4317}
-  # The one place every replica reads. A service that needs it does not start without it.
-  SharedState__ConnectionString: ${REDIS_CONNECTION:-redis:6379}
-  # The graph store (billing and code relationships). A dev password, like the signing key above; override with
-  # NEO4J_PASSWORD. Bolt is reachable only on this network.
-  Neo4j__Uri: bolt://neo4j:7687
-  Neo4j__User: neo4j
-  Neo4j__Password: ${NEO4J_PASSWORD:-maf-lab-dev-graph}
-
+# Shared environment lives in env files (compose/env/*.env, by the library that reads it), which a plugin's compose file
+# can list too: YAML anchors do not cross merged files (introduce-plugins 5.2).
 services:
   qdrant:
     image: qdrant/qdrant:v1.19.1
@@ -162,8 +121,8 @@ services:
       dockerfile: src/Maf.Lab.Retrieval/Dockerfile
     deploy:
       replicas: 2
+    env_file: [env/retrieval.env, env/platform.env, env/graph.env, env/billing.env]
     environment:
-      <<: *app-env
       Urls: http://+:8080
       # Only this server writes, so only this server is told where the ledger lives.
       Billing__AdjustmentsConnectionString: Data Source=/app-data/maf-lab-adjustments.db
@@ -189,8 +148,8 @@ services:
       dockerfile: src/Maf.Lab.Portfolio/Dockerfile
     deploy:
       replicas: 2
+    env_file: [env/retrieval.env, env/platform.env, env/graph.env, env/billing.env]
     environment:
-      <<: *app-env
       Urls: http://+:8080
       Portfolio__Collection: maf_portfolio_chunks
       Portfolio__MetaCollection: maf_portfolio_meta
@@ -203,35 +162,14 @@ services:
       ollama-warm:
         condition: service_completed_successfully
 
-  # The codebase: the repository indexed by structure into its own collection (make index-code), searched and asked
-  # about through its own MCP server. Read-only; the chunks carry their text, so the repository is not mounted.
-  mcp-code:
-    build:
-      context: ..
-      dockerfile: src/Maf.Lab.CodeSearch/Dockerfile
-    deploy:
-      replicas: 1
-    environment:
-      <<: *app-env
-      Urls: http://+:8080
-      CodeSearch__Collection: maf_code_chunks
-      CodeSearch__MetaCollection: maf_code_meta
-    depends_on:
-      qdrant:
-        condition: service_healthy
-      neo4j:
-        condition: service_healthy
-      ollama-warm:
-        condition: service_completed_successfully
-
   compliance:
     build:
       context: ..
       dockerfile: src/Maf.Lab.ComplianceAgent/Dockerfile
     deploy:
       replicas: 2
+    env_file: [env/retrieval.env, env/platform.env, env/graph.env, env/billing.env]
     environment:
-      <<: *app-env
       Urls: http://+:8080
       # Its own audience and its own registry: a token for the assistant's surface is no good here.
       A2A__Audience: maf-lab-compliance
@@ -265,8 +203,8 @@ services:
     # The user who runs make (exported by it): the api writes into the repository (branches, merges), data/ and evals/,
     # and on Linux whatever it writes there belongs to this user. Root here left root-owned files in the checkout.
     user: "${MAF_LAB_UID:-1000}:${MAF_LAB_GID:-1000}"
+    env_file: [env/retrieval.env, env/platform.env, env/graph.env, env/billing.env]
     environment:
-      <<: *app-env
       Urls: http://+:8080
       # Writable by any user; a uid with no passwd entry would otherwise get HOME=/.
       HOME: /tmp
@@ -276,15 +214,6 @@ services:
       Agent__Servers__billing__Endpoint: http://lb/mcp
       Agent__Servers__portfolio__Domain: portfolio
       Agent__Servers__portfolio__Endpoint: http://lb/portfolio/mcp
-      # The codebase as the agent's third domain (add-codebase-domain): its search and the code-graph tools
-      # (add-neo4j-graph) are offered to the agent; ask_codebase writes an answer of its own and stays for other MCP clients.
-      Agent__Servers__codebase__Domain: codebase
-      Agent__Servers__codebase__Endpoint: http://lb/code/mcp
-      Agent__Servers__codebase__Tools__0: search_codebase
-      Agent__Servers__codebase__Tools__1: trace_code_symbol
-      Agent__Servers__codebase__Tools__2: change_impact
-      # The Code snippets tab asks the codebase server, as the user, through the balancer.
-      CodeSearch__Endpoint: http://lb/code/mcp
       Storage__ConnectionString: Data Source=/app-data/maf-lab.db
       Indexing__CorpusRoot: /data
       Evals__Root: /evals
@@ -337,13 +266,11 @@ services:
         condition: service_healthy
       mcp-portfolio:
         condition: service_healthy
-      mcp-code:
-        condition: service_healthy
       redis:
         condition: service_healthy
 
   # The test-generation agent: A2A only, internal only. It holds the model key and reads the repository; the tests it
-  # writes are built and run by the coverage runner, never here. Its environment is its own, not x-app-env: it has
+  # writes are built and run by the coverage runner, never here. Its environment is its own, not the shared env files: it has
   # no business with Jev, the billing partner or the retrieval settings.
   test-agent:
     build:
@@ -510,8 +437,6 @@ services:
       mcp-retrieval:
         condition: service_healthy
       mcp-portfolio:
-        condition: service_healthy
-      mcp-code:
         condition: service_healthy
       compliance:
         condition: service_healthy

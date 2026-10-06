@@ -84,17 +84,17 @@ public sealed class DomainCatalogueFacadeTests
     [Fact]
     public void A_static_reader_sees_the_catalogue_in_scope_and_all_built_ins_outside_it()
     {
-        var code = Maf.Lab.Api.Agent.DomainCatalogue.AllBuiltIn.Get(Maf.Lab.Api.BuiltIn.BuiltInDomains.Codebase)!;
+        var billing = Maf.Lab.Api.Agent.DomainCatalogue.AllBuiltIn.Get(Maf.Lab.Api.BuiltIn.BuiltInDomains.Billing)!;
 
-        using (Maf.Lab.Api.Agent.DomainCatalogue.Use(Maf.Lab.Api.Agent.DomainCatalogue.Of([code])))
+        using (Maf.Lab.Api.Agent.DomainCatalogue.Use(Maf.Lab.Api.Agent.DomainCatalogue.Of([billing])))
         {
-            Assert.Equal(["codebase"], Maf.Lab.Api.Agent.Domains.All);
-            Assert.Null(Maf.Lab.Api.Agent.Domains.OfTool("search_documents"));
+            Assert.Equal(["billing"], Maf.Lab.Api.Agent.Domains.All);
+            Assert.Null(Maf.Lab.Api.Agent.Domains.OfTool("search_portfolio_documents"));
             Assert.Equal("", Maf.Lab.Api.Agent.ChatTurnRunner.ClearedFocusNote);
         }
 
-        Assert.Equal(["billing", "portfolio", "codebase"], Maf.Lab.Api.Agent.Domains.All);
-        Assert.Equal("billing", Maf.Lab.Api.Agent.Domains.OfTool("search_documents"));
+        Assert.Equal(["billing", "portfolio"], Maf.Lab.Api.Agent.Domains.All);
+        Assert.Equal("portfolio", Maf.Lab.Api.Agent.Domains.OfTool("search_portfolio_documents"));
         Assert.NotEqual("", Maf.Lab.Api.Agent.ChatTurnRunner.ClearedFocusNote);
     }
 

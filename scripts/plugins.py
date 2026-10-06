@@ -305,9 +305,13 @@ def main(argv: list[str]) -> int:
             if not only:
                 print(f"✓ plugins installed ({environment()}): {', '.join(p.name for p in plugins) or 'none'}")
         elif command == "compose-files":
+            # Each plugin's compose.yml, then — in CI mode — its compose.ci.yml, mirroring the core's own CI override.
+            ci = os.environ.get("CI_MODE") == "1"
             for p in resolve():
                 if (p.folder / "compose.yml").is_file():
                     print(p.folder / "compose.yml")
+                    if ci and (p.folder / "compose.ci.yml").is_file():
+                        print(p.folder / "compose.ci.yml")
         elif command == "list":
             available = discover()
             installed = set()

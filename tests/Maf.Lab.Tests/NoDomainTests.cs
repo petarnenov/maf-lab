@@ -51,6 +51,6 @@ public sealed class NoDomainTests
         var all = await full.ClientFor("adam", "firm-a", Role.USER).GetFromJsonAsync<JsonElement>("/api/plugins", TestContext.Current.CancellationToken);
 
         Assert.Empty(none.GetProperty("domains").EnumerateArray());
-        Assert.Equal(["billing", "portfolio", "codebase"], all.GetProperty("domains").EnumerateArray().Select(d => d.GetProperty("id").GetString()));
+        Assert.Equal(["billing", "portfolio"], all.GetProperty("domains").EnumerateArray().Select(d => d.GetProperty("id").GetString()));
     }
 }

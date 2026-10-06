@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import type { SourceRef } from '../api/types';
+import type { ChatContext } from '../plugins/api';
+import { usePlugins } from '../plugins/context';
+import { contributions } from '../plugins/registry';
 import styles from './SourcesPanel.module.css';
 
 /** How many sources show before the list is expanded. */
@@ -7,15 +10,17 @@ const COLLAPSED = 5;
 
 /**
  * The sources of an answer. A documentation source expands to its excerpt; a code source (add-codebase-domain) reads as
- * its place and, given `onOpenCode`, opens the Code snippets tab on that snippet.
+ * its place, and opens through the action a plugin in use registered for its kind (introduce-plugins 5.2) — without
+ * one, it is shown and not clickable.
  */
 export function SourcesPanel({
   sources,
-  onOpenCode,
+  context,
 }: {
   sources: SourceRef[];
-  onOpenCode?: (source: SourceRef) => void;
+  context?: ChatContext;
 }) {
+  const actions = contributions(usePlugins(), 'sourceActions');
   const [open, setOpen] = useState<string | null>(null);
   const [all, setAll] = useState(false);
   if (sources.length === 0) return null;
@@ -29,7 +34,10 @@ export function SourcesPanel({
         {shown.map((source, index) => {
           const key = `${source.docId}#${source.sectionPath}#${index}`;
           const expanded = open === key;
-          if (source.kind === 'code' && onOpenCode) {
+          if (source.kind === 'code') {
+            const action = context
+              ? actions.find(({ item }) => item.kind === source.kind)?.item
+              : undefined;
             const path = source.sourcePath || source.docId;
             const slash = path.lastIndexOf('/');
             const file = path.slice(slash + 1);
@@ -39,26 +47,37 @@ export function SourcesPanel({
                 ? `:${source.startLine}–${source.endLine ?? source.startLine}`
                 : '';
             const detail = [folder, source.symbol].filter(Boolean).join(' › ');
-            return (
-              <li key={key}>
-                <button
-                  type="button"
-                  className={`${styles.section} ${styles.code}`}
-                  onClick={() => onOpenCode(source)}
-                  title={`${source.sectionPath} — show in Code snippets`}
-                  aria-label={`${path}${lines} ${source.symbol ?? ''} — show in Code snippets`.trim()}
-                >
-                  <span className={styles.codeHead}>
-                    <span className={styles.codeFile}>
-                      {file}
-                      <span className={styles.codeLines}>{lines}</span>
-                    </span>
+            const body = (
+              <>
+                <span className={styles.codeHead}>
+                  <span className={styles.codeFile}>
+                    {file}
+                    <span className={styles.codeLines}>{lines}</span>
+                  </span>
+                  {action && (
                     <span className={styles.codeOpen} aria-hidden="true">
                       ↗
                     </span>
-                  </span>
-                  {detail && <span className={styles.codeDetail}>{detail}</span>}
-                </button>
+                  )}
+                </span>
+                {detail && <span className={styles.codeDetail}>{detail}</span>}
+              </>
+            );
+            return (
+              <li key={key}>
+                {action ? (
+                  <button
+                    type="button"
+                    className={`${styles.section} ${styles.code}`}
+                    onClick={() => action.onOpen(source, context!)}
+                    title={`${source.sectionPath} — ${action.label}`}
+                    aria-label={`${path}${lines} ${source.symbol ?? ''} — ${action.label}`.trim()}
+                  >
+                    {body}
+                  </button>
+                ) : (
+                  <div className={`${styles.section} ${styles.code}`}>{body}</div>
+                )}
               </li>
             );
           }

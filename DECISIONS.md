@@ -2119,7 +2119,7 @@ said which account the conversation was about.
   environment variable, and `GitHub:Repository` defaults to the origin remote. The token is sent only as the bearer
   header. A write that fails (GitHub down) is reported with the decision and never blocks it.
 - **Compose.** Two new services, `test-agent` and `coverage-runner`.
-  - **The agent's environment is its own, not `x-app-env`.** It gets the model key, the signing key, telemetry and
+  - **The agent's environment is its own, not the shared env files (`compose/env/*.env`, once `x-app-env`).** It gets the model key, the signing key, telemetry and
     shared state, and nothing about Jev, the billing partner or retrieval.
   - **The runner gets only the signing key it checks tokens with.** It sits on the `runner` network, which is
     `internal: true`. The api, the agent and the collector join that network, so it is reachable and its traces
@@ -3237,4 +3237,22 @@ implementation" (parts A and B) holds each choice in full.
   - The MCP Inspector lists the built-in domains' servers (a transitional constant the follow-ups shrink) and every
     installed MCP plugin's, from `plugins/.installed`, re-read every 30 s. Rejected: asking the api for the list (a token
     at start-up, and server URLs on `/api/plugins`).
+  - The code domain is a plugin (`code`, dev and qa) with an in-process part: its behaviour and the Code snippets
+    endpoint. Its descriptor is the manifest's `[domain]` table, byte-identical to the former built-in one, so Jev's
+    text is unchanged. The MCP server project, `GraphSources.Code` and the code graph builder stay core until the
+    eval stops hosting the code server in-process (the evals follow-up). Rejected: moving the project now.
+  - `IInstalledPlugins`, a read port in the abstractions, gives a plugin the effective MCP endpoint of an installed
+    plugin by the agent's precedence: a configured `Agent:Servers:<plugin>` first, then its server.json. Rejected: an
+    environment variable, and the plugin reading server.json itself.
+  - Shared compose environment is Compose `env_file`s split by concern (`compose/env/*.env`), since YAML anchors do
+    not cross merged files. The core services' environments are unchanged; mcp-code no longer receives billing, A2A
+    or compliance secrets it never read. A plugin's CI override is its `compose.ci.yml`. In a merged file an
+    `env_file` path resolves against `compose/`, as every other path does (compose-go's behaviour, whatever the
+    spec's wording): do not "fix" it. Rejected: duplicated keys, and `extends`.
+  - The web plugin API adds `toolLabels`, `ChatContext.turn` and `ChatContext.pane`, and exports `SourceRef` and
+    `useApi`. A plugin's pane stays mounted while hidden. A plugin's web part resolves packages from the web project
+    (Vite `resolve.dedupe`, a tsconfig `paths` fallback), and its tests import the core's test support as
+    `@maf/testing`. Rejected: deriving the selected turn in a run observer.
+  - A plugin's tests compile into the core's test projects from its folder (`tests/unit`, `tests/integration`), with
+    no project of their own, so nothing outside the folder names them.
 

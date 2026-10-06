@@ -857,6 +857,54 @@ These choices deviate from the text above. Each is kept, with the rejected alter
    a tool under `none` (a trace label). `none` never leaks into `OfTool` or into `DomainStats.none`, which counts
    verdicts.
 
+### Decisions taken during implementation (part C, task 5, 2026-10-06, decided by the reviewing session)
+
+1. **The four inspectors are plugins** (dev and qa). Their lab files moved into each plugin's `files/`; §68's pins are
+   unchanged. The `inspectors` compose profile is retired. CI's set is a positive list, `CI_PLUGINS` in the
+   Makefile's CI_MODE block, to which each extraction adds itself in the same commit. Rejected: keeping the profile (a
+   plugin installed but never started), and CI on `MAF_ENV=qa` (it would switch CI to the product image).
+2. **Paths in a plugin's compose files resolve against `compose/`**, the project directory, as Compose does for every
+   merged `-f` file, `env_file` paths included (verified with `docker compose config`, against the spec's "the file's
+   parent folder"). So a plugin writes `../plugins/<name>/files`.
+3. **The MCP Inspector's server list** is the built-in domains' (a transitional constant the billing and portfolio
+   follow-ups shrink) plus every installed MCP plugin's server.json remote, re-read from `plugins/.installed` every
+   30 s. Rejected: asking the api (a token at start-up, and server URLs on `/api/plugins`).
+4. **The code plugin keeps the MCP server project in the core for now.** `src/Maf.Lab.CodeSearch`,
+   `GraphSources.Code` and the code graph builder stay core until the eval stops hosting the code server in-process
+   (8.1 #6). The plugin holds the service definition, its lb parts, its `[domain]` table (byte-identical to the
+   former built-in `domain.json`) and prompt, its behaviour and the Code snippets endpoint (`server/`), its web pane,
+   and its tests. Rejected: moving the project now (the eval and the solution would name it).
+5. **A plugin's tests live in its folder with no project of their own:** `tests/unit/` compiles into Maf.Lab.Tests and
+   `tests/integration/` into Maf.Lab.IntegrationTests (`Directory.Build.targets`), and the web tests are in vitest's
+   include. A plugin's web tests import the core's test support as `@maf/testing` (render helpers, the chat page
+   hosting given plugins). The code domain's pin assertions moved verbatim into the plugin, run in the three-domain
+   view; the core pins keep billing and portfolio. Core tests that need a code domain build their own stand-in
+   (`StandInDomains`).
+6. **`IInstalledPlugins`** is a read port in the abstractions: whether a plugin is installed, and its effective MCP
+   endpoint by the agent's one precedence rule (a configured `Agent:Servers:<plugin>` shadows the manifest's
+   server.json). The code plugin's snippet source reads its endpoint through it. Rejected: an environment variable (a
+   second source of truth), and the plugin reading server.json itself.
+7. **Shared compose environment is Compose `env_file`s split by concern** (`compose/env/retrieval.env`,
+   `platform.env`, `graph.env`, `billing.env`, `ci-models.env`): YAML anchors cannot cross merged files. The core
+   services keep identical environments, while mcp-code loses the billing, A2A and compliance keys it never read. A
+   plugin's CI override is its `compose.ci.yml`, merged after its `compose.yml` in CI mode. Rejected: duplicating the
+   keys in the plugin (drift), and `extends` (it inherits build, deploy and depends_on, and names a core service).
+8. **Indexing a plugin's corpus is the plugin's make targets**, joined to the core's by GNU make's multiple rules per
+   target (`index: index-code graph-code`). `scripts/index_if_empty.sh --source <name>` indexes one corpus and its
+   graph source when empty, and the core graph is `graph --only billing`. The repository's own `plugins/` is in the
+   code index's and graph's scope.
+9. **The web plugin API grows by what the code pane needs:**
+   - `toolLabels`, keyed by tool name, with the core's generic label for any other;
+   - `ChatContext.turn`, the selected turn read-only;
+   - `ChatContext.pane`, whether a pane is showing and the value it was opened with; a plugin's pane stays mounted
+     while hidden;
+   - `sourceActions` resolved by the source's kind;
+   - `SourceRef` and `useApi` exported from `@maf/plugin-api`.
+
+   A plugin's web part resolves packages from the web project (Vite's `resolve.dedupe`, a `paths` fallback in
+   tsconfig). Rejected: deriving the selected turn in a run observer, which would duplicate the chat reducer.
+10. **A domain that is not installed is reported as such** by the topology probe (`not installed`, not a fault).
+
 ## Principles and patterns
 
 Every plugin, and every change to the core's seams, is reviewed against this section. A plugin that needs to break it

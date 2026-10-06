@@ -139,13 +139,25 @@ permissions and the data lifecycle each come in their own later change.
 ### Modified Capabilities
 
 - `make-workflow`: plain `make` starts the core plus the installed plugins (MODIFIED "Plain make starts everything");
-  `make core`, `make plugins`, `make plugin-on|off|new`.
+  `make core`, `make plugins`, `make plugin-on|off|new`; the codebase is indexed while the `code` plugin is installed,
+  by its plugin.mk (MODIFIED "Index the codebase").
 - `chat-history`: the list, rename and delete apply while `conversation-history` is installed; "New conversation"
   stays in the chat header (core), unconditional; the sidebar's duplicate is dropped (MODIFIED "Conversation list", "Titles", "Delete a conversation",
   "History in the chat screen").
 - `load-balancing`: path routing for the plugin routes moves into plugin snippets, and an absent plugin's route answers
   404 (MODIFIED "Path routing" and "The codebase server behind the balancer"); the lb starts with any subset of
   plugins.
+- `chat-agent`: no domain server is first; a turn fails only when every server of its selected domains is down
+  (MODIFIED "Tools from every domain server").
+- `injection-defense`, `answer-check`: the content battery's and the answer check's contexts are named by what they
+  screen, `documents` and `code` (MODIFIED "Tool and agent results are screened before the model reads them", "A code
+  answer is judged as code").
+- `protocol-inspectors`, `graph-store`, `web-ui`: the inspectors are plugins, linked from the navigation while
+  installed, and out of CI's plugin set (MODIFIED "The inspectors start with the stack", "The protocol inspectors open
+  ready to use", "CI runs without the inspectors", "Graph browser as a dev inspector", "The main navigation links to
+  the inspectors").
+- `codebase-search`: the snippets endpoint and the agent's codebase tools exist while the `code` plugin is installed
+  (MODIFIED "Code snippets for a chat question", "The codebase search is offered to the chat agent").
 
 ## Principles
 

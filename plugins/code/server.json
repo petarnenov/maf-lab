@@ -1,0 +1,13 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.maf-lab/code",
+  "title": "maf-lab code",
+  "description": "The maf-lab repository as an MCP server: search_codebase, trace_code_symbol and change_impact, tenant-scoped through the caller's bearer token.",
+  "version": "1.0.0",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "http://lb/code/mcp"
+    }
+  ]
+}

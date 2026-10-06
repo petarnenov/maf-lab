@@ -129,11 +129,11 @@ The balancer's routes, as `compose/lb/nginx.conf`, the api upstream template and
 | `/a2a` | prefix | `api` |
 | `/mcp` | exact | `mcp-retrieval` |
 | `/portfolio/mcp` | exact | `mcp-portfolio` at `/mcp` |
-| `/code/mcp` | exact | `mcp-code` at `/mcp` |
 | `/compliance` | prefix | `compliance` |
 | `/v1/traces` | prefix | `otel-collector` |
 | `/jaeger` | prefix | `jaeger` |
 | `/` | prefix | `web` |
+| `/code/mcp` | exact | `mcp-code` at `/mcp` (plugin `code`) |
 <!-- /generated:lb-routes -->
 
 <table>
@@ -195,12 +195,11 @@ make help                  # every target
 | `make logs` | Follow logs (SERVICE=api to narrow) |
 | `make clean` | Remove the stack WITH volumes (index, conversations) and build outputs; asks unless FORCE=1 |
 | `make infra` | Start only the indexer's infrastructure (Qdrant, Neo4j, both Ollama instances + the embedding model) and wait until healthy |
-| `make index` | Index both domains' corpora and the codebase, then build the graph (unchanged documents are skipped) |
-| `make graph` | Build the Neo4j graph: billing relationships and the code graph (unchanged nodes are not rewritten) |
+| `make index` | Index the built-in domains' corpora, then build their graph; installed plugins add theirs (unchanged documents are skipped) |
+| `make graph` | Build the Neo4j graph: billing relationships, and any installed plugin's graph (unchanged nodes are not rewritten) |
 | `make neo4j-chunks` | Spike: copy the billing and portfolio chunks from Qdrant into Neo4j for eval-retrieval-backends |
 | `make index-portfolio` | Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only |
-| `make index-code` | Index the repository itself (→ maf_code_chunks, served by mcp-code) only; unchanged files are skipped |
-| `make reindex` | Re-embed every document of both domains (--force) |
+| `make reindex` | Re-embed every document of the built-in domains, and of installed plugins (--force) |
 | `make drift` | Report stale documents: the index and the billing graph against the source |
 | `make rebuild-index` | Re-create the collection with every configured dense vector and re-index (asks unless FORCE=1) |
 | `make migrate` | Fill a provisioned dense vector with its configured model (TO=dense_v3) |
@@ -239,6 +238,8 @@ make help                  # every target
 | `make dev` | Run mcp/api/web locally without Docker (infra stays in compose); Ctrl-C stops |
 | `make doctor` | Check prerequisites (Docker, .NET SDK, Node/npm, make, OLLAMA_API_KEY, JEV_MAF_LAB, MAF_LAB_REPO, GITHUB_ISSUES_TOKEN) |
 | `make setup` | Install what 'make doctor' reports missing (.NET SDK unattended; prints the rest) |
+| `make index-code` | Index the repository itself (→ maf_code_chunks, served by mcp-code) only; unchanged files are skipped |
+| `make graph-code` | Build the code graph only (calls, types, tests) in Neo4j |
 <!-- /generated:make-targets -->
 
 ## Plugins
@@ -253,6 +254,7 @@ allows, `none` means the core alone (`make core`), otherwise a comma-separated l
 | Plugin | Kind | Scope | Environments | What it is |
 |---|---|---|---|---|
 | `a2a-inspector` | infra | installation | dev, qa | The A2A Inspector (a2aproject), opened on the lab's agent cards with a fresh partner token: a dev and qa tool. |
+| `code` | mcp | installation | dev, qa | The lab's own source code as a domain: the codebase MCP server (search_codebase and the code-graph tools), its domain descriptor and routing, and the chat's Code snippets pane. |
 | `mcp-inspector` | infra | installation | dev, qa | The MCP Inspector, listing the lab's MCP servers with a dev user's token: a dev and qa tool. |
 | `neo4j-browser` | infra | installation | dev, qa | Neo4j Browser on the graph store, forwarded on loopback: a dev and qa tool. |
 | `redis-insight` | infra | installation | dev, qa | Redis Insight on the lab's Redis (run state, stops, shared stores), loopback only: a dev and qa tool. |

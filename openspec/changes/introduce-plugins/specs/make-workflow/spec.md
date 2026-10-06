@@ -21,6 +21,26 @@ existed.
 - **WHEN** a service is still unhealthy after the wait timeout
 - **THEN** make prints which service is unhealthy with its recent logs and exits non-zero
 
+### Requirement: Index the codebase
+While the `code` plugin is installed, `make index-code` SHALL index the repository into the codebase collection, its
+plugin folder's make targets (`plugins/code/plugin.mk`) providing it. Documents that did not change SHALL be skipped.
+`make index`, `make graph` and `make reindex` SHALL include the codebase and its graph, and `make` SHALL index the
+codebase and build its graph when its collection or its graph nodes are missing, as it does for the other corpora.
+`make dev` SHALL run the codebase server locally while the plugin is in the set make resolves. With the plugin's
+folder deleted, none of these SHALL touch the codebase.
+
+#### Scenario: First start
+- **WHEN** `make` runs with the `code` plugin installed and an empty codebase collection
+- **THEN** the repository is indexed into it before the banner is printed
+
+#### Scenario: Re-run
+- **WHEN** `make index-code` runs again with no file changed
+- **THEN** every document is reported unchanged and nothing is re-embedded
+
+#### Scenario: Without the plugin
+- **WHEN** the `code` plugin's folder is deleted and `make index` runs
+- **THEN** the billing and portfolio corpora and the billing graph are indexed, and nothing of the codebase
+
 ## ADDED Requirements
 
 ### Requirement: Plugin targets

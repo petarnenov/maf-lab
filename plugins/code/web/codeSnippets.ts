@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import type { CodeSearchResult, CodeSnippet, SourceRef } from '../api/types';
-import { useApi } from '../auth/useAuth';
+import { useApi, type SourceRef } from '@maf/plugin-api';
+import type { CodeSearchResult, CodeSnippet } from './types';
 
 /** The snippets of one file, in the order search ranked the file's best one. */
 export interface FileGroup {
@@ -43,7 +43,7 @@ export function snippetKey(s: { path: string; startLine: number | null }): strin
  * The code an answer used, as snippets (add-codebase-domain): the turn's sources that came from search_codebase, in the
  * order the answer received them.
  */
-export function codeSnippetsOf(sources: SourceRef[]): CodeSnippet[] {
+export function codeSnippetsOf(sources: readonly SourceRef[]): CodeSnippet[] {
   return sources
     .filter((s) => s.kind === 'code')
     .map((s) => ({

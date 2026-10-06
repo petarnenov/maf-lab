@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>The code plugin's in-process part: the codebase domain's behaviour (the structural code route) and the Code snippets endpoint</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Maf.Lab.Plugins.Abstractions\Maf.Lab.Plugins.Abstractions.csproj" />
+    <ProjectReference Include="..\..\..\src\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />
+    <!-- Jev's question shapes (JevChoiceQuestion) only; the plugin never reaches a store. -->
+    <ProjectReference Include="..\..\..\src\Maf.Lab.Retrieval\Maf.Lab.Retrieval.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Maf.Lab.Tests" />
+    <InternalsVisibleTo Include="Maf.Lab.IntegrationTests" />
+  </ItemGroup>
+</Project>

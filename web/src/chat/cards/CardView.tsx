@@ -1,3 +1,4 @@
+// The portfolio cards stay here until the portfolio follow-up moves them into its plugin's web part (introduce-plugins 8.1).
 import { useState, type ReactNode } from 'react';
 import type { DataCard } from '../../api/types';
 import styles from './Cards.module.css';

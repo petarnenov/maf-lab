@@ -1,0 +1,27 @@
+# The code plugin's only service (introduce-plugins 5.2), merged after the core's compose file by make.
+# Relative paths resolve against the project directory (compose/), as in every merged compose file.
+#
+# Its environment: retrieval.env (Qdrant, the Ollama instances and the chat model for ask_codebase, Jev), platform.env
+# (token validation, telemetry, the shared store) and graph.env (the code graph's tools). Not billing.env: it reads no
+# billing seed, A2A partner or compliance credential, so it is not given them.
+services:
+  # The codebase: the repository indexed by structure into its own collection (make index-code), searched and asked
+  # about through its own MCP server. Read-only; the chunks carry their text, so the repository is not mounted.
+  mcp-code:
+    build:
+      context: ..
+      dockerfile: src/Maf.Lab.CodeSearch/Dockerfile
+    deploy:
+      replicas: 1
+    env_file: [env/retrieval.env, env/platform.env, env/graph.env]
+    environment:
+      Urls: http://+:8080
+      CodeSearch__Collection: maf_code_chunks
+      CodeSearch__MetaCollection: maf_code_meta
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      ollama-warm:
+        condition: service_completed_successfully

@@ -1,3 +1,4 @@
+// The built-in domains' tools (billing, portfolio); each moves with its follow-up (introduce-plugins 8.1).
 /** Tools the MCP servers expose; the selection label form offers exactly these (keep in step with DatasetLoader.Tools). */
 export const TOOL_NAMES = [
   'search_documents',

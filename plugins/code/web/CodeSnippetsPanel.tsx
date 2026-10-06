@@ -1,8 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { StopHint } from '../shared/StopHint';
-import { useEscToStop } from '../shared/useEscToStop';
-import type { CodeSnippet } from '../api/types';
+import { StopHint } from '@maf/shared/StopHint';
+import { useEscToStop } from '@maf/shared/useEscToStop';
+import type { CodeSnippet } from './types';
 import { groupByFile, snippetKey, useCodeSnippets } from './codeSnippets';
 import styles from './CodeSnippetsPanel.module.css';
 

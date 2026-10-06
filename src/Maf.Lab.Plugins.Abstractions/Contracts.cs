@@ -58,6 +58,22 @@ public interface IContributesOpenWork
     Task CancelAllAsync(CancellationToken ct);
 }
 
+/// <summary>
+/// A read port onto the installed set (introduce-plugins 5.2): what a plugin may ask the core about installed plugins,
+/// without reaching the core's catalogue. Implemented by the core, re-read as the installed set changes.
+/// </summary>
+public interface IInstalledPlugins
+{
+    bool IsInstalled(string plugin);
+
+    /// <summary>
+    /// The MCP endpoint the core connects to for a plugin's server, by the one precedence rule the agent uses: a
+    /// configured <c>Agent:Servers:&lt;plugin&gt;</c> first (the twelve-factor override `make dev` needs), then the first
+    /// remote of the plugin's server.json; null when it has neither or is not installed.
+    /// </summary>
+    string? McpEndpoint(string plugin);
+}
+
 /// <summary>One item of open work: its kind, id and state, never content.</summary>
 public sealed record OpenWorkItem(string Kind, string Id, string State);
 

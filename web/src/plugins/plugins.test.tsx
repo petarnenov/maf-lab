@@ -189,7 +189,7 @@ describe('plugin import boundary', () => {
   }
 
   it('the scanner catches a core import of a plugin (planted)', () => {
-    expect(/(^|\/)plugins\/[^/]+\/web(\/|$)/.test('../../../plugins/code/web/index')).toBe(true);
+    expect(/(^|\/)plugins\/[^/]+\/web(\/|$)/.test('../../../plugins/weather/web/index')).toBe(true);
     expect(/(^|\/)plugins\/[^/]+\/web(\/|$)/.test('./plugins/api')).toBe(false);
   });
 });

@@ -9,7 +9,6 @@ import {
 } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ApiError } from '../api/client';
-import type { SourceRef } from '../api/types';
 import { useAuth } from '../auth/useAuth';
 import { useConversation, useUserKey } from '../history/historyApi';
 import { HistorySidebar } from '../history/HistorySidebar';
@@ -22,8 +21,6 @@ import type { AssistantTurn, ChatState } from './chatReducer';
 import styles from './ChatPage.module.css';
 import { idle, step, type RecallState } from './promptHistory';
 import { SourcesPanel } from './SourcesPanel';
-import { CodeSnippetsPanel } from './CodeSnippetsPanel';
-import { codeSnippetsOf, snippetKey } from './codeSnippets';
 import { CardView } from './cards/CardView';
 import { langOf, words, type Lang } from './cards/format';
 import { ConfirmationCard } from './ConfirmationCard';
@@ -35,18 +32,15 @@ import { stepLabel } from './runStep';
 import { Progress } from '../components/Progress';
 import { StopHint } from '../shared/StopHint';
 import { useEscToStop } from '../shared/useEscToStop';
-import type { ChatContext } from '../plugins/api';
+import type { ChatContext, ChatTurnView } from '../plugins/api';
 import { useDomains, usePlugins } from '../plugins/context';
 import { PluginBoundary } from '../plugins/PluginBoundary';
 import { contributions } from '../plugins/registry';
 
 export const TRACE_EXPIRED = 'Trace expired (kept 7 days).';
 
-/** The right pane's two views (add-codebase-search). The monitor keeps its state while the other is shown. */
-const PANE_TABS = [
-  { id: 'scenes', label: 'Behind the scenes' },
-  { id: 'code', label: 'Code snippets' },
-] as const;
+/** The right pane's core view; plugins add theirs (the code plugin's Code snippets). The monitor keeps its state meanwhile. */
+const PANE_TABS = [{ id: 'scenes', label: 'Behind the scenes' }] as const;
 /** A core tab, or a plugin's pane by its id (introduce-plugins decision 8). */
 type PaneTab = (typeof PANE_TABS)[number]['id'] | `plugin:${string}`;
 
@@ -70,21 +64,17 @@ export function ChatPage() {
   const [monitorOpen, setMonitorOpen] = useState(true);
   /** Which view the right pane shows: the turn's trace, or the code that answers its question. */
   const [paneTab, setPaneTab] = useState<PaneTab>('scenes');
-  /** What a plugin's pane is told about the chat, and how it opens another pane. */
-  const chatContext: ChatContext = {
-    conversationId: state.conversationId ?? routeId,
-    openPane: (id) => {
-      const core = PANE_TABS.find((t) => t.id === id);
-      const plugin = pluginPanes.find(({ item }) => item.id === id);
-      if (core) setPaneTab(core.id);
-      else if (plugin) setPaneTab(`plugin:${plugin.plugin}:${plugin.item.id}`);
-      setMonitorOpen(true);
-    },
+  /** The value each pane was last opened with (a source to show, say), by pane id. */
+  const [paneValues, setPaneValues] = useState<Record<string, unknown>>({});
+  /** Opens a pane by id — a core one or a plugin's — with an optional value for it. */
+  const openPane = (id: string, value?: unknown) => {
+    const core = PANE_TABS.find((t) => t.id === id);
+    const plugin = pluginPanes.find(({ item }) => item.id === id);
+    if (core) setPaneTab(core.id);
+    else if (plugin) setPaneTab(`plugin:${plugin.plugin}:${plugin.item.id}`);
+    if (value !== undefined) setPaneValues((values) => ({ ...values, [id]: value }));
+    setMonitorOpen(true);
   };
-  /** The code snippet a source in an answer pointed at (add-codebase-domain). */
-  const [highlight, setHighlight] = useState<string | null>(null);
-  /** Turns whose code already switched the pane once: after that the person's choice of tab stands. */
-  const autoSwitched = useRef(new Set<string>());
   const [historyCollapsed, setHistoryCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
@@ -203,21 +193,23 @@ export function ChatPage() {
   }, [latestFinishedTurnId, queryClient]);
   const selected = assistantTurns.find((t) => t.id === selectedKey) ?? latest;
   const selectedIndex = selected ? state.turns.indexOf(selected) : -1;
-  const usedCode = selected ? codeSnippetsOf(selected.sources) : [];
-  // An answer given in this session that searched the codebase brings its code into view, once per turn; a turn
-  // reopened from history does not move the pane.
-  const streamingCodeTurn =
-    selected && !selected.restored && usedCode.length > 0 ? selected.id : undefined;
-  useEffect(() => {
-    if (streamingCodeTurn && !autoSwitched.current.has(streamingCodeTurn)) {
-      autoSwitched.current.add(streamingCodeTurn);
-      setPaneTab('code');
-    }
-  }, [streamingCodeTurn]);
   const selectedQuestion =
     selectedIndex > 0 && state.turns[selectedIndex - 1].role === 'user'
       ? state.turns[selectedIndex - 1].text
       : '';
+  /** A turn as a plugin's pane or source action sees it: read-only. */
+  const turnView = (turn: AssistantTurn, question: string): ChatTurnView => ({
+    key: turn.id,
+    question,
+    sources: turn.sources,
+    restored: turn.restored === true,
+  });
+  /** What a plugin's pane is told about the chat: the selected turn, and how it opens a pane. */
+  const chatContext: ChatContext = {
+    conversationId: state.conversationId ?? routeId,
+    turn: selected ? turnView(selected, selectedQuestion) : undefined,
+    openPane,
+  };
   const liveEvents = selected ? traceFor(state.traces, selected.id) : [];
   const liveFrames = selected ? framesFor(state.traces, selected.id) : [];
   const isStreaming = selected?.status === 'streaming';
@@ -385,16 +377,17 @@ export function ChatPage() {
                       setMonitorOpen(true);
                     }}
                     onAnswer={answer}
-                    onOpenCode={(source) => {
-                      setSelectedKey(turn.id === latest?.id ? null : turn.id);
-                      setMonitorOpen(true);
-                      setPaneTab('code');
-                      setHighlight(
-                        snippetKey({
-                          path: source.sourcePath || source.docId,
-                          startLine: source.startLine ?? null,
-                        }),
-                      );
+                    sourceContext={{
+                      conversationId: state.conversationId ?? routeId,
+                      turn: turnView(
+                        turn,
+                        state.turns[index - 1]?.role === 'user' ? state.turns[index - 1].text : '',
+                      ),
+                      // A source opened from a turn shows that turn beside its pane.
+                      openPane: (id, value) => {
+                        setSelectedKey(turn.id === latest?.id ? null : turn.id);
+                        openPane(id, value);
+                      },
                     }}
                     focus={state.focus?.accountId ?? null}
                     onFocus={(accountId) => setFocus({ accountId })}
@@ -463,11 +456,6 @@ export function ChatPage() {
                 onClick={() => setPaneTab(t.id)}
               >
                 {t.label}
-                {t.id === 'code' && usedCode.length > 0 && (
-                  <span className={styles.paneCount} aria-label={`${usedCode.length} used`}>
-                    {usedCode.length}
-                  </span>
-                )}
               </button>
             ))}
             {pluginPanes.map(({ plugin, item }) => {
@@ -505,26 +493,16 @@ export function ChatPage() {
                 aria-labelledby={`pane-tab-${id}`}
                 hidden={paneTab !== id}
               >
-                {paneTab === id && (
-                  <PluginBoundary plugin={plugin}>{item.render(chatContext)}</PluginBoundary>
-                )}
+                {/* Mounted while hidden, so a pane keeps its state and can open itself (introduce-plugins 5.2). */}
+                <PluginBoundary plugin={plugin}>
+                  {item.render({
+                    ...chatContext,
+                    pane: { active: paneTab === id, value: paneValues[item.id] },
+                  })}
+                </PluginBoundary>
               </div>
             );
           })}
-          <div
-            className={styles.paneBody}
-            role="tabpanel"
-            id="pane-code"
-            aria-labelledby="pane-tab-code"
-            hidden={paneTab !== 'code'}
-          >
-            <CodeSnippetsPanel
-              question={selectedQuestion}
-              active={paneTab === 'code'}
-              used={usedCode}
-              highlight={highlight}
-            />
-          </div>
           <div
             className={styles.paneBody}
             role="tabpanel"
@@ -565,7 +543,7 @@ function AssistantBubble({
   onShow,
   onToggle,
   onAnswer,
-  onOpenCode,
+  sourceContext,
   question,
   focus,
   onFocus,
@@ -586,8 +564,8 @@ function AssistantBubble({
   /** The button opens the monitor on this turn, or closes it when this turn is the one showing. */
   onToggle: () => void;
   onAnswer: (adjustmentId: string, approve: boolean) => void;
-  /** A code source was chosen: show it in the Code snippets tab (add-codebase-domain). */
-  onOpenCode: (source: SourceRef) => void;
+  /** What a source's action is told: this turn, and how to open a pane beside it (introduce-plugins 5.2). */
+  sourceContext: ChatContext;
   /** The account in focus, and how to choose another (add-focus-state). */
   focus: string | null;
   onFocus: (accountId: string) => void;
@@ -698,7 +676,7 @@ function AssistantBubble({
           onAnswer={(approve) => onAnswer(turn.confirmation!.adjustmentId, approve)}
         />
       )}
-      <SourcesPanel sources={sources} onOpenCode={onOpenCode} />
+      <SourcesPanel sources={sources} context={sourceContext} />
       {turn.status !== 'streaming' && turn.turnId && conversationId && (
         <TurnFeedback
           hasConfirmation={turn.confirmation !== undefined}

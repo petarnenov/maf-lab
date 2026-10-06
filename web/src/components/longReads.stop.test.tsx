@@ -1,7 +1,6 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
-import { CodeSnippetsPanel } from '../chat/CodeSnippetsPanel';
 import { CompliancePage } from '../compliance/CompliancePage';
 import { hangingFetch } from '../test/hangingFetch';
 import { jsonResponse, makeSession, renderWithProviders } from '../test/render';
@@ -62,16 +61,5 @@ describe('long reads stop on Esc', () => {
     await waitFor(() => expect(exporting.signal.aborted).toBe(true));
     expect(await screen.findByTestId('export-stopped')).toHaveTextContent('nothing was downloaded');
     expect(screen.queryByRole('alert')).toBeNull();
-  });
-
-  it('a code search', async () => {
-    const held = hangingFetch((url) => url === '/api/code/snippets');
-    renderWithProviders(<CodeSnippetsPanel question="where is the fee rounded?" active />);
-    await waitFor(() => expect(held).toHaveLength(1));
-
-    await userEvent.keyboard('{Escape}');
-
-    await waitFor(() => expect(held[0].signal.aborted).toBe(true));
-    expect(await screen.findByTestId('snippets-stopped')).toHaveTextContent('Stopped.');
   });
 });

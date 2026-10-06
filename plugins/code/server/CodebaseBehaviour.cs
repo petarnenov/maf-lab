@@ -1,6 +1,6 @@
 using Maf.Lab.Plugins.Abstractions;
 
-namespace Maf.Lab.Api.BuiltIn;
+namespace Maf.Lab.Plugins.Code;
 
 /// <summary>
 /// The codebase domain's behaviour: what a codebase question needs, asked beside the others, and the code-graph call a
@@ -8,7 +8,7 @@ namespace Maf.Lab.Api.BuiltIn;
 /// </summary>
 public sealed class CodebaseBehaviour : IDomainBehaviour
 {
-    public string Domain => BuiltInDomains.Codebase;
+    public string Domain => CodePlugin.DomainId;
 
     public KeyValuePair<string, object>? PrimaryRouteQuestion => CodeToolRouter.Question();
 

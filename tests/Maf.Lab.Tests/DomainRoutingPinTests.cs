@@ -1,7 +1,6 @@
 using System.Text.Json.Nodes;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Jev;
-using Maf.Lab.Api.BuiltIn;
 using Maf.Lab.Retrieval.Jev;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -14,16 +13,17 @@ namespace Maf.Lab.Tests;
 /// domain's search and graph tools, the tool → domain fallback, the data and code routers' closed question sets, the
 /// domain questions and the data cards. A later change that builds these from plugin manifests must leave every pin as
 /// it is for billing, portfolio and codebase — but one: introduce-plugins task 4.6 removes the billing fallback on purpose,
-/// so an unknown tool belongs to no domain.
+/// so an unknown tool belongs to no domain. The codebase domain's pins moved verbatim with it into its plugin (task 5.2,
+/// CodeDomainRoutingPinTests); these keep the built-in domains'.
 /// </summary>
 public class DomainRoutingPinTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
-    public void The_three_domains_in_trace_order()
+    public void The_built_in_domains_in_trace_order()
     {
-        Assert.Equal(["billing", "portfolio", "codebase"], Domains.All);
+        Assert.Equal(["billing", "portfolio"], Domains.All);
     }
 
     [Fact]
@@ -33,7 +33,6 @@ public class DomainRoutingPinTests
         {
             ["billing"] = "search_documents",
             ["portfolio"] = "search_portfolio_documents",
-            ["codebase"] = "search_codebase",
         }, Domains.SearchTool.ToDictionary());
     }
 
@@ -43,23 +42,18 @@ public class DomainRoutingPinTests
         Assert.Equal(new Dictionary<string, string>
         {
             ["trace_billing_relationships"] = "billing",
-            ["trace_code_symbol"] = "codebase",
-            ["change_impact"] = "codebase",
         }, Domains.GraphTool.ToDictionary());
     }
 
     [Theory]
     [InlineData("search_documents", "billing")]
     [InlineData("search_portfolio_documents", "portfolio")]
-    [InlineData("search_codebase", "codebase")]
     [InlineData("get_billing_run_status", "billing")]
     [InlineData("search_billing_runs", "billing")]
     [InlineData("get_household_portfolio", "portfolio")]
     [InlineData("get_aum_history", "portfolio")]
     [InlineData("list_my_accounts", "portfolio")]
     [InlineData("trace_billing_relationships", "billing")]
-    [InlineData("trace_code_symbol", "codebase")]
-    [InlineData("change_impact", "codebase")]
     // An unknown tool used to fall back to billing; introduce-plugins task 4.6 removed that fallback on purpose: it belongs
     // to no domain.
     [InlineData("some_unknown_tool", null)]
@@ -89,20 +83,12 @@ public class DomainRoutingPinTests
     }
 
     [Fact]
-    public void The_code_router_asks_one_closed_choice()
-    {
-        Assert.Equal("code_need", CodeToolRouter.Question().Key);
-        Assert.Equal(["callees", "callers", "impact", "none", "text"], CodeToolRouter.Criteria.Keys.Order(StringComparer.Ordinal));
-    }
-
-    [Fact]
     public void Each_domain_has_its_own_domain_question()
     {
         Assert.Equal(new Dictionary<string, string>
         {
             ["billing"] = "in_domain",
             ["portfolio"] = "in_portfolio",
-            ["codebase"] = "in_codebase",
         }, JevIntentClassifier.DomainQuestionIds.ToDictionary());
     }
 
@@ -127,7 +113,7 @@ public class DomainRoutingPinTests
         var asked = JsonNode.Parse(body)!["questions"]!.AsObject().Select(q => q.Key).ToHashSet(StringComparer.Ordinal);
         string[] routing =
         [
-            "intent", "in_domain", "in_portfolio", "in_codebase", "code_need", "run_status",
+            "intent", "in_domain", "in_portfolio", "run_status",
             "tool_get_aum_history", "tool_get_billing_run_status", "tool_get_household_portfolio", "tool_list_my_accounts",
             "tool_propose_fee_adjustment", "tool_search_billing_runs",
         ];

@@ -32,3 +32,14 @@ export function cardRenderers(registry: PluginRegistry): NonNullable<MafWebPlugi
   }
   return cards;
 }
+
+/** The tool labels of every plugin in use, by tool name; the first plugin to label a tool keeps it. */
+export function toolLabels(registry: PluginRegistry): NonNullable<MafWebPlugin['toolLabels']> {
+  const labels: NonNullable<MafWebPlugin['toolLabels']> = {};
+  for (const plugin of registry.plugins) {
+    for (const [tool, label] of Object.entries(plugin.toolLabels ?? {})) {
+      if (!(tool in labels)) labels[tool] = label;
+    }
+  }
+  return labels;
+}

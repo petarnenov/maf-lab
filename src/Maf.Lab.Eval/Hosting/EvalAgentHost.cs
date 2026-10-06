@@ -108,13 +108,20 @@ public sealed class EvalAgentHost : IAsyncDisposable
             {
                 ["billing"] = new McpServerOptions { Domain = BuiltInDomains.Billing, Endpoint = endpoint },
                 ["portfolio"] = new McpServerOptions { Domain = BuiltInDomains.Portfolio, Endpoint = portfolioEndpoint },
-                ["codebase"] = new McpServerOptions { Domain = BuiltInDomains.Codebase, Endpoint = codeEndpoint, Tools = [Maf.Lab.Domain.Code.CodeTools.Search, Maf.Lab.Domain.Graph.GraphTools.TraceCodeSymbol, Maf.Lab.Domain.Graph.GraphTools.ChangeImpact] },
+                // Keyed by the code plugin's name, so it shadows the server its server.json names (reachable only inside
+                // the stack's network): the eval reaches the code server it started, or the stack's through the balancer.
+                ["code"] = new McpServerOptions { Domain = "codebase", Endpoint = codeEndpoint, Tools = [Maf.Lab.Domain.Code.CodeTools.Search, Maf.Lab.Domain.Graph.GraphTools.TraceCodeSymbol, Maf.Lab.Domain.Graph.GraphTools.ChangeImpact] },
             };
         });
         services.AddDbContextFactory<MafDbContext>(o => o.UseSqlite($"Data Source={Path.Combine(workDir, "eval.db")}"));
-        // The domains the eval turns read, as the api builds them (Agent:BuiltInDomains, no plugins): each turn takes a frozen
-        // view of it, as an api turn does.
-        services.AddSingleton(sp => new DomainCatalogue(sp.GetRequiredService<IOptions<AgentOptions>>(), []));
+        // The domains the eval turns read, as the api builds them: the built-in ones Agent:BuiltInDomains keeps and every
+        // plugin the stack has installed (plugins/.installed, read once), with the behaviours of those whose code is here.
+        // Each turn takes a frozen view of it, as an api turn does.
+        services.Configure<Maf.Lab.Api.Plugins.PluginOptions>(configuration.GetSection(Maf.Lab.Api.Plugins.PluginOptions.Section));
+        services.AddSingleton<Maf.Lab.Api.Plugins.PluginCatalogue>();
+        services.AddSingleton(sp => new DomainCatalogue(sp.GetRequiredService<IOptions<AgentOptions>>(),
+            Maf.Lab.Api.Plugins.PluginHost.InstalledBehaviours(sp.GetRequiredService<Maf.Lab.Api.Plugins.PluginCatalogue>().Current),
+            sp.GetRequiredService<Maf.Lab.Api.Plugins.PluginCatalogue>(), sp.GetRequiredService<IOptions<Maf.Lab.Api.Plugins.PluginOptions>>()));
         services.AddSingleton<SystemPrompt>();
         services.AddSingleton<TokenCounter>();
         services.AddSingleton<ToolAudit>();

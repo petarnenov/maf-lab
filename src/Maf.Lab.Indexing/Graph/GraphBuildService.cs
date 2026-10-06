@@ -17,7 +17,7 @@ public sealed class GraphBuildService(TenantScopedGraphMaintenance graph, IOptio
     private const int WriteBatch = 500;
 
     /// <summary>The folders whose C# is part of the code graph.</summary>
-    public static readonly IReadOnlyList<string> CodeFolders = ["src", "tests", "tools"];
+    public static readonly IReadOnlyList<string> CodeFolders = ["src", "tests", "tools", "plugins"];
 
     public async Task<IReadOnlyList<GraphBuildSummary>> RunAsync(IReadOnlyCollection<string> sources, IProgress<IndexProgress>? progress, CancellationToken ct)
     {

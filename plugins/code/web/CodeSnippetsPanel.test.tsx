@@ -1,13 +1,20 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import type { CodeSnippet } from '../api/types';
-import { jsonResponse, renderWithProviders, run, streamResponse } from '../test/render';
-import { agentFetch } from '../test/agentFetch';
-import { ChatPage } from './ChatPage';
+import {
+  agentFetch,
+  hangingFetch,
+  jsonResponse,
+  renderChat,
+  renderWithProviders,
+  run,
+  streamResponse,
+} from '@maf/testing';
+import codePlugin from './index';
 import { codeSnippetsOf, groupByFile } from './codeSnippets';
 import { CodeSnippetsPanel } from './CodeSnippetsPanel';
+import type { CodeSnippet } from './types';
 
 const snippet = (
   path: string,
@@ -133,7 +140,7 @@ describe('ChatPage right pane', () => {
     });
     vi.stubGlobal('fetch', agentFetch(fetchMock));
 
-    renderWithProviders(<ChatPage />);
+    renderChat([codePlugin]);
     const tabs = screen.getByRole('tablist', { name: 'Right pane' });
     expect(within(tabs).getByRole('tab', { name: 'Behind the scenes' })).toHaveAttribute(
       'aria-selected',
@@ -228,7 +235,7 @@ describe('ChatPage with an answer from the codebase', () => {
     });
     vi.stubGlobal('fetch', agentFetch(fetchMock));
 
-    renderWithProviders(<ChatPage />);
+    renderChat([codePlugin]);
     await userEvent.type(
       screen.getByLabelText('Message'),
       'как в кода се прави идемпотентност на тул?',
@@ -257,5 +264,19 @@ describe('ChatPage with an answer from the codebase', () => {
     await userEvent.click(within(turn).getByRole('button', { name: /ToolSource\.cs:17–18/ }));
     expect(codeTab).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByTestId('code-snippet')).toHaveAttribute('data-highlighted', 'true');
+  });
+});
+
+/** A slow code search stops on Esc (stop-anything): the request is aborted, and the pane says it stopped. */
+describe('the code search stops on Esc', () => {
+  it('a code search', async () => {
+    const held = hangingFetch((url) => url === '/api/code/snippets');
+    renderWithProviders(<CodeSnippetsPanel question="where is the fee rounded?" active />);
+    await waitFor(() => expect(held).toHaveLength(1));
+
+    await userEvent.keyboard('{Escape}');
+
+    await waitFor(() => expect(held[0].signal.aborted).toBe(true));
+    expect(await screen.findByTestId('snippets-stopped')).toHaveTextContent('Stopped.');
   });
 });

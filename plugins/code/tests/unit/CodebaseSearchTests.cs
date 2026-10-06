@@ -31,8 +31,13 @@ namespace Maf.Lab.Tests;
 /// The codebase corpus and its server (add-codebase-search): chunks that fit the embedding model's window, structural
 /// code chunks with their lines, the identifier-aware vocabulary, and the two tools.
 /// </summary>
-public class CodebaseSearchTests
+public class CodebaseSearchTests : IDisposable
 {
+    // The three-domain view these tests were written in: billing and portfolio built in, codebase from this plugin.
+    private readonly IDisposable _domains = CodePluginSupport.Use();
+
+    public void Dispose() => _domains.Dispose();
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly Principal FirmA = new("adam", TenantId.Firm("firm-a"), Role.USER);
 

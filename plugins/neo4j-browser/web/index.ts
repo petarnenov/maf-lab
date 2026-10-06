@@ -1,10 +1,10 @@
-import { definePlugin } from "@maf/plugin-api";
+import { definePlugin } from '@maf/plugin-api';
 
 // A developer tool beside the lab, on the same host as this page (its port is published on loopback only), opened in a
 // new tab. No token travels in the link.
 const href = `${window.location.protocol}//${window.location.hostname}:7175`;
 
 export default definePlugin({
-  name: "neo4j-browser",
-  nav: [{ label: "Neo4j Browser", href }],
+  name: 'neo4j-browser',
+  nav: [{ label: 'Neo4j Browser', href }],
 });

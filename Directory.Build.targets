@@ -15,6 +15,17 @@
     <_MafPluginServer Include="$(MSBuildThisFileDirectory)plugins/*/server/*.csproj" />
     <ProjectReference Include="@(_MafPluginServer)" />
   </ItemGroup>
+  <!--
+    A plugin's tests live in its folder, with no project of their own: plugins/<name>/tests/unit/ compiles into
+    Maf.Lab.Tests and plugins/<name>/tests/integration/ into Maf.Lab.IntegrationTests, so they reuse the core's test
+    support and leave with the folder (nothing outside it names them).
+  -->
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'Maf.Lab.Tests'">
+    <Compile Include="$(MSBuildThisFileDirectory)plugins/*/tests/unit/**/*.cs" Link="Plugins/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'Maf.Lab.IntegrationTests'">
+    <Compile Include="$(MSBuildThisFileDirectory)plugins/*/tests/integration/**/*.cs" Link="Plugins/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
   <Target Name="_MafLeaveOutNonProductPlugins" BeforeTargets="AssignProjectConfiguration"
           Condition="'$(_MafPluginHost)' == 'true' and '$(MafImageVariant)' == 'product'">
     <ItemGroup>

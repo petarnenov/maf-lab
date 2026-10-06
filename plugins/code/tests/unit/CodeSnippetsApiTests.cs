@@ -1,6 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
-using Maf.Lab.Api.Code;
+using Maf.Lab.Plugins.Code;
 using Maf.Lab.Domain.Code;
 using Maf.Lab.Domain.Tenancy;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,14 +24,15 @@ public class CodeSnippetsApiTests
         }
     }
 
-    private static ApiFactory Api(ICodeSnippetSource source) => new(ApiFactory.ProceduralModel())
+    private static ApiFactory Api(ICodeSnippetSource source) => new ApiFactory(ApiFactory.ProceduralModel())
     {
         ConfigureTestServices = s =>
         {
             s.RemoveAll<ICodeSnippetSource>();
             s.AddSingleton(source);
         },
-    };
+        InstalledPlugins = [CodePluginSupport.Manifest],
+    }.WithCode();
 
     [Fact]
     public async Task Snippets_for_a_question_are_fetched_as_the_user()
@@ -86,11 +87,19 @@ public class CodeSnippetsApiTests
     public async Task An_unreachable_endpoint_becomes_unavailable_not_an_exception()
     {
         var source = new McpCodeSnippetSource(
-            Microsoft.Extensions.Options.Options.Create(new CodeSearchClientOptions { Endpoint = "http://127.0.0.1:1/mcp" }),
+            new FixedEndpoint("http://127.0.0.1:1/mcp"),
             new ServiceCollection().AddHttpClient().BuildServiceProvider().GetRequiredService<IHttpClientFactory>(),
             Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance);
 
         var ex = await Assert.ThrowsAsync<CodeSearchUnavailableException>(() => source.SearchAsync("t", "q", 5, Ct));
         Assert.DoesNotContain("127.0.0.1", ex.Message);
     }
+}
+
+/// <summary>An installed set that names one endpoint for the code plugin, as a configured override would.</summary>
+file sealed class FixedEndpoint(string endpoint) : Maf.Lab.Plugins.Abstractions.IInstalledPlugins
+{
+    public bool IsInstalled(string plugin) => true;
+
+    public string? McpEndpoint(string plugin) => endpoint;
 }

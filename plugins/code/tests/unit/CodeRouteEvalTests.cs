@@ -1,5 +1,6 @@
 using Maf.Lab.Api.Agent.Jev;
 using Maf.Lab.Api.BuiltIn;
+using Maf.Lab.Plugins.Code;
 using Maf.Lab.Domain.Evals;
 using Maf.Lab.Domain.Graph;
 using Maf.Lab.Eval;
@@ -9,8 +10,13 @@ using Maf.Lab.Eval.Suites;
 namespace Maf.Lab.Tests;
 
 /// <summary>The code-route suite (route-structural-code-questions): its dataset and what it counts.</summary>
-public class CodeRouteEvalTests
+public class CodeRouteEvalTests : IDisposable
 {
+    // The three-domain view these tests were written in: billing and portfolio built in, codebase from this plugin.
+    private readonly IDisposable _domains = CodePluginSupport.Use();
+
+    public void Dispose() => _domains.Dispose();
+
     private static string WriteDataset(params string[] rows)
     {
         var dir = Directory.CreateTempSubdirectory("maf-code-route-").FullName;

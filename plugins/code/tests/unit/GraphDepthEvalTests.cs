@@ -13,8 +13,13 @@ using Microsoft.Extensions.Configuration;
 namespace Maf.Lab.Tests;
 
 /// <summary>The graph-depth comparison (add-graph-depth-eval): its dataset, its metrics, and how the harness runs it.</summary>
-public class GraphDepthEvalTests
+public class GraphDepthEvalTests : IDisposable
 {
+    // The three-domain view these tests were written in: billing and portfolio built in, codebase from this plugin.
+    private readonly IDisposable _domains = CodePluginSupport.Use();
+
+    public void Dispose() => _domains.Dispose();
+
     private static string WriteDataset(params string[] rows)
     {
         var dir = Directory.CreateTempSubdirectory("maf-graph-depth-").FullName;

@@ -1,7 +1,27 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
+import type { ChatContext, SourceRef } from '../plugins/api';
+import { PluginsContext } from '../plugins/context';
 import { SourcesPanel } from './SourcesPanel';
+
+/** A plugin in use that opens code sources, as the code plugin does: the core resolves the action by the source's kind. */
+function withCodeAction(opened: string[], ui: ReactNode) {
+  const plugin = {
+    name: 'opener',
+    sourceActions: [
+      {
+        kind: 'code',
+        label: 'show in Code snippets',
+        onOpen: (s: SourceRef) => opened.push(s.docId),
+      },
+    ],
+  };
+  return <PluginsContext.Provider value={{ plugins: [plugin] }}>{ui}</PluginsContext.Provider>;
+}
+
+const context: ChatContext = { openPane: () => {} };
 
 const sources = [
   {
@@ -55,7 +75,7 @@ describe('SourcesPanel with code sources (add-codebase-domain)', () => {
     const opened: string[] = [];
     const long =
       'AgentCardTests.A_partner_exchanges_its_credentials_for_a_token_and_a_stranger_does_not';
-    render(<SourcesPanel sources={[code(1, long)]} onOpenCode={(s) => opened.push(s.docId)} />);
+    render(withCodeAction(opened, <SourcesPanel sources={[code(1, long)]} context={context} />));
 
     const button = screen.getByRole('button', { name: /File1\.cs:1–9/ });
     expect(button).toHaveTextContent('File1.cs:1–9');
@@ -68,12 +88,22 @@ describe('SourcesPanel with code sources (add-codebase-domain)', () => {
 
   it('shows five sources and the rest on request', async () => {
     render(
-      <SourcesPanel sources={[1, 2, 3, 4, 5, 6, 7].map((i) => code(i))} onOpenCode={() => {}} />,
+      withCodeAction(
+        [],
+        <SourcesPanel sources={[1, 2, 3, 4, 5, 6, 7].map((i) => code(i))} context={context} />,
+      ),
     );
 
     expect(screen.getByText('Sources (7)')).toBeInTheDocument();
     expect(screen.getAllByRole('listitem')).toHaveLength(5);
     await userEvent.click(screen.getByRole('button', { name: 'Show all 7' }));
     expect(screen.getAllByRole('listitem')).toHaveLength(7);
+  });
+
+  it('shows a code source no plugin opens as its place, not as a button (introduce-plugins 5.2)', () => {
+    render(<SourcesPanel sources={[code(1)]} context={context} />);
+
+    expect(screen.getByText('File1.cs')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /File1\.cs/ })).toBeNull();
   });
 });

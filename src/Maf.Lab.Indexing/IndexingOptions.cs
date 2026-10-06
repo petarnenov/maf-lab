@@ -22,7 +22,7 @@ public sealed class IndexingOptions
     /// </summary>
     public string Layout { get; set; } = CorpusLayouts.Tenants;
     public List<string> RepositoryInclude { get; set; } =
-        ["src/", "web/src/", "tests/", "tools/", "scripts/", "openspec/specs/", "docs/", "README.md", "DECISIONS.md", "CLAUDE.md", "openspec/project.md"];
+        ["src/", "web/src/", "tests/", "tools/", "scripts/", "plugins/", "openspec/specs/", "docs/", "README.md", "DECISIONS.md", "CLAUDE.md", "openspec/project.md"];
     public List<string> RepositoryExclude { get; set; } = [];
     /// <summary>Files larger than this are generated or data, not source, and are not indexed.</summary>
     public int RepositoryMaxFileBytes { get; set; } = 200_000;

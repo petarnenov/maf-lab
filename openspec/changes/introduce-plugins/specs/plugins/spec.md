@@ -141,8 +141,9 @@ or removing a plugin without a `server/` part SHALL NOT recreate or restart them
 
 #### Scenario: A remote plugin is switched off
 - **WHEN** `make plugin-off NAME=code` is run on a running stack with a chat run streaming
-- **THEN** the run finishes, the code services stop, `/code/mcp` answers 404, its tools are not offered from the next
-  turn, and the api, lb and copilot-runtime containers were not recreated
+- **THEN** the run finishes (each api replica drains before it restarts, since the plugin has a `server/` part), the code
+  services stop, `/code/mcp` answers 404, its tools are not offered from the next turn, lb and copilot-runtime were
+  not recreated, and the api replicas restarted one at a time
 
 #### Scenario: A dependency is missing
 - **WHEN** `MAF_PLUGINS` names a plugin whose dependency does not exist

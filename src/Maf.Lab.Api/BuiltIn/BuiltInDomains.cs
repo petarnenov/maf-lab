@@ -14,10 +14,9 @@ public static class BuiltInDomains
     /// <summary>The ids of the built-in domains, for the domain code and the tests; the core never names them.</summary>
     public const string Billing = "billing";
     public const string Portfolio = "portfolio";
-    public const string Codebase = "codebase";
 
     /// <summary>Every built-in domain's id, as shipped.</summary>
-    public static readonly IReadOnlyList<string> Ids = [Billing, Portfolio, Codebase];
+    public static readonly IReadOnlyList<string> Ids = [Billing, Portfolio];
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -56,7 +55,7 @@ public static class BuiltInDomains
 
     /// <summary>The behaviour of each built-in domain.</summary>
     public static IReadOnlyList<IDomainBehaviour> Behaviours { get; } =
-        [new BillingBehaviour(), new PortfolioBehaviour(), new CodebaseBehaviour()];
+        [new BillingBehaviour(), new PortfolioBehaviour()];
 
     /// <summary>
     /// Each built-in domain's chunk store, keyed by its id: billing's is the api's own collection, portfolio's its own.

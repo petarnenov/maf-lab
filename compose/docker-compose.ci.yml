@@ -1,14 +1,8 @@
 # CI mode (make CI_MODE=1 …): no model downloads, no secrets.
 # Both Ollama services (`ollama`, `ollama-batch`) become a deterministic Ollama-compatible stub (embeddings + scripted
 # chat); everything else is the real stack. Forced retrieval still calls search_documents over MCP, so tool calls, SSE and tenancy are real.
-x-ci-model-env: &ci-model-env
-  Models__ChatEndpoint: http://ollama:11434
-  Models__ChatModel: stub
-  # The stub also answers Jev's endpoint. A fixed placeholder, not a secret: only the stub accepts it, and nothing in
-  # CI can reach api.typesafe.ai.
-  Jev__Endpoint: http://ollama:11434
-  JEV_MAF_LAB: ci-stub-placeholder
-
+# The chat model and Jev answer from the stub: env/ci-models.env, listed after each service's own env files so its keys
+# win (an env_file list is appended across merged files). A key it must change may not sit in a service's `environment:`.
 services:
   ollama:
     image: maf-lab-ollama-stub
@@ -38,20 +32,13 @@ services:
     entrypoint: ["true"]
 
   mcp-retrieval:
-    environment:
-      <<: *ci-model-env
+    env_file: [env/ci-models.env]
 
   mcp-portfolio:
-    environment:
-      <<: *ci-model-env
-
-  mcp-code:
-    environment:
-      <<: *ci-model-env
+    env_file: [env/ci-models.env]
 
   api:
-    environment:
-      <<: *ci-model-env
+    env_file: [env/ci-models.env]
 
   # The test agent writes its tests with the stub's scripted answer for the e2e fixture.
   test-agent:

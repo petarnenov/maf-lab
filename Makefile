@@ -33,13 +33,13 @@ MAF_PLUGINS   ?=
 ifeq ($(CI_MODE),1)
 # CI's plugin set, a positive list kept here only (introduce-plugins 5.1): CI_MODE means no downloads and no secrets,
 # so the developer tools stay out (a2a-inspector even builds from a git context). Each plugin extracted from the core
-# adds itself here in the same commit; `none` until then.
-CI_PLUGINS    ?= none
+# adds itself here in the same commit.
+CI_PLUGINS    ?= code
 MAF_PLUGINS   := $(CI_PLUGINS)
 endif
 export MAF_ENV MAF_PLUGINS
 # The set passed explicitly: make 3.81's $(shell) does not see the variables make exports.
-PLUGINS_PY     = MAF_ENV='$(MAF_ENV)' MAF_PLUGINS='$(MAF_PLUGINS)' python3 $(ROOT)/scripts/plugins.py
+PLUGINS_PY     = MAF_ENV='$(MAF_ENV)' MAF_PLUGINS='$(MAF_PLUGINS)' CI_MODE='$(CI_MODE)' python3 $(ROOT)/scripts/plugins.py
 # The image variant (introduce-plugins decision 5e): full for dev, product (no dev-or-qa-only plugin code) for qa, stage
 # and prod, so stage and prod promote exactly the image qa tested. qa may run full beside it with MAF_IMAGE_VARIANT=full.
 MAF_IMAGE_VARIANT ?= $(if $(filter qa stage prod,$(MAF_ENV)),product,full)
@@ -110,10 +110,6 @@ HOST_ENV := Models__OllamaEndpoint=http://localhost:11435 Models__OllamaNumThrea
 	Neo4j__Uri=bolt://localhost:7687 Neo4j__Password=$${NEO4J_PASSWORD:-maf-lab-dev-graph}
 # The portfolio domain is indexed by the same indexer into its own collection and BM25 vocabulary.
 PORTFOLIO_ENV := Indexing__CorpusRoot=$(ROOT)/data-portfolio Qdrant__Collection=maf_portfolio_chunks Qdrant__MetaCollection=maf_portfolio_meta
-# The codebase is indexed from the repository itself, by structure, into its own collection: chunks sized in embedding
-# tokens (well under embeddinggemma's 2048), BM25 over identifiers split into their words (add-codebase-search).
-CODE_ENV := Indexing__Layout=repository Indexing__CorpusRoot=$(ROOT) Indexing__MaxChunkTokens=1024 Indexing__Bm25Tokenizer=code \
-            Qdrant__Collection=maf_code_chunks Qdrant__MetaCollection=maf_code_meta
 # The indexer runs from its build output: `dotnet run` re-evaluates and checks the build on every call (3-20 s each,
 # three calls per `make index`), which made a repeat run over an unchanged corpus slow. The dll is rebuilt only when a
 # source, project or build file of it or of a project it references is newer than it, and touched so an up-to-date
@@ -123,7 +119,7 @@ INDEXER_SRC  := $(shell find src/Maf.Lab.Indexing src/Maf.Lab.Retrieval src/Maf.
                 Directory.Build.props Directory.Packages.props global.json
 INDEXER      := $(DOTNET) $(INDEXER_DLL)
 
-.PHONY: all help up core plugins plugin-on plugin-off product-check down restart ps logs print-compose-file clean infra index index-portfolio index-code graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
+.PHONY: all help up core plugins plugin-on plugin-off product-check down restart ps logs print-compose-file clean infra index index-portfolio indexer graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
         coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-answer-check eval-code-route eval-graph-depth eval-retrieval-backends eval-a2a neo4j-chunks dev doctor banner index-if-empty \
         specs docs docs-check lint-dotnet lint-web build-web ci ci-e2e setup \
         require-docker require-dotnet require-npm require-python
@@ -213,14 +209,16 @@ $(INDEXER_DLL): $(INDEXER_SRC) | require-dotnet
 	@$(DOTNET) build src/Maf.Lab.Indexing -v quiet -nologo
 	@touch $@
 
-index: require-dotnet infra $(INDEXER_DLL) ## Index both domains' corpora and the codebase, then build the graph (unchanged documents are skipped)
+# The indexer's build, by name: what a plugin's index targets depend on (a plugin.mk is read before $(INDEXER_DLL) is set).
+indexer: $(INDEXER_DLL)
+
+index: require-dotnet infra $(INDEXER_DLL) ## Index the built-in domains' corpora, then build their graph; installed plugins add theirs (unchanged documents are skipped)
 	$(HOST_ENV) $(INDEXER) index
 	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) index
-	$(HOST_ENV) $(CODE_ENV) $(INDEXER) index
-	$(HOST_ENV) $(INDEXER) graph
+	$(HOST_ENV) $(INDEXER) graph --only billing
 
-graph: require-dotnet infra $(INDEXER_DLL) ## Build the Neo4j graph: billing relationships and the code graph (unchanged nodes are not rewritten)
-	$(HOST_ENV) $(INDEXER) graph
+graph: require-dotnet infra $(INDEXER_DLL) ## Build the Neo4j graph: billing relationships, and any installed plugin's graph (unchanged nodes are not rewritten)
+	$(HOST_ENV) $(INDEXER) graph --only billing
 
 neo4j-chunks: require-dotnet infra $(INDEXER_DLL) ## Spike: copy the billing and portfolio chunks from Qdrant into Neo4j for eval-retrieval-backends
 	$(HOST_ENV) $(INDEXER) neo4j-chunks
@@ -230,13 +228,9 @@ neo4j-chunks: require-dotnet infra $(INDEXER_DLL) ## Spike: copy the billing and
 index-portfolio: require-dotnet infra $(INDEXER_DLL) ## Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only
 	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) index
 
-index-code: require-dotnet infra $(INDEXER_DLL) ## Index the repository itself (→ maf_code_chunks, served by mcp-code) only; unchanged files are skipped
-	$(HOST_ENV) $(CODE_ENV) $(INDEXER) index
-
-reindex: require-dotnet infra $(INDEXER_DLL) ## Re-embed every document of both domains (--force)
+reindex: require-dotnet infra $(INDEXER_DLL) ## Re-embed every document of the built-in domains, and of installed plugins (--force)
 	$(HOST_ENV) $(INDEXER) index --force
 	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) index --force
-	$(HOST_ENV) $(CODE_ENV) $(INDEXER) index --force
 
 drift: require-dotnet infra $(INDEXER_DLL) ## Report stale documents: the index and the billing graph against the source
 	$(HOST_ENV) $(INDEXER) drift

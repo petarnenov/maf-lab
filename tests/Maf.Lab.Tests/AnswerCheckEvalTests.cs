@@ -167,6 +167,7 @@ public class AnswerCheckEvalTests
     [Fact]
     public async Task The_guardrail_suite_screens_a_codebase_row_in_the_codebase_context_and_the_others_in_billings()
     {
+        using var domains = StandInDomains.WithCodeDomain();
         var dir = Directory.CreateTempSubdirectory("maf-guard-").FullName;
         File.WriteAllLines(Path.Combine(dir, "guardrail.jsonl"),
         [
@@ -314,6 +315,7 @@ public class AnswerCheckEvalTests
     [Fact]
     public async Task The_answer_check_suite_counts_the_band_and_the_unchecked_and_never_needs_a_chat_model()
     {
+        using var domains = StandInDomains.WithCodeDomain();
         var dir = Directory.CreateTempSubdirectory("maf-ac-").FullName;
         File.WriteAllLines(Path.Combine(dir, "answer-check.jsonl"),
         [

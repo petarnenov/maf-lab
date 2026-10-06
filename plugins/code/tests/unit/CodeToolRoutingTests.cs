@@ -2,6 +2,7 @@ using System.Text.Json;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Jev;
 using Maf.Lab.Api.BuiltIn;
+using Maf.Lab.Plugins.Code;
 using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Domain.Code;
 using Maf.Lab.Domain.Graph;
@@ -20,13 +21,18 @@ namespace Maf.Lab.Tests;
 /// question needs in the intent request, code takes the one symbol or file from the question, and anything unclear keeps
 /// the codebase search the turn always forced.
 /// </summary>
-public class CodeToolRoutingTests
+public class CodeToolRoutingTests : IDisposable
 {
+    // The three-domain view these tests were written in: billing and portfolio built in, codebase from this plugin.
+    private readonly IDisposable _domains = CodePluginSupport.Use();
+
+    public void Dispose() => _domains.Dispose();
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly JevOptions Options_ = new();
 
     private static DomainVerdict Codebase(double p = 0.9) =>
-        DomainVerdict.From(new Dictionary<string, double> { [BuiltInDomains.Codebase] = p, [BuiltInDomains.Billing] = 0.05 }, 0.5, 0.2);
+        DomainVerdict.From(new Dictionary<string, double> { [CodePlugin.DomainId] = p, [BuiltInDomains.Billing] = 0.05 }, 0.5, 0.2);
 
     private static DecisionAnswer Need(string choice, double confidence = 0.9) => new(choice, confidence, null, null);
 
@@ -127,7 +133,7 @@ public class CodeToolRoutingTests
     public void Small_talk_another_primary_domain_or_no_answer_route_nothing()
     {
         const string question = "Who calls TenantScopedSearch.QueryAsync?";
-        var billing = DomainVerdict.From(new Dictionary<string, double> { [BuiltInDomains.Billing] = 0.9, [BuiltInDomains.Codebase] = 0.6 }, 0.5, 0.2);
+        var billing = DomainVerdict.From(new Dictionary<string, double> { [BuiltInDomains.Billing] = 0.9, [CodePlugin.DomainId] = 0.6 }, 0.5, 0.2);
 
         Assert.Equal("small talk", Route(question, Need("callers"), Intent.ChitChat).Reason);
         Assert.Equal("the codebase is not the primary domain", Route(question, Need("callers"), domains: billing).Reason);
@@ -179,7 +185,7 @@ public class CodeToolRoutingTests
 
     private static ApiFactory CodeApi(FakeToolSource tools, Func<string, string> need, string intent = "other", double billing = 0.02)
     {
-        var api = new ApiFactory(ApiFactory.ProceduralModel("It is called from DocumentSearchService.RankCoreAsync."), tools);
+        var api = new ApiFactory(ApiFactory.ProceduralModel("It is called from DocumentSearchService.RankCoreAsync."), tools) { InstalledPlugins = [CodePluginSupport.Manifest] }.WithCode();
         api.Jev.InDomain = billing;
         api.Jev.Codebase = _ => 0.92;
         api.Jev.Choose = _ => intent;

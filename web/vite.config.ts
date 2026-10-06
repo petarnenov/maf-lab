@@ -13,7 +13,19 @@ export default defineConfig({
     alias: {
       '@maf/plugin-api': here('./src/plugins/api.ts'),
       '@maf/shared': here('./src/shared'),
+      // The core's test support, for a plugin's tests only (render helpers, the chat page hosting given plugins).
+      '@maf/testing': here('./src/test/index.ts'),
     },
+    // A plugin's web part lives outside this folder, so a bare import from it would find no node_modules: these resolve
+    // from this project, as Vite's dedupe does for linked packages.
+    dedupe: [
+      'react',
+      'react-dom',
+      '@tanstack/react-query',
+      'vitest',
+      '@testing-library/react',
+      '@testing-library/user-event',
+    ],
   },
   server: {
     port: 5174,
@@ -31,6 +43,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    // The core's tests, and each plugin's web tests in its own folder (relative to this project).
+    include: ['src/**/*.test.{ts,tsx}', '../plugins/*/web/**/*.test.{ts,tsx}'],
     css: { modules: { classNameStrategy: 'non-scoped' } },
     restoreMocks: true,
     unstubGlobals: true,

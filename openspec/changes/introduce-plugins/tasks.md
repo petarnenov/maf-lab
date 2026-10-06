@@ -172,6 +172,10 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   - its line in plugins/mcp-inspector/files/start.mjs (the code plugin's server.json lists it instead);
   - `code` added to `CI_PLUGINS`.
 
+  The codebase domain's pin assertions (1.1: `DomainRoutingPinTests`, the code-request part of `DataToolRoutingTests`,
+  the codebase fragment of `SystemPromptTests`) moved verbatim into the plugin, run in the three-domain view; the core
+  pins keep billing and portfolio. This is the allowed move, as in 4.5.
+
   Verify the scenarios "A remote plugin is switched off" and "A plugin is deleted".
 - [ ] 5.3 `monitor` (app):
   - split `TurnTrace` into the core record and `ITurnObserver`, and store reasoning on the core turn;
@@ -227,7 +231,9 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   3. `compliance`; removes its `BuiltInDomains.LegacyCapabilities` entry
   4. `a2a`; removes its line from the core-names-no-domain allow-list
   5. `coverage`
-  6. `evals`
+  6. `evals`; hosts the code server through the catalogue's endpoint instead of `BuildApp`, which frees
+     `src/Maf.Lab.CodeSearch`, the graph-tool tests (GraphBuildAndTool, GraphTraceEvent, GraphIntegration) and the code
+     graph builder to move under the code plugin's folder
   7. `insights`; removes its line from the core-names-no-domain allow-list
   8. `feedback-review`; removes its line from the core-names-no-domain allow-list
   9. `index-admin`

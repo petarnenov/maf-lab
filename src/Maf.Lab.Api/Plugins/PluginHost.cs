@@ -21,6 +21,7 @@ public static class PluginHost
     {
         builder.Services.Configure<PluginOptions>(builder.Configuration.GetSection(PluginOptions.Section));
         builder.Services.AddSingleton<PluginCatalogue>();
+        builder.Services.AddSingleton<IInstalledPlugins, InstalledPlugins>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<PluginCatalogue>());
 
         // Read now, for composition: what is installed at start is what this process registers. A later change to an
@@ -57,12 +58,32 @@ public static class PluginHost
         {
             plugin.ConfigureServices(builder.Services, builder.Configuration);
         }
+        foreach (var plugin in loaded.OfType<IContributesDomainBehaviour>())
+        {
+            // Read by the domain catalogue next to the built-in domains' behaviours (decision 6).
+            builder.Services.AddSingleton(plugin.Behaviour);
+        }
         foreach (var plugin in loaded.OfType<IContributesOpenWork>())
         {
             builder.Services.AddSingleton(new NamedOpenWork(((IMafPlugin)plugin).Name, plugin));
         }
         builder.Services.AddSingleton(new LoadedPlugins(loaded));
         return builder;
+    }
+
+    /// <summary>
+    /// The domain behaviours of the installed plugins whose code is in this process, for a host that composes no web app
+    /// (the eval's agent host): the same plugins the api would load, contributing only their behaviour.
+    /// </summary>
+    public static IReadOnlyList<IDomainBehaviour> InstalledBehaviours(PluginSet installed)
+    {
+        var types = Discover([]);
+        return [.. installed.Plugins
+            .Select(p => types.GetValueOrDefault(p.Name))
+            .OfType<Type>()
+            .Select(t => Activator.CreateInstance(t))
+            .OfType<IContributesDomainBehaviour>()
+            .Select(p => p.Behaviour)];
     }
 
     /// <summary>A plugin installed in an environment its manifest does not allow stops the start, naming it (task 3.8).</summary>

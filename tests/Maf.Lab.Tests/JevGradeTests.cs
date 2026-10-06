@@ -23,7 +23,7 @@ public class JevGradeTests
 
     private static readonly ReadItem FeeDoc = new("doc:fees›Missing", "fees › Missing: Assign the agreed schedule, then re-run.", [], BuiltInDomains.Billing);
     private static readonly ReadItem OtherDoc = new("doc:aum›Stale", "aum › Stale: A valuation older than three days is stale.", [], BuiltInDomains.Billing);
-    private static readonly ReadItem CodeItem = new("code:src/A.cs:1-9", "src/A.cs:1-9 › A: class A {}", ["src/A.cs", "A.cs"], BuiltInDomains.Codebase);
+    private static readonly ReadItem CodeItem = new("code:src/A.cs:1-9", "src/A.cs:1-9 › A: class A {}", ["src/A.cs", "A.cs"], StandInDomains.CodeDomain.Id);
 
     private const string Answer = "Open the failed run. Assign the agreed schedule. Re-run it. Then pay the fee twice.";
 
@@ -75,6 +75,7 @@ public class JevGradeTests
     [Fact]
     public void A_code_source_switches_to_the_code_context_and_criteria()
     {
+        using var domains = StandInDomains.WithCodeDomain();
         var billing = JevGradeRequest.Build(Input(), new JudgeOptions());
         var code = JevGradeRequest.Build(Input("It is in `src/A.cs`.", [CodeItem]), new JudgeOptions());
 

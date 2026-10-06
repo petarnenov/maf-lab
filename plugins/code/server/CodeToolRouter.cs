@@ -3,7 +3,7 @@ using Maf.Lab.Domain.Graph;
 using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Retrieval.Jev;
 
-namespace Maf.Lab.Api.BuiltIn;
+namespace Maf.Lab.Plugins.Code;
 
 /// <summary>
 /// Turns Jev's answer to what a codebase question needs into a code graph call the turn can issue without asking the

@@ -49,9 +49,20 @@ run() { # name dir command...
 }
 
 "$DOTNET" build "$ROOT/maf-lab.sln" -v q -nologo
+# The api reads the installed plugins from the repository's plugins/ (compose mounts it at /plugins); the set is the one
+# make resolves (MAF_PLUGINS, MAF_ENV), written here as `make up` writes it.
+export Plugins__Root="$ROOT/plugins"
+python3 "$ROOT/scripts/plugins.py" install --installed-only
+installed() { python3 "$ROOT/scripts/plugins.py" resolve | grep -qx "$1"; }
 run mcp "$ROOT/src/Maf.Lab.Retrieval" "$DOTNET" run --no-build
 run portfolio "$ROOT/src/Maf.Lab.Portfolio" "$DOTNET" run --no-build
-run code "$ROOT/src/Maf.Lab.CodeSearch" "$DOTNET" run --no-build
+# The codebase's server runs only while the code plugin is installed. Its server.json names the balancer, which make dev
+# bypasses, so the api is pointed at the local one by the configured override of that plugin's server.
+if installed code; then
+  export Agent__Servers__code__Domain=codebase Agent__Servers__code__Endpoint=http://localhost:5092/mcp \
+    Agent__Servers__code__Tools__0=search_codebase Agent__Servers__code__Tools__1=trace_code_symbol Agent__Servers__code__Tools__2=change_impact
+  run code "$ROOT/src/Maf.Lab.CodeSearch" "$DOTNET" run --no-build
+fi
 run api "$ROOT/src/Maf.Lab.Api" "$DOTNET" run --no-build
 run web "$ROOT/web" "$NPM" run dev
 echo "dev: web http://localhost:5174 · api http://localhost:5080 · mcp http://localhost:5090/mcp · portfolio http://localhost:5091/mcp · code http://localhost:5092/mcp (Ctrl-C to stop)"

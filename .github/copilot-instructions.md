@@ -63,11 +63,11 @@ MCP note: workspace MCP server config lives in `.mcp.json` (Playwright server vi
 | `/a2a` | prefix | `api` |
 | `/mcp` | exact | `mcp-retrieval` |
 | `/portfolio/mcp` | exact | `mcp-portfolio` at `/mcp` |
-| `/code/mcp` | exact | `mcp-code` at `/mcp` |
 | `/compliance` | prefix | `compliance` |
 | `/v1/traces` | prefix | `otel-collector` |
 | `/jaeger` | prefix | `jaeger` |
 | `/` | prefix | `web` |
+| `/code/mcp` | exact | `mcp-code` at `/mcp` (plugin `code`) |
 <!-- /generated:lb-routes -->
 
 ## Key conventions in this codebase

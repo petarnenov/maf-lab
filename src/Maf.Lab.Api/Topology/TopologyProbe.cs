@@ -62,7 +62,8 @@ public sealed class TopologyProbe(
     TimeProvider time,
     IServiceResolver resolver,
     ILoggerFactory loggers,
-    Plugins.PluginCatalogue? plugins = null)
+    Plugins.PluginCatalogue? plugins = null,
+    DomainCatalogue? domains = null)
 {
     private const string CacheKey = "topology-report";
 
@@ -157,7 +158,7 @@ public sealed class TopologyProbe(
         var offered = OfferedAsync(bearerToken, timeout, ct);
         var mcp = DomainServerAsync("mcp", BuiltIn.BuiltInDomains.Billing, mcpAddresses, offered, timeout, ct, "mcp-retrieval");
         var portfolio = DomainServerAsync("mcp-portfolio", BuiltIn.BuiltInDomains.Portfolio, portfolioAddresses, offered, timeout, ct);
-        var code = DomainServerAsync("mcp-code", BuiltIn.BuiltInDomains.Codebase, codeAddresses, offered, timeout, ct);
+        var code = DomainServerAsync("mcp-code", "codebase", codeAddresses, offered, timeout, ct);
         var compliance = ComplianceAsync(complianceAddresses, timeout, ct);
         var agentNode = TestAgentAsync(testAgentAddresses, timeout, ct);
         var runnerNode = ReplicasAsync("coverage-runner", "coverage runner", runnerAddresses, timeout, ct);
@@ -316,14 +317,24 @@ public sealed class TopologyProbe(
     }
 
     /// <summary>
-    /// A domain's MCP server (billing, portfolio, codebase), configured through Agent:Servers: every one alike, so an
-    /// unconfigured billing server degrades like any other (introduce-plugins 4.6).
+    /// A domain's MCP server (billing, portfolio, codebase), as the agent sees it — configured through Agent:Servers or
+    /// named by an installed plugin's server.json — every one alike, so an unconfigured billing server degrades like any
+    /// other (introduce-plugins 4.6). A domain that is not installed is reported as such, not as a fault.
     /// </summary>
     private async Task<TopologyNode> DomainServerAsync(string id, string domain, IReadOnlyList<string> addresses, Task<Offered> offered,
         TimeSpan timeout, CancellationToken ct, string? name = null)
     {
-        var endpoint = agent.Value.Servers.Values.FirstOrDefault(s => s.Domain == domain)?.Endpoint;
+        var endpoint = agent.Value.AllServers(plugins?.McpServers()).FirstOrDefault(s => s.Domain == domain)?.Endpoint;
         var node = await ReplicasAsync(id, name ?? id, addresses, timeout, ct);
+        if ((domains ?? DomainCatalogue.AllBuiltIn).Get(domain) is null)
+        {
+            return node with
+            {
+                Facts = new Dictionary<string, string>(node.Facts) { ["endpoint"] = "not installed" },
+                Health = NodeHealth.NotProbed,
+                Reason = $"the {domain} domain is not installed",
+            };
+        }
         if (string.IsNullOrWhiteSpace(endpoint))
         {
             return node with

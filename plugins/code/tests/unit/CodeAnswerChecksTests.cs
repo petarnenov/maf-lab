@@ -4,6 +4,7 @@ using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Jev;
 using Maf.Lab.Api.Agent.Tracing;
 using Maf.Lab.Api.BuiltIn;
+using Maf.Lab.Plugins.Code;
 using Maf.Lab.Domain.Code;
 using Maf.Lab.Domain.Feedback;
 using Maf.Lab.Domain.Tenancy;
@@ -23,8 +24,13 @@ namespace Maf.Lab.Tests;
 /// The guard and the answer check fitted to code questions (fit-answer-checks-to-code-questions): the codebase battery
 /// and its record-only question, the withheld stub, what the answer check reads and how it chooses it, the review band.
 /// </summary>
-public class CodeAnswerChecksTests
+public class CodeAnswerChecksTests : IDisposable
 {
+    // The three-domain view these tests were written in: billing and portfolio built in, codebase from this plugin.
+    private readonly IDisposable _domains = CodePluginSupport.Use();
+
+    public void Dispose() => _domains.Dispose();
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -50,7 +56,7 @@ public class CodeAnswerChecksTests
     private static ApiFactory CodeApi(Func<string, string, double>? guard, string answer = "Idempotency rides in ConfirmedCall (src/Maf.Lab.Api/Agent/ToolSource.cs:17-27).",
         FakeToolSource? tools = null)
     {
-        var api = new ApiFactory(ApiFactory.ProceduralModel(answer), tools ?? new FakeToolSource { WithCodebase = true });
+        var api = new ApiFactory(ApiFactory.ProceduralModel(answer), tools ?? new FakeToolSource { WithCodebase = true }) { InstalledPlugins = [CodePluginSupport.Manifest] }.WithCode();
         api.Jev.InDomain = 0.02;
         api.Jev.Codebase = q => q.Contains("code", StringComparison.OrdinalIgnoreCase) ? 0.92 : 0.0;
         api.Jev.Choose = _ => "other";
@@ -177,7 +183,8 @@ public class CodeAnswerChecksTests
         using var slow = new ApiFactory(ApiFactory.ProceduralModel("Idempotency rides in ConfirmedCall."), new FakeToolSource { WithCodebase = true }, jev: jev)
         {
             ExtraSettings = new Dictionary<string, string?> { ["Guard:TimeoutSeconds"] = "0.05" },
-        };
+            InstalledPlugins = [CodePluginSupport.Manifest],
+        }.WithCode();
 
         var events = await ApiFactory.ChatAsync(slow.ClientFor("alice", "firm-a", Role.TENANT_ADMIN), CodeQuestion);
 
@@ -265,7 +272,7 @@ public class CodeAnswerChecksTests
     }
 
     private static ReadItem Code(string path, int start, int end, string snippet, string symbol = "S") =>
-        ReadItem.FromSearchItem(JsonSerializer.SerializeToElement(new { path, startLine = start, endLine = end, symbol, snippet }), BuiltInDomains.Codebase);
+        ReadItem.FromSearchItem(JsonSerializer.SerializeToElement(new { path, startLine = start, endLine = end, symbol, snippet }), CodePlugin.DomainId);
 
     private static ReadItem Doc(string docId, string section, string snippet) =>
         ReadItem.FromSearchItem(JsonSerializer.SerializeToElement(new { docId, sectionPath = section, snippet }), BuiltInDomains.Billing);
@@ -309,7 +316,7 @@ public class CodeAnswerChecksTests
         Assert.False(selection.OverCap);
         Assert.Equal([cited], selection.Previous);
         Assert.Equal(["src/Maf.Lab.Api/Agent/Guardrail.cs", "Guardrail.cs"], cited.CitationNames);
-        Assert.Equal(BuiltInDomains.Codebase, cited.Domain);
+        Assert.Equal(CodePlugin.DomainId, cited.Domain);
         Assert.Equal(BuiltInDomains.Billing, uncited.Domain);
     }
 
@@ -336,7 +343,7 @@ public class CodeAnswerChecksTests
 
         var read = Assert.Single(ChatTurnRunner.PreviousRead(json));
         Assert.Equal(envelope, read.Text);
-        Assert.Equal(BuiltInDomains.Codebase, read.Domain);
+        Assert.Equal(CodePlugin.DomainId, read.Domain);
         Assert.Equal(["src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs", "TenantScopedSearch.cs", "src/Maf.Lab.Api/Agent/Guardrail.cs", "Guardrail.cs"],
             read.CitationNames);
         Assert.StartsWith("text:", read.Key);

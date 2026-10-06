@@ -20,7 +20,7 @@ public class TopologyTests
 
     private static ApiFactory Api(StubHandler handler, IReadOnlyDictionary<string, string[]>? dns = null,
         string complianceUrl = "http://compliance", FakeToolSource? tools = null, string testAgentUrl = "",
-        IReadOnlyDictionary<string, string?>? settings = null)
+        IReadOnlyDictionary<string, string?>? settings = null, bool withCodeDomain = false)
     {
         var extra = new Dictionary<string, string?>
         {
@@ -37,6 +37,13 @@ public class TopologyTests
             s.RemoveAll<IServiceResolver>();
             s.AddSingleton<IServiceResolver>(new StubResolver(dns ?? new Dictionary<string, string[]>()));
             s.AddHttpClient("topology").ConfigurePrimaryHttpMessageHandler(() => handler);
+            if (withCodeDomain)
+            {
+                // A code domain in use, as the code plugin would bring one; the core reads its shape, not the plugin.
+                s.RemoveAll<Maf.Lab.Api.Agent.DomainCatalogue>();
+                s.AddSingleton(Maf.Lab.Api.Agent.DomainCatalogue.Of([.. Maf.Lab.Api.Agent.DomainCatalogue.AllBuiltIn.All, StandInDomains.CodeDomain],
+                    Maf.Lab.Api.Agent.DomainCatalogue.AllBuiltIn.Behaviours));
+            }
         };
         return api;
     }
@@ -133,7 +140,12 @@ public class TopologyTests
     public async Task The_codebase_server_is_reported_with_its_replicas_and_tools()
     {
         using var api = Api(StubHandler.AllHealthy(), new Dictionary<string, string[]> { ["mcp-code"] = ["10.0.0.21", "10.0.0.22"] },
-            tools: new FakeToolSource { WithCodebase = true });
+            tools: new FakeToolSource { WithCodebase = true }, withCodeDomain: true, settings: new Dictionary<string, string?>
+            {
+                // The code domain's server, configured as `make dev` configures it.
+                ["Agent:Servers:code:Domain"] = "codebase",
+                ["Agent:Servers:code:Endpoint"] = "http://localhost:5092/mcp",
+            });
 
         var report = await GetAsync(api);
 
@@ -145,6 +157,18 @@ public class TopologyTests
         Assert.Equal("http://localhost:5092/mcp", node.Facts["endpoint"]);
         Assert.Contains(report.Edges, e => e is { From: "api", To: "mcp-code" });
         Assert.Contains(report.Edges, e => e is { From: "mcp-code", To: "qdrant" });
+    }
+
+    [Fact]
+    public async Task A_code_domain_that_is_not_installed_is_reported_as_such_not_as_a_fault()
+    {
+        using var api = Api(StubHandler.AllHealthy());
+
+        var node = Assert.Single((await GetAsync(api)).Nodes, n => n.Id == "mcp-code");
+
+        Assert.Equal(NodeHealth.NotProbed, node.Health);
+        Assert.Equal("not installed", node.Facts["endpoint"]);
+        Assert.Equal("the codebase domain is not installed", node.Reason);
     }
 
     [Fact]

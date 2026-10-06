@@ -1,8 +1,11 @@
+import { usePlugins } from '../plugins/context';
+import { toolLabels } from '../plugins/registry';
 import type { ToolCallView } from './chatReducer';
 import styles from './ToolCallCard.module.css';
 import { toolCallLabel } from './toolLabels';
 
 export function ToolCallCard({ call }: { call: ToolCallView }) {
+  const labels = toolLabels(usePlugins());
   const state =
     call.status === 'running'
       ? 'running'
@@ -21,7 +24,7 @@ export function ToolCallCard({ call }: { call: ToolCallView }) {
     >
       <div className={styles.header}>
         <span className={styles.indicator} aria-hidden="true" />
-        <span className={styles.label}>{toolCallLabel(call)}</span>
+        <span className={styles.label}>{toolCallLabel(call, labels)}</span>
         <code className={styles.tool}>{call.toolName}</code>
       </div>
       {call.argumentSummary && <div className={styles.args}>{call.argumentSummary}</div>}

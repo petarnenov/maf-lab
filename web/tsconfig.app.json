@@ -20,7 +20,9 @@
     "noUncheckedSideEffectImports": true,
     "paths": {
       "@maf/plugin-api": ["./src/plugins/api.ts"],
-      "@maf/shared/*": ["./src/shared/*"]
+      "@maf/shared/*": ["./src/shared/*"],
+      "@maf/testing": ["./src/test/index.ts"],
+      "*": ["./node_modules/@types/*", "./node_modules/*"]
     }
   },
   "include": ["src", "../plugins/*/web"]
