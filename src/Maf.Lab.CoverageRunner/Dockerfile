@@ -27,6 +27,8 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0.401-noble
 # The CLI cancel tests send a real Ctrl+C through a python3 launcher (CliCancelTests), and a plugin's tests read its
 # manifest through scripts/plugins.py (json, tomllib): the standard library in full, not python3-minimal.
 RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
+# The image refuses to build without what plugins.py imports, rather than 183 tests failing later on an empty manifest.
+RUN python3 -c 'import json, tomllib'
 COPY --from=webdeps /usr/local/bin/node /usr/local/bin/node
 ENV NUGET_PACKAGES=/opt/nuget \
     DOTNET_CLI_TELEMETRY_OPTOUT=1 \
