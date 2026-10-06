@@ -33,6 +33,9 @@ public class TopologyTests
         {
             ["Compliance:BaseUrl"] = complianceUrl,
             ["TestAgent:BaseUrl"] = testAgentUrl,
+            // The stand-in billing domain's server, as the billing plugin's server.json would name it.
+            ["Agent:Servers:billing:Domain"] = "billing",
+            ["Agent:Servers:billing:Endpoint"] = "http://localhost:5090/mcp",
         };
         foreach (var (key, value) in settings ?? new Dictionary<string, string?>())
         {

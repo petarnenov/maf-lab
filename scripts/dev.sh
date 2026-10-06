@@ -54,7 +54,12 @@ run() { # name dir command...
 export Plugins__Root="$ROOT/plugins"
 python3 "$ROOT/scripts/plugins.py" install --installed-only
 installed() { python3 "$ROOT/scripts/plugins.py" resolve | grep -qx "$1"; }
-run mcp "$ROOT/src/Maf.Lab.Retrieval" "$DOTNET" run --no-build
+# Billing's server runs only while the billing plugin is installed, pointed at the local one the same way as code's
+# (make exports its seed paths).
+if installed billing; then
+  export Agent__Servers__billing__Endpoint=http://localhost:5090/mcp
+  run mcp "$ROOT/src/Maf.Lab.Retrieval" "$DOTNET" run --no-build
+fi
 run portfolio "$ROOT/src/Maf.Lab.Portfolio" "$DOTNET" run --no-build
 # The codebase's server runs only while the code plugin is installed. Its server.json names the balancer, which make dev
 # bypasses, so the api is pointed at the local one by the configured override of that plugin's server.
