@@ -58,6 +58,8 @@
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
+    <!-- A fake clock for the timer-driven watches' tests (see DECISIONS.md §82) -->
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.10.0" />
     <PackageVersion Include="Testcontainers.Qdrant" Version="4.15.0" />
     <PackageVersion Include="Testcontainers.Neo4j" Version="4.15.0" />
     <PackageVersion Include="Mono.Cecil" Version="0.11.6" />

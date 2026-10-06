@@ -1,5 +1,6 @@
 using A2A;
 using Maf.Lab.A2A;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Maf.Lab.Tests;
 
@@ -51,16 +52,32 @@ public class TaskCancelWatchTests
     [Fact]
     public async Task Disposed_it_stops_reading()
     {
+        var time = new FakeTimeProvider();
         var store = new CountingStore(await StoreWithAsync(TaskState.Working));
-        var watch = TaskCancelWatch.Start(store, "t-1", Every);
-        await Task.Delay(100, Ct);
+        var watch = TaskCancelWatch.Start(store, "t-1", Every, time);
+        time.Advance(Every);
+        await UntilAsync(() => store.Reads > 0);
 
         await watch.DisposeAsync();
         var reads = store.Reads;
-        await Task.Delay(150, Ct);
+        // Ticks that would each have read, had the watch still been running.
+        for (var i = 0; i < 5; i++)
+        {
+            time.Advance(Every);
+        }
 
-        Assert.True(reads > 0);
         Assert.Equal(reads, store.Reads);
+    }
+
+    /// <summary>Waits for what the watch does on its own thread; the bound only keeps a broken watch from hanging the run.</summary>
+    private static async Task UntilAsync(Func<bool> done)
+    {
+        using var bound = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        bound.CancelAfter(TimeSpan.FromSeconds(10));
+        while (!done())
+        {
+            await Task.Delay(5, bound.Token);
+        }
     }
 
     private sealed class CountingStore(ITaskStore inner) : ITaskStore

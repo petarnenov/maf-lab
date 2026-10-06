@@ -3342,3 +3342,17 @@ No package version moves in this change.
     list as a compose default, a compose override file.
   - The core-only leg reads the CI stub's request journal (WireMock's `GET`/`DELETE /__admin/requests`, a Test Spy) to
     prove a declined turn made no model, embedding or Jev call. Rejected: the api's own `modelCalls`, OpenTelemetry.
+
+## 82. The stop-anything tests run on a fake clock (deterministic-stop-anything-tests, 2026-10-06)
+
+- **Why.** Three tests (`TaskCancelWatchTests.Disposed_it_stops_reading`,
+  `ReplicaStateTests.The_job_watch_fires_only_on_a_recorded_cancel`, `ReplicaStateTests.Running_job_keeps_its_heartbeat_fresh`)
+  ran the watches and the heartbeat on `TimeProvider.System` and asserted after real `Task.Delay` windows. Under a
+  loaded thread pool they lost about one full parallel run in four, though the code was right (deferred in 3b332a3).
+- **Now.** They run on `FakeTimeProvider` and move the clock one tick at a time, each step waiting for the tick's
+  effect (a read of the store, a heartbeat written), bounded at 10 s so a broken watch cannot hang the run. The watches
+  and `AdminJobRunner` already took a `TimeProvider`; `src/` is unchanged.
+- **Package.** `Microsoft.Extensions.TimeProvider.Testing` 10.10.0, test projects only: the official test double for
+  .NET's `TimeProvider`, from dotnet/extensions, on the same version line as `Microsoft.Extensions.AI` 10.10.0.
+  Rejected: a home-grown fake clock (the platform ships one), longer delays (slower and still a race), retrying flaky
+  tests (hides a real failure).

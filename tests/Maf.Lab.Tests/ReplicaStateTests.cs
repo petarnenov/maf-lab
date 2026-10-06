@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Hosting.Internal;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Maf.Lab.Tests;
 
@@ -177,8 +178,15 @@ public class ReplicaStateTests
             await ctx.SaveChangesAsync(Ct);
         }
 
-        await using var watch = JobCancelWatch.Start(db, "j_w", TimeSpan.FromMilliseconds(20), TimeProvider.System);
-        await Task.Delay(300, Ct);
+        var time = new FakeTimeProvider();
+        var every = TimeSpan.FromMilliseconds(20);
+        var reads = new CountingFactory(db);
+        await using var watch = JobCancelWatch.Start(reads, "j_w", every, time);
+        time.Advance(every);
+        await UntilAsync(() => reads.Reads >= 1);
+        // A second read starts only once the first one's state has been looked at; a cancel ends the watch instead.
+        time.Advance(every);
+        await UntilAsync(() => reads.Reads >= 2 || watch.Canceled);
 
         Assert.Equal(fires, watch.Canceled);
     }
@@ -199,11 +207,26 @@ public class ReplicaStateTests
     public async Task Running_job_keeps_its_heartbeat_fresh()
     {
         var db = await NewDatabaseAsync();
-        var runner = Runner(db, "replica-a", heartbeat: TimeSpan.FromMilliseconds(50), staleAfter: TimeSpan.FromMilliseconds(400));
+        var time = new FakeTimeProvider();
+        var heartbeat = TimeSpan.FromMilliseconds(50);
+        var runner = Runner(db, "replica-a", heartbeat: heartbeat, staleAfter: TimeSpan.FromMilliseconds(400), time: time);
+        var running = new TaskCompletionSource();
         var release = new TaskCompletionSource();
-        var job = await runner.StartAsync("firm-a", "index", async _ => { await release.Task; return "ok"; }, Ct);
+        var job = await runner.StartAsync("firm-a", "index", async _ => { running.SetResult(); await release.Task; return "ok"; }, Ct);
+        // The work starts after the heartbeat's timer exists, so no tick below is lost.
+        await running.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
 
-        await Task.Delay(1000, Ct);
+        // Past the stale cutoff, one beat at a time, each written before the clock moves on.
+        for (var beat = 0; beat < 10; beat++)
+        {
+            time.Advance(heartbeat);
+            var now = time.GetUtcNow().UtcDateTime;
+            await UntilAsync(async () =>
+            {
+                await using var ctx = await db.CreateDbContextAsync(Ct);
+                return (await ctx.AdminJobs.AsNoTracking().SingleAsync(j => j.Id == job.JobId, Ct)).HeartbeatAt >= now;
+            });
+        }
         Assert.Equal(AdminJobStates.Running, (await runner.GetAsync("firm-a", job.JobId, Ct))!.State);
         release.SetResult();
         Assert.Equal(AdminJobStates.Succeeded, (await WaitAsync(runner, "firm-a", job.JobId)).State);
@@ -366,13 +389,13 @@ public class ReplicaStateTests
         new DbContextOptionsBuilder<MafDbContext>().UseSqlite($"Data Source={path}").AddInterceptors(new SqlitePragmaInterceptor()).Options);
 
     private static AdminJobRunner Runner(IDbContextFactory<MafDbContext> db, string instance, TimeSpan? heartbeat = null, TimeSpan? staleAfter = null,
-        ApplicationLifetime? lifetime = null) =>
+        ApplicationLifetime? lifetime = null, TimeProvider? time = null) =>
         new(db, Options.Create(new AdminJobOptions
         {
             HeartbeatInterval = heartbeat ?? TimeSpan.FromSeconds(10), StaleAfter = staleAfter ?? TimeSpan.FromSeconds(60),
             CancelPollEvery = TimeSpan.FromMilliseconds(20),
         }),
-            NullLogger<AdminJobRunner>.Instance, TimeProvider.System, lifetime ?? new ApplicationLifetime(NullLogger<ApplicationLifetime>.Instance))
+            NullLogger<AdminJobRunner>.Instance, time ?? TimeProvider.System, lifetime ?? new ApplicationLifetime(NullLogger<ApplicationLifetime>.Instance))
         { Instance = instance };
 
     private static async Task<AdminJob> WaitForSummaryAsync(AdminJobRunner runner, string firm, string jobId, string part)
@@ -387,6 +410,38 @@ public class ReplicaStateTests
             await Task.Delay(50, Ct);
         }
         throw new TimeoutException(jobId);
+    }
+
+    /// <summary>Waits for what a watch or a job does on its own thread; the bound only keeps a broken one from hanging the run.</summary>
+    private static Task UntilAsync(Func<bool> done) => UntilAsync(() => Task.FromResult(done()));
+
+    private static async Task UntilAsync(Func<Task<bool>> done)
+    {
+        using var bound = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        bound.CancelAfter(TimeSpan.FromSeconds(10));
+        while (!await done())
+        {
+            await Task.Delay(5, bound.Token);
+        }
+    }
+
+    /// <summary>Counts the contexts a watch opens: one per read of the job's row.</summary>
+    private sealed class CountingFactory(IDbContextFactory<MafDbContext> inner) : IDbContextFactory<MafDbContext>
+    {
+        private int reads;
+        public int Reads => Volatile.Read(ref reads);
+
+        public MafDbContext CreateDbContext()
+        {
+            Interlocked.Increment(ref reads);
+            return inner.CreateDbContext();
+        }
+
+        public Task<MafDbContext> CreateDbContextAsync(CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref reads);
+            return inner.CreateDbContextAsync(cancellationToken);
+        }
     }
 
     private static async Task<AdminJob> WaitAsync(AdminJobRunner runner, string firm, string jobId)
