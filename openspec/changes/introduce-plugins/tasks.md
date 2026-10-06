@@ -4,8 +4,7 @@ Jev: task 4.3 changes how the routing question sets are built (from the domain c
 docs/rules/jev-usage.md before it. The sets stay closed, fixed per deployment and asked in
 one request.
 
-Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-provider-plugins`, `adopt-company-idp`,
-`enable-plugins-per-tenant`, `document-acls`, `data-lifecycle` and `add-document-parsing`.
+Depends on `rename-firm-to-tenant`, which lands first. What follows is the order the user confirmed, in 8.1.
 
 ## 1. Pin today's behaviour
 
@@ -31,6 +30,9 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   - topology services and the runtime's agents come from manifests.
 
   Verify with binding tests and the runtime's conformance check.
+  Evidence: the binding tests in `tests/Maf.Lab.Tests/PluginHostTests.cs`; the runtime's conformance check
+  (`copilot-runtime/conformance.mjs`) reads the agents and domains from `/api/plugins` (55b4e8c), green in
+  `make ci-e2e` and `make ci-e2e-core` on 2026-10-06.
 - [x] 2.3 Makefile:
   - `MAF_PLUGINS` and `MAF_ENV`, with dependency expansion and cycle detection;
   - `plugins/.installed` written by rename;
@@ -59,6 +61,15 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   plugin, and that a plugin-on of a remote plugin recreates none of api, lb or copilot-runtime. Verify the restart
   scenarios: a streaming answer is not cut by a closed keepalive connection, and a killed replica's run is marked cancelled
   on its next read, and that a `make up` after an interrupted restart serves `/api` (the upstream is name-based again).
+  Evidence: byte identity — `scripts/tests/test_plugins.py:209`
+  (`test_the_core_services_are_identical_for_none_all_and_each_single_plugin`); a remote plugin-on recreates nothing —
+  dcd3b52's live run and `make plugin-switch-check` ("lb untouched", "copilot-runtime untouched"); a streaming answer is
+  not cut — plugin-switch-check "the run in flight ended finished — RUN_FINISHED" with "0 failed" polls; a killed
+  replica's run is cancelled on read — `RedisRunStateScriptTests.A_running_run_whose_owner_has_no_heartbeat_is_cancelled_on_read`
+  (tests/Maf.Lab.IntegrationTests/RedisRunStateScriptTests.cs:81); a `make up` after an interrupted restart serves
+  `/api` — live 2026-10-06: `api_restart.sh` killed with SIGKILL while "[1/2] maf-lab-api-1: draining and restarting"
+  left the transient one-address `00-api.conf`; `make up` then restored the name-based `server api:8080;` and
+  `GET /api/plugins` through the balancer answered 200 six times in a row.
 - [x] 2.4 Make `index_if_empty.sh`, `verify_lb.sh` and `conformance.mjs` run a plugin's part only when `/api/plugins`
       lists it.
 - [x] 2.5 Move the inspector ports into the dev-only compose override. `MAF_LAB_REPO` stays required while the api
@@ -86,6 +97,8 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
 
   Widen the roots of the existing `AGUIProtocolOnlyTests` and tenant query-path tests from `src/` to `src/` plus
   `plugins/*/server/`. Verify each test fails once on a planted violation inside a plugin folder (then reverted).
+  Evidence: `PluginArchitectureTests.The_scanners_catch_planted_violations` (tests/Maf.Lab.Tests/PluginArchitectureTests.cs:77)
+  is a permanent planted-violation test: each scanner runs against a rogue plugin fixture and must fail on it.
 - [x] 3.4 `ApiFactory` takes the installed set. Add boot tests with no plugin and with all plugins.
 - [x] 3.5 Web:
   - `web/src/plugins/api.ts` (`definePlugin`, registries);
@@ -116,11 +129,16 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   - its folder is deletable, with its tests going with it.
 
   Verify it runs for each plugin present and fails on a planted broken manifest.
+  Evidence: `tests/Maf.Lab.Tests/PluginContractTests.cs` runs for every folder under `plugins/`;
+  `scripts/tests/test_plugins.py:95` (`test_an_invalid_manifest_is_refused`) is the planted broken manifest.
 - [x] 3.8 Environments: make and the api refuse a plugin not allowed in `MAF_ENV`. Verify both refusals name the
       plugin.
+      Evidence: make's refusal in `scripts/tests/test_plugins.py:90`
+      (`test_an_environment_the_plugin_does_not_allow_is_refused_naming_it`); the api's in `PluginHostTests.cs:80-84`.
 - [x] 3.9 CI builds `full` and `product` image variants. Check that `product` holds no dev-or-qa-only plugin code, and
       have qa run `product`.
-
+      Evidence: CI job `product-image` (`.github/workflows/ci.yml`, `make product-check`) and
+      `scripts/tests/test_plugins.py:183` (`test_the_product_variant_keeps_only_plugins_stage_or_prod_allow`).
 ## 4. Domains as data
 
 - [x] 4.1 Build the domain catalogue (`DomainCatalogue`, design §6) from the installed plugins' descriptors. `Domains` reads it.
@@ -156,6 +174,8 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
 - [x] 4.7 Split `Prompts/system.v5.md` into a generic core prompt plus the billing, portfolio and codebase fragments,
       assembled from the domains in use. Verify `make eval SUITE=selection` and the answer-quality suite are no worse
       than 1.2.
+  Evidence: eval-reference.md "Task 4 result (4.5, 4.7)": selection 20261006-051454, identical to 1.2; generation
+  20261006-051719, within tolerance.
 - [x] 4.11 No domain in use: the turn declines before any model or Jev call, and the chat page says so up
       front. Verify with a test that the scripted model and the fake engine receive no request.
 - [x] 4.5 Verify: the tests from 1.1 are unchanged and green, and `make eval SUITE=selection` is no worse than 1.2.
@@ -163,13 +183,19 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
       tests' domain constants moved home (`Domains.X` →
       `BuiltInDomains.X`), and the setups that set `AgentOptions.McpEndpoint` configure `Servers["billing"]` instead,
       with every assertion untouched.
-
+  Evidence: eval-reference.md "Task 4 result (4.5, 4.7)": selection 20261006-051454, identical to 1.2.
 ## 5. Proof extractions
 
 - [x] 5.1 `a2a-inspector`, `mcp-inspector`, `redis-insight` and `neo4j-browser` (infra, dev/qa): one plugin each, with
       its service and nav link. The mcp-inspector's server list comes from the installed manifests. Verify that
       `make core` runs none of them, that each `make plugin-on NAME=…` brings back only its own, and that
       `MAF_ENV=stage` refuses each.
+      Evidence (dcd3b52): `MAF_ENV=stage` refuses each by name; `MAF_PLUGINS=none` yields no plugin compose file
+      (and `make ci-e2e-core`, 2026-10-06: "plugins installed (dev): none"); on the live stack plugin-off/on of
+      redis-insight and mcp-inspector left api, lb and copilot-runtime untouched and `/api/plugins` reported each
+      healthy. Notes: a2a-inspector's plugin-on could not rebuild its git context while Docker Desktop's credential
+      helper hung, so it was started from its existing image (200 on 7172); the inspectors are outside `CI_PLUGINS`, so
+      no CI leg exercises their plugin-on.
 - [x] 5.2 `code` (mcp + app). Moves:
   - the mcp-code service and its lb snippet;
   - the code index and graph targets;
@@ -187,7 +213,7 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   pins keep billing and portfolio. This is the allowed move, as in 4.5.
 
   Verify the scenarios "A remote plugin is switched off" and "A plugin is deleted".
-  Evidence so far (2026-10-06, `make ci-e2e`, every plugin): code installed, indexed and graphed through its `plugin.mk`, and
+  Evidence (2026-10-06, `make ci-e2e`, every plugin): code installed, indexed and graphed through its `plugin.mk`, and
   its tests green in the coverage-runner's baseline. Root cause of that baseline's earlier 183 failures: plugin manifest
   tests shell out to plugins.py; python3-minimal lacks json; hidden since C2 because the live checks were pending
   (fixed 04db42a, guarded 754b539). Live (2026-10-06, `make plugin-switch-check` on the dev stack): plugin-off — "PASS the api answered through the
@@ -214,9 +240,8 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
 
   Done in two commits: C3a (server: the core record, the observer host, the monitor's server part, table, routes and
   retention, their tests, the docs and deltas) and C3b (web: the monitor's web part, run observers, the turn-view
-  override, the review panel slot). Both are in; the box stays open for the live checks (a core-only turn
-  making no Redis trace write and no trace request, on the running stack).
-  Evidence so far (2026-10-06): with the monitor on, its tests green (unit and the coverage-runner's baseline in
+  override, the review panel slot).
+  Evidence (2026-10-06): with the monitor on, its tests green (unit and the coverage-runner's baseline in
   `make ci-e2e`); core-only turns on `make ci-e2e-core` made no model, Jev or tool call. Live (2026-10-06, `make ci-e2e-core`): "PASS no live trace was written to the shared store —
   runtrace:r_core_b3375aa8e0eb", the same for r_core_b8ccf1246e42, and "PASS no live trace appeared in the shared store
   under any id". The page: `web/src/chat/ChatPage.notrace.test.tsx` (core, no plugin: no /api/runs|turns/*/trace
@@ -241,7 +266,7 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   plugin, and that deleting the plugin folder keeps `make test` green.
 
   Done (design part C #13): the store reads the caller from the request; the chat owns the sidebar chrome; the routes,
-  the sidebar and the list's refresh are the plugin's. The box stays open for the live checks on the running stack.
+  the sidebar and the list's refresh are the plugin's.
   Evidence (2026-10-06): "Without the conversation list" and the chat-history scenarios with and without the plugin in the
   api and web tests (Without_the_list_plugin_…, ConversationListTests, HistorySidebar.chat); `make test` green with the
   folder moved aside (unit 1720, web 680); live, `make ci-e2e` with it installed and `make ci-e2e-core` without.
@@ -250,8 +275,7 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
 - [x] 6.1 `plugins/_example/`: a small MCP server with a domain descriptor, off by default. A CI leg installs it and
       asks one routed question against the stub.
       Done: `service/` (C#, its own image, stock JwtBearer), the domain, `tests/e2e.py` joined to `make verify`, and
-      `_example` in `CI_PLUGINS`. The image builds and answers (health, 401 without a token, the tool with one); the
-      routed question through a running stack is the pending live check.
+      `_example` in `CI_PLUGINS`. The image builds and answers (health, 401 without a token, the tool with one).
       Evidence (2026-10-06, `make ci-e2e`, `_example` in `CI_PLUGINS`): "the question reached get_example_fact", "get_example_fact
       answered", "the run answered and finished".
 - [x] 6.2 `make plugin-new NAME= KIND=mcp|app` from templates. Verify that a scaffolded plugin builds, starts, and passes
@@ -265,10 +289,9 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
       start is `_example`'s, live in `make ci-e2e`.
 - [x] 6.3 Write `docs/plugins.md`, and make the CLAUDE.md, project.md, README and DECISIONS §81 updates from the
       proposal.
-      Done but CLAUDE.md: docs/plugins.md, project.md (stack, containers by plugin, the plugin convention), README
+      Done: docs/plugins.md, project.md (stack, containers by plugin, the plugin convention), README
       (quick start's `make core`, each section a plugin owns says so, no target named outside its folder) and
       DECISIONS §81 (the proposal's own decisions). With any one plugin folder deleted, docs-check stays in sync.
-      CLAUDE.md's lines wait for the user's own pending CLAUDE.md edit to be committed.
       CLAUDE.md (2026-10-06, on top of the user's own cc8b11e): the plugin non-negotiable after the tenant one, the
       Plugins paragraph (`MAF_PLUGINS`, `make core`) before Commands, and the entry point naming mcp-code and the
       inspectors as plugin services; `make docs-check` in sync.
@@ -280,7 +303,7 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
       Done (design part E): `make core` sets `Agent__BuiltInDomains=` empty; `make ci-e2e-core` (CI job `e2e-core`)
       runs `core verify core-turn-check`, with the stub's request journal proving no model, embedding or Jev call for an
       English and a Cyrillic turn. Run locally green: verify's checks, the 8 conformance checks and the decline turns.
-
+      Evidence date: 55b4e8c, 2026-10-06.
 ## 8. Follow-up changes (one plugin each, code moves only)
 
 - [x] 8.1 Open proposals in this order:

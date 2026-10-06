@@ -1,5 +1,11 @@
 # Spec Delta
 
+## Purpose
+
+Everything optional in maf-lab is a plugin: one folder under `plugins/` with a manifest, its own services, routes, make
+targets and web part. The core is a domain-agnostic shell that reaches a plugin only through its seams and the official
+protocols, so a deployment installs, switches and removes plugins without changing the core.
+
 ## ADDED Requirements
 
 ### Requirement: A plugin is one folder with a manifest

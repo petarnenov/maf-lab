@@ -24,7 +24,7 @@ restore() { echo "✗ Stopped; switching $NAME back on so the stack ends as it b
 trap restore INT TERM
 
 # The containers of a service, as "id started-at" lines, sorted.
-state() { for id in $(docker compose -p "$COMPOSE_PROJECT_NAME" ps -q "$1"); do docker inspect -f '{{.Id}} {{.State.StartedAt}}' "$id"; done | sort; }
+state() { local id; for id in $(docker compose -p "$COMPOSE_PROJECT_NAME" ps -q "$1"); do docker inspect -f '{{.Id}} {{.State.StartedAt}}' "$id"; done | sort; }
 ids() { state "$1" | cut -d' ' -f1; }
 
 # Python does the HTTP: one streamed chat run, the availability poll, the 404 probe and the api's view of the domains.

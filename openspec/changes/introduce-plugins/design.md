@@ -984,6 +984,25 @@ These choices deviate from the text above. Each is kept, with the rejected alter
       own query through the tree's query client. The core's invalidation and the rename's touch of the core's
       `['conversation']` key are gone.
 
+### Decisions taken during implementation (part D, task 6, 2026-10-06, decided by the reviewing session)
+
+1. **`_example`, the authoring template, is a C# MCP server in its own container** on the official
+   ModelContextProtocol.AspNetCore SDK and stock JwtBearer, referencing no core project, under `service/` (not
+   `server/`, which the api compiles in). It reads the platform's `Auth` section, so `platform.env` names the issuer and
+   audience the core defaults to. Rejected: Python (a second image, new pins and a second token validation), constants
+   in the plugin.
+2. **A plugin name may start with an underscore** (`^_?[a-z0-9][a-z0-9-]*$`): a bundled plugin `MAF_PLUGINS` unset never
+   installs. Rejected: renaming the folder the spec and design name.
+3. **The sample's end-to-end question lives in its own folder**: `plugin.mk` joins `verify`, and the check skips itself
+   while the plugin is not in use; CI installs it in its one stack. The routing comes from forced retrieval, so the CI
+   stub learns no plugin's tool. Rejected: keywords in the core's stub, a separate CI job.
+4. **`make plugin-new`**: `KIND=mcp` copies `_example` under the new name (one source); `KIND=app` renders
+   `scripts/plugin-templates/app` with the standard library's `string.Template`. It writes into a temporary folder and
+   renames it into place last. Rejected: a second mcp template; cookiecutter or Jinja.
+5. **A plugin documents its routes in its own `docs/http-api.md`**, transcluded into `docs/http-api.md`'s generated
+   `plugin-routes` block, so the API document stays whole and a deleted folder leaves it in sync. Rejected: rows in the
+   core file, `[routes.undocumented]`, OpenAPI.
+
 ### Decisions taken during implementation (part E, task 7, 2026-10-06, decided by the reviewing session)
 
 1. **`make core` turns the built-in domains off** through Compose's environment pass-through: the api's environment

@@ -29,16 +29,10 @@ calls, the Docker build contexts are already the repository root, and compose pr
 
 ## What Changes
 
-This is the second of eight changes. In order:
-
-1. `rename-firm-to-tenant`
-2. **`introduce-plugins`** (this one)
-3. `introduce-provider-plugins`
-4. `adopt-company-idp`
-5. `enable-plugins-per-tenant`
-6. `document-acls`
-7. `data-lifecycle`
-8. `add-document-parsing`
+This is the second change of the universal-assistant rollout, after `rename-firm-to-tenant`. The order of what follows
+(the twelve `extract-<name>-plugin` follow-ups interleaved with `introduce-provider-plugins`, `adopt-company-idp`,
+`enable-plugins-per-tenant`, `document-acls`, `data-lifecycle`, `add-document-parsing` and `add-white-labeling`) is the
+one the user confirmed, recorded in tasks 8.1.
 
 This change makes plugins installable per deployment. Per-tenant allowance and enablement, identity, document
 permissions and the data lifecycle each come in their own later change.

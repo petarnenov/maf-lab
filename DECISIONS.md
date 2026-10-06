@@ -3186,7 +3186,7 @@ be re-run then.
 ## 81. Plugins: a domain-agnostic core, every domain a plugin (introduce-plugins, 2026-10-06)
 
 Written as the change landed, section by section, and completed by task 6.3. The design's "Decisions taken during
-implementation" (parts A, B and C) holds each choice in full. The decisions the proposal itself took:
+implementation" (parts A–E) holds each choice in full. The decisions the proposal itself took:
 
 - **Plugins are compiled in, not loaded at run time.** In-process plugins are projects the api and the test hosts
   reference by glob (`Directory.Build.targets`); the installed set decides which apply. Rejected:
