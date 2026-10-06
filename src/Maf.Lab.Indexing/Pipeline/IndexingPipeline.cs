@@ -46,6 +46,13 @@ public sealed class IndexingPipeline(
     {
         var sw = Stopwatch.StartNew();
         var progress = request.Progress;
+        if (!Directory.Exists(_options.ResolveCorpusRoot()))
+        {
+            // No corpus at all (the plugin that owns it is absent): nothing is read, so nothing may be removed and the
+            // BM25 statistics are left as they are. The run reports why it did nothing, before touching any store.
+            logger.LogWarning("Indexing skipped: the corpus root does not exist");
+            return new IndexRunSummary(0, 0, 0, 0, _options.LoadCorpus().Rejected);
+        }
         progress?.Report(new IndexProgress("connecting to Qdrant", 0, null));
         await bootstrapper.EnsureAsync(ct);
 
@@ -63,7 +70,9 @@ public sealed class IndexingPipeline(
         // An unchanged corpus leaves the statistics as they are, and then nothing is written: a repeat run is read-only.
         var bm25Changed = model.Rebuild(prepared.Values.SelectMany(c => c).Select(c => c.SparseText)) || tokenizerChanged;
 
-        var tenants = request.Tenants ?? corpus.LayoutTenants;
+        // Only tenants whose folder is in the corpus: a requested tenant with no folder has nothing to compare with, and
+        // treating it as empty would delete its indexed documents. A folder that exists but is empty still removes them.
+        var tenants = (request.Tenants ?? corpus.LayoutTenants).Intersect(corpus.LayoutTenants).ToHashSet();
         var total = corpus.Documents.Count(d => tenants.Contains(d.Tenant));
         var done = 0;
         progress?.Report(new IndexProgress("indexing", done, total));

@@ -176,6 +176,33 @@ public class IndexingPipelineTests(QdrantFixture qdrant)
     }
 
     [Fact]
+    public async Task A_run_over_a_missing_corpus_removes_nothing_and_says_why()
+    {
+        using var corpus = TempCorpus.Small();
+        var collection = Name();
+        await using (var services = qdrant.Services(collection, corpus.Root))
+        {
+            await services.GetRequiredService<IndexingPipeline>().RunAsync(new IndexRequest(), Ct);
+        }
+        List<ChunkRecord> before;
+        await using (var services = qdrant.Services(collection, corpus.Root))
+        {
+            before = await AllChunksAsync(services, "firm-a");
+        }
+        Assert.NotEmpty(before);
+
+        // The admin index names its tenants explicitly; the plugin that owns the corpus is gone.
+        var missing = Path.Combine(corpus.Root, "no-such-corpus");
+        await using var absent = qdrant.Services(collection, missing);
+        var summary = await absent.GetRequiredService<IndexingPipeline>().RunAsync(
+            new IndexRequest { Tenants = new HashSet<TenantId> { TenantId.Firm("firm-a"), TenantId.Shared } }, Ct);
+
+        Assert.Equal((0, 0), (summary.DocumentsIndexed, summary.ChunksDeleted));
+        Assert.Contains(summary.Rejected, r => r.Reason.Contains("does not exist"));
+        Assert.Equal(before.Count, (await AllChunksAsync(absent, "firm-a")).Count);
+    }
+
+    [Fact]
     public async Task Drift_is_zero_after_indexing_and_positive_after_a_timestamp_bump()
     {
         using var corpus = TempCorpus.Small();
