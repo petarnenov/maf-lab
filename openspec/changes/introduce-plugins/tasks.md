@@ -263,12 +263,15 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
       Evidence (2026-10-06): `make plugin-new-check` green (both kinds scaffold, validate, build, docs-check; removed, docs still
       in sync); a scaffolded app plugin's C# test (through the api host) and web test green locally; the mcp kind's
       start is `_example`'s, live in `make ci-e2e`.
-- [ ] 6.3 Write `docs/plugins.md`, and make the CLAUDE.md, project.md, README and DECISIONS §81 updates from the
+- [x] 6.3 Write `docs/plugins.md`, and make the CLAUDE.md, project.md, README and DECISIONS §81 updates from the
       proposal.
       Done but CLAUDE.md: docs/plugins.md, project.md (stack, containers by plugin, the plugin convention), README
       (quick start's `make core`, each section a plugin owns says so, no target named outside its folder) and
       DECISIONS §81 (the proposal's own decisions). With any one plugin folder deleted, docs-check stays in sync.
       CLAUDE.md's lines wait for the user's own pending CLAUDE.md edit to be committed.
+      CLAUDE.md (2026-10-06, on top of the user's own cc8b11e): the plugin non-negotiable after the tenant one, the
+      Plugins paragraph (`MAF_PLUGINS`, `make core`) before Commands, and the entry point naming mcp-code and the
+      inspectors as plugin services; `make docs-check` in sync.
 
 ## 7. CI
 
