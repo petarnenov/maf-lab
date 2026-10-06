@@ -43,7 +43,9 @@ public class FeeAdjustmentToolTests : IDisposable
 
     public void Dispose()
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        // Only this fixture's own pool: ClearAllPools is process-wide and can dispose a connection another test's host
+        // is opening (dotnet/efcore#38854).
+        Microsoft.Data.Sqlite.SqliteConnection.ClearPool(new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_path}"));
         foreach (var file in new[] { _path, _path + "-wal", _path + "-shm" })
         {
             if (File.Exists(file))

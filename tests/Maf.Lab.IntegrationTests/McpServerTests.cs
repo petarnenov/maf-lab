@@ -342,7 +342,12 @@ public sealed class McpServerTests(CorpusIndexFixture corpus) : IAsyncDisposable
         {
             await d.DisposeAsync();
         }
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        // Only this fixture's own pool: ClearAllPools is process-wide and can dispose a connection another test's host
+        // is opening (dotnet/efcore#38854).
+        foreach (var ledger in _ledgers)
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearPool(new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={ledger}"));
+        }
         foreach (var file in _ledgers.SelectMany(l => new[] { l, l + "-wal", l + "-shm" }).Where(File.Exists))
         {
             File.Delete(file);
