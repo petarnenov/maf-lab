@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using A2A;
 using Maf.Lab.Api.Storage;
 using Microsoft.EntityFrameworkCore;
@@ -16,6 +17,10 @@ public interface IRunVerifier
 /// shared database, renewed while the replica follows; a replica that stops stops renewing, and another takes the run
 /// over from its task id. Following is a subscription, resumed when it drops and replaced by polling while it cannot
 /// be had. Every update is written before it is relayed.
+///
+/// Stopping (stop-anything) is the generic host's: the stopping token ends the sweep, so no run is taken after it, and
+/// every run in hand sees the same token; <see cref="StopAsync"/> then waits, within the host's shutdown timeout, for
+/// those runs' last writes, before the host disposes what they write with.
 /// </summary>
 public sealed class RunFollower(
     IDbContextFactory<MafDbContext> dbFactory,
@@ -30,6 +35,10 @@ public sealed class RunFollower(
     public string Instance { get; init; } = $"{Environment.MachineName}-{Guid.NewGuid():N}";
 
     private readonly HashSet<string> _following = [];
+    private readonly ConcurrentDictionary<Task, byte> _inFlight = new();
+
+    /// <summary>How many runs this replica is following right now, their last writes included.</summary>
+    internal int InFlight => _inFlight.Count;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -85,7 +94,24 @@ public sealed class RunFollower(
             {
                 _following.Add(id);
             }
-            _ = Task.Run(() => FollowAsync(id, ct), CancellationToken.None);
+            var follow = Task.Run(() => FollowAsync(id, ct), CancellationToken.None);
+            _inFlight.TryAdd(follow, 0);
+            _ = follow.ContinueWith(done => _inFlight.TryRemove(done, out _), CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
+    }
+
+    /// <summary>Ends the sweep, then waits for the runs in hand to finish their last writes, within the host's timeout.</summary>
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await base.StopAsync(cancellationToken);
+        try
+        {
+            await Task.WhenAll(_inFlight.Keys).WaitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning("run follower stopped with {Count} runs still ending (shutdown timeout)", _inFlight.Count);
         }
     }
 

@@ -14,17 +14,66 @@ namespace Maf.Lab.Plugins.Monitor;
 /// at turn.end the whole trace is kept in the monitor's table, and the frames join it when the run's response ends.
 /// A singleton: it keys what it holds by the run id and lets go of it at turn.end. A run that never reaches turn.end — a
 /// crash before the turn's unconditional last write — stays held until the process ends.
+///
+/// Its writes may outlive the request that made them (the core stops waiting after its drain timeout), never the host:
+/// the container disposes the observer before the stores it writes through, and disposing waits, up to
+/// <see cref="DrainTimeout"/>, for the writes in hand. A write that arrives after that is not made.
 /// </summary>
 public sealed class MonitorObserver(IRunTraceStore live, IDbContextFactory<DbContext> db, TimeProvider time, ILogger<MonitorObserver> logger)
-    : ITurnObserver
+    : ITurnObserver, IAsyncDisposable
 {
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
+    /// <summary>How long disposing waits for the writes in hand: the same bound the core gives a run's drain.</summary>
+    public static readonly TimeSpan DrainTimeout = TimeSpan.FromSeconds(5);
+
     private readonly ConcurrentDictionary<string, List<TraceEvent>> _runs = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<Task, byte> _writes = new();
+    private bool _stopped;
 
     public bool IsEnabled(string kind) => true;
 
-    public async Task OnEventAsync(string runId, TraceEvent e, CancellationToken ct)
+    public Task OnEventAsync(string runId, TraceEvent e, CancellationToken ct) => Track(() => ObserveAsync(runId, e, ct));
+
+    public Task OnFramesAsync(string runId, string? turnId, IReadOnlyList<RunFrame> frames, CancellationToken ct) =>
+        Track(() => StoreFramesAsync(turnId, frames, ct));
+
+    /// <summary>Waits for the writes in hand, up to <see cref="DrainTimeout"/>; none is started after this.</summary>
+    public async ValueTask DisposeAsync()
+    {
+        Task[] inHand;
+        lock (_writes)
+        {
+            _stopped = true;
+            inHand = [.. _writes.Keys];
+        }
+        var all = Task.WhenAll(inHand);
+        await all.WaitAsync(DrainTimeout).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        if (!all.IsCompleted)
+        {
+            logger.LogWarning("monitor stopped with {Count} writes unfinished (drain timeout)", inHand.Count(w => !w.IsCompleted));
+        }
+    }
+
+    private Task Track(Func<Task> write)
+    {
+        Task started;
+        lock (_writes)
+        {
+            if (_stopped)
+            {
+                logger.LogWarning("monitor stopped: a write that arrived after the host stopped was not made");
+                return Task.CompletedTask;
+            }
+            started = write();
+            _writes.TryAdd(started, 0);
+        }
+        _ = started.ContinueWith(done => _writes.TryRemove(done, out _), CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        return started;
+    }
+
+    private async Task ObserveAsync(string runId, TraceEvent e, CancellationToken ct)
     {
         try
         {
@@ -43,7 +92,7 @@ public sealed class MonitorObserver(IRunTraceStore live, IDbContextFactory<DbCon
         }
     }
 
-    public async Task OnFramesAsync(string runId, string? turnId, IReadOnlyList<RunFrame> frames, CancellationToken ct)
+    private async Task StoreFramesAsync(string? turnId, IReadOnlyList<RunFrame> frames, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(turnId) || frames.Count == 0)
         {

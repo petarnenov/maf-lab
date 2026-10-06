@@ -582,12 +582,21 @@ public sealed class TestGenRunsApiTests
     public async Task A_run_is_one_trace_across_the_api_the_agent_and_the_runner()
     {
         var spans = new ConcurrentQueue<System.Diagnostics.Activity>();
+        // The run's span ends only when the agent's whole run has: its end is what the test waits for, not a time.
+        var runEnded = new TaskCompletionSource<System.Diagnostics.Activity>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var listener = new System.Diagnostics.ActivityListener
         {
             ShouldListenTo = _ => true,
             Sample = (ref System.Diagnostics.ActivityCreationOptions<System.Diagnostics.ActivityContext> _) =>
                 System.Diagnostics.ActivitySamplingResult.AllDataAndRecorded,
-            ActivityStopped = spans.Enqueue,
+            ActivityStopped = a =>
+            {
+                spans.Enqueue(a);
+                if (a.OperationName == "testgen.run")
+                {
+                    runEnded.TrySetResult(a);
+                }
+            },
         };
         System.Diagnostics.ActivitySource.AddActivityListener(listener);
 
@@ -614,14 +623,8 @@ public sealed class TestGenRunsApiTests
         var response = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN)
             .PostAsJsonAsync("/api/coverage/runs", new CoverageEndpoints.StartRunRequest(Target, 85, "glm-5.3:cloud"), Ct);
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        System.Diagnostics.Activity? run = null;
-        for (var i = 0; i < 300 && run is null; i++)
-        {
-            run = spans.FirstOrDefault(a => a.OperationName == "testgen.run");
-            await Task.Delay(50, Ct);
-        }
-
-        Assert.NotNull(run);
+        // The bound only keeps a run that never ends from hanging the suite; a cold start alone takes about 25 s.
+        var run = await runEnded.Task.WaitAsync(TimeSpan.FromMinutes(3), Ct);
         var trace = run.TraceId;
         var inTrace = spans.Where(a => a.TraceId == trace).ToList();
         Assert.Contains(inTrace, a => a.OperationName == "testgen.attempt");
