@@ -249,7 +249,7 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
 
 ## 8. Follow-up changes (one plugin each, code moves only)
 
-- [ ] 8.1 Open proposals in this order:
+- [x] 8.1 Open proposals in this order:
   1. `billing` (with `qdrant` and `neo4j`); makes Jev's text domain-generic (design part B, decision 6) and re-measures
      the guard, intent and answer-check suites; removes its line from plugins/mcp-inspector/files/start.mjs; deletes the `Agent__Servers__billing__*` compose lines, which would
      otherwise shadow its manifest's server
@@ -266,3 +266,14 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   10. `observability`
   11. `topology`; removes its line from the core-names-no-domain allow-list
   12. `curriculum`
+
+  Opened (proposals only, `openspec/changes/extract-<name>-plugin/`), with the reviewing session's conditions in each.
+  Portfolio's also deletes `Agent__Servers__portfolio__*` (the same shadowing as billing's).
+
+  Recommended order with the rollout's own changes, **pending the user's confirmation** (no follow-up is implemented
+  before it): extract-billing → extract-portfolio → extract-compliance → extract-a2a → introduce-provider-plugins →
+  adopt-company-idp → extract-feedback-review → enable-plugins-per-tenant → document-acls → data-lifecycle →
+  add-document-parsing → add-white-labeling → extract-coverage, -evals, -insights, -index-admin, -observability,
+  -topology, -curriculum. Why: enable-plugins-per-tenant needs billing, portfolio, compliance, a2a and feedback-review
+  as plugins (per-tenant rows, audiences, tenant-admin sections); introduce-provider-plugins assumes billing with
+  `depends`, and measuring its decision-engine suite after billing's Jev text change measures once.
