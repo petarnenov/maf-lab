@@ -165,15 +165,27 @@ public sealed class CliCancelTests
     public async Task The_indexer_stops_when_told_and_says_what_to_run_again(string signal)
     {
         using var hole = new BlackHole();
+        // A corpus of one document: a run over a missing corpus stops before it reaches the store, with nothing to stop.
+        var corpus = Directory.CreateTempSubdirectory("maf-lab-cli-corpus-");
+        Directory.CreateDirectory(Path.Combine(corpus.FullName, "firm-a", "docs"));
+        File.WriteAllText(Path.Combine(corpus.FullName, "firm-a", "docs", "fees.md"), "# Fees\n\nA fee schedule is assigned per account.\n");
 
-        var (exit, stderr) = await InterruptAsync(signal, hole, ToolPath("src/Maf.Lab.Indexing", "Maf.Lab.Indexing.dll"), ["index"], new()
+        try
         {
-            ["Qdrant__Host"] = "127.0.0.1",
-            ["Qdrant__GrpcPort"] = hole.Port.ToString(),
-        });
+            var (exit, stderr) = await InterruptAsync(signal, hole, ToolPath("src/Maf.Lab.Indexing", "Maf.Lab.Indexing.dll"), ["index"], new()
+            {
+                ["Qdrant__Host"] = "127.0.0.1",
+                ["Qdrant__GrpcPort"] = hole.Port.ToString(),
+                ["Indexing__CorpusRoot"] = corpus.FullName,
+            });
 
-        Assert.Equal(130, exit);
-        Assert.Contains("Cancelled.", LastLine(stderr), StringComparison.Ordinal);
-        Assert.Contains("make index", LastLine(stderr), StringComparison.Ordinal);
+            Assert.Equal(130, exit);
+            Assert.Contains("Cancelled.", LastLine(stderr), StringComparison.Ordinal);
+            Assert.Contains("make index", LastLine(stderr), StringComparison.Ordinal);
+        }
+        finally
+        {
+            corpus.Delete(recursive: true);
+        }
     }
 }
