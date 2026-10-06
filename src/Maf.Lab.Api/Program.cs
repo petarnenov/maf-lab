@@ -78,6 +78,7 @@ public partial class Program
         // The one store, as a plugin reaches its own tables (EF's factory over DbContext).
         builder.Services.AddSingleton<IDbContextFactory<DbContext>, Storage.PluginDbContextFactory>();
         builder.Services.AddScoped<Maf.Lab.Plugins.Abstractions.ITurnAccess, Storage.TurnAccess>();
+        builder.Services.AddScoped<Maf.Lab.Plugins.Abstractions.IConversationStore, Storage.ConversationStore>();
         builder.Services.AddScoped<ChatTurnRunner>();
         builder.Services.AddScoped<Agent.RunRejoin>();
         // Every agent reaches a browser through the Agent Framework's own AG-UI server (agui-protocol-only).

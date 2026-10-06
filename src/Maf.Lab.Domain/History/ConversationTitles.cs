@@ -1,7 +1,8 @@
 using System.Text.RegularExpressions;
 
-namespace Maf.Lab.Api.History;
+namespace Maf.Lab.Domain.History;
 
+/// <summary>A conversation's titles: the default one made from its first question, and the bounds a person's own title keeps.</summary>
 public static partial class ConversationTitles
 {
     public const int DefaultMaxChars = 80;

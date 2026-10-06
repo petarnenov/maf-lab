@@ -1,4 +1,5 @@
-/* History | conversation | behind-the-scenes monitor; history is a drawer and panes stack below 1024px. */
+/* Sidebar | conversation | side pane; the sidebar is a drawer and panes stack below 1024px. Either one is absent while
+   no plugin in use fills it. */
 .page {
   display: grid;
   grid-template-columns: 260px minmax(380px, 1fr) minmax(440px, 1.2fr);
@@ -22,9 +23,59 @@
   grid-template-columns: 44px minmax(420px, 1fr);
 }
 
+.noSidebar {
+  grid-template-columns: minmax(420px, 1fr) minmax(480px, 1.2fr);
+}
+
+.noSidebar.monitorClosed {
+  grid-template-columns: minmax(420px, 1fr);
+}
+
 .historyPane {
   min-height: 0;
   min-width: 0;
+}
+
+/* The sidebar's chrome (its landmark, heading, collapse and rail); a plugin fills its body. */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+  padding-right: 10px;
+}
+
+.rail {
+  align-items: center;
+  padding-right: 6px;
+}
+
+.sidebarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sidebarHeading {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.iconButton {
+  padding: 2px 8px;
+  min-width: 32px;
+}
+
+.sidebarBody {
+  flex: 1;
+  min-height: 0;
+}
+
+.sidebarBody[hidden] {
+  display: none;
 }
 
 .drawerToggle {
@@ -109,8 +160,10 @@
 @media (max-width: 1023px) {
   .page,
   .historyCollapsed,
+  .noSidebar,
   .monitorClosed,
-  .historyCollapsed.monitorClosed {
+  .historyCollapsed.monitorClosed,
+  .noSidebar.monitorClosed {
     grid-template-columns: 1fr;
     height: auto;
   }

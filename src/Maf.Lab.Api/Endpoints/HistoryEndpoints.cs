@@ -1,8 +1,6 @@
-using System.Globalization;
 using System.Text.Json;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Compliance;
-using Maf.Lab.Api.History;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.Domain.Chat;
 using Maf.Lab.Domain.Feedback;
@@ -13,7 +11,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Maf.Lab.Api.Endpoints;
 
-/// <summary>Chat history: the caller's own conversations only (user and firm must match); deleted ones are gone.</summary>
+/// <summary>
+/// A conversation reopened: the caller's own only (user and tenant must match); deleted ones are gone. The list, rename
+/// and delete are the conversation-history plugin's, over <see cref="Maf.Lab.Plugins.Abstractions.IConversationStore"/>.
+/// </summary>
 public static class HistoryEndpoints
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -21,39 +22,6 @@ public static class HistoryEndpoints
     public static IEndpointRouteBuilder MapHistory(this IEndpointRouteBuilder app)
     {
         var api = app.MapGroup("/api/conversations").RequireAuthorization();
-
-        api.MapGet("", async (string? search, int? limit, string? before, IPrincipalAccessor principals, IDbContextFactory<MafDbContext> db, CancellationToken ct) =>
-        {
-            var p = principals.Current;
-            var take = Math.Clamp(limit ?? 30, 1, 100);
-            await using var ctx = await db.CreateDbContextAsync(ct);
-
-            var query = Owned(ctx, p).Where(c => ctx.Turns.Any(t => t.ConversationId == c.Id));
-            if (!string.IsNullOrWhiteSpace(search))
-            {
-                var pattern = $"%{search.Trim().Replace("%", "").Replace("_", "")}%";
-                query = query.Where(c => (c.Title != null && EF.Functions.Like(c.Title, pattern))
-                    || ctx.Turns.Any(t => t.ConversationId == c.Id && (EF.Functions.Like(t.Question, pattern) || EF.Functions.Like(t.Answer, pattern))));
-            }
-            if (TryParseCursor(before, out var cursorAt, out var cursorId))
-            {
-                query = query.Where(c => c.LastActivityAt < cursorAt || (c.LastActivityAt == cursorAt && string.Compare(c.Id, cursorId) < 0));
-            }
-
-            var rows = await query.OrderByDescending(c => c.LastActivityAt).ThenByDescending(c => c.Id).Take(take + 1)
-                .Select(c => new
-                {
-                    c.Id, c.Title, c.CreatedAt, c.LastActivityAt,
-                    TurnCount = ctx.Turns.Count(t => t.ConversationId == c.Id),
-                    FirstQuestion = ctx.Turns.Where(t => t.ConversationId == c.Id).OrderBy(t => t.CreatedAt).Select(t => t.Question).FirstOrDefault(),
-                })
-                .ToListAsync(ct);
-
-            var page = rows.Take(take).Select(r => new ConversationSummary(r.Id, r.Title ?? ConversationTitles.FromQuestion(r.FirstQuestion ?? ""),
-                Utc(r.CreatedAt), Utc(r.LastActivityAt), r.TurnCount)).ToList();
-            var next = rows.Count > take ? Cursor(rows[take - 1].LastActivityAt, rows[take - 1].Id) : null;
-            return Results.Ok(new ConversationPage(page, next));
-        });
 
         api.MapGet("/{id}", async (string id, IPrincipalAccessor principals, IDbContextFactory<MafDbContext> db, CancellationToken ct) =>
         {
@@ -123,42 +91,6 @@ public static class HistoryEndpoints
             });
         });
 
-        api.MapPatch("/{id}", async (string id, RenameConversationRequest request, IPrincipalAccessor principals, IDbContextFactory<MafDbContext> db, CancellationToken ct) =>
-        {
-            var title = ConversationTitles.Validate(request.Title);
-            if (title is null)
-            {
-                return Results.ValidationProblem(new Dictionary<string, string[]> { ["title"] = [$"title must be 1–{ConversationTitles.MaxChars} characters."] });
-            }
-            await using var ctx = await db.CreateDbContextAsync(ct);
-            var conversation = await Owned(ctx, principals.Current).FirstOrDefaultAsync(c => c.Id == id, ct);
-            if (conversation is null)
-            {
-                return Results.NotFound();
-            }
-            conversation.Title = title;
-            await ctx.SaveChangesAsync(ct);
-            return Results.NoContent();
-        });
-
-        api.MapDelete("/{id}", async (string id, IPrincipalAccessor principals, IDbContextFactory<MafDbContext> db, TimeProvider time,
-            ToolAudit audit, CancellationToken ct) =>
-        {
-            await using var ctx = await db.CreateDbContextAsync(ct);
-            var conversation = await Owned(ctx, principals.Current).FirstOrDefaultAsync(c => c.Id == id, ct);
-            if (conversation is null)
-            {
-                // Nothing was deleted, so nothing is attributed to the caller as a deletion.
-                return Results.NotFound();
-            }
-            conversation.DeletedAt = time.GetUtcNow().UtcDateTime; // soft delete: turns stay for the review queue and evals
-            await ctx.SaveChangesAsync(ct);
-            // Destroying data is the action an investigator asks about first: it belongs in the record.
-            await audit.RecordAsync(new AuditEntry(principals.Current, id, null, AuditKinds.ConversationDelete,
-                $"conversationId={id}", "ok", 0, AuditKinds.ConversationDelete), ct);
-            return Results.NoContent();
-        });
-
         return app;
     }
 
@@ -181,20 +113,4 @@ public static class HistoryEndpoints
         e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
 
     private static DateTimeOffset Utc(DateTime value) => new(DateTime.SpecifyKind(value, DateTimeKind.Utc));
-
-    private static string Cursor(DateTime at, string id) => $"{at.Ticks.ToString(CultureInfo.InvariantCulture)}:{id}";
-
-    private static bool TryParseCursor(string? cursor, out DateTime at, out string id)
-    {
-        at = default;
-        id = "";
-        var parts = cursor?.Split(':', 2);
-        if (parts is not { Length: 2 } || !long.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var ticks))
-        {
-            return false;
-        }
-        at = new DateTime(ticks, DateTimeKind.Utc);
-        id = parts[1];
-        return true;
-    }
 }

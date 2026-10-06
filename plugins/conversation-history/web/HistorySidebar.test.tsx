@@ -1,9 +1,11 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import type { ConversationSummary } from '../api/types';
-import { jsonResponse, renderWithProviders } from '../test/render';
+import type { ChatContext } from '@maf/plugin-api';
+import { jsonResponse, renderWithProviders } from '@maf/testing';
 import { HistorySidebar } from './HistorySidebar';
+import { createRunsFinished } from './runsFinished';
+import type { ConversationSummary } from './types';
 
 const item = (id: string, title = `Title ${id}`): ConversationSummary => ({
   conversationId: id,
@@ -18,10 +20,13 @@ const listUrls = (fetchMock: ReturnType<typeof vi.fn>) =>
     .map((c) => c[0] as string)
     .filter((u) => u.startsWith('/api/conversations?'));
 
-function renderSidebar(props: Partial<Parameters<typeof HistorySidebar>[0]> = {}) {
-  const handlers = { onSelect: vi.fn(), onNew: vi.fn(), onDeleted: vi.fn() };
-  renderWithProviders(<HistorySidebar activeId="c2" {...handlers} {...props} />);
-  return handlers;
+/** The sidebar as the chat renders it, on conversation c2, with the chat's two actions recorded. */
+function renderSidebar() {
+  const handlers = { openConversation: vi.fn(), startNew: vi.fn() };
+  const context: ChatContext = { conversationId: 'c2', openPane: () => {}, ...handlers };
+  const runs = createRunsFinished();
+  renderWithProviders(<HistorySidebar context={context} runsFinished={runs} />);
+  return { ...handlers, runs };
 }
 
 describe('HistorySidebar', () => {
@@ -32,7 +37,7 @@ describe('HistorySidebar', () => {
         jsonResponse({ conversations: [item('c1'), item('c2')], nextCursor: null }),
       ),
     );
-    const { onSelect, onNew } = renderSidebar();
+    const { openConversation } = renderSidebar();
 
     const items = await screen.findAllByTestId('history-item');
     expect(items[0]).toHaveTextContent('5 min ago · 1 turn');
@@ -46,9 +51,9 @@ describe('HistorySidebar', () => {
     );
 
     await userEvent.click(within(items[0]).getByRole('button', { name: /^Title c1/ }));
-    expect(onSelect).toHaveBeenCalledWith('c1');
-    await userEvent.click(screen.getByRole('button', { name: '＋ New conversation' }));
-    expect(onNew).toHaveBeenCalled();
+    expect(openConversation).toHaveBeenCalledWith('c1');
+    // There is one "New conversation", in the chat's header; the list has none of its own.
+    expect(screen.queryByRole('button', { name: /New conversation/ })).not.toBeInTheDocument();
   });
 
   it('debounces search and loads more pages', async () => {
@@ -116,7 +121,7 @@ describe('HistorySidebar', () => {
     expect(JSON.parse(patch[1]!.body as string)).toEqual({ title: 'Fee questions' });
   });
 
-  it('deletes after confirming and tells the page when the active one went away', async () => {
+  it('deletes after confirming and has the chat start anew when the one on screen went away', async () => {
     let deleted = false;
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
       if (init?.method === 'DELETE') {
@@ -129,7 +134,7 @@ describe('HistorySidebar', () => {
       });
     });
     vi.stubGlobal('fetch', fetchMock);
-    const { onDeleted } = renderSidebar();
+    const { startNew } = renderSidebar();
 
     await userEvent.click(await screen.findByRole('button', { name: 'Actions for Title c2' }));
     await userEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
@@ -144,7 +149,7 @@ describe('HistorySidebar', () => {
     dialog = screen.getByRole('dialog');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
-    await waitFor(() => expect(onDeleted).toHaveBeenCalledWith('c2'));
+    await waitFor(() => expect(startNew).toHaveBeenCalledTimes(1));
     expect(fetchMock.mock.calls.find(([, i]) => i?.method === 'DELETE')![0]).toBe(
       '/api/conversations/c2',
     );
@@ -152,15 +157,22 @@ describe('HistorySidebar', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('collapses to a rail', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => jsonResponse({ conversations: [], nextCursor: null })),
+  it('reads itself again when a run finishes, and only then', async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ conversations: [item('c1')], nextCursor: null }),
     );
-    const onToggleCollapsed = vi.fn();
-    renderSidebar({ collapsed: true, onToggleCollapsed });
-    expect(screen.queryByLabelText('Search conversations')).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Expand history' }));
-    expect(onToggleCollapsed).toHaveBeenCalled();
+    vi.stubGlobal('fetch', fetchMock);
+    const { runs } = renderSidebar();
+    await screen.findAllByTestId('history-item');
+    const reads = () => listUrls(fetchMock).length;
+    const before = reads();
+
+    runs.observer.onRunEnd?.('r-1', 'stopped');
+    runs.observer.onRunEnd?.('r-1', 'failed');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(reads()).toBe(before);
+
+    runs.observer.onRunEnd?.('r-2', 'finished');
+    await waitFor(() => expect(reads()).toBe(before + 1));
   });
 });

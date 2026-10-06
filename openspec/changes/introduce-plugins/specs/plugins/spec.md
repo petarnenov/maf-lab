@@ -206,4 +206,5 @@ still start and continue conversations with full memory, and SHALL show no sideb
 #### Scenario: Without the conversation list
 - **WHEN** `conversation-history` is not installed and a user returns to a conversation by its URL
 - **THEN** the conversation opens with its messages, the agent answers with the earlier turns in context, no sidebar,
-  drawer, toggle or rail is shown, "New conversation" is in the chat header, and `GET /api/conversations` answers 404
+  drawer, toggle or rail is shown, "New conversation" is in the chat header, and `GET /api/conversations` is not
+  served (`405 Method Not Allowed`: the path's `POST` stays the core's)

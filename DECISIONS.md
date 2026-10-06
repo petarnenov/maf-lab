@@ -3289,4 +3289,9 @@ implementation" (parts A and B) holds each choice in full.
     found a hooks violation in a plugin test on its first run. Rejected: a root config (the root has no package to
     resolve ESLint's plugins from), a per-object `basePath` (a file outside the cwd is external before it is read),
     a symlink.
+  - The conversation list is the `conversation-history` plugin (every environment, installed by default) over the
+    core's `IConversationStore`, which reads the caller from the request (no `Principal` parameter) and keeps the soft
+    delete and its audit. The chat owns the sidebar's chrome (column, collapse, rail, drawer, landmark, toggle), named
+    after the sidebar's label; a plugin renders content only and asks the chat to open or start a conversation.
+    Rejected: plugin-owned layout CSS, a sidebar context object, a plugin navigating with react-router.
 

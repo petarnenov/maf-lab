@@ -161,6 +161,15 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
         return client;
     }
 
+    /// <summary>
+    /// The core's conversation store as one person's request would reach it (decision 5y): what the list plugin's routes
+    /// call, for core tests that need a conversation listed, renamed or deleted without the plugin installed.
+    /// </summary>
+    public Maf.Lab.Plugins.Abstractions.IConversationStore ConversationsOf(string user, string firm, Role role = Role.USER) =>
+        new Maf.Lab.Api.Storage.ConversationStore(new FixedPrincipalAccessor(new Principal(user, TenantId.Firm(firm), role)),
+            Services.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<Maf.Lab.Api.Storage.MafDbContext>>(),
+            Services.GetRequiredService<TimeProvider>(), Services.GetRequiredService<ToolAudit>());
+
     /// <summary>Runs a turn the way a client does: a run of the agent on a thread, carrying the user's message.</summary>
     /// <param name="state">The run's AG-UI state as the client sends it (add-focus-state); omitted when null.</param>
     public static async Task<List<SseEvent>> ChatAsync(HttpClient client, string message, string? conversationId = null,

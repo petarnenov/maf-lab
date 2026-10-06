@@ -11,7 +11,6 @@ import { useNavigate, useParams } from 'react-router';
 import { ApiError } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { useConversation, useUserKey } from '../history/historyApi';
-import { HistorySidebar } from '../history/HistorySidebar';
 import type { AssistantTurn, ChatState } from './chatReducer';
 import styles from './ChatPage.module.css';
 import { idle, step, type RecallState } from './promptHistory';
@@ -40,7 +39,11 @@ export function ChatPage() {
   const { conversationId: routeId } = useParams();
   const navigate = useNavigate();
   const userKey = useUserKey();
-  const pluginPanes = contributions(usePlugins(), 'chatPanes');
+  const plugins = usePlugins();
+  const pluginPanes = contributions(plugins, 'chatPanes');
+  // The sidebar's chrome is the chat's; it is there only while a plugin in use fills it (the conversation list).
+  const sidebars = contributions(plugins, 'chatSidebars');
+  const sidebarLabel = sidebars[0]?.item.label;
   // With no domain in use the assistant answers nothing (introduce-plugins 5h): say so before anyone types.
   const domains = useDomains();
   const noDomain = domains?.length === 0;
@@ -216,6 +219,8 @@ export function ChatPage() {
   }
 
   const loadingConversation = needsLoad && !notFound;
+  // In the narrow-screen drawer the sidebar is always open.
+  const collapsed = historyCollapsed && !drawerOpen;
 
   function startNew() {
     setSelectedKey(null);
@@ -247,42 +252,73 @@ export function ChatPage() {
 
   return (
     <div
-      className={`${styles.page} ${historyCollapsed ? styles.historyCollapsed : ''} ${
-        sidePane ? '' : styles.monitorClosed
-      }`}
+      className={`${styles.page} ${
+        !sidebarLabel ? styles.noSidebar : historyCollapsed ? styles.historyCollapsed : ''
+      } ${sidePane ? '' : styles.monitorClosed}`}
     >
-      <div className={`${styles.historyPane} ${drawerOpen ? styles.drawerOpen : ''}`}>
-        <HistorySidebar
-          activeId={state.conversationId ?? routeId}
-          onSelect={openConversation}
-          onNew={startNew}
-          onDeleted={(id) => {
-            if (id === (state.conversationId ?? routeId)) startNew();
-          }}
-          collapsed={historyCollapsed && !drawerOpen}
-          onToggleCollapsed={() => setHistoryCollapsed((c) => !c)}
-        />
-      </div>
-      {drawerOpen && (
+      {sidebarLabel && (
+        <div className={`${styles.historyPane} ${drawerOpen ? styles.drawerOpen : ''}`}>
+          <nav
+            id="chat-sidebar"
+            className={`${styles.sidebar} ${collapsed ? styles.rail : ''}`}
+            aria-label={sidebarLabel}
+          >
+            {collapsed ? (
+              <button
+                type="button"
+                className={styles.iconButton}
+                aria-label={`Expand ${sidebarLabel.toLowerCase()}`}
+                onClick={() => setHistoryCollapsed(false)}
+              >
+                ☰
+              </button>
+            ) : (
+              <div className={styles.sidebarHeader}>
+                <h2 className={styles.sidebarHeading}>{sidebarLabel}</h2>
+                <button
+                  type="button"
+                  className={styles.iconButton}
+                  aria-label={`Collapse ${sidebarLabel.toLowerCase()}`}
+                  onClick={() => setHistoryCollapsed(true)}
+                >
+                  ⟨
+                </button>
+              </div>
+            )}
+            {/* Mounted while collapsed, so a sidebar keeps its state (the search it holds). */}
+            {sidebars.map(({ plugin, item }) => (
+              <div key={`${plugin}:${item.id}`} className={styles.sidebarBody} hidden={collapsed}>
+                <PluginBoundary plugin={plugin}>
+                  {item.render({ ...chatContext, openConversation, startNew })}
+                </PluginBoundary>
+              </div>
+            ))}
+          </nav>
+        </div>
+      )}
+      {sidebarLabel && drawerOpen && (
         <button
           type="button"
           className={styles.drawerBackdrop}
-          aria-label="Close history"
+          aria-label={`Close ${sidebarLabel.toLowerCase()}`}
           onClick={() => setDrawerOpen(false)}
         />
       )}
 
       <div className={styles.chatPane}>
         <div className={styles.toolbar}>
-          <button
-            type="button"
-            className={styles.drawerToggle}
-            aria-label="Show history"
-            aria-expanded={drawerOpen}
-            onClick={() => setDrawerOpen((o) => !o)}
-          >
-            ☰ History
-          </button>
+          {sidebarLabel && (
+            <button
+              type="button"
+              className={styles.drawerToggle}
+              aria-label={`Show ${sidebarLabel.toLowerCase()}`}
+              aria-expanded={drawerOpen}
+              aria-controls="chat-sidebar"
+              onClick={() => setDrawerOpen((o) => !o)}
+            >
+              ☰ {sidebarLabel}
+            </button>
+          )}
           <h1 className={styles.heading}>Chat</h1>
           <button type="button" onClick={startNew} disabled={state.turns.length === 0 && !routeId}>
             New conversation

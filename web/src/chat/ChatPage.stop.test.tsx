@@ -2,7 +2,6 @@ import { EventType } from '@ag-ui/core';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import type { ConversationSummary } from '../api/types';
 import { agentFetch, type StopBehaviour } from '../test/agentFetch';
 import {
   controlledStreamResponse,
@@ -13,14 +12,6 @@ import {
   streamResponse,
 } from '../test/render';
 import { ChatPage } from './ChatPage';
-
-const conversation: ConversationSummary = {
-  conversationId: 'c-old',
-  title: 'Fee schedules',
-  createdAt: new Date(Date.now() - 3600_000).toISOString(),
-  lastActivityAt: new Date(Date.now() - 5 * 60_000).toISOString(),
-  turnCount: 1,
-};
 
 /** A run's end as `@ag-ui/client` reports an aborted run. */
 const aborted = () => sse(EventType.RUN_ERROR, { message: 'Request aborted', code: 'abort' });
@@ -47,12 +38,10 @@ const stoppedResult = (toolCallId: string) =>
  * CopilotKit's runtime does (`stop`). Returns the streams, the bodies the runs were started with, and the stop
  * requests the runtime received.
  */
-function chat({ history = [] as ConversationSummary[], stop = 'abort' as StopBehaviour } = {}) {
+function chat({ stop = 'abort' as StopBehaviour } = {}) {
   const streams: ReturnType<typeof controlledStreamResponse>[] = [];
   const bodies: { threadId: string; runId: string }[] = [];
   const handler = vi.fn(async (url: string, init?: RequestInit) => {
-    if (url.startsWith('/api/conversations'))
-      return jsonResponse({ conversations: history, nextCursor: null });
     if (url.startsWith('/api/turns')) return jsonResponse({ events: [] });
     if (url === '/api/chat') {
       bodies.push(JSON.parse(String(init?.body)) as { threadId: string; runId: string });
@@ -210,24 +199,6 @@ describe('ChatPage: Esc stops the answer in progress', () => {
     await userEvent.keyboard('{Escape}');
 
     expect(screen.getByText('All done.')).toBeInTheDocument();
-    expect(screen.queryByTestId('turn-stopped')).not.toBeInTheDocument();
-    expect(stops()).toHaveLength(0);
-  });
-
-  it('leaves the run going when Esc cancels a rename', async () => {
-    const { streams, stops } = chat({ history: [conversation] });
-    await ask();
-    await waitFor(() => expect(streams).toHaveLength(1));
-    act(() => streams[0].push(run.delta('Still going')));
-    await screen.findByText('Still going');
-
-    await userEvent.click(await screen.findByRole('button', { name: 'Actions for Fee schedules' }));
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
-    await userEvent.type(screen.getByLabelText('Conversation title'), ' x{Escape}');
-
-    expect(screen.queryByLabelText('Conversation title')).not.toBeInTheDocument();
-    expect(screen.getByTestId('stop-hint')).toHaveTextContent('Esc to stop');
-    expect(screen.getByRole('button', { name: 'Answering…' })).toBeDisabled();
     expect(screen.queryByTestId('turn-stopped')).not.toBeInTheDocument();
     expect(stops()).toHaveLength(0);
   });

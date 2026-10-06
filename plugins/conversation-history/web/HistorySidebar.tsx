@@ -1,83 +1,51 @@
-import { useState, type KeyboardEvent } from 'react';
-import type { ConversationSummary } from '../api/types';
-import styles from './HistorySidebar.module.css';
+import { useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState, type KeyboardEvent } from 'react';
+import type { ChatContext } from '@maf/plugin-api';
 import {
+  CONVERSATIONS,
   titleError,
   useConversations,
   useDeleteConversation,
   useRenameConversation,
-} from './historyApi';
+} from './conversationsApi';
+import styles from './HistorySidebar.module.css';
 import { relativeTime } from './relativeTime';
+import { runsFinished as defaultRunsFinished, type RunsFinished } from './runsFinished';
+import type { ConversationSummary } from './types';
 import { useDebouncedValue } from './useDebouncedValue';
 
 export const SEARCH_DEBOUNCE_MS = 250;
 
-/** The user's own conversations: search, open, start new, rename, delete. */
+/**
+ * The user's own conversations: search, open, rename, delete. Content only: the chat draws the sidebar around it (its
+ * landmark, heading, collapse and drawer) and starts a new conversation from its own header.
+ */
 export function HistorySidebar({
-  activeId,
-  onSelect,
-  onNew,
-  onDeleted,
-  collapsed = false,
-  onToggleCollapsed,
+  context,
+  runsFinished = defaultRunsFinished,
 }: {
-  activeId?: string;
-  onSelect: (conversationId: string) => void;
-  onNew: () => void;
-  /** Called after a conversation was deleted (e.g. to leave it if it was open). */
-  onDeleted?: (conversationId: string) => void;
-  collapsed?: boolean;
-  onToggleCollapsed?: () => void;
+  context: ChatContext;
+  runsFinished?: RunsFinished;
 }) {
   const [search, setSearch] = useState('');
   const debounced = useDebouncedValue(search.trim(), SEARCH_DEBOUNCE_MS);
   const list = useConversations(debounced);
   const [confirming, setConfirming] = useState<ConversationSummary | null>(null);
   const remove = useDeleteConversation();
+  const client = useQueryClient();
+  const activeId = context.conversationId;
 
-  if (collapsed) {
-    return (
-      <nav className={`${styles.sidebar} ${styles.rail}`} aria-label="Conversation history">
-        <button
-          type="button"
-          className={styles.iconButton}
-          aria-label="Expand history"
-          onClick={onToggleCollapsed}
-        >
-          ☰
-        </button>
-        <button
-          type="button"
-          className={styles.iconButton}
-          aria-label="New conversation"
-          onClick={onNew}
-        >
-          ＋
-        </button>
-      </nav>
-    );
-  }
+  // A finished run changes the list (a new conversation, its last activity, its turn count).
+  useEffect(
+    () =>
+      runsFinished.subscribe(() => void client.invalidateQueries({ queryKey: [CONVERSATIONS] })),
+    [runsFinished, client],
+  );
 
   const conversations = list.data?.pages.flatMap((p) => p.conversations) ?? [];
 
   return (
-    <nav className={styles.sidebar} aria-label="Conversation history">
-      <div className={styles.header}>
-        <h2 className={styles.heading}>History</h2>
-        {onToggleCollapsed && (
-          <button
-            type="button"
-            className={styles.iconButton}
-            aria-label="Collapse history"
-            onClick={onToggleCollapsed}
-          >
-            ⟨
-          </button>
-        )}
-      </div>
-      <button type="button" className={styles.newButton} onClick={onNew}>
-        ＋ New conversation
-      </button>
+    <div className={styles.sidebar}>
       <input
         type="search"
         className={styles.search}
@@ -105,7 +73,7 @@ export function HistorySidebar({
             key={c.conversationId}
             conversation={c}
             active={c.conversationId === activeId}
-            onSelect={() => onSelect(c.conversationId)}
+            onSelect={() => context.openConversation?.(c.conversationId)}
             onDelete={() => setConfirming(c)}
           />
         ))}
@@ -155,7 +123,8 @@ export function HistorySidebar({
                   remove.mutate(id, {
                     onSuccess: () => {
                       setConfirming(null);
-                      onDeleted?.(id);
+                      // The conversation on screen is gone: the chat starts a new one.
+                      if (id === activeId) context.startNew?.();
                     },
                   });
                 }}
@@ -166,7 +135,7 @@ export function HistorySidebar({
           </div>
         </div>
       )}
-    </nav>
+    </div>
   );
 }
 

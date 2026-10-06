@@ -26,7 +26,7 @@ While the `conversation-history` plugin is installed, the system SHALL list the 
 ordered by last activity (newest first). Each entry SHALL include the conversation id, title, creation time, last
 activity time and turn count. The list SHALL support a case-insensitive search over titles, questions and answers, and
 paging with a limit (default 30, maximum 100) and a cursor. Conversations of other users, including other users of the
-same tenant, MUST NOT be listed. Without the plugin, the list route SHALL not exist.
+same tenant, MUST NOT be listed. Without the plugin, the list route SHALL not be served.
 
 #### Scenario: Own conversations only
 - **WHEN** Adam of tenant A lists conversations after Rita (tenant A) and Bianca (tenant B) have chatted

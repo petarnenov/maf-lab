@@ -4,34 +4,6 @@
   gap: 8px;
   min-height: 0;
   height: 100%;
-  overflow: hidden;
-  border-right: 1px solid var(--border);
-  padding-right: 10px;
-}
-
-.rail {
-  align-items: center;
-  padding-right: 6px;
-}
-
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.heading {
-  font-size: 1rem;
-  margin: 0;
-}
-
-.iconButton {
-  padding: 2px 8px;
-  min-width: 32px;
-}
-
-.newButton {
-  text-align: left;
 }
 
 .search {

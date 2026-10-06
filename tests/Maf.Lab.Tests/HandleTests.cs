@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
 using Maf.Lab.Domain.Billing;
-using Maf.Lab.Domain.History;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Retrieval.Billing;
 
@@ -15,7 +14,6 @@ namespace Maf.Lab.Tests;
 public class HandleTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
-    private static readonly System.Text.Json.JsonSerializerOptions Json = new(System.Text.Json.JsonSerializerDefaults.Web);
 
     [Fact]
     public async Task A_cursor_carries_its_own_meaning_and_pages_on_wherever_it_is_presented()
@@ -27,16 +25,15 @@ public class HandleTests
             await ApiFactory.ChatAsync(adam, $"what is the procedure when a fee schedule is missing, case {i}");
         }
 
-        var first = await adam.GetFromJsonAsync<ConversationPage>("/api/conversations?limit=2", Json, Ct);
-        Assert.Equal(2, first!.Conversations.Count);
+        // The core's store, which hands out the cursor (the list plugin's route passes it through as it came).
+        var first = await api.ConversationsOf("adam", "firm-a").PageAsync(null, 2, null, Ct);
+        Assert.Equal(2, first.Conversations.Count);
         Assert.NotNull(first.NextCursor);
 
-        // A second client — which is what another replica is, from the cursor's point of view — continues it.
-        var second = api.ClientFor("adam", "firm-a", Role.USER);
-        var next = await second.GetFromJsonAsync<ConversationPage>(
-            $"/api/conversations?limit=2&before={Uri.EscapeDataString(first.NextCursor!)}", Json, Ct);
+        // A second store — which is what another replica is, from the cursor's point of view — continues it.
+        var next = await api.ConversationsOf("adam", "firm-a").PageAsync(null, 2, first.NextCursor, Ct);
 
-        Assert.Single(next!.Conversations);
+        Assert.Single(next.Conversations);
         Assert.DoesNotContain(next.Conversations, c => first.Conversations.Any(f => f.ConversationId == c.ConversationId));
     }
 

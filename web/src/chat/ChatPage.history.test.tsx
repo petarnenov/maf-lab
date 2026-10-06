@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes, useLocation } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
-import type { ConversationDetail, ConversationPage } from '../api/types';
+import type { ConversationDetail } from '../api/types';
 import { useAuth } from '../auth/useAuth';
 import {
   jsonResponse,
@@ -52,7 +52,7 @@ const detail: ConversationDetail = {
   ],
 };
 
-const page = (...ids: string[]): ConversationPage => ({
+const page = (...ids: string[]) => ({
   conversations: ids.map((id) => ({
     conversationId: id,
     title: `Title ${id}`,
@@ -101,16 +101,11 @@ describe('ChatPage with history', () => {
     expect(within(turns[0]).getByRole('button', { name: '✓ Wrong document' })).toBeDisabled();
     expect(screen.getByText('What if a fee schedule is missing?')).toBeInTheDocument();
 
-    // With no plugin pane in use there is no side pane, and no button that would open one.
+    // With no plugin in use there is no side pane and no sidebar, and nothing that would open either.
     expect(screen.queryByRole('tablist', { name: 'Right pane' })).not.toBeInTheDocument();
     expect(within(turns[0]).queryByRole('button', { name: /behind the scenes/i })).toBeNull();
-
-    // The active conversation is highlighted in the sidebar.
-    const history = screen.getByRole('navigation', { name: 'Conversation history' });
-    expect(await within(history).findByRole('button', { name: /^Title conv-7/ })).toHaveAttribute(
-      'aria-current',
-      'page',
-    );
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Show / })).not.toBeInTheDocument();
 
     // Continuing sends the conversation id from the URL.
     fetchMock.mockImplementationOnce(async () =>
@@ -188,13 +183,8 @@ describe('ChatPage with history', () => {
     expect(screen.queryByText('Conversation not found.')).not.toBeInTheDocument();
   });
 
-  it('moves to /chat/{id} after the first answer and refreshes the list', async () => {
-    let listCalls = 0;
+  it('moves to /chat/{id} after the first answer', async () => {
     const fetchMock = vi.fn(async (url: string) => {
-      if (url.startsWith('/api/conversations?')) {
-        listCalls += 1;
-        return jsonResponse(listCalls === 1 ? page() : page('conv-new'));
-      }
       if (url === '/api/chat')
         return streamResponse([run.delta('Hello.'), run.done('conv-new', 't1')]);
       return jsonResponse({}, 404);
@@ -202,7 +192,6 @@ describe('ChatPage with history', () => {
     vi.stubGlobal('fetch', agentFetch(fetchMock));
 
     renderChat('/chat');
-    expect(await screen.findByText('No conversations yet.')).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText('Message'), 'hi');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
     await screen.findByText('Hello.');
@@ -212,7 +201,6 @@ describe('ChatPage with history', () => {
       expect(screen.getByTestId('location').textContent).toMatch(/^\/chat\/c_[0-9a-f]{32}$/),
     );
     const id = screen.getByTestId('location').textContent!.slice('/chat/'.length);
-    expect(await screen.findByRole('button', { name: /^Title conv-new/ })).toBeInTheDocument();
     // Still the live turn: the page did not reload the conversation it already shows.
     expect(fetchMock.mock.calls.map((c) => c[0])).not.toContain(`/api/conversations/${id}`);
     expect(screen.getAllByTestId('assistant-turn')).toHaveLength(1);
@@ -234,7 +222,8 @@ describe('ChatPage with history', () => {
     renderChat('/chat/conv-7');
     expect(await screen.findAllByTestId('assistant-turn')).toHaveLength(2);
 
-    await userEvent.click(screen.getByRole('button', { name: '＋ New conversation' }));
+    // The one "New conversation", in the chat's own header (decision 5y).
+    await userEvent.click(screen.getByRole('button', { name: 'New conversation' }));
 
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/chat$/);
     expect(screen.queryAllByTestId('assistant-turn')).toHaveLength(0);
@@ -245,14 +234,12 @@ describe('ChatPage with history', () => {
     expect(screen.queryAllByTestId('assistant-turn')).toHaveLength(0);
   });
 
-  it("switching persona clears the chat and shows only the new user's list", async () => {
+  it('switching persona clears the chat and leaves the conversation', async () => {
     vi.stubGlobal(
       'fetch',
       agentFetch(
         vi.fn(async (url: string, init?: RequestInit) => {
-          const auth = new Headers(init?.headers).get('Authorization') ?? '';
-          if (url.startsWith('/api/conversations?'))
-            return jsonResponse(auth.includes('TENANT_ADMIN') ? page('alice-1') : page('adam-1'));
+          void init;
           if (url === '/api/conversations/adam-1')
             return jsonResponse({ ...detail, conversationId: 'adam-1' });
           return jsonResponse({}, 404);
@@ -269,13 +256,10 @@ describe('ChatPage with history', () => {
     }
 
     renderChat('/chat/adam-1', <SwitchPersona />);
-    expect(await screen.findByRole('button', { name: /^Title adam-1/ })).toBeInTheDocument();
     expect(await screen.findAllByTestId('assistant-turn')).toHaveLength(2);
 
     await userEvent.click(screen.getByRole('button', { name: 'switch' }));
-    expect(await screen.findByRole('button', { name: /^Title alice-1/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^Title adam-1/ })).not.toBeInTheDocument();
-    expect(screen.queryAllByTestId('assistant-turn')).toHaveLength(0);
+    await waitFor(() => expect(screen.queryAllByTestId('assistant-turn')).toHaveLength(0));
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/chat$/);
   });
   it('a reopened turn shows the reasoning the conversation kept, collapsed, and none when it had none', async () => {

@@ -1,7 +1,6 @@
 import type { AbstractAgent } from '@ag-ui/client';
 import type { BaseEvent } from '@ag-ui/core';
 import { useCopilotKit } from '@copilotkit/react-core/v2/context';
-import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { authHeaders } from '../api/client';
 import type { ConversationDetail, FocusAccount, PendingProposal } from '../api/types';
@@ -32,7 +31,6 @@ export function useChatStream() {
   const token = session?.token ?? null;
   const { copilotkit } = useCopilotKit();
   const [state, dispatch] = useReducer(chatReducer, initialChatState);
-  const queryClient = useQueryClient();
   const plugins = usePlugins();
   // Read when a run starts, so a run is observed by the plugins in use as it began.
   const observersRef = useRef<PluginRunObserver[]>([]);
@@ -138,9 +136,6 @@ export function useChatStream() {
       const replaced = agentRef.current !== agent;
       const outcome = replaced || stoppedRun ? 'stopped' : ended ? 'finished' : 'failed';
       notify(observers, (o) => o.onRunEnd?.(runId, outcome));
-      // A finished run changes the history list (new conversation, last activity, turn count).
-      if (outcome === 'finished')
-        void queryClient.invalidateQueries({ queryKey: ['conversations'] });
       if (replaced) return 'stopped';
       agentRef.current = null;
       if (stoppedRun) return 'stopped';
@@ -153,7 +148,7 @@ export function useChatStream() {
       }
       return ended;
     },
-    [copilotkit, queryClient, stop],
+    [copilotkit, stop],
   );
 
   const send = useCallback(

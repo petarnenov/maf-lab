@@ -900,6 +900,10 @@ These choices deviate from the text above. Each is kept, with the rejected alter
      while hidden;
    - `sourceActions` resolved by the source's kind;
    - `SourceRef` and `useApi` exported from `@maf/plugin-api`.
+   - for the conversation list (5.4): `useUserKey` exported from `@maf/plugin-api` (a plugin's query keys carry the
+     persona), and `ChatContext.openConversation` and `startNew`, set for a sidebar's render. `ConversationSummary`,
+     `ConversationPage` and `RenameConversationRequest` leave `api/types.ts` for the plugin; `ConversationDetail` stays.
+     A plugin never imports `react-router` (the boundary scanner says so): moving between conversations is the core's.
 
    A plugin's web part resolves packages from the web project (Vite's `resolve.dedupe`, a `paths` fallback in
    tsconfig). Rejected: deriving the selected turn in a run observer, which would duplicate the chat reducer; npm
@@ -959,6 +963,24 @@ These choices deviate from the text above. Each is kept, with the rejected alter
       plugin's contributions needs a registry seam of its own (YAGNI until one does).
     - Lint runs from the repo root with web/'s configs, so `plugins/*/web` gets the same ESLint and Prettier rules
       (DECISIONS §81). Rejected: a root config, a per-object `basePath`, a symlink.
+13. **The conversation list (task 5.4).**
+    - The chat owns the whole sidebar chrome, which deviates from 5y's "the entry owns its drawer and collapse": the
+      grid column and its collapsed width, the collapse state, its buttons and rail, the narrow-screen drawer and its
+      backdrop, the `<nav>` landmark with its heading, and the toolbar toggle (`aria-controls` the slot), all named
+      after the sidebar's `label` and drawn only while a plugin fills `chatSidebars`. A sidebar's `render` is content
+      only and stays mounted while collapsed. Several sidebars stack in the one slot. Rejected: plugin-owned layout CSS
+      reaching into the page's grid (an import boundary cannot see a CSS coupling), and a sidebar context object.
+    - `IConversationStore` amends task 3.1's shape: no `Principal` parameter (the store reads the request's principal,
+      as `TurnAccess` does, so a plugin cannot name anyone else); `RenameAsync` answers `Renamed | NotFound | Invalid`;
+      the records are `Maf.Lab.Domain.History`'s, the wire shape, not a second set. `ConversationTitles` moves to
+      `Maf.Lab.Domain.History`, so the plugin validates a title and words its 400 the way the store does.
+    - Core tests that only needed a conversation deleted or paged reach the core's store with a fixed principal
+      (`ApiFactory.ConversationsOf`); the routes' own assertions moved with the plugin.
+    - With the plugin out, `GET /api/conversations`, `PATCH` and `DELETE /{id}` answer `405`: their paths stay the
+      core's for `POST` and `GET /{id}`.
+    - The list reads itself again when a run finishes: its run observer signals the mounted list, which invalidates its
+      own query through the tree's query client. The core's invalidation and the rename's touch of the core's
+      `['conversation']` key are gone.
 
 ## Principles and patterns
 

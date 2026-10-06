@@ -255,20 +255,7 @@ export interface EvalReport {
   comparisons?: MetricComparison[] | null;
 }
 
-// ---- Conversation history ----
-
-export interface ConversationSummary {
-  conversationId: string;
-  title: string;
-  createdAt: string;
-  lastActivityAt: string;
-  turnCount: number;
-}
-
-export interface ConversationPage {
-  conversations: ConversationSummary[];
-  nextCursor: string | null;
-}
+// ---- A conversation reopened (the list is the conversation-history plugin's) ----
 
 /** callId and resultSummary are null for turns stored before they were persisted. */
 export interface HistoryToolCall {
@@ -303,10 +290,6 @@ export interface ConversationDetail {
   turns: HistoryTurn[];
   /** The account in focus; absent or null when none (add-focus-state). */
   focus?: FocusAccount | null;
-}
-
-export interface RenameConversationRequest {
-  title: string;
 }
 
 // ---- Topology ----

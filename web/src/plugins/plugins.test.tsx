@@ -183,6 +183,19 @@ describe('plugin import boundary', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('a plugin never navigates by itself: the chat opens conversations and pages for it', () => {
+    // Moving between conversations is the core's (its leaving guard, its selection); a plugin asks through ChatContext.
+    const offenders = readdirSync(join(repo, 'plugins'), { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .flatMap((d) => files(join(repo, 'plugins', d.name, 'web')))
+      .flatMap((path) =>
+        imports(path)
+          .filter((spec) => spec === 'react-router' || spec.startsWith('react-router/'))
+          .map((spec) => `${relative(repo, path)} → ${spec}`),
+      );
+    expect(offenders).toEqual([]);
+  });
+
   it('a plugin imports test support only from its tests', () => {
     const testOnly = (spec: string) =>
       spec === '@maf/testing' || spec === 'vitest' || spec.startsWith('@testing-library/');

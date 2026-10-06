@@ -202,12 +202,15 @@ keeps threads in memory with no owner, so serving them would let one firm read a
 
 ## Conversation history (owner only)
 
+Reopening a conversation is the core's. The list, rename and delete are routes of the `conversation-history` plugin
+(installed by default), over the core's conversation store; while it is not installed they are not served.
+
 | Method | Path | Body | Response |
 |---|---|---|---|
-| GET | `/api/conversations?search=&limit=&before=` | — | `{ conversations: [{ conversationId, title, createdAt, lastActivityAt, turnCount }], nextCursor }` — own, non-deleted, non-empty conversations, newest activity first; `search` matches title, questions and answers (case-insensitive); `limit` default 30, max 100; pass `nextCursor` as `before` for the next page |
+| GET | `/api/conversations?search=&limit=&before=` | — | `conversation-history`: `{ conversations: [{ conversationId, title, createdAt, lastActivityAt, turnCount }], nextCursor }` — own, non-deleted, non-empty conversations, newest activity first; `search` matches title, questions and answers (case-insensitive); `limit` default 30, max 100; pass `nextCursor` as `before` for the next page |
 | GET | `/api/conversations/{id}` | — | `{ conversationId, title, createdAt, lastActivityAt, turns: [HistoryTurn] }`; `404` when not owned or deleted |
-| PATCH | `/api/conversations/{id}` | `{ title }` (1–120 chars) | `204`; `400` invalid title; `404` |
-| DELETE | `/api/conversations/{id}` | — | `204` (soft delete: hidden, cannot be continued; turns stay for the review queue); `404` |
+| PATCH | `/api/conversations/{id}` | `{ title }` (1–120 chars) | `conversation-history`: `204`; `400` invalid title; `404` |
+| DELETE | `/api/conversations/{id}` | — | `conversation-history`: `204` (soft delete: hidden, cannot be continued; turns stay for the review queue; recorded as `conversation.delete` in the audit); `404` |
 
 `HistoryTurn` = `{ turnId, question, answer, createdAt, toolCalls: [{ callId?, toolName, argumentSummary, outcome,
 resultSummary?, sourceCount }], sources: [{ docId, sectionPath, sourcePath, snippet }], feedbackKinds: [string],

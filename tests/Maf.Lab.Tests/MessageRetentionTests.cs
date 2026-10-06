@@ -51,9 +51,9 @@ public class MessageRetentionTests
         var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var id = ApiFactory.ThreadOf(await ApiFactory.ChatAsync(adam, "what is the procedure when a fee schedule is missing"));
 
-        Assert.Equal(System.Net.HttpStatusCode.NoContent, (await adam.DeleteAsync($"/api/conversations/{id}", Ct)).StatusCode);
+        Assert.True(await api.ConversationsOf("adam", "firm-a").DeleteAsync(id, Ct));
 
-        // Gone from the list and from reading, long before its retention has anything to say about it.
+        // Gone from reading, long before its retention has anything to say about it.
         Assert.Equal(System.Net.HttpStatusCode.NotFound, (await adam.GetAsync($"/api/conversations/{id}", Ct)).StatusCode);
     }
 }

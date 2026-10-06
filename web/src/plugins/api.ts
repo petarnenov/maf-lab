@@ -13,6 +13,9 @@ export { ApiError } from '../api/client';
 /** The signed-in user's api client: a plugin's own routes, called as the user, with the core's errors and stop. */
 export { useApi } from '../auth/useAuth';
 
+/** The signed-in persona as a query key's part: a plugin's cached reads never show one user's data to another. */
+export { useUserKey } from '../history/historyApi';
+
 /**
  * The web plugin API (introduce-plugins decision 8): what a plugin's `web/index.ts` may contribute, through
  * `definePlugin`. The core never imports a plugin; a plugin imports only this file and `web/src/shared/` (ESLint
@@ -78,6 +81,10 @@ export interface ChatContext {
   openPane: (id: string, value?: unknown) => void;
   /** Shows a turn as it was at an earlier step, or (null) as it is: state the chat owns, set by a pane. */
   setTurnView?: (turnKey: string, view: TurnViewOverride | null) => void;
+  /** Set for a sidebar's render: opens one of the user's conversations, as the chat does it. */
+  openConversation?: (conversationId: string) => void;
+  /** Set for a sidebar's render: leaves the conversation on screen for a new one, as the chat's own header does. */
+  startNew?: () => void;
   /**
    * For a pane's own render only: whether it is the pane showing, and `value`, whatever that pane's own last `openPane`
    * call passed (the core never reads it). A pane stays mounted while hidden, so it keeps its state and can open itself.
@@ -93,7 +100,11 @@ export interface PluginChatPane {
   render: (context: ChatContext) => ReactNode;
 }
 
-/** A sidebar left of the chat (the conversation list is one). */
+/**
+ * A sidebar left of the chat (the conversation list is one). Content only: the chat draws the sidebar's landmark,
+ * heading, collapse and narrow-screen drawer, all named after `label`, and keeps the content mounted while collapsed.
+ * Several sidebars stack in the one slot.
+ */
 export interface PluginChatSidebar {
   id: string;
   label: string;

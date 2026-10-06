@@ -267,25 +267,29 @@ public static class RunFrames
     public const string Kind = "agui.frames";
 }
 
-/// <summary>A conversation as the list shows it (decision 5y).</summary>
-public sealed record ConversationSummary(string Id, string Title, DateTimeOffset CreatedAt, DateTimeOffset LastActivityAt, int TurnCount);
-
-/// <summary>A page of the caller's own conversations, and where the next page starts.</summary>
-public sealed record ConversationPage(IReadOnlyList<ConversationSummary> Items, string? NextCursor);
+/// <summary>What a rename came to: done, no such conversation of the caller's, or a title outside 1–MaxChars characters.</summary>
+public enum RenameOutcome
+{
+    Renamed,
+    NotFound,
+    Invalid,
+}
 
 /// <summary>
 /// The conversation store the core owns (decision 5y): the list plugin reaches storage, titles and the audit only through
-/// it. Every method acts on the principal's own conversations; none takes a tenant or a user.
+/// it. Every method acts on the caller's own conversations, read from the request's principal; none takes a principal, a
+/// tenant or a user, so a plugin cannot name anyone else. The records are <see cref="Maf.Lab.Domain.History"/>'s, the
+/// shape the web reads.
 /// </summary>
 public interface IConversationStore
 {
-    Task<ConversationPage> PageAsync(Principal principal, string? search, int limit, string? cursor, CancellationToken ct);
+    /// <summary>A page of the caller's conversations that have turns, newest activity first, matching <paramref name="search"/> in a title, question or answer.</summary>
+    Task<Maf.Lab.Domain.History.ConversationPage> PageAsync(string? search, int limit, string? before, CancellationToken ct);
 
-    /// <summary>False when the conversation is not the principal's or does not exist.</summary>
-    Task<bool> RenameAsync(Principal principal, string conversationId, string title, CancellationToken ct);
+    Task<RenameOutcome> RenameAsync(string conversationId, string title, CancellationToken ct);
 
-    /// <summary>A soft delete, recorded as <c>conversation.delete</c> in the audit; false when not found.</summary>
-    Task<bool> DeleteAsync(Principal principal, string conversationId, CancellationToken ct);
+    /// <summary>A soft delete, recorded as <c>conversation.delete</c> in the audit once done; false when not found (and nothing is recorded).</summary>
+    Task<bool> DeleteAsync(string conversationId, CancellationToken ct);
 }
 
 /// <summary>A brand, as add-white-labeling defines it in full; the port exists now so the seam list is closed.</summary>

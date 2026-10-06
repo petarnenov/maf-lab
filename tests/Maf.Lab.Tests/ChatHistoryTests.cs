@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Maf.Lab.Api.History;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.Domain.Feedback;
 using Maf.Lab.Domain.History;
@@ -64,40 +63,6 @@ public class ChatHistoryTests
         Assert.EndsWith("…", title);
         Assert.StartsWith(title[..^1], question);
         Assert.Equal(' ', question[title.Length - 1]);
-    }
-
-    [Fact]
-    public async Task List_is_owner_only_searchable_hides_empty_and_pages()
-    {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel("Answer about credits and schedules."));
-        var adam = api.ClientFor("adam", "firm-a", Role.USER);
-        foreach (var q in new[] { "How do I issue a billing credit?", "explain breakpoint pricing", "what is proration" })
-        {
-            await ApiFactory.ChatAsync(adam, q);
-        }
-        await ApiFactory.ChatAsync(api.ClientFor("rita", "firm-a", Role.USER), "rita's question about credit");
-        await ApiFactory.ChatAsync(api.ClientFor("bianca", "firm-b", Role.USER), "bianca asks about credit");
-        await adam.PostAsync("/api/conversations", null, Ct); // empty conversation
-
-        var all = await adam.GetFromJsonAsync<ConversationPage>("/api/conversations", Json, Ct);
-        Assert.Equal(["what is proration", "explain breakpoint pricing", "How do I issue a billing credit?"], all!.Conversations.Select(c => c.Title));
-        Assert.All(all.Conversations, c => Assert.Equal(1, c.TurnCount));
-
-        // Case-insensitive; matches the title and, through the scripted answer ("credits"), every one of Adam's conversations,
-        // but never Rita's or Bianca's.
-        var search = await adam.GetFromJsonAsync<ConversationPage>("/api/conversations?search=CREDIT", Json, Ct);
-        Assert.Equal(3, search!.Conversations.Count);
-        var byQuestion = await adam.GetFromJsonAsync<ConversationPage>("/api/conversations?search=breakpoint", Json, Ct);
-        Assert.Equal(["explain breakpoint pricing"], byQuestion!.Conversations.Select(c => c.Title));
-        var nothing = await adam.GetFromJsonAsync<ConversationPage>("/api/conversations?search=bianca", Json, Ct);
-        Assert.Empty(nothing!.Conversations);
-
-        var first = await adam.GetFromJsonAsync<ConversationPage>("/api/conversations?limit=2", Json, Ct);
-        Assert.Equal(2, first!.Conversations.Count);
-        Assert.NotNull(first.NextCursor);
-        var second = await adam.GetFromJsonAsync<ConversationPage>($"/api/conversations?limit=2&before={Uri.EscapeDataString(first.NextCursor!)}", Json, Ct);
-        Assert.Equal(["How do I issue a billing credit?"], second!.Conversations.Select(c => c.Title));
-        Assert.Null(second.NextCursor);
     }
 
     [Fact]
@@ -168,34 +133,22 @@ public class ChatHistoryTests
 
         await ApiFactory.ChatAsync(adam, "a much later follow-up question", "c_untitled");
 
-        var list = await adam.GetFromJsonAsync<ConversationPage>("/api/conversations", Json, Ct);
-        var conversation = Assert.Single(list!.Conversations);
-        Assert.Equal("the original question", conversation.Title);
-        Assert.Equal(2, conversation.TurnCount);
         Assert.Equal("the original question", (await adam.GetFromJsonAsync<ConversationDetail>("/api/conversations/c_untitled", Json, Ct))!.Title);
     }
 
     [Fact]
-    public async Task Rename_validates_and_delete_hides_blocks_chat_and_keeps_the_review_queue()
+    public async Task A_deleted_conversation_cannot_be_opened_or_continued_and_stays_in_the_review_queue()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
         var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var done = (await ApiFactory.ChatAsync(adam, "explain breakpoint pricing"))[^1].Data;
         var (conversationId, turnId) = (done.GetProperty("threadId").GetString()!, done.GetProperty("runId").GetString()!);
-        var url = $"/api/conversations/{conversationId}";
-
-        Assert.Equal(HttpStatusCode.BadRequest, (await adam.PatchAsJsonAsync(url, new RenameConversationRequest("   "), Ct)).StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, (await adam.PatchAsJsonAsync(url, new RenameConversationRequest(new string('x', 121)), Ct)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await api.ClientFor("rita", "firm-a", Role.USER).PatchAsJsonAsync(url, new RenameConversationRequest("x"), Ct)).StatusCode);
-        Assert.Equal(HttpStatusCode.NoContent, (await adam.PatchAsJsonAsync(url, new RenameConversationRequest("  Breakpoints for Smith  "), Ct)).StatusCode);
-        Assert.Equal("Breakpoints for Smith", (await adam.GetFromJsonAsync<ConversationDetail>(url, Json, Ct))!.Title);
-
         await adam.PostAsJsonAsync("/api/feedback", new FeedbackRequest(conversationId, turnId, FeedbackKind.WrongAnswer, null), Ct);
-        Assert.Equal(HttpStatusCode.NotFound, (await api.ClientFor("rita", "firm-a", Role.USER).DeleteAsync(url, Ct)).StatusCode);
-        Assert.Equal(HttpStatusCode.NoContent, (await adam.DeleteAsync(url, Ct)).StatusCode);
 
-        Assert.Empty((await adam.GetFromJsonAsync<ConversationPage>("/api/conversations", Json, Ct))!.Conversations);
-        Assert.Equal(HttpStatusCode.NotFound, (await adam.GetAsync(url, Ct)).StatusCode);
+        // Deleted through the core's store, as the list plugin does it (decision 5y).
+        Assert.True(await api.ConversationsOf("adam", "firm-a").DeleteAsync(conversationId, Ct));
+
+        Assert.Equal(HttpStatusCode.NotFound, (await adam.GetAsync($"/api/conversations/{conversationId}", Ct)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await adam.PostAsJsonAsync("/api/chat", new
         {
             threadId = conversationId,
@@ -205,6 +158,21 @@ public class ChatHistoryTests
 
         var queue = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN).GetFromJsonAsync<List<ReviewQueueItem>>("/api/admin/feedback/queue", Json, Ct);
         Assert.Contains(queue!, q => q.TurnId == turnId);
+    }
+
+    [Fact]
+    public async Task Without_the_list_plugin_the_list_rename_and_delete_routes_are_absent()
+    {
+        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        var adam = api.ClientFor("adam", "firm-a", Role.USER);
+        var id = ApiFactory.ThreadOf(await ApiFactory.ChatAsync(adam, "explain breakpoint pricing"));
+
+        // Not served: the paths stay the core's for their other verbs (POST creates, GET /{id} reopens), so 405.
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, (await adam.GetAsync("/api/conversations", Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, (await adam.PatchAsJsonAsync($"/api/conversations/{id}", new RenameConversationRequest("x"), Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, (await adam.DeleteAsync($"/api/conversations/{id}", Ct)).StatusCode);
+        // Reopening by its URL is the core's, whatever the screen.
+        Assert.Equal(HttpStatusCode.OK, (await adam.GetAsync($"/api/conversations/{id}", Ct)).StatusCode);
     }
 
     [Fact]
@@ -220,8 +188,9 @@ public class ChatHistoryTests
         var history = ApiFactory.TracesOf(events).Select(t => t.Deserialize<TraceEvent>(Json)!).Single(t => t.Kind == TraceKinds.History);
         Assert.Contains("explain breakpoint pricing", history.Data.GetProperty("included").GetRawText());
 
-        var list = await adam.GetFromJsonAsync<ConversationPage>("/api/conversations", Json, Ct);
-        Assert.Equal(first, list!.Conversations[0].ConversationId);
+        // The conversation moves to the top of the caller's own (the core's store, as the list plugin reads it).
+        var list = await api.ConversationsOf("adam", "firm-a").PageAsync(null, 30, null, Ct);
+        Assert.Equal(first, list.Conversations[0].ConversationId);
         Assert.Equal(2, list.Conversations[0].TurnCount);
         // The title stays the first question, even when the conversation had no stored title before being continued.
         Assert.Equal("explain breakpoint pricing", list.Conversations[0].Title);

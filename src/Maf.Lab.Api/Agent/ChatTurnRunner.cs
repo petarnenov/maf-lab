@@ -1210,7 +1210,7 @@ public sealed partial class ChatTurnRunner(
             // never renames it to a later question.
             if (conversation.Title is null && !await ctx.Turns.AnyAsync(t => t.ConversationId == conversationId && t.Id != turnId, ct))
             {
-                conversation.Title = History.ConversationTitles.FromQuestion(question);
+                conversation.Title = Maf.Lab.Domain.History.ConversationTitles.FromQuestion(question);
             }
         }
         await ctx.SaveChangesAsync(ct);

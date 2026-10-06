@@ -77,12 +77,11 @@ public class ComplianceApiTests
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
         var adam = api.ClientFor("adam", "firm-a", Role.USER);
-        var rita = api.ClientFor("rita", "firm-a", Role.READ_ONLY);
         var conversationId = await ChatAsync(api, adam, "what is the procedure when a fee schedule is missing");
 
-        // Not Adam's conversation: refused, and attributed to nobody.
-        Assert.Equal(HttpStatusCode.NotFound, (await rita.DeleteAsync($"/api/conversations/{conversationId}", Ct)).StatusCode);
-        Assert.Equal(HttpStatusCode.NoContent, (await adam.DeleteAsync($"/api/conversations/{conversationId}", Ct)).StatusCode);
+        // Not Adam's conversation: refused, and attributed to nobody (the core's store, as the list plugin reaches it).
+        Assert.False(await api.ConversationsOf("rita", "firm-a", Role.READ_ONLY).DeleteAsync(conversationId, Ct));
+        Assert.True(await api.ConversationsOf("adam", "firm-a").DeleteAsync(conversationId, Ct));
 
         await using var db = ChatApiTests.Db(api);
         var deletions = await db.Audit.AsNoTracking().Where(a => a.Kind == AuditKinds.ConversationDelete).ToListAsync(Ct);
@@ -103,7 +102,7 @@ public class ComplianceApiTests
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
         var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var conversationId = await ChatAsync(api, adam, "what is the procedure when a fee schedule is missing");
-        await adam.DeleteAsync($"/api/conversations/{conversationId}", Ct);
+        await api.ConversationsOf("adam", "firm-a").DeleteAsync(conversationId, Ct);
 
         await using var db = ChatApiTests.Db(api);
         var rows = await db.Audit.AsNoTracking().OrderBy(a => a.Id).ToListAsync(Ct);
@@ -124,7 +123,7 @@ public class ComplianceApiTests
         var bob = api.ClientFor("bob", "firm-b", Role.USER);
         await ChatAsync(api, adam, "what is the procedure when a fee schedule is missing");
         var deleted = await ChatAsync(api, adam, "how do I issue a billing credit?");
-        await adam.DeleteAsync($"/api/conversations/{deleted}", Ct);
+        await api.ConversationsOf("adam", "firm-a").DeleteAsync(deleted, Ct);
         await ChatAsync(api, bob, "what is the procedure when a fee schedule is missing");
 
         var package = await GetAsync<ExportPackage>(alice, "/api/admin/compliance/export");
@@ -156,7 +155,7 @@ public class ComplianceApiTests
         var alice = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
         var first = await ChatAsync(api, adam, "what is the procedure when a fee schedule is missing");
         await ChatAsync(api, adam, "how do I issue a billing credit?");
-        await adam.DeleteAsync($"/api/conversations/{first}", Ct);
+        await api.ConversationsOf("adam", "firm-a").DeleteAsync(first, Ct);
 
         var all = await GetAsync<ActionPage>(alice, "/api/admin/compliance/actions");
         Assert.Null(all.NextCursor);
@@ -181,7 +180,7 @@ public class ComplianceApiTests
         var olga = api.ClientFor("olga", "firm-a", Role.USER);
         var alice = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
         var conversation = await ChatAsync(api, adam, "what is the procedure when a fee schedule is missing");
-        await adam.DeleteAsync($"/api/conversations/{conversation}", Ct);
+        await api.ConversationsOf("adam", "firm-a").DeleteAsync(conversation, Ct);
         await ChatAsync(api, olga, "how do I issue a billing credit?");
 
         var byPerson = await GetAsync<ActionPage>(alice, "/api/admin/compliance/actions?userId=adam");

@@ -1,0 +1,8 @@
+schema = 1
+name = "conversation-history"
+kind = "app"
+scope = "installation"
+environments = ["dev", "qa", "stage", "prod"]
+description = "The chat's conversation list: the caller's own conversations, searched and paged, renamed and deleted, beside the chat. Without it, a conversation is still reopened by its URL and a new one started from the chat's header."
+progress = "Page: the list shows its loading state while a page or a search loads, and 'Loading…' on Load more"
+stopping = "None — list reads abort with their request (React Query's signal), and a rename or a delete is one conditional write that either happened or did not; the list shows the request's own error state"

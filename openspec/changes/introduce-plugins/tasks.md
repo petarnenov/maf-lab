@@ -214,6 +214,9 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   Verify the scenario "Without the conversation list", the chat-history MODIFIED scenarios with and without the
   plugin, and that deleting the plugin folder keeps `make test` green.
 
+  Done (design part C #13): the store reads the caller from the request; the chat owns the sidebar chrome; the routes,
+  the sidebar and the list's refresh are the plugin's. The box stays open for the live checks on the running stack.
+
 ## 6. Writing your own
 
 - [ ] 6.1 `plugins/_example/`: a small MCP server with a domain descriptor, off by default. A CI leg installs it and
