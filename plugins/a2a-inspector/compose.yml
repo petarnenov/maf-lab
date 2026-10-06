@@ -1,0 +1,28 @@
+# The a2a-inspector plugin's only service (introduce-plugins 5.1), merged after the core's compose file by make.
+# It shares lb's network namespace: inside it `localhost` is the balancer, which also listens on 7171 there, so the
+# URLs used on the host — and the ones the agent cards advertise — work unchanged. Its port is published by lb in the
+# core's dev-only override.
+# Relative paths resolve against the project directory (compose/), as in every merged compose file.
+services:
+  a2a-inspector:
+    image: maf-lab-a2a-inspector
+    build:
+      context: https://github.com/a2aproject/a2a-inspector.git#8aa064639af106ff771d60428ef6d460f5454743
+    # lab_app wraps upstream's app unchanged: the card URL filled in and a fresh partner token from /lab/token.
+    command: ["uv", "run", "--", "uvicorn", "lab_app:app", "--app-dir", "/opt/lab", "--host", "0.0.0.0", "--port", "7172"]
+    environment:
+      LAB_A2A_CLIENT_ID: acme-portal
+      LAB_A2A_CLIENT_SECRET: ${A2A_PARTNER_SECRET:-acme-portal-dev-secret}
+      LAB_COMPLIANCE_CLIENT_ID: maf-lab-assistant
+      LAB_COMPLIANCE_CLIENT_SECRET: ${COMPLIANCE_CLIENT_SECRET:-assistant-dev-secret}
+    volumes:
+      - ../plugins/a2a-inspector/files:/opt/lab:ro
+    network_mode: "service:lb"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7172/', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    depends_on:
+      lb:
+        condition: service_healthy

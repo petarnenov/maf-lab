@@ -29,7 +29,7 @@ While running, `/health` returns 503 for as long as the store cannot be reached,
 replica; it serves again when the store answers, without a restart.
 
 To look at what is in the store — keys, their TTLs, the JSON in them, live commands — open Redis Insight on
-http://localhost:7174, which `make` starts already connected to it.
+http://localhost:7174 — the redis-insight plugin (dev and qa), already connected to it.
 
 ## Configuration
 

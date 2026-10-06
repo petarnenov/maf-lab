@@ -1,0 +1,12 @@
+schema = 1
+name = "a2a-inspector"
+kind = "infra"
+scope = "installation"
+environments = ["dev", "qa"]
+description = "The A2A Inspector (a2aproject), opened on the lab's agent cards with a fresh partner token: a dev and qa tool."
+progress = "None — no work of its own; make plugin-on's progress bar covers its build, start and health check"
+stopping = "None — make plugin-off or make down stops its container (SIGTERM); it owns no long work"
+
+[topology]
+url = "http://lb:7172/"
+label = "A2A Inspector"

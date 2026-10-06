@@ -30,8 +30,16 @@ endif
 # resolves the set; `make up` writes it to plugins/.installed and regenerates compose/lb/conf.d from it.
 MAF_ENV       ?= dev
 MAF_PLUGINS   ?=
+ifeq ($(CI_MODE),1)
+# CI's plugin set, a positive list kept here only (introduce-plugins 5.1): CI_MODE means no downloads and no secrets,
+# so the developer tools stay out (a2a-inspector even builds from a git context). Each plugin extracted from the core
+# adds itself here in the same commit; `none` until then.
+CI_PLUGINS    ?= none
+MAF_PLUGINS   := $(CI_PLUGINS)
+endif
 export MAF_ENV MAF_PLUGINS
-PLUGINS_PY    := python3 $(ROOT)/scripts/plugins.py
+# The set passed explicitly: make 3.81's $(shell) does not see the variables make exports.
+PLUGINS_PY     = MAF_ENV='$(MAF_ENV)' MAF_PLUGINS='$(MAF_PLUGINS)' python3 $(ROOT)/scripts/plugins.py
 # The image variant (introduce-plugins decision 5e): full for dev, product (no dev-or-qa-only plugin code) for qa, stage
 # and prod, so stage and prod promote exactly the image qa tested. qa may run full beside it with MAF_IMAGE_VARIANT=full.
 MAF_IMAGE_VARIANT ?= $(if $(filter qa stage prod,$(MAF_ENV)),product,full)
@@ -44,12 +52,9 @@ COMPOSE_BASE  := $(ROOT)/compose/docker-compose.yml
 ifeq ($(CI_MODE),1)
 COMPOSE_FILES := $(COMPOSE_BASE) $(ROOT)/compose/docker-compose.ci.yml $(PLUGIN_COMPOSE_FILES)
 else
-# The dev-only override: the inspectors' ports, published by lb (whose network they share). Never loaded in CI, and
-# never in stage or prod, which run without it.
+# The dev-only override: the inspector plugins' ports, published by lb (whose network they share). Never loaded in CI,
+# and never in stage or prod, which run without it.
 COMPOSE_FILES := $(COMPOSE_BASE) $(ROOT)/compose/docker-compose.dev.yml $(PLUGIN_COMPOSE_FILES)
-# The A2A, MCP and Redis inspectors run with the dev stack, never in CI. Exported, so the scripts' own compose calls
-# address the same set of services.
-export COMPOSE_PROFILES := inspectors
 endif
 empty :=
 space := $(empty) $(empty)
@@ -118,7 +123,7 @@ INDEXER_SRC  := $(shell find src/Maf.Lab.Indexing src/Maf.Lab.Retrieval src/Maf.
                 Directory.Build.props Directory.Packages.props global.json
 INDEXER      := $(DOTNET) $(INDEXER_DLL)
 
-.PHONY: all help up core plugins plugin-on plugin-off product-check down restart ps logs clean infra index index-portfolio index-code graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
+.PHONY: all help up core plugins plugin-on plugin-off product-check down restart ps logs print-compose-file clean infra index index-portfolio index-code graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
         coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-answer-check eval-code-route eval-graph-depth eval-retrieval-backends eval-a2a neo4j-chunks dev doctor banner index-if-empty \
         specs docs docs-check lint-dotnet lint-web build-web ci ci-e2e setup \
         require-docker require-dotnet require-npm require-python
@@ -175,6 +180,10 @@ ps: require-docker ## Show services, state and health
 logs: require-docker ## Follow logs (SERVICE=api to narrow)
 	$(COMPOSE) logs -f --tail 100 $(SERVICE)
 
+# The compose files make loads (core, override, installed plugins'), for a caller outside make: CI's diagnostics.
+print-compose-file:
+	@echo "$(COMPOSE_FILE)"
+
 clean: require-docker ## Remove the stack WITH volumes (index, conversations) and build outputs; asks unless FORCE=1
 	@if [ "$(FORCE)" != "1" ]; then \
 	  read -r -p "This deletes the Qdrant index, conversations and build outputs. Type 'yes' to continue: " answer; \
@@ -186,7 +195,7 @@ clean: require-docker ## Remove the stack WITH volumes (index, conversations) an
 banner:
 	@echo ""
 	@echo "  maf-lab is up →  $(BASE_URL)   (make help · make verify · make logs · make down)"
-	@if [ "$(CI_MODE)" != "1" ]; then echo "  inspectors    →  A2A http://localhost:7172 · MCP http://localhost:7173 · Redis http://localhost:7174 · Neo4j http://localhost:7175"; fi
+	@echo "  plugins       →  make plugins (each one's links are in the web UI's navigation)"
 	@echo ""
 
 # ── data ─────────────────────────────────────────────────────────────────────────────────────────────────────────

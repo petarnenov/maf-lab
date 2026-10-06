@@ -1,0 +1,25 @@
+# The mcp-inspector plugin's only service (introduce-plugins 5.1), merged after the core's compose file by make.
+# It shares lb's network namespace: inside it `localhost` is the balancer, which also listens on 7171 there, so the
+# URLs used on the host — and the ones the agent cards advertise — work unchanged. Its port is published by lb in the
+# core's dev-only override.
+# Relative paths resolve against the project directory (compose/), as in every merged compose file.
+services:
+  mcp-inspector:
+    image: ghcr.io/modelcontextprotocol/inspector:2.9.0
+    # The catalog and its token stay in the container, never in a plaintext secrets.json on disk. start.mjs lists the
+    # lab's MCP servers — the built-in domains' and every installed MCP plugin's, read from plugins/.installed every
+    # 30 s — with a dev user's token (refreshed hourly), then starts the Inspector.
+    entrypoint: ["node", "/opt/lab/start.mjs"]
+    command: []
+    environment:
+      CLIENT_PORT: "7173"
+      LAB_USER_ID: adam
+      LAB_TENANT_ID: firm-a
+      LAB_ROLE: USER
+    volumes:
+      - ../plugins/mcp-inspector/files:/opt/lab:ro
+      - ../plugins:/plugins:ro
+    network_mode: "service:lb"
+    depends_on:
+      lb:
+        condition: service_healthy

@@ -1,0 +1,12 @@
+schema = 1
+name = "redis-insight"
+kind = "infra"
+scope = "installation"
+environments = ["dev", "qa"]
+description = "Redis Insight on the lab's Redis (run state, stops, shared stores), loopback only: a dev and qa tool."
+progress = "None — no work of its own; make plugin-on's progress bar covers its build, start and health check"
+stopping = "None — make plugin-off or make down stops its container (SIGTERM); it owns no long work"
+
+[topology]
+url = "http://redis-insight:7174/api/health"
+label = "Redis Insight"

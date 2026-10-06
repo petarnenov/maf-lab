@@ -3224,3 +3224,16 @@ implementation" (parts A and B) holds each choice in full.
     the chat page says so up front and disables the composer.
   - Deferred to the billing follow-up: domain-generic Jev text (guard, intent options, answer check) with re-measured
     thresholds, and the domain-specific core web labels and cards.
+- **Part C (proof extractions, task 5).**
+  - The four inspectors are plugins (dev and qa): `a2a-inspector`, `mcp-inspector`, `redis-insight`,
+    `neo4j-browser`. Their lab files moved from `compose/<inspector>/` into each plugin's `files/` folder; §68's pins
+    (the a2a-inspector git context, the image tags) are unchanged. The `inspectors` compose profile is retired; CI's
+    set is a positive list, `CI_PLUGINS` in the Makefile, to which each extraction adds itself. Rejected: keeping the
+    profile (a plugin installed but never started), and CI running `MAF_ENV=qa` (it would switch CI to the product
+    image).
+  - A plugin's compose file resolves relative paths against the project directory (`compose/`), as Compose does for
+    every merged file.
+  - The MCP Inspector lists the built-in domains' servers (a transitional constant the follow-ups shrink) and every
+    installed MCP plugin's, from `plugins/.installed`, re-read every 30 s. Rejected: asking the api for the list (a token
+    at start-up, and server URLs on `/api/plugins`).
+

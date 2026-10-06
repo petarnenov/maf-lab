@@ -107,9 +107,11 @@ jobs:
         run: |
           mkdir -p e2e-logs
           # make ci-e2e runs as its own compose project and leaves it running when it fails.
+          # The same compose files make loaded, so the installed plugins' services show up too.
           export MAF_LAB_REPO="$PWD/.cache/e2e-repo"
-          docker compose -p maf-lab-e2e -f compose/docker-compose.yml -f compose/docker-compose.ci.yml ps -a > e2e-logs/ps.txt 2>&1 || true
-          docker compose -p maf-lab-e2e -f compose/docker-compose.yml -f compose/docker-compose.ci.yml logs --no-color > e2e-logs/compose.log 2>&1 || true
+          export COMPOSE_FILE="$(make -s print-compose-file CI_MODE=1)"
+          docker compose -p maf-lab-e2e ps -a > e2e-logs/ps.txt 2>&1 || true
+          docker compose -p maf-lab-e2e logs --no-color > e2e-logs/compose.log 2>&1 || true
           cat e2e-logs/ps.txt
       - uses: actions/upload-artifact@v7
         if: failure()

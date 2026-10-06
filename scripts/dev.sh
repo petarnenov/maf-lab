@@ -17,7 +17,15 @@ export Neo4j__Uri="${Neo4j__Uri:-bolt://localhost:7687}"
 export Neo4j__Password="${Neo4j__Password:-${NEO4J_PASSWORD:-maf-lab-dev-graph}}"
 
 docker compose -f "$FILE" up -d qdrant neo4j ollama ollama-batch ollama-init ollama-warm
-docker compose -f "$FILE" stop a2a-inspector mcp-inspector lb api mcp-retrieval mcp-portfolio mcp-code web >/dev/null 2>&1 || true
+# Every plugin's services stop too, first among them those that share lb's network (the inspectors).
+plugin_files=(); plugin_services=()
+for dir in "$ROOT"/plugins/*/; do
+  [ -f "$dir/compose.yml" ] || continue
+  plugin_files+=(-f "$dir/compose.yml")
+  while read -r service; do plugin_services+=("$service"); done < <(python3 "$ROOT/scripts/plugins.py" services "$(basename "$dir")")
+done
+docker compose -f "$FILE" ${plugin_files[@]+"${plugin_files[@]}"} stop ${plugin_services[@]+"${plugin_services[@]}"} \
+  lb api mcp-retrieval mcp-portfolio mcp-code web >/dev/null 2>&1 || true
 
 pids=()
 kill_tree() { # dotnet run and npm start child processes: stop the whole tree

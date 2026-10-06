@@ -65,7 +65,7 @@ services:
 
   # The graph store: billing relationships (firms, households, accounts, runs, fee schedules, documents) and the
   # repository's code graph, built by `make graph`. Bolt is published on loopback only, for the host-side indexer; the
-  # Browser page is reached through the dev-only neo4j-browser.
+  # Browser page is reached through the neo4j-browser plugin (dev and qa).
   neo4j:
     image: neo4j:2026.09.0-community
     environment:
@@ -493,7 +493,7 @@ services:
     command: ["nginx", "-c", "/etc/nginx/lb/nginx.conf", "-g", "daemon off;"]
     ports:
       - "7171:80"
-      # The A2A and MCP inspectors' ports (they share this container's network) are published by the dev-only override,
+      # The A2A and MCP inspector plugins' ports (they share this container's network) are published by the dev-only override,
       # docker-compose.dev.yml, never in CI, stage or prod.
     volumes:
       # The directory, not the file: a single-file bind mount pins the file's inode, and a git checkout or merge
@@ -531,98 +531,6 @@ services:
         condition: service_started
       redis:
         condition: service_healthy
-      neo4j:
-        condition: service_healthy
-
-  # ── inspectors (profile `inspectors`: make enables it, CI_MODE=1 leaves it off) ─────────────────────────────────────
-  # The A2A and MCP inspectors call the lab from their own backend. Inside lb's network namespace `localhost` is the
-  # balancer, which also listens on 7171 there, so the URLs used on the host — and the ones the agent cards advertise —
-  # work unchanged, on macOS and Linux alike.
-  a2a-inspector:
-    profiles: ["inspectors"]
-    image: maf-lab-a2a-inspector
-    build:
-      context: https://github.com/a2aproject/a2a-inspector.git#8aa064639af106ff771d60428ef6d460f5454743
-    # lab_app wraps upstream's app unchanged: the card URL filled in and a fresh partner token from /lab/token.
-    command: ["uv", "run", "--", "uvicorn", "lab_app:app", "--app-dir", "/opt/lab", "--host", "0.0.0.0", "--port", "7172"]
-    environment:
-      LAB_A2A_CLIENT_ID: acme-portal
-      LAB_A2A_CLIENT_SECRET: ${A2A_PARTNER_SECRET:-acme-portal-dev-secret}
-      LAB_COMPLIANCE_CLIENT_ID: maf-lab-assistant
-      LAB_COMPLIANCE_CLIENT_SECRET: ${COMPLIANCE_CLIENT_SECRET:-assistant-dev-secret}
-    volumes:
-      - ./a2a-inspector:/opt/lab:ro
-    network_mode: "service:lb"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7172/', timeout=2)"]
-      interval: 10s
-      timeout: 3s
-      retries: 12
-    depends_on:
-      lb:
-        condition: service_healthy
-
-  mcp-inspector:
-    profiles: ["inspectors"]
-    image: ghcr.io/modelcontextprotocol/inspector:2.9.0
-    # No volume: the server list and any secrets stay in the container, never in a plaintext secrets.json on disk.
-    # start.mjs lists the lab's three MCP servers with a dev user's token (refreshed hourly), then starts the Inspector.
-    entrypoint: ["node", "/opt/lab/start.mjs"]
-    command: []
-    environment:
-      CLIENT_PORT: "7173"
-      LAB_USER_ID: adam
-      LAB_TENANT_ID: firm-a
-      LAB_ROLE: USER
-    volumes:
-      - ./mcp-inspector:/opt/lab:ro
-    network_mode: "service:lb"
-    depends_on:
-      lb:
-        condition: service_healthy
-
-  # Redis Insight reaches redis by service name; it has no login and can write, so it is published on loopback only.
-  redis-insight:
-    profiles: ["inspectors"]
-    image: redis/redisinsight:3.8.0
-    ports:
-      - "127.0.0.1:7174:7174"
-    environment:
-      RI_APP_PORT: "7174"
-      RI_REDIS_HOST: redis
-      RI_REDIS_PORT: "6379"
-      RI_REDIS_ALIAS: maf-lab
-      # Accepts the licence without a dialog; analytics and notifications then stay off.
-      RI_ACCEPT_TERMS_AND_CONDITIONS: "true"
-      RI_FILES_LOGGER: "false"
-    healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:7174/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
-      interval: 10s
-      timeout: 3s
-      retries: 12
-      start_period: 15s
-    depends_on:
-      redis:
-        condition: service_healthy
-
-  # Neo4j Browser is a page on 7474; it opens Bolt from the user's browser at localhost:7687. The page is forwarded on
-  # loopback only, and only with the inspectors profile.
-  neo4j-browser:
-    profiles: ["inspectors"]
-    image: alpine/socat:1.8.1.3
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - >-
-        exec socat TCP-LISTEN:7175,fork,reuseaddr TCP:neo4j:7474
-    ports:
-      - "127.0.0.1:7175:7175"
-    healthcheck:
-      test: ["CMD-SHELL", "nc -z 127.0.0.1 7175"]
-      interval: 10s
-      timeout: 3s
-      retries: 12
-      start_period: 5s
-    depends_on:
       neo4j:
         condition: service_healthy
 

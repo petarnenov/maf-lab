@@ -99,7 +99,7 @@ compliance run two replicas each, mcp-code and copilot-runtime one (`X-Instance`
 test-agent and coverage-runner run one each and have no route of their own: the api reaches them inside the compose
 network. The balancer also serves Jaeger at `/jaeger` and takes the browser's OTLP traces at `/v1/traces`. Besides
 7171, only Qdrant and the two Ollamas are published, Neo4j's Bolt port on `127.0.0.1:7687` for the host-side indexer,
-plus the [inspectors](#inspecting-a2a-mcp-and-redis) on `127.0.0.1` (7172–7175).
+plus the [developer tools](#developer-tools) on `127.0.0.1` (7172–7175) while their plugins are installed.
 
 The embedding model runs in **two Ollama instances**: `ollama` (11435) embeds search queries only, `ollama-batch`
 (11436) embeds documents — `make index*`, `rebuild-index`, `migrate` and index runs from `/admin/index`. A batch takes
@@ -250,7 +250,12 @@ allows, `none` means the core alone (`make core`), otherwise a comma-separated l
 [docs/plugins.md](docs/plugins.md).
 
 <!-- generated:plugins — edit plugins/<name>/plugin.toml, then run make docs -->
-No plugin is present yet: the repository holds only the core (`plugins/` has no `plugin.toml`).
+| Plugin | Kind | Scope | Environments | What it is |
+|---|---|---|---|---|
+| `a2a-inspector` | infra | installation | dev, qa | The A2A Inspector (a2aproject), opened on the lab's agent cards with a fresh partner token: a dev and qa tool. |
+| `mcp-inspector` | infra | installation | dev, qa | The MCP Inspector, listing the lab's MCP servers with a dev user's token: a dev and qa tool. |
+| `neo4j-browser` | infra | installation | dev, qa | Neo4j Browser on the graph store, forwarded on loopback: a dev and qa tool. |
+| `redis-insight` | infra | installation | dev, qa | Redis Insight on the lab's Redis (run state, stops, shared stores), loopback only: a dev and qa tool. |
 <!-- /generated:plugins -->
 
 ## Chat history
@@ -503,31 +508,12 @@ Click an earlier answer to reopen its stored trace (kept 7 days). Reviewers can 
 event format is in [`docs/trace-events.md`](docs/trace-events.md). Retrieval internals come from the MCP server in the
 tool result `_meta`, which the model never sees.
 
-## Inspecting A2A, MCP and Redis
+## Developer tools
 
-`make` also starts four inspectors, linked from the top of the web UI after "Curriculum". They run only on this
-machine (published on `127.0.0.1`), and not at all in CI (`CI_MODE=1`).
-
-Each opens ready to use — nothing to type:
-
-| Inspector | URL | What is already there |
-|---|---|---|
-| [A2A Inspector](https://github.com/a2aproject/a2a-inspector) | http://localhost:7172 | the assistant's card URL and a fresh partner token (`acme-portal`); press **Connect**. Change the URL to `http://localhost:7171/compliance/.well-known/agent-card.json` and the token switches to one for the compliance agent |
-| [MCP Inspector](https://github.com/modelcontextprotocol/inspector) | http://localhost:7173 | "maf-lab billing", "maf-lab portfolio" and "maf-lab code", each with a dev token for `adam` (ADVISOR, firm-a, set by `LAB_USER_ID`/`LAB_FIRM_ID`/`LAB_ROLE`); switch one on |
-| [Redis Insight](https://redis.io/insight/) | http://localhost:7174 | the `maf-lab` database |
-| [Neo4j Browser](https://neo4j.com/docs/browser/) | http://localhost:7175 | the graph store; connect to `bolt://localhost:7687` as `neo4j` with `NEO4J_PASSWORD` (dev default `maf-lab-dev-graph`) |
-
-The tokens are minted from the dev credentials in `compose/docker-compose.yml` — the A2A page asks for a new one each
-time it opens (`/lab/token`), the MCP catalog is rewritten with a new one every hour — and are never stored outside the
-containers. By hand: `POST /dev/token` for MCP, `POST /a2a/token` or `/compliance/a2a/token` for A2A; a token for one
-A2A audience is refused by the other.
-
-The A2A and MCP inspectors share the balancer's network, so `localhost:7171` means the lab inside them too — which is
-why the URL a card advertises works as is, on macOS and Linux alike. Redis Insight has no login and can change or
-delete keys: it is a window onto dev state, not a tool for anything you want to keep. The same goes for Neo4j Browser:
-it runs any Cypher you type, writes included, while the lab itself reads the graph only through its fixed,
-tenant-scoped queries. `make graph` rebuilds whatever you change. The MCP Inspector keeps the
-servers you add only until its container restarts.
+The inspectors — A2A Inspector, MCP Inspector, Redis Insight and Neo4j Browser — are plugins allowed in dev and qa
+only (listed in the plugins block above). Installed, each runs on this machine only (published on `127.0.0.1`), opens
+ready to use, and is linked from the web UI's navigation; CI's plugin set leaves them out. What each one opens with is
+in the README.md of its plugin folder.
 
 ## Local development (without the balancer)
 

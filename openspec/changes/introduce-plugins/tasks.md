@@ -158,7 +158,7 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
 
 ## 5. Proof extractions
 
-- [ ] 5.1 `a2a-inspector`, `mcp-inspector`, `redis-insight` and `neo4j-browser` (infra, dev/qa): one plugin each, with
+- [x] 5.1 `a2a-inspector`, `mcp-inspector`, `redis-insight` and `neo4j-browser` (infra, dev/qa): one plugin each, with
       its service and nav link. The mcp-inspector's server list comes from the installed manifests. Verify that
       `make core` runs none of them, that each `make plugin-on NAME=…` brings back only its own, and that
       `MAF_ENV=stage` refuses each.
@@ -167,7 +167,10 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
   - the code index and graph targets;
   - its `[domain]` table;
   - the code snippets pane and `/api/code/snippets`, with `sourceActions` for code sources;
-  - its tests (`CodeToolRoutingTests`, `CodebaseSearch*` and the others) into `plugins/code/tests/`.
+  - its tests (`CodeToolRoutingTests`, `CodebaseSearch*` and the others) into `plugins/code/tests/`;
+  - the `search_codebase` label and any code card or label from the core web into the plugin's web part;
+  - its line in plugins/mcp-inspector/files/start.mjs (the code plugin's server.json lists it instead);
+  - `code` added to `CI_PLUGINS`.
 
   Verify the scenarios "A remote plugin is switched off" and "A plugin is deleted".
 - [ ] 5.3 `monitor` (app):
@@ -218,9 +221,9 @@ Depends on `rename-firm-to-tenant`, which lands first. Followed by `introduce-pr
 
 - [ ] 8.1 Open proposals in this order:
   1. `billing` (with `qdrant` and `neo4j`); makes Jev's text domain-generic (design part B, decision 6) and re-measures
-     the guard, intent and answer-check suites; deletes the `Agent__Servers__billing__*` compose lines, which would
+     the guard, intent and answer-check suites; removes its line from plugins/mcp-inspector/files/start.mjs; deletes the `Agent__Servers__billing__*` compose lines, which would
      otherwise shadow its manifest's server
-  2. `portfolio`
+  2. `portfolio`; removes its line from plugins/mcp-inspector/files/start.mjs
   3. `compliance`; removes its `BuiltInDomains.LegacyCapabilities` entry
   4. `a2a`; removes its line from the core-names-no-domain allow-list
   5. `coverage`
