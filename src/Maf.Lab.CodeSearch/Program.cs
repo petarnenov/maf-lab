@@ -59,6 +59,7 @@ public partial class Program
             }
         });
 
+        builder.Services.AddInstanceHealth();
         var app = builder.Build();
         app.Services.GetRequiredService<Retrieval.Jev.JevCredential>();
         app.UseInstanceHeader();

@@ -408,8 +408,10 @@ def registered_routes(repo: Repo) -> tuple[dict[tuple[str, str], tuple[str, int]
                 findings.append(Finding(rel, i, "routes", "MapGroup result is not held in a `var`",
                                         "assign the group to a local variable so its prefix can be followed"))
                 continue
-            for m in re.finditer(r"(\w+)\.Map(Get|Post|Put|Patch|Delete|Methods|Fallback)\(\s*([^,)]*)", line):
+            for m in re.finditer(r"(\w+)\.Map(Get|Post|Put|Patch|Delete|Methods|Fallback|HealthChecks)\(\s*([^,)]*)", line):
                 receiver, verb, arg = m[1], m[2], m[3]
+                # ASP.NET Core's health checks endpoint answers GET (extract-topology-plugin D1).
+                verb = "Get" if verb == "HealthChecks" else verb
                 if verb in ("Methods", "Fallback"):
                     findings.append(Finding(rel, i, "routes", f"Map{verb} is not understood by the route check",
                                             "register with MapGet/MapPost/… or extend scripts/docs.py"))

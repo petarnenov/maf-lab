@@ -21,6 +21,8 @@ public sealed class InstalledPlugins(PluginCatalogue catalogue, IOptions<AgentOp
             : catalogue.McpServers().GetValueOrDefault(plugin)?.Endpoint;
     }
 
+    public IReadOnlyList<PluginManifest> Installed() => [.. catalogue.Current.Plugins.Select(p => p.Manifest)];
+
     public IReadOnlyList<PluginCorpus> Corpora()
     {
         var root = Path.GetFullPath(options.Value.Root);

@@ -3599,6 +3599,20 @@ No package version moves in this change.
     plugin is in use, over the first corpus offered. CI installs the plugin. `Progress` joins `@maf/shared`, and
     `AdminJob` is exported from `@maf/plugin-api` as the job seam's type. The curriculum's two index entries no longer
     link the screen.
+- **Part M (extract-topology, in progress).** The letter is the next free one when the move lands. Batch 1, the core's
+  preparation, landed alone.
+  - The shared state's health is an ASP.NET Core health check (`SharedStateHealth : IHealthCheck`, named and tagged
+    `shared-state`, with the answering replica's name in `Data["instance"]`). `/health` on every service is
+    `MapHealthChecks` with a response writer in the shape the balancer and the topology always read
+    (`{ status: "ok", instance }`, or `{ status: "degraded", instance, reason }` with 503), so there is one health
+    mechanism. A service without shared state registers the checks with `AddInstanceHealth()`. The core's topology probe
+    reads the shared state through `HealthCheckService` by its tag, as the plugin will. Rejected: a home-grown health
+    port in the abstractions (the framework has one), and the plugin asking each host's `/health` for the shared
+    store (redis is not visible per host, and `/health` folds it into one status).
+  - `IInstalledPlugins.Installed()` lists the installed plugins' manifests: operator-reviewed public data, as
+    `plugins/.installed` carries it, a default interface method like `Corpora()` so a stand-in's port compiles. The
+    probe reads the `[topology]` tables and the installed checks through it. Rejected: a narrower `TopologyNodes()`, a
+    topology-shaped hole in a generic port.
 
 ## 82. The stop-anything tests run on a fake clock (deterministic-stop-anything-tests, 2026-10-06)
 

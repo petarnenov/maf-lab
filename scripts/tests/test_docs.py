@@ -366,6 +366,11 @@ class RouteTests(DocsTestCase):
     def test_grouped_and_const_routes_are_documented(self):
         self.assertCheckPasses()
 
+    def test_a_health_checks_endpoint_is_a_get_route(self):
+        # MapHealthChecks answers GET (extract-topology-plugin D1): /health stays registered, and so stays exempt.
+        self.fx.edit("src/Maf.Lab.Api/Endpoints/ChatEndpoints.cs", 'app.MapGet("/health"', 'app.MapHealthChecks("/health"')
+        self.assertCheckPasses()
+
     def test_undocumented_route_fails_at_its_registration(self):
         self.fx.edit("src/Maf.Lab.Api/Endpoints/ChatEndpoints.cs", 'app.MapGet("/health"',
                      'api.MapDelete("/conversations/{id}", () => 1);\n        app.MapGet("/health"')

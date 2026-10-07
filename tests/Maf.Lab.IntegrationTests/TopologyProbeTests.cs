@@ -1,3 +1,4 @@
+using Maf.Lab.Hosting;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Topology;
 using Maf.Lab.Domain.Topology;
@@ -33,7 +34,9 @@ public class TopologyProbeTests(QdrantFixture qdrant)
             Options.Create(new Maf.Lab.Retrieval.Graph.GraphOptions { Uri = "bolt://127.0.0.1:1" }),
             new StubHttpClientFactory(),
             new MemoryCache(new MemoryCacheOptions()),
-            new Maf.Lab.Hosting.SharedStateHealth(new ServiceCollection().BuildServiceProvider()),
+            // No shared state registered: the probe reads health checks, and there are none to fail.
+            new ServiceCollection().AddLogging().AddInstanceHealth().Services.BuildServiceProvider()
+                .GetRequiredService<Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckService>(),
             TimeProvider.System,
             new NoServiceResolver(),
             NullLoggerFactory.Instance);

@@ -80,4 +80,57 @@ public class SharedStateTests
         Assert.Equal("half an answer", read!.Answer);
         Assert.Equal(RunOutcomes.Running, read.Outcome);
     }
+
+    [Fact]
+    public async Task The_shared_state_is_a_standard_health_check_naming_its_replica()
+    {
+        // ASP.NET Core Health Checks (extract-topology-plugin D1): anything in the process reads it by its tag.
+        var builder = Host.CreateApplicationBuilder();
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            [$"{SharedStateOptions.Section}:ConnectionString"] = "127.0.0.1:6399,connectTimeout=200,syncTimeout=200,abortConnect=false",
+        });
+        builder.AddSharedState();
+        using var host = builder.Build();
+
+        var report = await host.Services.GetRequiredService<Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckService>()
+            .CheckHealthAsync(c => c.Tags.Contains(SharedStateHealth.Tag), Ct);
+
+        var entry = Assert.Single(report.Entries);
+        Assert.Equal(SharedStateHealth.Name, entry.Key);
+        Assert.Equal(Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Unhealthy, entry.Value.Status);
+        Assert.Contains("unreachable", entry.Value.Description);
+        Assert.DoesNotContain("6399", entry.Value.Description);
+        Assert.Equal(InstanceIdentity.Name, entry.Value.Data[SharedStateHealth.InstanceKey]);
+    }
+
+    [Fact]
+    public async Task A_replica_that_cannot_reach_the_store_answers_health_in_the_shape_the_balancer_reads()
+    {
+        await using var server = new WebApplicationFactory<Maf.Lab.Retrieval.Program>()
+            .WithWebHostBuilder(b => b.UseSetting($"{SharedStateOptions.Section}:ConnectionString",
+                "127.0.0.1:6399,connectTimeout=200,syncTimeout=200,abortConnect=false"));
+
+        var response = await server.CreateClient().GetAsync("/health", Ct);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        var body = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct)).RootElement;
+        Assert.Equal(["status", "instance", "reason"], body.EnumerateObject().Select(p => p.Name));
+        Assert.Equal("degraded", body.GetProperty("status").GetString());
+        Assert.Equal(InstanceIdentity.Name, body.GetProperty("instance").GetString());
+        Assert.Contains("unreachable", body.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public async Task A_healthy_replica_answers_health_with_its_status_and_name_only()
+    {
+        await using var server = new WebApplicationFactory<Maf.Lab.Retrieval.Program>()
+            .WithWebHostBuilder(b => b.WithFakeSharedState());
+
+        var response = await server.CreateClient().GetAsync("/health", Ct);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("""{"status":"ok","instance":"__NAME__"}""".Replace("__NAME__", InstanceIdentity.Name),
+            await response.Content.ReadAsStringAsync(Ct));
+    }
 }

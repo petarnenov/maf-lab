@@ -71,6 +71,7 @@ public sealed class HostileReviewerFactory : IAsyncDisposable
         builder.Services.AddSingleton<A2AServer>();
         builder.Services.AddSingleton<IA2ARequestHandler, A2ARequestHandlerWithExtras>();
 
+        builder.Services.AddInstanceHealth();
         app = builder.Build();
         app.UseInstanceHeader();
         app.UseA2ASpecWire();

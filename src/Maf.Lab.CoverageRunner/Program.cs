@@ -37,6 +37,7 @@ public partial class Program
         builder.Services.AddSingleton<JobQueue>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<JobQueue>());
 
+        builder.Services.AddInstanceHealth();
         var app = builder.Build();
         app.UseInstanceHeader();
         app.UseAuthentication();

@@ -91,6 +91,13 @@ public interface IInstalledPlugins
     /// the manifests, as a stand-in's does not.
     /// </summary>
     IReadOnlyList<PluginCorpus> Corpora() => [];
+
+    /// <summary>
+    /// The installed plugins' manifests (extract-topology-plugin): operator-reviewed public data, as `plugins/.installed`
+    /// carries it; re-read as the installed set changes. None unless the implementation reads the set, as a stand-in's
+    /// does not.
+    /// </summary>
+    IReadOnlyList<PluginManifest> Installed() => [];
 }
 
 /// <summary>

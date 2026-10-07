@@ -7,6 +7,7 @@ using Maf.Lab.Domain.Topology;
 using Maf.Lab.Retrieval.Configuration;
 using Maf.Lab.Hosting;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using Qdrant.Client;
 
@@ -58,14 +59,18 @@ public sealed class TopologyProbe(
     IOptions<Maf.Lab.Retrieval.Graph.GraphOptions> graphOptions,
     IHttpClientFactory http,
     IMemoryCache cache,
-    Maf.Lab.Hosting.SharedStateHealth shared,
+    HealthCheckService health,
     TimeProvider time,
     IServiceResolver resolver,
     ILoggerFactory loggers,
     Plugins.PluginCatalogue? plugins = null,
+    Maf.Lab.Plugins.Abstractions.IInstalledPlugins? installed = null,
     DomainCatalogue? domains = null)
 {
     private const string CacheKey = "topology-report";
+
+    /// <summary>Whether a plugin is in the installed set; with no set to read (a probe built by hand), everything is.</summary>
+    private bool IsInstalled(string plugin) => installed is null || installed.IsInstalled(plugin);
 
     /// <summary>The infra plugin that runs the graph store, and the node that shows it.</summary>
     private const string GraphStorePlugin = "neo4j";
@@ -175,7 +180,7 @@ public sealed class TopologyProbe(
         var graph = GraphAsync(timeout, ct);
         var embeddings = EmbeddingsAsync(timeout, ct);
         // The telemetry stack is a plugin (extract-observability): without it there is nothing to probe, and that is not a fault.
-        var stack = plugins is null || plugins.Current.Contains(ObservabilityPlugin);
+        var stack = IsInstalled(ObservabilityPlugin);
         Task<TopologyNode> Telemetry(string id, string name, string url) => stack
             ? Http(id, name, url, timeout, ct)
             : Task.FromResult(new TopologyNode(id, name, NodeHealth.NotProbed, [],
@@ -188,9 +193,9 @@ public sealed class TopologyProbe(
 
         // Each installed plugin that names a topology address (introduce-plugins decision 3) is probed like any other
         // service and listed after the core's nodes; the drawn diagram holds only the core's.
-        var pluginNodes = (plugins?.Current.Plugins ?? [])
-            .Where(p => p.Manifest.Topology?.Url is { Length: > 0 } && !NodeIds.Contains(p.Name))
-            .Select(p => Http(p.Name, p.Manifest.Topology!.Label ?? p.Name, p.Manifest.Topology.Url, timeout, ct))
+        var pluginNodes = (installed?.Installed() ?? [])
+            .Where(m => m.Topology?.Url is { Length: > 0 } && !NodeIds.Contains(m.Name))
+            .Select(m => Http(m.Name, m.Topology!.Label ?? m.Name, m.Topology.Url, timeout, ct))
             .ToList();
 
         var probed = await Task.WhenAll(lb, web, api, mcp, portfolio, code, compliance, agentNode, runnerNode, store, graph, embeddings, collector,
@@ -208,10 +213,12 @@ public sealed class TopologyProbe(
     private async Task<TopologyNode> SharedStateAsync(CancellationToken ct)
     {
         var facts = new Dictionary<string, string> { ["role"] = "shared state" };
-        var (ok, reason) = await shared.CheckAsync(ct);
-        return ok
+        // The shared state's health check (ASP.NET Core Health Checks), by its tag: the same answer /health gives.
+        var report = await health.CheckHealthAsync(c => c.Tags.Contains(Maf.Lab.Hosting.SharedStateHealth.Tag), ct);
+        var entry = report.Entries.Values.FirstOrDefault();
+        return report.Status == HealthStatus.Healthy
             ? new TopologyNode("redis", "redis", NodeHealth.Healthy, [], facts, null)
-            : new TopologyNode("redis", "redis", NodeHealth.Unreachable, [], facts, reason);
+            : new TopologyNode("redis", "redis", NodeHealth.Unreachable, [], facts, entry.Description);
     }
 
     /// <summary>The paid remote chat endpoint is deliberately not contacted; configuration is the whole answer.</summary>
@@ -393,7 +400,7 @@ public sealed class TopologyProbe(
     {
         var facts = new Dictionary<string, string> { ["collection"] = qdrant.Value.Collection, ["host"] = $"{qdrant.Value.Host}:{qdrant.Value.GrpcPort}" };
         // The vector store is a plugin (extract-portfolio): without it there is nothing to probe, and that is not a fault.
-        if (plugins is not null && !plugins.Current.Contains(VectorStorePlugin))
+        if (!IsInstalled(VectorStorePlugin))
         {
             facts["endpoint"] = "not installed";
             return new TopologyNode("qdrant", "qdrant", NodeHealth.NotProbed, [], facts, "the vector store is not installed");
@@ -428,7 +435,7 @@ public sealed class TopologyProbe(
         var o = graphOptions.Value;
         var facts = new Dictionary<string, string> { ["role"] = "graph store", ["host"] = o.Authority, ["database"] = o.Database };
         // The graph store is a plugin (extract-billing): without it there is nothing to probe, and that is not a fault.
-        if (plugins is not null && !plugins.Current.Contains(GraphStorePlugin))
+        if (!IsInstalled(GraphStorePlugin))
         {
             facts["endpoint"] = "not installed";
             return new TopologyNode("neo4j", "neo4j", NodeHealth.NotProbed, [], facts, "the graph store is not installed");

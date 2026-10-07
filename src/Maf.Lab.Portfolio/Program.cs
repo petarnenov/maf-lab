@@ -47,6 +47,7 @@ public partial class Program
             .WithTools<PortfolioSearchTool>()
             .WithTools<HouseholdTools>();
 
+        builder.Services.AddInstanceHealth();
         var app = builder.Build();
         app.Services.GetRequiredService<Retrieval.Jev.JevCredential>();
         app.UseInstanceHeader();

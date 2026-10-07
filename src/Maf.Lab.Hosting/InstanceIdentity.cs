@@ -1,3 +1,6 @@
+using System.Text.Json;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Maf.Lab.Hosting;
@@ -31,23 +34,42 @@ public static class InstanceIdentity
         });
 
     /// <summary>
+    /// The health checks this process reports (ASP.NET Core Health Checks). Every service that maps
+    /// <see cref="MapInstanceHealth"/> registers them; the shared state adds its own check (<see cref="SharedStateHealth"/>).
+    /// </summary>
+    public static IHealthChecksBuilder AddInstanceHealth(this IServiceCollection services) => services.AddHealthChecks();
+
+    /// <summary>
     /// Health is what this replica can actually serve. A replica that cannot reach the shared state answers some
-    /// requests correctly and loses others, so it says it is not healthy and the balancer routes around it.
+    /// requests correctly and loses others, so it says it is not healthy and the balancer routes around it. Mapped on
+    /// ASP.NET Core's health checks, in the shape the balancer and the topology have always read:
+    /// <c>{ status: "ok", instance }</c>, or <c>{ status: "degraded", instance, reason }</c> with 503.
     /// </summary>
     public static IEndpointRouteBuilder MapInstanceHealth(this IEndpointRouteBuilder app)
     {
-        // Resolved from the request rather than taken as a parameter, which a minimal API would read as a body.
-        app.MapGet("/health", async (HttpContext http, CancellationToken ct) =>
+        app.MapHealthChecks("/health", new HealthCheckOptions
         {
-            if (http.RequestServices.GetService<SharedStateHealth>() is not { } shared)
+            ResultStatusCodes =
             {
-                return Results.Ok(new { status = "ok", instance = Name });
-            }
-            var (ok, reason) = await shared.CheckAsync(ct);
-            return ok
-                ? Results.Ok(new { status = "ok", instance = Name })
-                : Results.Json(new { status = "degraded", instance = Name, reason }, statusCode: 503);
+                [HealthStatus.Healthy] = StatusCodes.Status200OK,
+                [HealthStatus.Degraded] = StatusCodes.Status503ServiceUnavailable,
+                [HealthStatus.Unhealthy] = StatusCodes.Status503ServiceUnavailable,
+            },
+            ResponseWriter = WriteAsync,
         }).AllowAnonymous();
         return app;
+    }
+
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    private static Task WriteAsync(HttpContext http, HealthReport report)
+    {
+        http.Response.ContentType = "application/json; charset=utf-8";
+        if (report.Status == HealthStatus.Healthy)
+        {
+            return http.Response.WriteAsync(JsonSerializer.Serialize(new { status = "ok", instance = Name }, Json));
+        }
+        var reason = report.Entries.Values.Where(e => e.Status != HealthStatus.Healthy).Select(e => e.Description).FirstOrDefault(d => d is not null);
+        return http.Response.WriteAsync(JsonSerializer.Serialize(new { status = "degraded", instance = Name, reason }, Json));
     }
 }

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Maf.Lab.Domain.SharedState;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -51,8 +52,10 @@ public static class SharedState
         builder.Services.Configure<SharedStateOptions>(
             builder.Configuration.GetSection(SharedStateOptions.Section));
         // Always registered, so anything that reports health can ask. It answers for a service that keeps
-        // nothing shared as well as for one that does.
+        // nothing shared as well as for one that does. It is an ASP.NET Core health check, so /health and anything
+        // else in the process read it the one standard way (HealthCheckService).
         builder.Services.AddSingleton<SharedStateHealth>();
+        builder.Services.AddInstanceHealth().AddCheck<SharedStateHealth>(SharedStateHealth.Name, tags: [SharedStateHealth.Tag]);
 
         var address = AddressOf(builder.Configuration);
         if (address is null)
@@ -125,8 +128,22 @@ internal sealed class SharedStateRequirement<T>(IServiceProvider services) : IHo
 /// Whether this replica can see the shared store. The balancer routes around a replica that says it cannot, and
 /// the same replica says it can again once the store answers — without being restarted.
 /// </summary>
-public sealed class SharedStateHealth(IServiceProvider services)
+public sealed class SharedStateHealth(IServiceProvider services) : IHealthCheck
 {
+    /// <summary>The check's name and its tag: what a reader of <see cref="HealthCheckService"/> filters on.</summary>
+    public const string Name = "shared-state";
+    public const string Tag = "shared-state";
+
+    /// <summary>The <see cref="HealthCheckResult.Data"/> key naming the replica that answered.</summary>
+    public const string InstanceKey = "instance";
+
+    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+    {
+        var (ok, reason) = await CheckAsync(cancellationToken);
+        var data = new Dictionary<string, object> { [InstanceKey] = InstanceIdentity.Name };
+        return ok ? HealthCheckResult.Healthy(data: data) : HealthCheckResult.Unhealthy(reason, data: data);
+    }
+
     /// <summary>False only when there is a store to reach and it cannot be reached.</summary>
     public async Task<(bool Ok, string? Reason)> CheckAsync(CancellationToken ct)
     {
