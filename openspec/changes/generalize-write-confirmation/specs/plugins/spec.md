@@ -2,8 +2,8 @@
 
 ### Requirement: A plugin confirms its writes through the core's seam
 A plugin whose tool writes SHALL contribute a write-confirmation flow keyed by that tool's name, and MAY contribute a
-web renderer for that tool's summary. The flow SHALL reach the audit chain, the screening of text a person types, the
-turn's trace and a reviewer only through the core's ports in `Maf.Lab.Plugins.Abstractions`. The core SHALL NOT name a
+web renderer for that tool's summary. The flow SHALL own its summary's schema, and SHALL reach the audit chain, the screening of a reviewer's words,
+the turn's trace and a reviewer only through the core's ports in `Maf.Lab.Plugins.Abstractions`. The core SHALL NOT name a
 plugin's write, its summary's fields or its statuses.
 
 #### Scenario: A new plugin with a write

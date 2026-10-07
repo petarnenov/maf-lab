@@ -3,8 +3,8 @@
 ### Requirement: The fee adjustment is one write-confirmation flow
 Billing SHALL implement the core's write-confirmation seam for `propose_fee_adjustment`: its flow decides whether
 the reviewer must see a proposal first, asks for a justification when the reviewer wants one, and records the
-`fee.adjustment.*` steps, reaching the reviewer, the audit chain, the screening of a justification and the turn's
-trace only through the core's ports. The rules of this specification — the review threshold, at most two questions,
+`fee.adjustment.*` steps, reaching the reviewer, the audit chain, the screening of the reviewer's words and the
+turn's trace only through the core's ports. The rules of this specification — the review threshold, at most two questions,
 the verdict check, applied at most once, never below zero — SHALL hold exactly as before. The summary it puts to a
 person SHALL carry its fields under a schema whose titles name them.
 
@@ -14,7 +14,7 @@ person SHALL carry its fields under a schema whose titles name them.
 
 #### Scenario: A justification is input the flow asked for
 - **WHEN** the reviewer asks for the advisor's justification
-- **THEN** the proposal waits for input, the advisor's answer is screened before it reaches the reviewer, and the same review continues
+- **THEN** the model is told to ask it, the proposal waits for input, the advisor's answer reaches the flow as the next proposal of the same adjustment, and the same review continues
 
 ## MODIFIED Requirements
 

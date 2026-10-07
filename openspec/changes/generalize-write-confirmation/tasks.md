@@ -1,41 +1,45 @@
-## 1. The seam
+## Stage A (now, beside extract-billing)
 
-- [ ] 1.1 `Maf.Lab.Plugins.Abstractions`: `IContributesWriteConfirmation`, `IWriteConfirmationFlow`, `WriteFlowOutcome`,
-      `WriteProposal`, `WriteResolution`; the ports `IWriteAudit`, `IPromptScreening`, `IWriteTraceStep` (the reviewer port
-      is extract-billing part 3's).
-- [ ] 1.2 The core: adapters for the three ports (over `ToolAudit`, `Guardrail`, `TurnTrace`) and a flow registry
-      built from the installed plugins, keyed by tool name.
+- [ ] A.1 `Maf.Lab.Plugins.Abstractions` (new files only): `IContributesWriteConfirmation`, `IWriteConfirmationFlow`,
+      `WriteFlowOutcome` (`AskPerson`, `AskInput`, `TellModel`), `WriteProposal` (with `OpenInputs`),
+      `WriteResolution`, `IStatesConfirmationFacts`, the ports `IWriteAudit`, `IConsultationScreening`,
+      `IWriteTraceStep`, and `WriteConfirmationKeys` (five keys).
+- [ ] A.2 `DatabaseInitializer`: a `RenamedTables` step (empty list) before the column renames. One `BEGIN IMMEDIATE`
+      per table; it drops the old table's `IX_*` indexes, runs `RENAME TO`, and tolerates the loser's "no such table".
+      A test renames a test table holding rows, with concurrent initializers.
+- [ ] A.3 Web, added beside today's code (nothing removed yet):
+      - `PendingWrite` in `web/src/api/types.ts`; the fee types stay until B.5;
+      - a display-only `WriteSummary` component that renders a `<dl>` from the schema's titles, in property order, with
+        `type`/`format` formatting;
+      - `MafWebPlugin.confirmations`;
+      - tests for each.
+      `ConfirmationCard` and its consumers switch to them in B.5, with the server.
+- [ ] A.4 Proof: one full parallel `dotnet test` run and `make test-web`; `openspec validate --strict --all`;
+      `make docs-check`; the warnings-as-errors build.
 
-## 2. The store
+## Stage B (after extract-billing is archived)
 
-- [ ] 2.1 `PendingAdjustments` → `PendingWrites`: rename in place, `awaiting_justification` → `awaiting_input`,
-      `ReviewTaskId`/`Questions` → `FlowJson`, by the mechanism the architect rules (open question 1).
-- [ ] 2.2 A test on a database holding old rows: they are kept and a waiting one is still answerable; two replicas
-      starting together migrate once.
-
-## 3. The core goes generic
-
-- [ ] 3.1 `ConfirmationSink`/`CapturedConfirmation` read `maf-lab/write-*` and carry the summary as `JsonElement`
-      with its schema.
-- [ ] 3.2 `ConfirmationService`, `ChatTurnRunner` (`TurnResult.Proposal` → `PendingWrite`, `ProposedAsync`), `RunRejoin`,
-      `HistoryEndpoints` (`/pending`), `ToolSource`, `Program`, `MessageRetentionService`, `AuditChain`: no fee type left.
-- [ ] 3.3 A write tool with no flow is refused and the model is told.
-- [ ] 3.4 An architecture test: no core project names `FeeAdjustment*` or `PendingAdjustment*`.
-
-## 4. Billing on the seam
-
-- [ ] 4.1 `FeeAdjustmentFlow` implements `IWriteConfirmationFlow` for `propose_fee_adjustment` through the ports;
-      billing contributes it. The fee rules' tests pass unchanged.
-- [ ] 4.2 Billing's server sends `maf-lab/write-*` and the summary's schema.
-
-## 5. Web, eval, docs
-
-- [ ] 5.1 `web/src/api/types.ts`: `PendingWrite`; `ConfirmationCard` renders by schema; `MafWebPlugin.confirmations`;
-      billing's renderer for `propose_fee_adjustment`.
-- [ ] 5.2 `EvalAgentHost` and `ConfirmationSuite` through the seam (`FactsToState`).
-- [ ] 5.3 `docs/http-api.md` (`/pending`), `docs/plugins.md`, DECISIONS.md section.
-
-## 6. Verify
-
-- [ ] 6.1 One full parallel `dotnet test --solution maf-lab.sln` run and `make test-web` (the user's one-run rule).
-- [ ] 6.2 `openspec validate --strict --all`, `make docs-check` and the warnings-as-errors build.
+- [ ] B.1 `MafDbContext` maps `PendingWrites` (`FlowJson`; `ReviewTaskId`/`Questions` unmapped). `RenamedTables`
+      gains `("PendingAdjustments", "PendingWrites")`, and `BackfillAsync` gains `awaiting_justification` →
+      `awaiting_input` and the `FlowJson` copy. A test on a database holding old rows: they are kept, and a waiting one
+      is still answerable.
+- [ ] B.2 The core goes generic: `ConfirmationSink` (`maf-lab/write-*`, summary as `JsonElement`),
+      `ConfirmationService` (`expired` on answer), `ChatTurnRunner` (`TurnResult.Proposal` → `PendingWrite`),
+      `RunRejoin` (expiry check, `expired`), `HistoryEndpoints` (`/pending`, schema looked up by tool),
+      `ToolSource` (`WriteConfirmationKeys`), `Program`, `MessageRetentionService`, `AuditChain`. Also the flow
+      registry, the ports' adapters, sibling resolution as a core rule, and a tool with no flow refused.
+- [ ] B.3 One pause builder (`PendingWrite` → `PersonQuestion`, without the state), used by the turn and by
+      `RunRejoin.QuestionAsync` through `TurnContents.Ask`.
+- [ ] B.4 Billing: `FeeAdjustmentFlow` on the seam through the ports. It owns `SummarySchema` and implements
+      `IStatesConfirmationFacts`. Its server sends the `WriteConfirmationKeys`. Its web renderer for
+      `propose_fee_adjustment`. The fee rules' tests pass unchanged.
+- [ ] B.5 Web consumers: `useChatStream.ts`, `chatReducer.ts` (`interruptToConfirmation`), `ConfirmationCard.test.tsx`
+      and `curriculum.ts` move to `PendingWrite`.
+- [ ] B.6 Eval: `EvalAgentHost` and `ConfirmationSuite` through the seam and `IStatesConfirmationFacts`.
+- [ ] B.7 Remove the six `CoreNamesNoDomainTests` entries marked "until the generalize-write-confirmation follow-up".
+- [ ] B.8 Docs:
+      - `docs/http-api.md`: the `/pending` shape, and the "state is deliberately absent" wording without fee terms;
+      - `docs/plugins.md`;
+      - DECISIONS: the next free section at landing, amending §17's rename sentence.
+- [ ] B.9 Proof: one full parallel `dotnet test` run and `make test-web`; `openspec validate --strict --all`;
+      `make docs-check`; the warnings-as-errors build.
