@@ -188,6 +188,7 @@ finally:
 # 4.4 admin jobs across replicas (the index-admin plugin's) -------------------------------------------
 # Over the first corpus an installed plugin declares; index-admin depends on the qdrant plugin, so a run reaches its
 # collection and succeeds.
+# No "fails without a vector store" branch: the check runs only with index-admin, which never runs without qdrant.
 alice = token("alice", "firm-a", "TENANT_ADMIN")
 corpora = []
 if plugin_in_use("index-admin"):
