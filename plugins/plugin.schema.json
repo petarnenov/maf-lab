@@ -47,7 +47,17 @@
         "search_any_intent": { "type": "boolean" },
         "tool_requires": { "type": "object", "additionalProperties": { "type": "string" } },
         "prompt": { "type": "string", "minLength": 1 },
-        "scope_summary": { "type": "object", "additionalProperties": { "type": "string" } }
+        "scope_summary": { "type": "object", "additionalProperties": { "type": "string" } },
+        "subject": { "type": "string", "minLength": 1 },
+        "intent": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "procedural": { "type": "string", "minLength": 1 },
+            "mixed": { "type": "string", "minLength": 1 },
+            "data": { "type": "string", "minLength": 1 }
+          }
+        }
       }
     },
     "agent": {

@@ -44,6 +44,13 @@ public sealed class FixtureBillingPlugin : IMafPlugin, IContributesDomainBehavio
             ["en"] = "your firm's billing (fees, fee schedules, billing runs, fee adjustments)",
             ["bg"] = "с таксуването на Вашата фирма (такси, тарифи, билинг цикли, корекции на такси)",
         },
+        Subject = "fee billing",
+        Intent = new DomainIntent
+        {
+            Procedural = "what a named fee schedule, failure code or rule means or charges",
+            Mixed = "one specific billing run identified by its run number, e.g. why run 4417 failed",
+            Data = "billing runs: a status, which runs failed, a list of runs",
+        },
     };
 
     public static PluginManifest Manifest() => new()

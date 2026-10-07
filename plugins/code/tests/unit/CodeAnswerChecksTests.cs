@@ -228,8 +228,8 @@ public class CodeAnswerChecksTests : IDisposable
     public void Both_content_batteries_ask_the_same_questions_and_carry_no_screened_text()
     {
         static string Snapshot(string name) => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "Jev", name));
-        // The billing battery is byte-identical to the one measured in DECISIONS §34/§35.
-        Assert.Equal(Snapshot("guard-content-billing.json"), JsonSerializer.Serialize(JevGuardQuestions.Content, JevRequest.Json));
+        // The documents battery as measured by extract-billing (DECISIONS §81 part F).
+        Assert.Equal(Snapshot("guard-content-documents.json"), JsonSerializer.Serialize(JevGuardQuestions.Content, JevRequest.Json));
         Assert.Equal(Snapshot("guard-content-codebase.json"), JsonSerializer.Serialize(JevGuardQuestions.CodeContent, JevRequest.Json));
         Assert.Equal(JevGuardQuestions.Content.Keys, JevGuardQuestions.CodeContent.Keys);
         Assert.Same(JevGuardQuestions.CodeContent, JevGuardQuestions.ContentFor(CodeTools.Search));
@@ -392,7 +392,7 @@ public class CodeAnswerChecksTests : IDisposable
         var bodies = jev.Requests.Select(r => JsonNode.Parse(r.Body)!).ToList();
         static string Snapshot(string name) => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "Jev", name));
         Assert.Equal(Snapshot("answer-check-codebase.json"), bodies[0]["questions"]!.ToJsonString(JevRequest.Json));
-        Assert.Equal(Snapshot("answer-check-billing.json"), bodies[1]["questions"]!.ToJsonString(JevRequest.Json));
+        Assert.Equal(Snapshot("answer-check-documents.json"), bodies[1]["questions"]!.ToJsonString(JevRequest.Json));
         foreach (var body in bodies)
         {
             var questions = body["questions"]!.ToJsonString();

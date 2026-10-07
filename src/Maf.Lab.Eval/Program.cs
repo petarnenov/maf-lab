@@ -179,9 +179,9 @@ public static class Program
                 "generation" => await RunGenerationAsync(host, options, root, runId, ctx, settings, ct),
                 "injection" => await new InjectionSuite(host).RunAsync(ctx, ct),
                 "confirmation" => await new ConfirmationSuite(host).RunAsync(ctx, ct),
-                "intent" => await new IntentSuite(host).RunAsync(ctx, ct),
-                "guardrail" => await new GuardrailSuite(host.Services).RunAsync(ctx, ct),
-                "answer-check" => await new AnswerCheckSuite(host.Services).RunAsync(ctx, ct),
+                "intent" => await Metered(() => new IntentSuite(host).RunAsync(ctx, ct)),
+                "guardrail" => await Metered(() => new GuardrailSuite(host.Services).RunAsync(ctx, ct)),
+                "answer-check" => await Metered(() => new AnswerCheckSuite(host.Services).RunAsync(ctx, ct)),
                 "generation-judge" => await RunGenerationJudgeAsync(host, options, root, runId, ctx, settings, ct),
                 "domain" => await new DomainSuite(host).RunAsync(ctx, ct),
                 "presentation" => await new PresentationSuite(host, host.Services.GetRequiredService<IChatClientFactory>()).RunAsync(ctx, ct),
@@ -190,6 +190,16 @@ public static class Program
                 GraphDepthSuite.Name => await RunGraphDepthAsync(host, configuration, options, ctx, flags, settings, ct),
                 _ => throw new ArgumentException($"Unknown suite '{name}'."),
             };
+            // The Jev input tokens a suite that calls the production classes was charged for (extract-billing).
+            async Task<IReadOnlyList<EvalVariantResult>> Metered(Func<Task<IReadOnlyList<EvalVariantResult>>> suite)
+            {
+                var meter = host.Services.GetRequiredService<JevUsageMeter>();
+                meter.Reset();
+                var result = await suite();
+                AddTokens(settings, meter.InputTokens);
+                return result;
+            }
+
             var comparisons = CompareWithBaseline(baseline, name, variants, options);
             var regressed = RegressionGate.HasRegression(comparisons);
             var runId = $"{stamp}-{name}";

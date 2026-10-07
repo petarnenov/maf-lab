@@ -16,6 +16,10 @@
   },
   "guard_context": "documents",
   "prompt": "prompt.md",
+  "subject": "investment portfolios",
+  "intent": {
+    "data": "an account's portfolio: what an account holds, its allocation, drift or AUM"
+  },
   "scope_summary": {
     "en": "portfolios (holdings, model portfolios, drift, rebalancing, quarter-end AUM)",
     "bg": "с портфейлите (позиции, моделни портфейли, отклонение, ребалансиране, AUM към края на тримесечието)"

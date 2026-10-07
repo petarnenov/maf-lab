@@ -145,10 +145,10 @@ public sealed class JevAnswerCheck(JevClient jev, IOptions<AnswerCheckOptions> o
     public const string GroundedId = "answer_grounded";
     public const string OverCap = "sources over cap";
 
-    // Billing wording stays until the billing follow-up makes it domain-generic and re-measures (introduce-plugins 8.1, design part B 6).
-    private const string Context =
-        "`user_question` is what a user asked an AI assistant that answers questions about fee billing and investment "
-        + "portfolios for the user's own firm. `previous_question` is what the user asked just before, in the same "
+    /// <summary>The check's context, naming the subjects of the domains in use (extract-billing), no domain itself.</summary>
+    internal static string Context(string? subjects) =>
+        $"`user_question` is what a user asked an AI assistant that answers questions{JevSubjects.About(subjects)} for the "
+        + "user's own organisation. `previous_question` is what the user asked just before, in the same "
         + "conversation (empty for the first question); `user_question` may follow up on it. `answer` is the assistant's reply. "
         + "`sources` is every document excerpt and record the assistant's tools returned this turn, and `previous_sources` "
         + "what they returned for `previous_question` — together, all it was given to answer from; either may be empty. "
@@ -177,16 +177,19 @@ public sealed class JevAnswerCheck(JevClient jev, IOptions<AnswerCheckOptions> o
     /// <summary>
     /// The guard's style (DECISIONS.md §35): context beside each question, and criteria whose "does not count" halves carry
     /// the boundary cases — Jev reads literally. An honest "I cannot answer that" addresses the question, and a greeting,
-    /// an offer of help or "I don't know" claims nothing that needs a source. Byte-identical since add-jev-answer-check:
-    /// the billing calibration (§42) rests on it.
+    /// an offer of help or "I don't know" claims nothing that needs a source. Its context names the subjects of the domains
+    /// in use; the calibration rests on the extract-billing run, which superseded §42's.
     /// </summary>
-    internal static readonly IReadOnlyDictionary<string, object> Questions = new Dictionary<string, object>
+    internal static IReadOnlyDictionary<string, object> Questions => QuestionsFor(JevSubjects.Current);
+
+    /// <summary>The two questions for the given subjects.</summary>
+    internal static IReadOnlyDictionary<string, object> QuestionsFor(string? subjects) => new Dictionary<string, object>
     {
         [RelevantId] = new JevCriteriaNoul(
-            new JevGuardInstructions(Context, RelevantQuestion),
+            new JevGuardInstructions(Context(subjects), RelevantQuestion),
             new JevNoulCriteria(RelevantYes, RelevantNo)),
         [GroundedId] = new JevCriteriaNoul(
-            new JevGuardInstructions(Context, GroundedQuestion),
+            new JevGuardInstructions(Context(subjects), GroundedQuestion),
             new JevNoulCriteria(
                 "Every fact, figure, name, code, date or step `answer` states appears in or follows from `sources` or `previous_sources`. An answer "
                 + "that states no such fact — a greeting, an offer of help, what the assistant can do, or that it does not know — counts as supported.",

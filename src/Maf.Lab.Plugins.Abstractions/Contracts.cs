@@ -150,6 +150,12 @@ public sealed record DomainDescriptor(
     public bool SearchAnyIntent { get; init; }
 
     /// <summary>A tool offered only while the named plugin (or capability) is in use: tool → its name.</summary>
+    /// <summary>What the domain is about, as a short noun phrase Jev's contexts name; null names nothing.</summary>
+    public string? Subject { get; init; }
+
+    /// <summary>The domain's clauses in the intent options; null adds none.</summary>
+    public DomainIntent? Intent { get; init; }
+
     public IReadOnlyDictionary<string, string> ToolRequires { get; init; } = new Dictionary<string, string>();
 
     /// <summary>The domain's part of the system prompt (Markdown with section markers), reviewed with the domain.</summary>

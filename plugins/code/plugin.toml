@@ -19,6 +19,8 @@ tools = ["search_codebase", "trace_code_symbol", "change_impact"]
 search_any_intent = true
 guard_context = "code"
 prompt = "prompt.md"
+# What Jev's contexts call the domain (extract-billing); code routes its own questions, so it adds no intent clause.
+subject = "this lab's own source code"
 
 [domain.scope_summary]
 en = "questions about this lab's own code"

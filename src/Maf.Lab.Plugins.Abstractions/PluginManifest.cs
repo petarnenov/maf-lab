@@ -71,6 +71,10 @@ public sealed record DomainTable
     [JsonPropertyName("prompt")] public string? Prompt { get; init; }
     /// <summary>The domain named for a user, by language, as the out-of-scope reply lists it.</summary>
     [JsonPropertyName("scope_summary")] public IReadOnlyDictionary<string, string> ScopeSummary { get; init; } = new Dictionary<string, string>();
+    /// <summary>What the domain is about, as a short noun phrase Jev's contexts name ("fee billing").</summary>
+    [JsonPropertyName("subject")] public string? Subject { get; init; }
+    /// <summary>The domain's clauses in the intent options; a domain without them adds nothing.</summary>
+    [JsonPropertyName("intent")] public DomainIntent? Intent { get; init; }
 
     /// <summary>The descriptor the core reads, with the prompt fragment's text when it was found.</summary>
     public DomainDescriptor ToDescriptor(string? promptFragment = null) =>
@@ -85,7 +89,23 @@ public sealed record DomainTable
             ToolRequires = ToolRequires,
             PromptFragment = promptFragment,
             ScopeSummary = ScopeSummary,
+            Subject = Subject,
+            Intent = Intent,
         };
+}
+
+/// <summary>
+/// A domain's clauses in the intent question's options (extract-billing): each a phrase the core joins after the
+/// option's own generic stem, so the option says what in this domain is asked that way.
+/// </summary>
+public sealed record DomainIntent
+{
+    /// <summary>What in the domain a documentation question names ("what a named fee schedule … means or charges").</summary>
+    [JsonPropertyName("procedural")] public string? Procedural { get; init; }
+    /// <summary>The one record a how-or-why question about live data is about ("one specific billing run …").</summary>
+    [JsonPropertyName("mixed")] public string? Mixed { get; init; }
+    /// <summary>The live data a data question asks for, then its examples after a colon ("billing runs: a status, …").</summary>
+    [JsonPropertyName("data")] public string? Data { get; init; }
 }
 
 /// <summary>An AG-UI agent a plugin serves: the runtime maps its name to this path (decision 3).</summary>

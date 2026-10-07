@@ -19,6 +19,8 @@ search_tool = "search_documents"
 graph_tools = ["trace_billing_relationships"]
 guard_context = "documents"
 prompt = "prompt.md"
+# What Jev's contexts call the domain, and its clauses in the intent options (extract-billing).
+subject = "fee billing"
 
 [domain.read_tools]
 get_billing_run_status = "Returns the current status of one billing run by its run id: status, billing period, account count and failure reason."
@@ -33,3 +35,8 @@ propose_fee_adjustment = "compliance"
 [domain.scope_summary]
 en = "your firm's billing (fees, fee schedules, billing runs, fee adjustments)"
 bg = "с таксуването на Вашата фирма (такси, тарифи, билинг цикли, корекции на такси)"
+
+[domain.intent]
+procedural = "what a named fee schedule, failure code or rule means or charges"
+mixed = "one specific billing run identified by its run number, e.g. why run 4417 failed"
+data = "billing runs: a status, which runs failed, a list of runs"

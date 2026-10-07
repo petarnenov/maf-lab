@@ -87,10 +87,16 @@ tools         = ["forecast"]            # the allow-list; the endpoint comes fro
 search_tool   = "forecast"              # called with {"query": question} on a procedural turn (forced retrieval)
 guard_context = "documents"             # the content guard's context for what the tools return
 prompt        = "prompt.md"             # the prompt fragment
+subject       = "the weather"           # what Jev's contexts call the domain, a short noun phrase
 
 [domain.scope_summary]                  # the domain as the out-of-scope reply names it, by language
 en = "questions about the weather"
 bg = "с въпроси за времето"
+
+[domain.intent]                         # optional: the domain's clauses in the intent options, each after a generic stem
+procedural = "what a named weather warning means"
+data       = "a region's forecast: today's, tomorrow's or the week's"
+# mixed    = "one specific …"            # how-or-why about one record; with no domain naming one, the option is left out
 
 [agent]                                 # an app plugin that serves an AG-UI agent
 name = "weather-agent"

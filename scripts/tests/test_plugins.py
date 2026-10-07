@@ -123,6 +123,14 @@ class ManifestTests(PluginsTestCase):
         walk(schema)
         self.assertEqual(sorted(used - plugins.KNOWN_KEYWORDS), [])
 
+    def test_a_domain_names_its_subject_and_its_intent_clauses(self):
+        # extract-billing: what Jev's contexts call the domain, and its clauses in the intent options; nothing else.
+        domain = '\n[domain]\nid = "x"\nsubject = "x things"\n\n[domain.intent]\nprocedural = "a"\nmixed = "b"\ndata = "c"\n'
+        self.add("x", manifest("x") + domain)
+        self.assertEqual([], plugins.discover()["x"].problems)
+        self.add("y", manifest("y") + domain.replace('x"', 'y"').replace('data = "c"', 'data = "c"\nchitchat = "d"'))
+        self.assertTrue(any("unknown key `chitchat`" in p for p in plugins.discover()["y"].problems), plugins.discover()["y"].problems)
+
     def test_a_provider_names_what_it_provides(self):
         self.add("jev", manifest("jev", kind="provider"))
         self.assertIn("/provides: a provider plugin names what it provides", plugins.discover()["jev"].problems)

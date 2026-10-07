@@ -151,6 +151,10 @@ public sealed class EvalAgentHost : IAsyncDisposable
         services.AddSingleton<TokenCounter>();
         services.AddSingleton<ToolAudit>();
         services.AddHttpClient("mcp");
+        // Jev's input tokens, read off each response for the suites that call it through the production classes.
+        services.AddSingleton<JevUsageMeter>();
+        services.AddTransient<JevUsageHandler>();
+        services.AddHttpClient(Maf.Lab.Retrieval.Jev.JevClient.HttpClientName).AddHttpMessageHandler<JevUsageHandler>();
         services.AddSingleton<IToolSource, McpToolSource>();
         services.AddSingleton<ConversationService>();
         services.AddJevIntentClassifier(configuration);
