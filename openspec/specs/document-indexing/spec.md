@@ -77,11 +77,12 @@ index.
 - **THEN** the index contains only chunks of the new version and no chunk of the old version
 
 ### Requirement: Drift reporting
-An admin endpoint and the indexer's `drift` command (`make drift`) SHALL report the percentage of documents whose
-source updated_at is newer than their indexed updated_at.
+The indexer's `drift` command (`make drift`) and, while the index-admin plugin is installed, its admin endpoint for a
+chosen corpus SHALL report the percentage of documents whose source updated_at is newer than their indexed updated_at.
 
-The same report SHALL carry a graph section that compares the billing graph with the same source documents, in the
-same tenant scope. The graph section SHALL list:
+The same report SHALL carry a graph section that compares the corpus's graph (the billing graph for billing's corpus)
+with the same source documents, in the same tenant scope; for a corpus with no graph source, the graph section SHALL
+say no graph is built for it. The graph section SHALL list:
 - the source documents that have no document node;
 - the document nodes built from content other than the source's current content, which includes nodes that do not
   record the content they were built from;
@@ -126,6 +127,10 @@ caller can read.
 #### Scenario: Another firm's documents
 - **WHEN** a firm A admin requests drift
 - **THEN** neither part names a firm B document id
+
+#### Scenario: A corpus without a graph
+- **WHEN** an admin requests drift for a corpus whose manifest names no graph source
+- **THEN** the index part is reported as usual and the graph section says no graph is built for the corpus
 
 ### Requirement: Restartable embedding-model migration
 A migration command SHALL add embeddings from a new model alongside the

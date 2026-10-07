@@ -42,7 +42,8 @@
       703/703 (93 files), docs-check in sync (57 routes), `openspec validate --all --strict` 67/67. Moved aside, after
       `make docs`: .NET 1848/1848, vitest 691/691 (90 files), docs-check in sync (50 routes), validate 67/67; the
       folder restored and `make docs` left the tree clean. No flake. 10b0461 after it only rewords two api comments so
-      they name no plugin.
+      they name no plugin. Rebased onto 33747d9 (compliance, insights and observability landed): test-dotnet 1893,
+      vitest 703, all passed.
 - [x] 3.2 `make ci-e2e` (every plugin) and `make ci-e2e-core` (the core alone) pass.
       Evidence (one run each, on 10b0461): `ci-e2e-core` passed — every service healthy, the no-domain turn declines
       without a tool, 8/8 AG-UI conformance checks. `ci-e2e` passed — 42 checks, none failed, among them "an installed

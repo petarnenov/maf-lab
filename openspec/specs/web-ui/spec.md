@@ -112,12 +112,12 @@ and the runs table SHALL scroll within itself, so neither makes the page scroll 
 - **THEN** the Trend card and its picker fit inside the viewport and only the runs table scrolls sideways
 
 ### Requirement: Index administration screen
-The `/admin/index` screen SHALL let an admin trigger indexing, view drift
-percentage, view the distribution of model_version across chunks, and start
-the embedding migration. It SHALL be available only to TENANT_ADMIN.
+While the index-admin plugin is installed, the `/admin/index` screen SHALL let an admin choose a corpus among the
+installed plugins' corpora, trigger its indexing, view its drift percentage, view the distribution of model_version
+across its chunks, and start its embedding migration. It SHALL be available only to TENANT_ADMIN.
 
 The drift card SHALL also show the graph's drift in the page's theme: how many of the source documents are out of
-sync in the graph, or that the graph is unavailable.
+sync in the graph, that the graph is unavailable, or that no graph is built for the corpus.
 
 #### Scenario: Non-admin
 - **WHEN** a USER opens `/admin/index`
@@ -131,6 +131,10 @@ sync in the graph, or that the graph is unavailable.
 - **WHEN** an admin opens `/admin/index` while the graph store is down
 - **THEN** the drift card shows the index drift as before and reads "Graph: unavailable", with no error state for the
   card
+
+#### Scenario: Plugin not installed
+- **WHEN** the index-admin plugin is not installed
+- **THEN** there is no `/admin/index` screen and no link to it
 
 ### Requirement: Feedback review queue
 The `/admin/feedback` screen SHALL list turns flagged by production signals —
@@ -1407,9 +1411,10 @@ that a run has stopped.
 - **THEN** its turn shows "Esc to stop" beside the progress, and the hint is gone once the run has ended or stopped
 
 ### Requirement: Index administration can be stopped
-On the index administration screen, an index run or a migration in progress SHALL stop on Esc (stop-anything): the
-admin job is cancelled through its cancel route, the screen says "Stopping…" until the job reports canceled, then
-shows it canceled with how far it got. A drift report still loading SHALL be aborted by Esc or by leaving the screen.
+While the index-admin plugin is installed, on the index administration screen, an index run or a migration in progress
+SHALL stop on Esc (stop-anything): the admin job is cancelled through its cancel route, the screen says "Stopping…"
+until the job reports canceled, then shows it canceled with how far it got. A drift report still loading SHALL be
+aborted by Esc or by leaving the screen.
 
 #### Scenario: Stopping an index run
 - **WHEN** an administrator runs indexing and presses Esc while documents are being indexed
