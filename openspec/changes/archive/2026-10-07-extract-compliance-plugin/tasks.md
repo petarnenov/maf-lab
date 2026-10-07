@@ -18,6 +18,10 @@
 
 ## 2. Verify
 
-- [ ] 2.1 `make test` with the folder present, with it moved aside, and with `plugins/billing` moved aside;
-      `make docs-check` and `openspec validate --strict`.
-- [ ] 2.2 `make ci-e2e` (every plugin).
+- [x] 2.1 `make test` with the folder present, with it moved aside, and with `plugins/billing` moved aside;
+      `make docs-check` and `openspec validate --strict`. On 4be647f (on 5d6dc91), under
+      `caffeinate -is`: present 1870/1871 (the one failure, `TestGenRunsApiTests` reading `verifying` before
+      `candidate`, passes alone here and on the tip); compliance aside 1799/1799 and web 690/690; billing aside
+      1732/1732 and web 697/697. docs-check in sync; validate --strict passes.
+- [x] 2.2 `make ci-e2e` on cdb768a (the CI set, with `compliance` added): exit 0. A2A conformance 10/10, including
+      c-10 reviewer-consultation; AG-UI 8/8. The run before the CI-set fix failed only c-10 (404: no reviewer).
