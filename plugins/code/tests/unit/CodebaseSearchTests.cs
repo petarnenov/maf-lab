@@ -572,7 +572,10 @@ public class CodebaseSearchTests : IDisposable
         await using var app = Maf.Lab.CodeSearch.Program.BuildApp(["--environment=Development", "--urls=http://127.0.0.1:0"], b =>
         {
             b.Configuration["Qdrant:GrpcPort"] = "1";
-            b.Configuration[JevCredential.EnvironmentVariable] = FakeJev.TestKey;
+            foreach (var (key, value) in TestProviders.FixtureEngineSettings)
+            {
+                b.Configuration[key] = value;
+            }
             b.Configuration[CodeSearchOptions.Section + ":" + nameof(CodeSearchOptions.GraphDepthPin)] = pin;
             b.Logging.SetMinimumLevel(LogLevel.Warning);
         });

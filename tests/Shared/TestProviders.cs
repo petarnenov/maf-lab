@@ -27,4 +27,11 @@ public static class TestProviders
     public static IWebHostBuilder UseFixtureEngine(this IWebHostBuilder builder) => builder
         .UseSetting("Plugins:Root", Root.Value)
         .UseSetting("Plugins:ExtraAssemblies:0", typeof(TestProviders).Assembly.GetName().Name);
+
+    /// <summary>The same, for a program a test builds itself: the settings to put in its configuration.</summary>
+    public static IReadOnlyDictionary<string, string?> FixtureEngineSettings => new Dictionary<string, string?>
+    {
+        ["Plugins:Root"] = Root.Value,
+        ["Plugins:ExtraAssemblies:0"] = typeof(TestProviders).Assembly.GetName().Name,
+    };
 }
