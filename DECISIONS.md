@@ -3508,6 +3508,8 @@ No package version moves in this change.
     reach no service until the next `make up`, and the collector would start receiving nothing. This is also the OTLP
     exporter's standard behaviour: it has a default and exports regardless. Without the plugin the exports go nowhere,
     quietly (self-diagnostics only, no retry, a bounded batch queue); `TELEMETRY_ENDPOINT=` switches them off.
+    Measured once on the core-only stack (`make ci-e2e-core`): `otlp|collector` appears in no log of its twelve
+    containers (api and compliance ×2, test-agent, coverage-runner, web, copilot-runtime, lb, redis, both Ollamas).
     Rejected: an empty default set by the plugin's `plugin.mk` (the switch does not take effect), and each service
     reading `plugins/.installed` (a `/plugins` mount in every service).
   - A turn's trace link is a port with a Null Object: `ITraceLink { string? UrlFor(string traceId) }` in the
@@ -3523,7 +3525,9 @@ No package version moves in this change.
     set) and calls the returned function when the plugin leaves the set or the provider unmounts. The browser's own
     tracing moved into the plugin's web part through it, and its deactivation unregisters the fetch instrumentation,
     shuts the provider down and disables the global tracer. The first `/api/plugins` request is therefore no longer
-    traced. Vite's `dedupe` lists the OpenTelemetry web packages, which stay pinned in `web/package.json`. Rejected:
+    traced. Vite's `resolve.dedupe` lists the seven OpenTelemetry web packages: it is Vite's documented way for code
+    outside the project root to resolve dependencies from the project. The core pins them in `web/package.json`, and
+    the list names packages, not a plugin. Rejected:
     an import-time side effect (every bundled plugin is imported, installed or not), and keeping browser tracing in the
     core gated on the installed set (the core would name the plugin).
   - The topology reports `otel-collector`, `prometheus` and `jaeger` as not installed (NotProbed, "the telemetry stack
