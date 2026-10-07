@@ -1,3 +1,4 @@
+using Maf.Lab.Plugins.Abstractions;
 using System.Net;
 using Maf.Lab.Api.A2A;
 using Maf.Lab.Api.Compliance;
@@ -58,7 +59,7 @@ public class ComplianceConsultantTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private static readonly FeeAdjustment Adjustment =
+    private static readonly ReviewRequest Adjustment =
         new("ADJ-77", "firm-a", "ACC-1042", 250m, "Overcharged in Q2 after a fee schedule change");
 
     /// <summary>The reviewer, listening on a real port — the consultant uses a real HttpClient to reach it.</summary>

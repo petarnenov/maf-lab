@@ -4,6 +4,8 @@ using ModelContextProtocol.Protocol;
 
 namespace Maf.Lab.Api.Agent;
 
+// names a domain until the generalize-write-confirmation follow-up moves it (introduce-plugins 8.1)
+// The fee-typed write confirmation, which has no seam yet (extract-billing part 3).
 /// <summary>A confirmation the server asked for and nobody has answered yet.</summary>
 public sealed record CapturedConfirmation(
     FeeAdjustmentSummary Adjustment,

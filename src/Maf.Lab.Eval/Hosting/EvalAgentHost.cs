@@ -160,6 +160,7 @@ public sealed class EvalAgentHost : IAsyncDisposable
         services.Configure<Maf.Lab.Api.A2A.ComplianceOptions>(configuration.GetSection("Compliance"));
         services.AddHttpClient("a2a-consult");
         services.AddSingleton<Maf.Lab.Api.A2A.ComplianceConsultant>();
+        services.AddSingleton<Maf.Lab.Plugins.Abstractions.IReviewerConsultation>(sp => sp.GetRequiredService<Maf.Lab.Api.A2A.ComplianceConsultant>());
         services.AddTransient<FeeAdjustmentFlow>();
         services.AddTransient<ChatTurnRunner>();
 

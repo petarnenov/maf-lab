@@ -1,3 +1,4 @@
+using Maf.Lab.Plugins.Abstractions;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Maf.Lab.Api.A2A;
@@ -13,6 +14,8 @@ using Microsoft.Extensions.Options;
 
 namespace Maf.Lab.Api.Agent;
 
+// names a domain until the generalize-write-confirmation follow-up moves it (introduce-plugins 8.1)
+// The fee-typed write confirmation, which has no seam yet (extract-billing part 3).
 public sealed class FeeAdjustmentOptions
 {
     /// <summary>Above this amount a compliance review is required before anyone is asked to confirm.</summary>
@@ -37,7 +40,7 @@ public abstract record FlowOutcome
 /// reviewer's five answers as itself, and records every step. It writes nothing — only the tool does that.
 /// </summary>
 public sealed class FeeAdjustmentFlow(
-    ComplianceConsultant consultant,
+    IReviewerConsultation consultant,
     Guardrail guardrail,
     ToolAudit audit,
     IDbContextFactory<MafDbContext> db,
@@ -85,7 +88,7 @@ public sealed class FeeAdjustmentFlow(
                 "Tell the advisor the review could not be completed.");
         }
 
-        var request = new FeeAdjustment(
+        var request = new ReviewRequest(
             open?.ReviewAdjustmentId ?? adjustment.AdjustmentId,
             principal.TenantId.Value,
             adjustment.AccountId,
@@ -289,7 +292,7 @@ public sealed class FeeAdjustmentFlow(
             await audit.RecordAsync(new AuditEntry(
                 principal, conversationId, turnId, action,
                 $"adjustmentId={adjustment.AdjustmentId} accountId={adjustment.AccountId} amount={adjustment.Amount}",
-                outcome, durationMs, AuditKinds.FeeAdjustment), ct);
+                outcome, durationMs, AuditKinds.ReviewRequest), ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

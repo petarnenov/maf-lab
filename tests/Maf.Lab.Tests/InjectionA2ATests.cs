@@ -1,3 +1,4 @@
+using Maf.Lab.Plugins.Abstractions;
 using System.Text.Json;
 using Maf.Lab.Api.A2A;
 using Maf.Lab.Api.Storage;
@@ -47,7 +48,7 @@ public class InjectionA2ATests
     [MemberData(nameof(Fixtures))]
     public void Each_verdict_is_treated_as_the_fixture_says(HostileVerdict row)
     {
-        var asked = new FeeAdjustment(row.AskedAdjustmentId, "firm-a", row.AskedAccountId, row.AskedAmount,
+        var asked = new ReviewRequest(row.AskedAdjustmentId, "firm-a", row.AskedAccountId, row.AskedAmount,
             row.Asked.GetProperty("reason").GetString()!);
 
         var result = ComplianceConsultant.Judge(row.Verdict, "task-1", asked);

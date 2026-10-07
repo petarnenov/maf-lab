@@ -28,11 +28,12 @@ code; it changes no behaviour, except where a line below says so.
   now keeps only the ones the corpus itself has, where it used to remove every chunk of the named tenants.
 - The documentation search's note on a query that is an identifier alone names no domain; billing's tool keeps its
   own wording. So a portfolio or codebase search for a bare number is no longer pointed at billing's run tools.
-- Fee adjustment moves with billing (§81, 5g): `BuiltIn/BillingBehaviour.cs`, `Agent/FeeAdjustmentFlow.cs`, and
-  `PendingAdjustments` as `IContributesModel`. `FeeAdjustmentFlow` calls `A2A/ComplianceConsultant`, an Api type, so
-  this change adds **one port** in `Maf.Lab.Plugins.Abstractions` for the reviewer consultation, implemented by the core
-  until extract-compliance-plugin: the one non-move. The generic write confirmation stays core:
-  `ConfirmationService`, `ChatTurnRunner`, `RunRejoin`, `HistoryEndpoints`.
+- Fee adjustment, in part (§81): `BuiltIn/BillingBehaviour.cs`, the tool and the ledger move with billing, and the
+  reviewer consultation becomes **one port** in `Maf.Lab.Plugins.Abstractions` (`IReviewerConsultation`), implemented
+  by the core's `A2A/ComplianceConsultant` until extract-compliance-plugin. The flow and the confirmation around it
+  (`FeeAdjustmentFlow`, `ConfirmationService`, `CapturedConfirmation`, `ChatTurnRunner`'s proposal, `RunRejoin`,
+  `HistoryEndpoints`, `PendingAdjustmentRow`) are fee-typed and have no seam. They stay in the core, allow-listed, until
+  generalize-write-confirmation, the change right after this one, gives the write confirmation a seam of its own.
 - `neo4j` becomes an infra plugin folder (installation, every environment), with `depends`: `neo4j-browser`, `code`
   and `billing` → `neo4j`. `qdrant` follows with extract-portfolio-plugin: the core's portfolio server still needs it
   here, and Compose refuses a core service that depends on a plugin's under `MAF_PLUGINS=none`. (`ollama-embeddings`

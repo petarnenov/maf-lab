@@ -11,6 +11,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Maf.Lab.Api.Endpoints;
 
+// names a domain until the generalize-write-confirmation follow-up moves it (introduce-plugins 8.1)
+// The fee-typed write confirmation, which has no seam yet (extract-billing part 3).
 /// <summary>
 /// A conversation reopened: the caller's own only (user and tenant must match); deleted ones are gone. The list, rename
 /// and delete are the conversation-history plugin's, over <see cref="Maf.Lab.Plugins.Abstractions.IConversationStore"/>.

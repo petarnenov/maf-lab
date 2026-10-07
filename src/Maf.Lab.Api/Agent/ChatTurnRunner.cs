@@ -23,6 +23,8 @@ using Microsoft.Extensions.Options;
 
 namespace Maf.Lab.Api.Agent;
 
+// names a domain until the generalize-write-confirmation follow-up moves it (introduce-plugins 8.1)
+// The fee-typed write confirmation, which has no seam yet (extract-billing part 3).
 public sealed record TurnResult(string ConversationId, string TurnId, Intent Intent, bool ForcedRetrieval, string Answer,
     IReadOnlyList<ToolCallRecord> ToolCalls, IReadOnlyList<SourceRef> Sources, IReadOnlyList<string> Signals, string? Error)
 {

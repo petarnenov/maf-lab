@@ -105,6 +105,7 @@ public partial class Program
         builder.Services.Configure<A2A.ComplianceOptions>(builder.Configuration.GetSection(A2A.ComplianceOptions.Section));
         builder.Services.AddHttpClient("a2a-consult");
         builder.Services.AddSingleton<A2A.ComplianceConsultant>();
+        builder.Services.AddSingleton<Maf.Lab.Plugins.Abstractions.IReviewerConsultation>(sp => sp.GetRequiredService<A2A.ComplianceConsultant>());
         builder.Services.AddHttpClient("a2a-push");
         builder.Services.AddSingleton<A2A.PushNotificationDispatcher>();
         builder.Services.AddSingleton<global::A2A.ITaskStore, A2A.SqliteTaskStore>();

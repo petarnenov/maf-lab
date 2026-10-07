@@ -1,3 +1,4 @@
+using Maf.Lab.Plugins.Abstractions;
 using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -26,7 +27,7 @@ public sealed class ComplianceConsultant(
     ToolAudit audit,
     IOptions<ComplianceOptions> options,
     TimeProvider time,
-    ILogger<ComplianceConsultant> logger)
+    ILogger<ComplianceConsultant> logger) : IReviewerConsultation
 {
     /// <summary>The audited action's name; the kind it is filed under is the sub-agent kind.</summary>
     public const string Operation = "a2a.consult";
@@ -42,14 +43,14 @@ public sealed class ComplianceConsultant(
     private DateTimeOffset cardFetchedAt;
 
     /// <summary>Starts a review and waits for it, within the deadline.</summary>
-    public Task<ConsultationResult> ReviewAsync(FeeAdjustment adjustment, CancellationToken ct) =>
+    public Task<ConsultationResult> ReviewAsync(ReviewRequest adjustment, CancellationToken ct) =>
         ConsultAsync(adjustment, taskId: null, ct);
 
     /// <summary>Answers a reviewer's question, continuing the review it belongs to.</summary>
-    public Task<ConsultationResult> AnswerAsync(FeeAdjustment adjustment, string taskId, string justification, CancellationToken ct) =>
+    public Task<ConsultationResult> AnswerAsync(ReviewRequest adjustment, string taskId, string justification, CancellationToken ct) =>
         ConsultAsync(adjustment with { Reason = justification }, taskId, ct);
 
-    private async Task<ConsultationResult> ConsultAsync(FeeAdjustment adjustment, string? taskId, CancellationToken ct)
+    private async Task<ConsultationResult> ConsultAsync(ReviewRequest adjustment, string? taskId, CancellationToken ct)
     {
         var watch = Stopwatch.StartNew();
         var result = await RunAsync(adjustment, taskId, ct);
@@ -57,7 +58,7 @@ public sealed class ComplianceConsultant(
         return result;
     }
 
-    private async Task<ConsultationResult> RunAsync(FeeAdjustment adjustment, string? taskId, CancellationToken ct)
+    private async Task<ConsultationResult> RunAsync(ReviewRequest adjustment, string? taskId, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(options.Value.BaseUrl))
         {
@@ -128,7 +129,7 @@ public sealed class ComplianceConsultant(
     /// Cancels the review over there, within <see cref="CancelWithin"/> of its own — the run's token is already
     /// cancelled. A cancel that fails is recorded and goes no further: the run is ending either way.
     /// </summary>
-    private async Task CancelAsync(IA2AClient remote, FeeAdjustment adjustment, string taskId)
+    private async Task CancelAsync(IA2AClient remote, ReviewRequest adjustment, string taskId)
     {
         var watch = Stopwatch.StartNew();
         var outcome = "cancelled";
@@ -212,7 +213,7 @@ public sealed class ComplianceConsultant(
         return (await response.Content.ReadFromJsonAsync<A2AEndpoints.TokenResponse>(ct))!.AccessToken;
     }
 
-    private static Message Ask(FeeAdjustment adjustment, string? taskId) => new()
+    private static Message Ask(ReviewRequest adjustment, string? taskId) => new()
     {
         MessageId = Guid.NewGuid().ToString("N"),
         Role = MessageRole.User,
@@ -282,7 +283,7 @@ public sealed class ComplianceConsultant(
         }
     }
 
-    private static ConsultationResult Read(Review review, FeeAdjustment adjustment)
+    private static ConsultationResult Read(Review review, ReviewRequest adjustment)
     {
         if (review.State is null)
         {
@@ -319,7 +320,7 @@ public sealed class ComplianceConsultant(
     /// say what it decided, and it must be about the adjustment and the account we asked about. The
     /// identifiers we carry on are the ones we sent — never the ones that came back.
     /// </summary>
-    internal static ConsultationResult Judge(JsonElement verdict, string taskId, FeeAdjustment adjustment)
+    internal static ConsultationResult Judge(JsonElement verdict, string taskId, ReviewRequest adjustment)
     {
         if (!verdict.TryGetProperty("decision", out var decisionValue) || decisionValue.GetString() is not { Length: > 0 } decision)
         {
@@ -349,11 +350,11 @@ public sealed class ComplianceConsultant(
     /// The same record every other action leaves: who, what, which task, the outcome, how long — no content. It is
     /// filed under the firm whose adjustment was reviewed, so that firm's compliance export contains it.
     /// </summary>
-    private Task RecordAsync(FeeAdjustment adjustment, ConsultationResult result, TimeSpan took, CancellationToken ct) =>
+    private Task RecordAsync(ReviewRequest adjustment, ConsultationResult result, TimeSpan took, CancellationToken ct) =>
         RecordAsync(Operation, adjustment, result.TaskIdOrNull, result.Outcome, took, ct);
 
     private async Task RecordAsync(
-        string operation, FeeAdjustment adjustment, string? taskId, string outcome, TimeSpan took, CancellationToken ct)
+        string operation, ReviewRequest adjustment, string? taskId, string outcome, TimeSpan took, CancellationToken ct)
     {
         try
         {

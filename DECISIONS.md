@@ -3214,8 +3214,15 @@ implementation" (parts A–E) holds each choice in full. The decisions the propo
   with a contract the composition root discovers by type and the contract suite tests (Orchard Core's `IStartup`, ABP's
   module, VS Code's contribution points). Rejected: hand-edited lines in `Program.cs` naming each plugin.
 - **Fee adjustment goes with the billing plugin.** It is a billing write, and its tool is offered only while
-  `compliance` is in use, so it is never offered without a reviewer its review needs. It moves with billing's
-  follow-up.
+  `compliance` is in use, so it is never offered without a reviewer its review needs. With extract-billing, the tool,
+  `BillingBehaviour`, the ledger and their tests moved; the reviewer consultation became a port in the abstractions
+  (`IReviewerConsultation`, implemented by the core's A2A consultant until extract-compliance-plugin). The flow
+  (`FeeAdjustmentFlow`), the fee-typed confirmation (`ConfirmationService`, `CapturedConfirmation`, `ChatTurnRunner`'s
+  proposal, `RunRejoin`, `HistoryEndpoints`) and `PendingAdjustmentRow` stay in the core until
+  generalize-write-confirmation. The confirmation has no seam, so taking it out is a capability change, not a move.
+  Until then `make core` still carries the fee table, and `CoreNamesNoDomainTests` lists each of those files, since it
+  now also catches a reference to `Maf.Lab.Domain.Billing`. Rejected: building the write-confirmation seam inside the
+  billing extraction (a new capability under a domain move).
 
 No package version moves in this change.
 

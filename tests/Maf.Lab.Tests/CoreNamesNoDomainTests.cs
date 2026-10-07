@@ -20,7 +20,17 @@ public sealed class CoreNamesNoDomainTests
         ["Agent/JevStatistics.cs"] = "insights",
         ["A2A/BillingAgentCard.cs"] = "a2a",
         ["A2A/BillingAgentHandler.cs"] = "a2a",
+        // The fee-typed write confirmation: it has no seam yet, so it stays until generalize-write-confirmation gives it one
+        // (extract-billing part 3).
+        ["Agent/FeeAdjustmentFlow.cs"] = WriteConfirmation,
+        ["Agent/ConfirmationService.cs"] = WriteConfirmation,
+        ["Agent/ConfirmationSink.cs"] = WriteConfirmation,
+        ["Agent/ChatTurnRunner.cs"] = WriteConfirmation,
+        ["Agent/ToolSource.cs"] = WriteConfirmation,
+        ["Endpoints/HistoryEndpoints.cs"] = WriteConfirmation,
     };
+
+    private const string WriteConfirmation = "generalize-write-confirmation";
 
     /// <summary>
     /// The retrieval library's files that still name a domain: the billing host (its Program.cs, Billing/ and its tools)
@@ -46,8 +56,9 @@ public sealed class CoreNamesNoDomainTests
 
     private const string RetrievalFollowUp = "extract-evals-plugin";
 
+    // A domain's types count too: a reference to Maf.Lab.Domain.Billing is billing's, whatever the file calls it.
     private static readonly Regex NamesADomain =
-        new(@"BuiltInDomains\.(Billing|Portfolio|Codebase)\b|""(billing|portfolio|codebase)""", RegexOptions.Compiled);
+        new(@"BuiltInDomains\.(Billing|Portfolio|Codebase)\b|""(billing|portfolio|codebase)""|Maf\.Lab\.Domain\.Billing\b", RegexOptions.Compiled);
 
     /// <summary>The retrieval library's rule: any identifier or string that contains a domain's name.</summary>
     private static readonly Regex ContainsADomain = new("billing|portfolio|codebase", RegexOptions.Compiled | RegexOptions.IgnoreCase);

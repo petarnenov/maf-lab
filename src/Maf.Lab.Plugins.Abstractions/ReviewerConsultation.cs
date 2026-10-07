@@ -1,4 +1,18 @@
-namespace Maf.Lab.Api.A2A;
+namespace Maf.Lab.Plugins.Abstractions;
+
+/// <summary>
+/// The reviewer a proposed write is put to before a person confirms it (extract-billing): a Port, so the write flow
+/// depends on the consultation, not on the agent that answers it. The core implements it over A2A until the reviewer is
+/// a plugin of its own (extract-compliance-plugin).
+/// </summary>
+public interface IReviewerConsultation
+{
+    /// <summary>Puts a proposal to the reviewer.</summary>
+    Task<ConsultationResult> ReviewAsync(ReviewRequest request, CancellationToken ct);
+
+    /// <summary>Answers the question the reviewer asked about a proposal, on the review's own task.</summary>
+    Task<ConsultationResult> AnswerAsync(ReviewRequest request, string taskId, string justification, CancellationToken ct);
+}
 
 /// <summary>
 /// What consulting another agent produced. Every way a remote agent can answer — including not answering — is a
@@ -45,4 +59,4 @@ public abstract record ConsultationResult
 }
 
 /// <summary>What the reviewer is asked about. Identifiers and an amount — no prose, because the caller is a program.</summary>
-public sealed record FeeAdjustment(string AdjustmentId, string FirmId, string AccountId, decimal Amount, string Reason);
+public sealed record ReviewRequest(string AdjustmentId, string FirmId, string AccountId, decimal Amount, string Reason);

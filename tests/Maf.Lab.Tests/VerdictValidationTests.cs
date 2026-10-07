@@ -1,3 +1,4 @@
+using Maf.Lab.Plugins.Abstractions;
 using System.Text.Json;
 using Maf.Lab.Api.A2A;
 
@@ -9,7 +10,7 @@ namespace Maf.Lab.Tests;
 /// </summary>
 public class VerdictValidationTests
 {
-    private static readonly FeeAdjustment Asked = new("ADJ-77", "firm-a", "A-1042", 250m, "overcharged in Q2");
+    private static readonly ReviewRequest Asked = new("ADJ-77", "firm-a", "A-1042", 250m, "overcharged in Q2");
 
     private static ConsultationResult Judge(string json) =>
         ComplianceConsultant.Judge(JsonSerializer.Deserialize<JsonElement>(json), "task-1", Asked);
