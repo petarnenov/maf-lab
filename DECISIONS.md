@@ -3614,7 +3614,7 @@ No package version moves in this change.
     probe reads the `[topology]` tables and the installed checks through it. Rejected: a narrower `TopologyNodes()`, a
     topology-shaped hole in a generic port.
 
-- **Part — (extract-curriculum; its letter, the next free one, is fixed at landing).**
+- **Part N (extract-curriculum).**
   - The curriculum map is the `curriculum` plugin (app, installation, dev and qa), the first with a web part only: no
     `server/`, no `compose.yml`, no lb snippets. The tooling already treats each as optional (`plugins.py services`
     returns none, `plugin_switch.sh` starts nothing). It contributes the `curriculum` route and the **Curriculum** link,
