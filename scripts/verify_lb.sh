@@ -209,7 +209,12 @@ while (state not in ("succeeded", "failed") or polls < 8) and time.time() < dead
     seen[h.get("X-Instance")] += 1
     state = json.loads(b)["state"]
     time.sleep(0.3)
-check("job finishes succeeded", state == "succeeded", state)
+# Without the vector store (the qdrant plugin) an index run cannot reach a collection and fails: it still finishes, and
+# that is what the core alone can show (a clean refusal is extract-index-admin's).
+if plugin_in_use("qdrant"):
+    check("job finishes succeeded", state == "succeeded", state)
+else:
+    check("job finishes (failed without a vector store)", state in ("succeeded", "failed"), state)
 check("job status was served by >= 2 replicas", len(seen) >= 2, str(dict(seen)))
 
 # 4.5 the A2A surface through the balancer ------------------------------------------------------------
