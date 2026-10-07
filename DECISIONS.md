@@ -3459,46 +3459,6 @@ No package version moves in this change.
     `CoreNamesNoDomainTests` scans it, and the api also catches a reference to `Maf.Lab.Domain.Portfolio`.
   - The core tests run on a `fixture-portfolio` stand-in beside `fixture-billing`, pinned to the plugin's table by its
     drift test. The neutral-id rename of the shared fakes stays deferred.
-- **Part L (extract-index-admin).** The letter is the next free one at landing.
-  - The index admin's screen, its six `/api/admin` routes and the api's reference to `Maf.Lab.Indexing` are the
-    index-admin plugin's. `Maf.Lab.Indexing` becomes a shared library a plugin may reference, beside Domain and
-    Retrieval, and stays a core assembly. Rejected: a core `IIndexAdmin` port implemented by the api (it keeps the
-    reference this change moves, and the index admin in the core under another name), and moving Indexing out of the
-    core (make, the indexer CLI, the eval and the domain plugins' tests use it).
-  - The admin job runner, its watch, the `AdminJobs` table and `AdminJob` stay core: coverage's refresh shares them
-    until extract-coverage, and the store that owns a job's state owns its stop (stop-anything). A plugin reaches them
-    through the `IAdminJobs` port (Ports and Adapters), which reads the tenant from the request's principal and takes
-    none. Its cancel result maps itself to 202/409/404 (`AdminJobCancelResult.ToResult`), so neither the plugin nor
-    coverage copies the mapping. `OpenAsync` and `CancelOpenAsync` are installation-wide and serve only plugin-off,
-    which has no request. Rejected: moving the runner into the plugin (coverage would reference a plugin).
-  - `IContributesOpenWork` is a factory method, `CreateOpenWork(IServiceProvider)` returning `IOpenWork`, the shape of
-    `IContributesTurnObserver`, so open work takes its dependencies from the composed services. Rejected: the plugin
-    capturing the route builder's service provider (a service locator, a hidden dependency, order-dependent).
-  - The api registers retrieval itself (`AddMafRetrievalCore`); the plugin registers indexing, whose `TryAdd`s make
-    the second retrieval registration change nothing. The eval references Indexing directly.
-  - A plugin declares its corpus in a `[corpus]` manifest table: path inside its folder, chunk and meta collections,
-    layout and an optional graph source. The core resolves the installed plugins' corpora under `Plugins:Root`
-    (`IInstalledPlugins.Corpora()`); the plugin builds each corpus's pipeline, drift and migration with
-    `ActivatorUtilities` over `Options.Create` copies of the bound settings, as `DomainChunkStore.For` builds a store,
-    and every store access stays in `TenantScopedMaintenance`. `MAF_ADMIN_INDEX_CORPUS` and its compose line are gone.
-    `plugins.py validate` refuses a collection two manifests name. The manifest becoming make's single source for the
-    indexer CLI (`BILLING_ENV` and the others) is a follow-up. Rejected: one corpus through the variable in the
-    plugin's compose fragment (billing stays hard-wired), a corpus list in the index admin's configuration (it would
-    name other plugins), and the whole manifest through the port (the plugin needs the corpora only).
-  - Only `tenants`-layout corpora are offered; the code corpus (`repository`) belongs to the installation, not to one
-    tenant's administrator. A run names its corpus; with none named and one offered, that one runs; with several, the
-    answer is 400 naming them; one not offered is 404 and starts nothing. The a85b74b guard is unchanged: a missing
-    corpus root, or a tenant without a folder, removes nothing.
-  - Jobs keep their kinds, so one index and one migrate job run per tenant whichever corpus, and their progress and
-    summary name the corpus. Rejected: a kind per corpus, which would run several embedders on `ollama-batch`'s pinned
-    CPUs at once.
-  - Drift's graph section follows the corpus's graph source (`Indexing:GraphSource`, the billing graph unless set, as
-    the CLI always compared); a corpus with none reads "not built for this corpus".
-  - The topology's api→qdrant edge reads "search", with its id kept. `verify_lb.sh` runs its admin-job check while the
-    plugin is in use, over the first corpus offered. CI installs the plugin. `Progress` joins `@maf/shared`, and
-    `AdminJob` is exported from `@maf/plugin-api` as the job seam's type. The curriculum's two index entries no longer
-    link the screen.
-
 - **Part H (extract-compliance).**
   - `tool_requires: compliance` means "the compliance plugin is in use", read from the plugin catalogue.
     `BuiltInDomains.LegacyCapabilities` is deleted, and with it the last setting that stood in for a plugin.
@@ -3600,6 +3560,45 @@ No package version moves in this change.
     fail the curriculum test once the folder is deleted.
   - CI installs it (`CI_PLUGINS`), so `ci-e2e` keeps the collector and `ci-e2e-core` runs without it. It has no
     `compose.ci.yml`: CI's override does not touch these services.
+- **Part L (extract-index-admin).**
+  - The index admin's screen, its six `/api/admin` routes and the api's reference to `Maf.Lab.Indexing` are the
+    index-admin plugin's. `Maf.Lab.Indexing` becomes a shared library a plugin may reference, beside Domain and
+    Retrieval, and stays a core assembly. Rejected: a core `IIndexAdmin` port implemented by the api (it keeps the
+    reference this change moves, and the index admin in the core under another name), and moving Indexing out of the
+    core (make, the indexer CLI, the eval and the domain plugins' tests use it).
+  - The admin job runner, its watch, the `AdminJobs` table and `AdminJob` stay core: coverage's refresh shares them
+    until extract-coverage, and the store that owns a job's state owns its stop (stop-anything). A plugin reaches them
+    through the `IAdminJobs` port (Ports and Adapters), which reads the tenant from the request's principal and takes
+    none. Its cancel result maps itself to 202/409/404 (`AdminJobCancelResult.ToResult`), so neither the plugin nor
+    coverage copies the mapping. `OpenAsync` and `CancelOpenAsync` are installation-wide and serve only plugin-off,
+    which has no request. Rejected: moving the runner into the plugin (coverage would reference a plugin).
+  - `IContributesOpenWork` is a factory method, `CreateOpenWork(IServiceProvider)` returning `IOpenWork`, the shape of
+    `IContributesTurnObserver`, so open work takes its dependencies from the composed services. Rejected: the plugin
+    capturing the route builder's service provider (a service locator, a hidden dependency, order-dependent).
+  - The api registers retrieval itself (`AddMafRetrievalCore`); the plugin registers indexing, whose `TryAdd`s make
+    the second retrieval registration change nothing. The eval references Indexing directly.
+  - A plugin declares its corpus in a `[corpus]` manifest table: path inside its folder, chunk and meta collections,
+    layout and an optional graph source. The core resolves the installed plugins' corpora under `Plugins:Root`
+    (`IInstalledPlugins.Corpora()`); the plugin builds each corpus's pipeline, drift and migration with
+    `ActivatorUtilities` over `Options.Create` copies of the bound settings, as `DomainChunkStore.For` builds a store,
+    and every store access stays in `TenantScopedMaintenance`. `MAF_ADMIN_INDEX_CORPUS` and its compose line are gone.
+    `plugins.py validate` refuses a collection two manifests name. The manifest becoming make's single source for the
+    indexer CLI (`BILLING_ENV` and the others) is a follow-up. Rejected: one corpus through the variable in the
+    plugin's compose fragment (billing stays hard-wired), a corpus list in the index admin's configuration (it would
+    name other plugins), and the whole manifest through the port (the plugin needs the corpora only).
+  - Only `tenants`-layout corpora are offered; the code corpus (`repository`) belongs to the installation, not to one
+    tenant's administrator. A run names its corpus; with none named and one offered, that one runs; with several, the
+    answer is 400 naming them; one not offered is 404 and starts nothing. The a85b74b guard is unchanged: a missing
+    corpus root, or a tenant without a folder, removes nothing.
+  - Jobs keep their kinds, so one index and one migrate job run per tenant whichever corpus, and their progress and
+    summary name the corpus. Rejected: a kind per corpus, which would run several embedders on `ollama-batch`'s pinned
+    CPUs at once.
+  - Drift's graph section follows the corpus's graph source (`Indexing:GraphSource`, the billing graph unless set, as
+    the CLI always compared); a corpus with none reads "not built for this corpus".
+  - The topology's api→qdrant edge reads "search", with its id kept. `verify_lb.sh` runs its admin-job check while the
+    plugin is in use, over the first corpus offered. CI installs the plugin. `Progress` joins `@maf/shared`, and
+    `AdminJob` is exported from `@maf/plugin-api` as the job seam's type. The curriculum's two index entries no longer
+    link the screen.
 
 ## 82. The stop-anything tests run on a fake clock (deterministic-stop-anything-tests, 2026-10-06)
 
