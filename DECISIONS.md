@@ -3237,6 +3237,13 @@ No package version moves in this change.
     both `http{}` and `server{}`).
   - The manifest validator is a stdlib subset of JSON Schema 2020-12. Rejected: `jsonschema` (the first third-party
     Python package).
+  - `make up` writes `conf.d` in two stages, as `plugin-on` does (spec load-balancing): before `compose up`, the core's
+    alone (the api upstream, no plugin snippet), so the balancer never names a service that is not up yet; once every
+    service is healthy, each plugin's snippets and a checked (`nginx -t`), graceful reload, which fails `make up` if
+    nginx refuses the configuration. Found by extract-billing: billing's server waits for Neo4j, so the balancer started
+    before its name existed. Rejected: a restart policy on the balancer (it loops on a broken config and hides a typo),
+    a two-phase `compose up` (the order without removing the early snippet), a plugin's compose adding to the
+    balancer's `depends_on` (it recreates the balancer on every switch).
 - **Part B (domains as data, task 4).**
   - `src/Maf.Lab.Api/BuiltIn/` is the transitional, test-fenced home of the shipped domains' ids, descriptors
     (`domain.json`, `prompt.md`), behaviours and chunk stores. `CoreNamesNoDomainTests` fails on a domain name anywhere

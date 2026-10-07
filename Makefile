@@ -135,16 +135,23 @@ up: require-docker ## Build and start the stack (replicas via API_REPLICAS/PORTF
 	@if [ "$(CI_MODE)" != "1" ] && [ -z "$$JEV_MAF_LAB" ]; then echo "⚠ JEV_MAF_LAB is not set: the stack starts, but no turn is classified (nothing forced to search)."; fi
 	@# Earlier versions ran the api as root; give back to you whatever it left owned by root in the checkout.
 	@scripts/repair_ownership.sh "$(ROOT)" "$(MAF_LAB_REPO)"
-	@# The installed plugin set and the balancer's derived conf.d (the api upstream from its template, each plugin's
-	@# snippets): rewritten on every start, so a stack brought down with another set never keeps a stale snippet.
-	@$(PLUGINS_PY) install
+	@# The installed plugin set (the api reads it at start), and the balancer's conf.d in two stages, as plugin-on does
+	@# (spec load-balancing): first the core's alone (the api upstream from its template, no plugin snippet, so the lb
+	@# never names a service that is not up yet, and a stale snippet from another set is gone), then, once every service
+	@# is healthy, each plugin's snippets and a checked, graceful reload.
+	@$(PLUGINS_PY) install --installed-only
+	@MAF_PLUGINS=none $(PLUGINS_PY) install --conf-d-only
 	@# compose itself waits for the balancer's dependencies to be healthy; if that fails, show which service and why.
 	$(COMPOSE) up -d --build --remove-orphans --scale api=$(API_REPLICAS) \
 	  --scale mcp-portfolio=$(PORTFOLIO_REPLICAS) --scale compliance=$(COMPLIANCE_REPLICAS) \
 	  || { scripts/wait_healthy.sh 0; exit 1; }
 	@scripts/wait_healthy.sh $(WAIT_TIMEOUT)
-	@# The balancer resolves the replicas when it (re)loads; reload so it sees the current set after scaling/recreation.
-	@$(COMPOSE) exec -T lb nginx -c /etc/nginx/lb/nginx.conf -s reload >/dev/null 2>&1 && echo "✓ load balancer reloaded ($(API_REPLICAS) api, $(PORTFOLIO_REPLICAS) portfolio, $(COMPLIANCE_REPLICAS) compliance replicas)"
+	@# The plugins' snippets, now that their services are healthy; the balancer resolves the replicas when it reloads, so
+	@# this reload also picks up the current set after scaling or recreation. A configuration nginx refuses fails make up.
+	@$(PLUGINS_PY) install --conf-d-only
+	@$(COMPOSE) exec -T lb nginx -t -q -c /etc/nginx/lb/nginx.conf \
+	  && $(COMPOSE) exec -T lb nginx -c /etc/nginx/lb/nginx.conf -s reload >/dev/null 2>&1 \
+	  && echo "✓ load balancer reloaded ($(API_REPLICAS) api, $(PORTFOLIO_REPLICAS) portfolio, $(COMPLIANCE_REPLICAS) compliance replicas)"
 	@# Every replica re-reads plugins/.installed now rather than at its next 30-second check.
 	@$(COMPOSE) exec -T redis redis-cli PUBLISH plugins-changed up >/dev/null 2>&1 || true
 
