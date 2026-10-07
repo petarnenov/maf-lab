@@ -82,6 +82,25 @@ function renderApp(
 }
 
 describe('web plugins', () => {
+  it('activates a plugin in use once, and deactivates it when the app goes', async () => {
+    const deactivate = vi.fn();
+    const activate = vi.fn(() => deactivate);
+    const lifecycle = definePlugin({ ...fixture, activate });
+    stubApi(['fixture']);
+    const app = renderApp('/chat', makeSession('USER'), {
+      fixture: async () => ({ default: lifecycle }),
+    });
+
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    expect(await within(nav).findByRole('link', { name: 'Fixture' })).toBeInTheDocument();
+    // Re-rendered by the anonymous and the signed-in answer alike: one activation all the same.
+    expect(activate).toHaveBeenCalledTimes(1);
+    expect(deactivate).not.toHaveBeenCalled();
+
+    app.unmount();
+    expect(deactivate).toHaveBeenCalledTimes(1);
+  });
+
   it('shows nothing of a plugin when none is in use', async () => {
     stubApi([]);
     renderApp('/chat');
@@ -100,7 +119,6 @@ describe('web plugins', () => {
       'Chat',
       'Evals',
       'Topology',
-      'Telemetry',
       'Coverage',
       'Index admin',
       'Feedback review',

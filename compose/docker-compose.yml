@@ -100,7 +100,7 @@ services:
     # The user who runs make (exported by it): the api writes into the repository (branches, merges) and evals/,
     # and on Linux whatever it writes there belongs to this user. Root here left root-owned files in the checkout.
     user: "${MAF_LAB_UID:-1000}:${MAF_LAB_GID:-1000}"
-    env_file: [env/retrieval.env, env/platform.env, env/graph.env, env/a2a.env, env/compliance.env]
+    env_file: [env/retrieval.env, env/platform.env, env/graph.env, env/a2a.env, env/compliance.env, env/observability.env]
     environment:
       Urls: http://+:8080
       # Writable by any user; a uid with no passwd entry would otherwise get HOME=/.
@@ -112,10 +112,6 @@ services:
       Evals__Root: /evals
       # The drawn topology, served to the web app by the api (the web image is built from web/ only).
       Topology__DiagramPath: /docs/topology.drawio
-      # The telemetry screen's numbers are read from here, by the api, never by the browser.
-      Telemetry__PrometheusUrl: ${PROMETHEUS_URL:-http://prometheus:9090}
-      Telemetry__JaegerUrl: ${JAEGER_URL:-http://localhost:7171/jaeger}
-      Telemetry__TraceUrlTemplate: ${TRACE_URL_TEMPLATE:-http://localhost:7171/jaeger/trace/{traceId}}
       # The Coverage screen (add-coverage-dashboard-and-test-agent): the repository, the runner that measures it and
       # the agent that writes tests for it. Only the api may write to the repository (branches and merges).
       Coverage__RepoRoot: ${MAF_LAB_REPO:?set MAF_LAB_REPO to the repository path (make does)}
@@ -258,49 +254,6 @@ services:
       timeout: 3s
       retries: 30
 
-  # Everything the lab emits arrives here; where it goes from here is this file's business, not the services'.
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.161.0
-    command: ["--config=/etc/otel/collector.yaml"]
-    volumes:
-      - ./otel/collector.yaml:/etc/otel/collector.yaml:ro
-    # Also on the runner's internal network, so the runner's traces arrive without the runner reaching anything else.
-    networks:
-      - default
-      - runner
-    # The image is distroless: no shell, so nothing here can run a health command. The api probes it over HTTP
-    # for the topology report, which is where its state is actually reported.
-    depends_on:
-      jaeger:
-        condition: service_started
-
-  prometheus:
-    image: prom/prometheus:v3.14.0
-    command:
-      - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.retention.time=7d
-      - --web.enable-lifecycle
-    volumes:
-      - ./otel/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9090/-/healthy >/dev/null || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-
-  jaeger:
-    image: jaegertracing/all-in-one:1.76.0
-    environment:
-      COLLECTOR_OTLP_ENABLED: "true"
-      # Served under /jaeger through the balancer, so its own links have to agree.
-      QUERY_BASE_PATH: /jaeger
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:16686/jaeger/ >/dev/null || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-
   lb:
     image: nginx:1.30.5-alpine
     command: ["nginx", "-c", "/etc/nginx/lb/nginx.conf", "-g", "daemon off;"]
@@ -328,12 +281,6 @@ services:
         condition: service_healthy
       copilot-runtime:
         condition: service_healthy
-      prometheus:
-        condition: service_healthy
-      jaeger:
-        condition: service_healthy
-      otel-collector:
-        condition: service_started
       redis:
         condition: service_healthy
 
@@ -348,5 +295,4 @@ volumes:
   runner-work:
   ollama-models:
   api-data:
-  prometheus-data:
   redis-data:

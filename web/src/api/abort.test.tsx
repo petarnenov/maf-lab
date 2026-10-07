@@ -1,6 +1,6 @@
 import { waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { TelemetryPage } from '../telemetry/TelemetryPage';
+import { EvalsPage } from '../evals/EvalsPage';
 import { renderWithProviders } from '../test/render';
 
 describe('requests the web makes (stop-anything)', () => {
@@ -19,7 +19,7 @@ describe('requests the web makes (stop-anything)', () => {
       }),
     );
 
-    const page = renderWithProviders(<TelemetryPage />);
+    const page = renderWithProviders(<EvalsPage />);
     await waitFor(() => expect(signals.length).toBeGreaterThan(0));
     expect(signals.every((s) => !s.aborted)).toBe(true);
 

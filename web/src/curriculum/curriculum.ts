@@ -290,13 +290,12 @@ export const CURRICULUM: CurriculumSection[] = [
       {
         concept: 'Observability: a span for every step',
         summary:
-          'OpenTelemetry spans cover HTTP, tool calls and MCP calls and go to Jaeger and Prometheus. Each chat turn also keeps its own trace, which the monitor next to the chat replays step by step.',
+          'OpenTelemetry spans cover HTTP, tool calls and MCP calls and go to Jaeger and Prometheus while the observability plugin is in use. Each chat turn also keeps its own trace, which the monitor next to the chat replays step by step.',
         paths: [
           'src/Maf.Lab.Hosting/LabTelemetry.cs',
           'src/Maf.Lab.Api/Agent/Tracing/TurnTrace.cs',
         ],
         spec: 'telemetry',
-        screen: { to: '/telemetry', label: 'Telemetry' },
       },
     ],
   },

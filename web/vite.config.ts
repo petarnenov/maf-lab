@@ -25,6 +25,14 @@ export default defineConfig({
       'vitest',
       '@testing-library/react',
       '@testing-library/user-event',
+      // The observability plugin's browser tracing (OpenTelemetry's web SDK, pinned in this project's package.json).
+      '@opentelemetry/api',
+      '@opentelemetry/instrumentation',
+      '@opentelemetry/instrumentation-fetch',
+      '@opentelemetry/exporter-trace-otlp-http',
+      '@opentelemetry/resources',
+      '@opentelemetry/sdk-trace-web',
+      '@opentelemetry/semantic-conventions',
     ],
   },
   server: {

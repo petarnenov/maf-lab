@@ -1,9 +1,9 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import type { TelemetryReport } from '../api/types';
-import { jsonResponse, renderWithProviders } from '../test/render';
+import { hangingFetch, jsonResponse, renderWithProviders } from '@maf/testing';
 import { TelemetryPage } from './TelemetryPage';
+import type { TelemetryReport } from './types';
 
 const report = (overrides: Partial<TelemetryReport> = {}): TelemetryReport => ({
   window: '1h',
@@ -128,5 +128,36 @@ describe('TelemetryPage', () => {
 
     renderWithProviders(<TelemetryPage />, { session: null });
     expect(screen.getByText(/Pick a dev persona/)).toBeInTheDocument();
+  });
+
+  // Moved from the core's reports.stop and abort tests with the screen (stop-anything).
+  it('stops its read on Esc, says so while it loads, and shows no error', async () => {
+    const held = hangingFetch(
+      (url) => url.startsWith('/api/telemetry'),
+      () => jsonResponse([]),
+    );
+    renderWithProviders(<TelemetryPage />);
+    await waitFor(() => expect(held.length).toBeGreaterThan(0));
+    expect(await screen.findByTestId('stop-hint')).toHaveTextContent('Esc to stop');
+
+    await userEvent.keyboard('{Escape}');
+
+    await waitFor(() => expect(held.every((h) => h.signal.aborted)).toBe(true));
+    expect(screen.queryByRole('alert')).toBeNull();
+    await waitFor(() => expect(screen.queryByTestId('stop-hint')).toBeNull());
+  });
+
+  it('aborts its read when the page is left while it is still loading', async () => {
+    const held = hangingFetch(
+      (url) => url.startsWith('/api/telemetry'),
+      () => jsonResponse([]),
+    );
+    const page = renderWithProviders(<TelemetryPage />);
+    await waitFor(() => expect(held.length).toBeGreaterThan(0));
+    expect(held.every((h) => !h.signal.aborted)).toBe(true);
+
+    page.unmount();
+
+    await waitFor(() => expect(held.every((h) => h.signal.aborted)).toBe(true));
   });
 });

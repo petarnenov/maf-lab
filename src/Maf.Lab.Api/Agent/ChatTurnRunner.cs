@@ -63,7 +63,7 @@ public sealed partial class ChatTurnRunner(
     Jev.JevAnswerCheck answerCheck,
     IDbContextFactory<MafDbContext> db,
     IOptions<AgentOptions> options,
-    IOptions<Telemetry.TelemetryQueryOptions> telemetry,
+    ITraceLink traceLink,
     TimeProvider time,
     ILoggerFactory loggers,
     DomainCatalogue domainCatalogue,
@@ -109,7 +109,7 @@ public sealed partial class ChatTurnRunner(
             ["apiInstance"] = InstanceIdentity.Name,
             // Where this turn's spans are, so a person reading it can open the whole trace.
             ["traceId"] = traceId,
-            ["traceUrl"] = telemetry.Value.TraceUrlFor(traceId),
+            ["traceUrl"] = traceId is null ? null : traceLink.UrlFor(traceId),
             ["question"] = message,
         });
         if (state.StartingFocus is { } startingFocus)

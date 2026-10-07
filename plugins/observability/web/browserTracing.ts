@@ -1,3 +1,4 @@
+import { trace } from '@opentelemetry/api';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
@@ -10,10 +11,10 @@ import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
  * starts at the server and the time between pressing Send and the first token belongs to nobody.
  *
  * Off unless an endpoint is configured — the same rule the services follow — so a test and a dev server neither
- * export nor wait for a collector.
+ * export nor wait for a collector. Returns what stops it again (the plugin's deactivation), or nothing when it is off.
  */
-export function startBrowserTracing(endpoint = defaultEndpoint()): boolean {
-  if (!endpoint) return false;
+export function startBrowserTracing(endpoint = defaultEndpoint()): (() => void) | undefined {
+  if (!endpoint) return undefined;
 
   const provider = new WebTracerProvider({
     resource: resourceFromAttributes({ [ATTR_SERVICE_NAME]: 'maf-lab-web' }),
@@ -21,7 +22,7 @@ export function startBrowserTracing(endpoint = defaultEndpoint()): boolean {
   });
   provider.register();
 
-  registerInstrumentations({
+  const unregister = registerInstrumentations({
     tracerProvider: provider,
     instrumentations: [
       new FetchInstrumentation({
@@ -31,7 +32,12 @@ export function startBrowserTracing(endpoint = defaultEndpoint()): boolean {
       }),
     ],
   });
-  return true;
+  return () => {
+    unregister();
+    // Flushes what is batched, then the global tracer is a no-op again.
+    void provider.shutdown();
+    trace.disable();
+  };
 }
 
 /**

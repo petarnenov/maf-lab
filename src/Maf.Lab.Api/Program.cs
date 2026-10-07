@@ -12,6 +12,7 @@ using Maf.Lab.Api.Storage;
 using Maf.Lab.Indexing;
 using Maf.Lab.Retrieval.Auth;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using Maf.Lab.Hosting;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -105,9 +106,8 @@ public partial class Program
         // The graph store's driver, for the topology report's reachability probe only; the api reads no graph data.
         Maf.Lab.Retrieval.Graph.GraphServiceCollectionExtensions.AddGraphStore(builder.Services, builder.Configuration);
         builder.Services.AddSingleton<Topology.TopologyProbe>();
-        builder.Services.Configure<Telemetry.TelemetryQueryOptions>(
-            builder.Configuration.GetSection(Telemetry.TelemetryQueryOptions.Section));
-        builder.Services.AddSingleton<Telemetry.TelemetryQueries>();
+        // A turn's link to its trace: none until a plugin that keeps the traces registers its own (Null Object).
+        builder.Services.TryAddSingleton<Maf.Lab.Plugins.Abstractions.ITraceLink, Maf.Lab.Plugins.Abstractions.NoTraceLink>();
         // The card follows the installed set, per request (extract-billing): resolved for each well-known fetch, and read
         // per call by the extended-card handler.
         builder.Services.AddTransient(sp => A2A.BillingAgentCard.Installed(sp.GetRequiredService<Maf.Lab.Plugins.Abstractions.IInstalledPlugins>()));
@@ -193,7 +193,6 @@ public partial class Program
         app.MapFeedback();
         app.MapAdminIndex();
         app.MapEvalReports();
-        app.MapTelemetry();
         app.MapHistory();
         app.MapTopology();
         app.MapA2AAdmin();

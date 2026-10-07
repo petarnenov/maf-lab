@@ -1,4 +1,4 @@
-namespace Maf.Lab.Api.Telemetry;
+namespace Maf.Lab.Plugins.Observability;
 
 public sealed class TelemetryQueryOptions
 {

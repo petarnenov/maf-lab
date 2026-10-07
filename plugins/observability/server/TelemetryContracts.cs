@@ -1,4 +1,4 @@
-namespace Maf.Lab.Domain.Telemetry;
+namespace Maf.Lab.Plugins.Observability;
 
 /// <summary>One row of a panel: what it is, and the number measured for it. Null means nothing was measured.</summary>
 public sealed record TelemetrySeries(string Label, double? Value);

@@ -1,11 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import type { TelemetryPanel, TelemetryReport } from '../api/types';
-import { useApi, useAuth } from '../auth/useAuth';
-import styles from '../shared/Page.module.css';
-import { StopHint } from '../shared/StopHint';
-import { useEscToStop } from '../shared/useEscToStop';
+import { useApi, useUserKey } from '@maf/plugin-api';
+import styles from '@maf/shared/Page.module.css';
+import { StopHint } from '@maf/shared/StopHint';
+import { useEscToStop } from '@maf/shared/useEscToStop';
 import panel from './TelemetryPage.module.css';
+import type { TelemetryPanel, TelemetryReport } from './types';
 
 /** The windows the server will answer for. Asking for anything else is refused there, not here. */
 const WINDOWS: { id: string; label: string }[] = [
@@ -17,14 +17,15 @@ const WINDOWS: { id: string; label: string }[] = [
 
 /** What the stack has measured about itself. Every number says which period it covers. */
 export function TelemetryPage() {
-  const { session } = useAuth();
+  const userKey = useUserKey();
+  const signedIn = userKey !== 'anonymous';
   const api = useApi();
   const [window, setWindow] = useState('1h');
 
   const report = useQuery({
-    queryKey: ['telemetry', window, session?.token],
+    queryKey: ['telemetry', window, userKey],
     queryFn: ({ signal }) => api<TelemetryReport>(`/api/telemetry?window=${window}`, { signal }),
-    enabled: !!session,
+    enabled: signedIn,
     refetchInterval: 15_000,
   });
   // A read still loading stops on Esc (stop-anything); the screen keeps what it last showed.
@@ -34,7 +35,7 @@ export function TelemetryPage() {
     () => void queryClient.cancelQueries({ queryKey: ['telemetry'] }),
   );
 
-  if (!session)
+  if (!signedIn)
     return <p className={styles.notice}>Pick a dev persona in the header to continue.</p>;
 
   const period = WINDOWS.find((w) => w.id === window)?.label ?? window;

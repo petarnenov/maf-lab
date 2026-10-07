@@ -1,9 +1,9 @@
 using System.Net.Http.Json;
 using System.Text.Json;
-using Maf.Lab.Domain.Telemetry;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace Maf.Lab.Api.Telemetry;
+namespace Maf.Lab.Plugins.Observability;
 
 /// <summary>
 /// The stack's own numbers, read from the metrics store. The caller picks a window and nothing else: the queries

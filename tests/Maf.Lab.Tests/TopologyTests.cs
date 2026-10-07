@@ -28,9 +28,13 @@ public class TopologyTests
     /// <summary>The vector store's infra plugin, installed by default here: most of these tests probe it.</summary>
     private static readonly Maf.Lab.Plugins.Abstractions.PluginManifest VectorStore = GraphStore with { Name = "qdrant", Description = "the vector store" };
 
+    /// <summary>The telemetry stack's plugin, as an installed set carries it.</summary>
+    private static readonly Maf.Lab.Plugins.Abstractions.PluginManifest TelemetryStack = GraphStore with { Name = "observability", Kind = "app", Description = "the telemetry stack" };
+
     private static ApiFactory Api(StubHandler handler, IReadOnlyDictionary<string, string[]>? dns = null,
         string complianceUrl = "http://compliance", FakeToolSource? tools = null, string testAgentUrl = "",
-        IReadOnlyDictionary<string, string?>? settings = null, bool withCodeDomain = false, bool withGraphStore = false, bool withVectorStore = true)
+        IReadOnlyDictionary<string, string?>? settings = null, bool withCodeDomain = false, bool withGraphStore = false, bool withVectorStore = true,
+        bool withTelemetryStack = false)
     {
         var extra = new Dictionary<string, string?>
         {
@@ -47,8 +51,11 @@ public class TopologyTests
         var api = new ApiFactory(ApiFactory.ProceduralModel(), tools)
         {
             ExtraSettings = extra,
-            InstalledPlugins = withGraphStore ? [.. StandInDomains.Installed, VectorStore, GraphStore]
-                : withVectorStore ? [.. StandInDomains.Installed, VectorStore] : StandInDomains.Installed,
+            InstalledPlugins = [
+                .. withGraphStore ? [.. StandInDomains.Installed, VectorStore, GraphStore]
+                    : withVectorStore ? [.. StandInDomains.Installed, VectorStore] : StandInDomains.Installed,
+                .. withTelemetryStack ? [TelemetryStack] : Array.Empty<Maf.Lab.Plugins.Abstractions.PluginManifest>(),
+            ],
         };
         api.ConfigureTestServices = s =>
         {
@@ -230,6 +237,33 @@ public class TopologyTests
         Assert.Equal(NodeHealth.NotProbed, node.Health);
         Assert.Equal("not installed", node.Facts["endpoint"]);
         Assert.Equal("the graph store is not installed", node.Reason);
+    }
+
+    [Fact]
+    public async Task A_telemetry_stack_that_is_not_installed_is_reported_as_such_not_as_a_fault()
+    {
+        using var api = Api(StubHandler.AllHealthy());
+
+        var nodes = (await GetAsync(api)).Nodes.Where(n => n.Id is "otel-collector" or "prometheus" or "jaeger").ToList();
+
+        Assert.Equal(3, nodes.Count);
+        Assert.All(nodes, node =>
+        {
+            Assert.Equal(NodeHealth.NotProbed, node.Health);
+            Assert.Equal("not installed", node.Facts["endpoint"]);
+            Assert.Equal("the telemetry stack is not installed", node.Reason);
+        });
+    }
+
+    [Fact]
+    public async Task A_telemetry_stack_that_is_installed_is_probed()
+    {
+        using var api = Api(StubHandler.AllHealthy(), withTelemetryStack: true);
+
+        var nodes = (await GetAsync(api)).Nodes.Where(n => n.Id is "otel-collector" or "prometheus" or "jaeger").ToList();
+
+        Assert.Equal(3, nodes.Count);
+        Assert.All(nodes, node => Assert.Equal(NodeHealth.Healthy, node.Health));
     }
 
     [Fact]
