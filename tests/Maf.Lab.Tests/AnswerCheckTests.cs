@@ -199,7 +199,7 @@ public class AnswerCheckTests
                 }));
         using var api = new ApiFactory(model, new FakeToolSource())
         {
-            ExtraSettings = new Dictionary<string, string?> { ["Compliance:BaseUrl"] = "" },
+            ExtraSettings = new Dictionary<string, string?>(),
         };
 
         var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "adjust the fee on A-1042 down by 200");

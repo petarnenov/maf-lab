@@ -26,11 +26,7 @@ public static class PluginHost
 
         // Read now, for composition: what is installed at start is what this process registers. A later change to an
         // in-process plugin needs a restart (scripts/api_restart.sh); a remote plugin's needs none.
-        var options = new PluginOptions();
-        builder.Configuration.GetSection(PluginOptions.Section).Bind(options);
-        var installed = File.Exists(Path.Combine(options.Root, ".installed"))
-            ? PluginCatalogue.Parse(File.ReadAllText(Path.Combine(options.Root, ".installed")))
-            : PluginSet.Empty;
+        var installed = ReadInstalled(builder.Configuration);
 
         var environment = builder.Configuration["MAF_ENV"] is { Length: > 0 } env ? env : "dev";
         RefuseDisallowed(installed, environment);
@@ -95,6 +91,32 @@ public static class PluginHost
             .Select(t => Activator.CreateInstance(t))
             .OfType<IContributesDomainBehaviour>()
             .Select(p => p.Behaviour)];
+    }
+
+    /// <summary>The installed set as composition reads it: <c>plugins/.installed</c> under the configured root, once.</summary>
+    public static PluginSet ReadInstalled(IConfiguration configuration)
+    {
+        var options = new PluginOptions();
+        configuration.GetSection(PluginOptions.Section).Bind(options);
+        var file = Path.Combine(options.Root, ".installed");
+        return File.Exists(file) ? PluginCatalogue.Parse(File.ReadAllText(file)) : PluginSet.Empty;
+    }
+
+    /// <summary>
+    /// The services of the installed plugins whose code is in this process, for a host that composes no web app (the
+    /// eval's agent host): what each registers through <see cref="IContributesServices"/>, the same as for the api.
+    /// </summary>
+    public static void InstalledServices(PluginSet installed, IServiceCollection services, IConfiguration configuration)
+    {
+        var types = Discover([]);
+        foreach (var plugin in installed.Plugins
+            .Select(p => types.GetValueOrDefault(p.Name))
+            .OfType<Type>()
+            .Select(t => Activator.CreateInstance(t))
+            .OfType<IContributesServices>())
+        {
+            plugin.ConfigureServices(services, configuration);
+        }
     }
 
     /// <summary>

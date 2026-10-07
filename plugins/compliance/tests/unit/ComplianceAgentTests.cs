@@ -1,9 +1,11 @@
+extern alias service;
+
+using service::Maf.Lab.ComplianceAgent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Maf.Lab.A2A;
-using Maf.Lab.ComplianceAgent;
 using Maf.Lab.Domain.Configuration;
 
 namespace Maf.Lab.Tests;

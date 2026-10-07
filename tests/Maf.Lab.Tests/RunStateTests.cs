@@ -50,7 +50,7 @@ public class RunStateTests
                 : ScriptedChatClient.Text("Done."));
         using var api = new ApiFactory(chat, new FakeToolSource())
         {
-            ExtraSettings = new Dictionary<string, string?> { ["Compliance:BaseUrl"] = "" },
+            ExtraSettings = new Dictionary<string, string?>(),
         };
         var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var lost = await ApiFactory.ChatAsync(adam, "adjust the fee on A-1042 down by 200", runId: "r_waiting");

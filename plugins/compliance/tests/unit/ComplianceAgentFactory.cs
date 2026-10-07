@@ -1,3 +1,6 @@
+extern alias service;
+
+using service::Maf.Lab.ComplianceAgent;
 using Maf.Lab.TestSupport;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -46,7 +49,7 @@ public sealed class ComplianceFactory : IAsyncDisposable
         {
             return Address;
         }
-        app = Maf.Lab.ComplianceAgent.Program.BuildApp(ProjectDir.ContentRootArgs("Maf.Lab.ComplianceAgent"), builder =>
+        app = service::Maf.Lab.ComplianceAgent.Program.BuildApp(ProjectDir.ContentRootArgsAt(Path.Combine("plugins", "compliance", "service")), builder =>
         {
             builder.WebHost.UseUrls("http://127.0.0.1:0");
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -54,9 +57,9 @@ public sealed class ComplianceFactory : IAsyncDisposable
                 ["A2A:Audience"] = "maf-lab-compliance",
                 ["A2A:PublicBaseUrl"] = "",
                 ["A2A:PathBase"] = PathBase,
-                ["A2A:RequiredScope"] = Maf.Lab.ComplianceAgent.ComplianceAgentCard.ReviewScope,
+                ["A2A:RequiredScope"] = service::Maf.Lab.ComplianceAgent.ComplianceAgentCard.ReviewScope,
                 ["A2A:Partners:maf-lab-assistant:Secret"] = "assistant-secret",
-                ["A2A:Partners:maf-lab-assistant:Scopes:0"] = Maf.Lab.ComplianceAgent.ComplianceAgentCard.ReviewScope,
+                ["A2A:Partners:maf-lab-assistant:Scopes:0"] = service::Maf.Lab.ComplianceAgent.ComplianceAgentCard.ReviewScope,
                 ["Review:MinDurationMs"] = ReviewMs.ToString(),
                 ["Review:MaxDurationMs"] = ReviewMs.ToString(),
                 ["Review:AskForJustificationRate"] =

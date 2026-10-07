@@ -9,7 +9,6 @@ import { Layout } from './components/Layout';
 import { RequireAdmin } from './components/RequireAdmin';
 import { EvalsPage } from './evals/EvalsPage';
 import { JevPage } from './jev/JevPage';
-import { CompliancePage } from './compliance/CompliancePage';
 import { TelemetryPage } from './telemetry/TelemetryPage';
 import { TopologyPage } from './topology/TopologyPage';
 import { PluginBoundary } from './plugins/PluginBoundary';
@@ -34,14 +33,6 @@ export function App() {
           element={
             <RequireAdmin>
               <IndexAdminPage />
-            </RequireAdmin>
-          }
-        />
-        <Route
-          path="admin/compliance"
-          element={
-            <RequireAdmin>
-              <CompliancePage />
             </RequireAdmin>
           }
         />

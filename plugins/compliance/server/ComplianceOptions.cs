@@ -1,4 +1,4 @@
-namespace Maf.Lab.Api.A2A;
+namespace Maf.Lab.Plugins.Compliance;
 
 /// <summary>Where the compliance reviewer is, and who this system is to it.</summary>
 public sealed class ComplianceOptions

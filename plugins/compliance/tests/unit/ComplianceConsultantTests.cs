@@ -1,6 +1,6 @@
 using Maf.Lab.Plugins.Abstractions;
 using System.Net;
-using Maf.Lab.Api.A2A;
+using Maf.Lab.Plugins.Compliance;
 using Maf.Lab.Api.Compliance;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -87,6 +87,7 @@ public class ComplianceConsultantTests
         extra?.Invoke(settings);
         return new ApiFactory(ApiFactory.ProceduralModel())
         {
+            InstalledPlugins = CompliancePluginSupport.Installed,
             ExtraSettings = settings,
             ConfigureTestServices = counter is null
                 ? null
@@ -94,8 +95,18 @@ public class ComplianceConsultantTests
         };
     }
 
-    private static ComplianceConsultant Consultant(ApiFactory api) =>
-        api.Services.GetRequiredService<ComplianceConsultant>();
+    /// <summary>
+    /// The consultant as a request's write flow has it: in that request's scope, acting for its principal, whose record
+    /// the consultation is filed under.
+    /// </summary>
+    private static ComplianceConsultant Consultant(ApiFactory api)
+    {
+        var scope = api.Services.CreateScope();
+        scope.ServiceProvider.GetRequiredService<Maf.Lab.Api.Agent.Writes.WriteTurnContext>()
+            .Set(new Maf.Lab.Domain.Tenancy.Principal("adam", Maf.Lab.Domain.Tenancy.TenantId.Firm("firm-a"),
+                Maf.Lab.Domain.Tenancy.Role.USER), null, null, "", null);
+        return scope.ServiceProvider.GetRequiredService<ComplianceConsultant>();
+    }
 
     [Fact]
     public async Task A_review_comes_back_as_a_verdict()
@@ -254,6 +265,7 @@ public class ComplianceConsultantTests
         await using var _ = agent;
         using var api = new ApiFactory(ApiFactory.ProceduralModel())
         {
+            InstalledPlugins = CompliancePluginSupport.Installed,
             ExtraSettings = new Dictionary<string, string?>
             {
                 ["Compliance:BaseUrl"] = url,

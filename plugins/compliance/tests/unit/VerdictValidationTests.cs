@@ -1,6 +1,6 @@
 using Maf.Lab.Plugins.Abstractions;
 using System.Text.Json;
-using Maf.Lab.Api.A2A;
+using Maf.Lab.Plugins.Compliance;
 
 namespace Maf.Lab.Tests;
 

@@ -7,7 +7,7 @@ namespace Maf.Lab.Api.Agent.Writes;
 /// <summary>The audit chain, as a write flow records its steps (identifiers only; the actor is the request's).</summary>
 public sealed class CoreWriteAudit(ToolAudit audit, WriteTurnContext context, ILogger<CoreWriteAudit> logger) : IWriteAudit
 {
-    public async Task RecordAsync(string kind, string step, string identifiers, string outcome, CancellationToken ct)
+    public async Task RecordAsync(string kind, string step, string identifiers, string outcome, long tookMs, CancellationToken ct)
     {
         if (context.Principal is not { } principal)
         {
@@ -15,7 +15,7 @@ public sealed class CoreWriteAudit(ToolAudit audit, WriteTurnContext context, IL
         }
         try
         {
-            await audit.RecordAsync(new AuditEntry(principal, context.ConversationId, context.TurnId, step, identifiers, outcome, 0, kind), ct);
+            await audit.RecordAsync(new AuditEntry(principal, context.ConversationId, context.TurnId, step, identifiers, outcome, tookMs, kind), ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

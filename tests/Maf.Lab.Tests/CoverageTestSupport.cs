@@ -154,7 +154,6 @@ internal static class CoverageApi
             ["Coverage:RepoRoot"] = repo.Root,
             ["CoverageRunner:BaseUrl"] = "http://runner.test",
             ["CoverageRunner:PollEvery"] = "00:00:00.010",
-            ["Compliance:BaseUrl"] = "",
         };
         foreach (var (k, v) in extra ?? new Dictionary<string, string?>())
         {

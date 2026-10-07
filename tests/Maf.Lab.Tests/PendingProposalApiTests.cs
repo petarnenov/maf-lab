@@ -33,7 +33,7 @@ public class PendingProposalApiTests
         });
 
     private static ApiFactory Api(FakeToolSource tools) =>
-        new(ProposingModel(), tools) { ExtraSettings = new Dictionary<string, string?> { ["Compliance:BaseUrl"] = "" } };
+        new(ProposingModel(), tools) { ExtraSettings = new Dictionary<string, string?>() };
 
     private static async Task<(string ConversationId, string WriteId)> ProposeAsync(HttpClient client)
     {
@@ -150,7 +150,7 @@ public class PendingProposalApiTests
         var tools = new FakeToolSource();
         using var api = new ApiFactory(ProposingModel(), tools)
         {
-            ExtraSettings = new Dictionary<string, string?> { ["Compliance:BaseUrl"] = "" },
+            ExtraSettings = new Dictionary<string, string?>(),
             // The tool still asks; nobody contributes a flow for it.
             ConfigureTestServices = s => s.AddScoped(_ => new Maf.Lab.Api.Agent.Writes.WriteFlows([])),
         };

@@ -67,7 +67,6 @@ COMPOSE       := docker compose -p $(COMPOSE_PROJECT)
 # ── configuration (override on the command line or in the environment) ─────────────────────────────────────────────
 BASE_URL      ?= http://localhost:7171
 API_REPLICAS  ?= 2
-COMPLIANCE_REPLICAS ?= 2
 CHAT_MODEL    ?= gpt-oss:120b
 SUITE         ?= all
 WAIT_TIMEOUT  ?= 300
@@ -123,11 +122,11 @@ INDEXER      := $(DOTNET) $(INDEXER_DLL)
 all: require-docker up index-if-empty banner ## Start everything: build, run, wait for health, index if empty (default)
 
 help: ## List the targets
-	@echo "maf-lab — make targets (variables: API_REPLICAS COMPLIANCE_REPLICAS CHAT_MODEL SUITE BASE_URL WAIT_TIMEOUT TO FORCE)"
+	@echo "maf-lab — make targets (variables: API_REPLICAS CHAT_MODEL SUITE BASE_URL WAIT_TIMEOUT TO FORCE)"
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 # ── lifecycle ────────────────────────────────────────────────────────────────────────────────────────────────────
-up: require-docker ## Build and start the stack (replicas via API_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy
+up: require-docker ## Build and start the stack (api replicas via API_REPLICAS; a plugin's own in its plugin.mk), wait until healthy
 	@if [ "$(CI_MODE)" != "1" ] && [ -z "$$OLLAMA_API_KEY" ]; then echo "⚠ OLLAMA_API_KEY is not set: the stack starts, but chat (Ollama Cloud) will fail. Run 'make setup'."; fi
 	@if [ "$(CI_MODE)" != "1" ] && [ -z "$$JEV_MAF_LAB" ]; then echo "⚠ JEV_MAF_LAB is not set: the stack starts, but no turn is classified (nothing forced to search)."; fi
 	@# Earlier versions ran the api as root; give back to you whatever it left owned by root in the checkout.
@@ -140,7 +139,7 @@ up: require-docker ## Build and start the stack (replicas via API_REPLICAS/COMPL
 	@# (PLUGINS_PY sets MAF_PLUGINS itself, after any prefix, so the core-only stage spells its environment out.)
 	@MAF_ENV='$(MAF_ENV)' MAF_PLUGINS=none CI_MODE='$(CI_MODE)' python3 $(ROOT)/scripts/plugins.py install --conf-d-only
 	@# compose itself waits for the balancer's dependencies to be healthy; if that fails, show which service and why.
-	$(COMPOSE) up -d --build --remove-orphans --scale api=$(API_REPLICAS) --scale compliance=$(COMPLIANCE_REPLICAS) \
+	$(COMPOSE) up -d --build --remove-orphans --scale api=$(API_REPLICAS) \
 	  || { scripts/wait_healthy.sh 0; exit 1; }
 	@scripts/wait_healthy.sh $(WAIT_TIMEOUT)
 	@# The plugins' snippets, now that their services are healthy; the balancer resolves the replicas when it reloads, so
@@ -148,7 +147,7 @@ up: require-docker ## Build and start the stack (replicas via API_REPLICAS/COMPL
 	@$(PLUGINS_PY) install --conf-d-only
 	@$(COMPOSE) exec -T lb nginx -t -q -c /etc/nginx/lb/nginx.conf \
 	  && $(COMPOSE) exec -T lb nginx -c /etc/nginx/lb/nginx.conf -s reload >/dev/null 2>&1 \
-	  && echo "✓ load balancer reloaded ($(API_REPLICAS) api, $(COMPLIANCE_REPLICAS) compliance replicas)"
+	  && echo "✓ load balancer reloaded ($(API_REPLICAS) api replicas)"
 	@# Every replica re-reads plugins/.installed now rather than at its next 30-second check.
 	@$(COMPOSE) exec -T redis redis-cli PUBLISH plugins-changed up >/dev/null 2>&1 || true
 
@@ -292,15 +291,13 @@ verify: ## Verify the running stack through the load balancer (37 checks), then 
 	@[ -d copilot-runtime/node_modules ] || (cd copilot-runtime && $(NPM) ci --no-audit --no-fund >/dev/null)
 	MODEL_FREE=$(CI_MODE) node copilot-runtime/conformance.mjs $(BASE_URL)
 
-# The eval's agent wires the stack's compliance reviewer as the api does (compose: Compliance__*), so the fee adjustment
-# that needs a reviewer is offered to it, as in a deployment (introduce-plugins 4.4).
-EVAL_COMPLIANCE := Compliance__BaseUrl=$(BASE_URL)/compliance Compliance__ClientId=maf-lab-assistant \
-	Compliance__ClientSecret=$${COMPLIANCE_CLIENT_SECRET:-assistant-dev-secret}
+# The eval's environment the installed plugins add to (their plugin.mk: EVAL_ENV += …), e.g. where a reviewer is.
+EVAL_ENV ?=
 
 eval: require-dotnet ## Run evals (SUITE=all|selection|retrieval|generation|injection|confirmation|intent|domain|presentation|guardrail|answer-check|code-route|graph-depth|generation-judge) against the stack's MCP servers
-	Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp $(EVAL_COMPLIANCE) $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval -- --suite $(SUITE)$(if $(REPEAT), --repeat $(REPEAT))
+	Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp $(EVAL_ENV) $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval -- --suite $(SUITE)$(if $(REPEAT), --repeat $(REPEAT))
 
-EVAL_HOST = Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp $(EVAL_COMPLIANCE) $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval --
+EVAL_HOST = Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp $(EVAL_ENV) $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval --
 EVAL = $(EVAL_HOST) --suite
 
 ask: require-dotnet ## Ask one question through the agent and print its trace (Q="…" TENANT=firm-a), e.g. a cross-domain one

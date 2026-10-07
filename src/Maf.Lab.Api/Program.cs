@@ -14,6 +14,7 @@ using Maf.Lab.Retrieval.Auth;
 using Microsoft.EntityFrameworkCore;
 
 using Maf.Lab.Hosting;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Maf.Lab.Api;
 
@@ -109,10 +110,11 @@ public partial class Program
         // per call by the extended-card handler.
         builder.Services.AddTransient(sp => A2A.BillingAgentCard.Installed(sp.GetRequiredService<Maf.Lab.Plugins.Abstractions.IInstalledPlugins>()));
         builder.Services.AddSingleton<Func<Maf.Lab.A2A.AgentCardDescriptor>>(sp => () => sp.GetRequiredService<Maf.Lab.A2A.AgentCardDescriptor>());
-        builder.Services.Configure<A2A.ComplianceOptions>(builder.Configuration.GetSection(A2A.ComplianceOptions.Section));
-        builder.Services.AddHttpClient("a2a-consult");
-        builder.Services.AddSingleton<A2A.ComplianceConsultant>();
-        builder.Services.AddSingleton<Maf.Lab.Plugins.Abstractions.IReviewerConsultation>(sp => sp.GetRequiredService<A2A.ComplianceConsultant>());
+        // The reviewer is the compliance plugin's (extract-compliance-plugin); without it, a flow that asks is told none
+        // can be reached (a Null Object), and the tool that requires one is not offered at all.
+        builder.Services.TryAddSingleton<Maf.Lab.Plugins.Abstractions.IReviewerConsultation, Agent.Writes.NoReviewer>();
+        // The audit record as a screen reads it; the screen is the compliance plugin's.
+        builder.Services.AddScoped<Maf.Lab.Plugins.Abstractions.IAuditTrail, Compliance.CoreAuditTrail>();
         builder.Services.AddHttpClient("a2a-push");
         builder.Services.AddSingleton<A2A.PushNotificationDispatcher>();
         builder.Services.AddSingleton<global::A2A.ITaskStore, A2A.SqliteTaskStore>();
@@ -192,7 +194,6 @@ public partial class Program
         app.MapTelemetry();
         app.MapHistory();
         app.MapTopology();
-        app.MapCompliance();
         app.MapIntentStats();
         app.MapJevStats();
         app.MapA2AAdmin();

@@ -1,0 +1,29 @@
+# The compliance plugin's service (extract-compliance-plugin), merged after the core's compose file by make. Paths resolve
+# against compose/, as in every merged compose file.
+#
+# The reviewer: its own audience and its own registry (a token for the assistant's surface is no good here), its tasks
+# in the shared store. The api is given the client's settings (files/compliance.env) only while this plugin is in use.
+services:
+  compliance:
+    build:
+      context: ..
+      dockerfile: plugins/compliance/service/Dockerfile
+    deploy:
+      # Exported by this plugin's plugin.mk (COMPLIANCE_REPLICAS); two, so a task's follow-ups prove the routing.
+      replicas: ${COMPLIANCE_REPLICAS:-2}
+    env_file: [env/retrieval.env, env/platform.env]
+    environment:
+      Urls: http://+:8080
+      A2A__Audience: maf-lab-compliance
+      A2A__PublicBaseUrl: ${COMPLIANCE_PUBLIC_URL:-http://localhost:7171/compliance}
+      A2A__PathBase: /compliance
+      A2A__RequiredScope: a2a.compliance.review
+      A2A__Partners__maf-lab-assistant__Secret: ${COMPLIANCE_CLIENT_SECRET:-assistant-dev-secret}
+      A2A__Partners__maf-lab-assistant__Scopes__0: a2a.compliance.review
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # The assistant's own credentials at the reviewer: it consults as a system, never as a user.
+  api:
+    env_file: [../plugins/compliance/files/compliance.env]

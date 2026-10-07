@@ -1,3 +1,6 @@
+extern alias service;
+
+using service::Maf.Lab.ComplianceAgent;
 using Maf.Lab.A2A;
 using Sdk = global::A2A;
 using Maf.Lab.TestSupport;
@@ -62,7 +65,7 @@ public class ReviewerSharedStateTests
     {
         // No store registered and none configured: the reviewer says what it needs rather than serving half of it.
         var failure = Assert.Throws<InvalidOperationException>(() =>
-            Maf.Lab.ComplianceAgent.Program.BuildApp(ProjectDir.ContentRootArgs("Maf.Lab.ComplianceAgent"), builder =>
+            service::Maf.Lab.ComplianceAgent.Program.BuildApp(ProjectDir.ContentRootArgsAt(Path.Combine("plugins", "compliance", "service")), builder =>
             {
                 builder.WebHost.UseSetting("urls", "http://127.0.0.1:0");
                 builder.Logging.ClearProviders();

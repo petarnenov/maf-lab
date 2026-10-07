@@ -71,16 +71,14 @@ public sealed record ToolOrigin(string Domain, string Server);
 /// requires a plugin that is not in use (fee adjustment without a compliance reviewer, task 4.4) is not offered.
 /// </summary>
 public sealed class McpToolSource(IOptions<AgentOptions> options, ILoggerFactory loggers, IHttpClientFactory http,
-    Plugins.PluginCatalogue? plugins = null, DomainCatalogue? domainCatalogue = null, IConfiguration? configuration = null,
+    Plugins.PluginCatalogue? plugins = null, DomainCatalogue? domainCatalogue = null,
     Tracing.TurnObservers? observers = null) : IToolSource
 {
     /// <summary>
-    /// Whether a plugin (or capability) a tool requires is in use: installed as a plugin, or — until it becomes one — the
-    /// setting that wires it today configured (<see cref="BuiltIn.BuiltInDomains.LegacyCapabilities"/>).
+    /// Whether the plugin a tool requires is in use: installed, as the catalogue says (extract-compliance-plugin). A
+    /// fee adjustment needs the compliance plugin, not a configured address.
     /// </summary>
-    internal static bool InUse(string name, Plugins.PluginCatalogue? plugins, IConfiguration? configuration) =>
-        plugins?.Current.Contains(name) == true
-        || (BuiltIn.BuiltInDomains.LegacyCapabilities.GetValueOrDefault(name) is { } setting && configuration?[setting] is { Length: > 0 });
+    internal static bool InUse(string name, Plugins.PluginCatalogue? plugins) => plugins?.Current.Contains(name) == true;
 
     private readonly ILogger _logger = loggers.CreateLogger<McpToolSource>();
 
@@ -127,7 +125,7 @@ public sealed class McpToolSource(IOptions<AgentOptions> options, ILoggerFactory
             foreach (var tool in c.Tools)
             {
                 var descriptor = catalogue.Get(server.Domain);
-                if (descriptor?.ToolRequires.GetValueOrDefault(tool.Name) is { } required && !InUse(required, plugins, configuration))
+                if (descriptor?.ToolRequires.GetValueOrDefault(tool.Name) is { } required && !InUse(required, plugins))
                 {
                     // Offered only while what it needs is in use: a fee adjustment needs a reviewer to pass (task 4.4).
                     continue;

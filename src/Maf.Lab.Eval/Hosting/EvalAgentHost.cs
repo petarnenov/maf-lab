@@ -15,6 +15,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Maf.Lab.Eval.Hosting;
 
@@ -158,14 +159,11 @@ public sealed class EvalAgentHost : IAsyncDisposable
         services.AddSingleton<IToolSource, McpToolSource>();
         services.AddSingleton<ConversationService>();
         services.AddJevIntentClassifier(configuration);
-        // The write flow: an eval turn can propose an adjustment, so the turn runner needs it. Compliance is wired like the
-        // api's (make eval passes the stack's Compliance:*), so the fee adjustment that needs a reviewer is offered, and a
-        // case over the review threshold consults the stack's reviewer. A stop reaches it too: the eval exits 130 on
-        // Ctrl+C or SIGTERM, and the consultant sends A2A tasks/cancel within 5 s.
-        services.Configure<Maf.Lab.Api.A2A.ComplianceOptions>(configuration.GetSection("Compliance"));
-        services.AddHttpClient("a2a-consult");
-        services.AddSingleton<Maf.Lab.Api.A2A.ComplianceConsultant>();
-        services.AddSingleton<Maf.Lab.Plugins.Abstractions.IReviewerConsultation>(sp => sp.GetRequiredService<Maf.Lab.Api.A2A.ComplianceConsultant>());
+        // The installed plugins' own services, as the api composes them: with compliance installed, its reviewer (make eval
+        // passes the stack's Compliance:*), so a case over the review threshold consults the stack's reviewer, and a stop
+        // reaches it too (the eval exits 130; the consultant sends A2A tasks/cancel within 5 s). Without it, no reviewer.
+        Maf.Lab.Api.Plugins.PluginHost.InstalledServices(Maf.Lab.Api.Plugins.PluginHost.ReadInstalled(configuration), services, configuration);
+        services.TryAddSingleton<Maf.Lab.Plugins.Abstractions.IReviewerConsultation, Maf.Lab.Api.Agent.Writes.NoReviewer>();
         // The installed plugins' write flows over the core's ports, as the api composes them (generalize-write-confirmation).
         services.AddScoped<Maf.Lab.Api.Agent.Writes.WriteTurnContext>();
         services.AddScoped<Maf.Lab.Plugins.Abstractions.IWriteAudit, Maf.Lab.Api.Agent.Writes.CoreWriteAudit>();

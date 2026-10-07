@@ -120,7 +120,12 @@ public interface IWriteAudit
     /// <param name="kind">The kind of action the record covers, e.g. <c>fee.adjustment</c>.</param>
     /// <param name="step">The step, e.g. <c>fee.adjustment.reviewed</c>.</param>
     /// <param name="identifiers">What the step was about, as <c>key=value</c> identifiers — never free text.</param>
-    Task RecordAsync(string kind, string step, string identifiers, string outcome, CancellationToken ct);
+    /// <param name="tookMs">How long the step took, when that is part of the record (a consultation's).</param>
+    Task RecordAsync(string kind, string step, string identifiers, string outcome, long tookMs, CancellationToken ct);
+
+    /// <summary>A step whose duration is not part of its record.</summary>
+    Task RecordAsync(string kind, string step, string identifiers, string outcome, CancellationToken ct) =>
+        RecordAsync(kind, step, identifiers, outcome, 0, ct);
 }
 
 /// <summary>

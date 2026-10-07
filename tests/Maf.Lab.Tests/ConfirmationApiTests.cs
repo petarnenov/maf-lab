@@ -33,7 +33,7 @@ public class ConfirmationApiTests
         });
 
     private static ApiFactory Api(FakeToolSource tools) =>
-        new(ProposingModel(), tools) { ExtraSettings = new Dictionary<string, string?> { ["Compliance:BaseUrl"] = "" } };
+        new(ProposingModel(), tools) { ExtraSettings = new Dictionary<string, string?>() };
 
     /// <summary>A run that pauses on a proposal. The interrupt's id is what an answer names.</summary>
     private static async Task<(string ConversationId, string AdjustmentId)> ProposeAsync(HttpClient client)

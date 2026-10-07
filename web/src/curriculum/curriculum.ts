@@ -241,9 +241,9 @@ export const CURRICULUM: CurriculumSection[] = [
         concept: 'A2A client',
         summary:
           "Before a fee adjustment, the assistant consults a separate compliance agent found by its Agent Card, over a streaming A2A message. It authenticates as itself — the user's token is not forwarded — and every way the consultation can end, including a question back or a timeout, is a typed result.",
-        paths: ['src/Maf.Lab.Api/A2A/ComplianceConsultant.cs', 'src/Maf.Lab.ComplianceAgent'],
+        paths: ['src/Maf.Lab.Plugins.Abstractions/ReviewerConsultation.cs', 'src/Maf.Lab.A2A'],
         spec: 'a2a-client',
-        screen: { to: '/admin/compliance', label: 'Compliance' },
+        screen: { to: '/admin/a2a', label: 'Agent to agent' },
       },
       {
         concept: 'One assistant with a router',

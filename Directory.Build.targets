@@ -16,6 +16,16 @@
     <ProjectReference Include="@(_MafPluginServer)" />
   </ItemGroup>
   <!--
+    A plugin's own service (plugins/<name>/service/, its own container, never compiled into the api or the product image)
+    is referenced by the test projects only, so the plugin's tests can host it in process (extract-compliance-plugin;
+    amends DECISIONS §81 part F, which had rejected a service/ glob for billing's eval-hosted library).
+  -->
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'Maf.Lab.Tests' or '$(MSBuildProjectName)' == 'Maf.Lab.IntegrationTests'">
+    <_MafPluginService Include="$(MSBuildThisFileDirectory)plugins/*/service/*.csproj" />
+    <!-- Under extern alias `service`: a service's top-level Program is global and would shadow core types (Eval's Program). -->
+    <ProjectReference Include="@(_MafPluginService)" Aliases="service" />
+  </ItemGroup>
+  <!--
     A plugin's tests live in its folder, with no project of their own: plugins/<name>/tests/unit/ compiles into
     Maf.Lab.Tests and plugins/<name>/tests/integration/ into Maf.Lab.IntegrationTests, so they reuse the core's test
     support and leave with the folder (nothing outside it names them).

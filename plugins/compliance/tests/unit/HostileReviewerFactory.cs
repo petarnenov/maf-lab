@@ -1,7 +1,9 @@
+extern alias service;
+
+using service::Maf.Lab.ComplianceAgent;
 using System.Text.Json;
 using A2A;
 using Maf.Lab.A2A;
-using Maf.Lab.ComplianceAgent;
 using Maf.Lab.Hosting;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;

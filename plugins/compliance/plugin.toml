@@ -1,0 +1,12 @@
+# The compliance reviewer (extract-compliance-plugin): a second agent the assistant consults over A2A before a large write
+# is put to a person, and the audit screen over the core's audit record. The reviewer is this plugin's service, in its
+# own container; the client and the screen's routes are its in-process part. The audit records stay the core's.
+schema = 1
+name = "compliance"
+kind = "a2a"
+# Tenant-scoped: a review is about one tenant's write, and the audit screen shows the caller's tenant's record.
+scope = "tenant"
+environments = ["dev", "qa", "stage", "prod"]
+description = "The compliance reviewer: an A2A agent (two replicas behind /compliance) that reviews a large fee adjustment before a person is asked to confirm it, the client that consults it, and the audit screen (verify, browse and export the tenant's audit record)."
+progress = "Page: the audit screen shows its loading state while a page of the record loads; a turn waiting for a review says a review is under way and roughly how long one takes"
+stopping = "Key: Esc on the chat page while a review runs; Stop: the turn stops through CopilotKit's stop, and the consultation sends the reviewer A2A tasks/cancel within 5 s; Recorded in: the review task's state in the reviewer's shared store; Shown: the turn says it was stopped"

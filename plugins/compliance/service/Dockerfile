@@ -1,17 +1,18 @@
 # syntax=docker/dockerfile:1
-# Build context: repository root (see compose/docker-compose.yml).
+# Build context: the repository root (the plugin's compose.yml); it copies the core libraries it references and itself.
 FROM mcr.microsoft.com/dotnet/sdk:10.0.401-noble AS build
 WORKDIR /src
 COPY global.json Directory.Build.props Directory.Packages.props ./
 COPY src/ src/
+COPY plugins/compliance/service/ plugins/compliance/service/
 # NuGet packages come from a cache shared by every image build (DECISIONS.md §58). The first restore fills it with
 # anything it lacks, holding it alone so parallel builds never extract into the same folder; the second copies this
 # project's packages out of it into the stage, so publish needs neither the cache nor the network.
 ENV NUGET_PACKAGES=/nuget
 RUN --mount=type=cache,id=maf-lab-nuget,target=/root/.nuget/packages,sharing=locked \
-    NUGET_PACKAGES=/root/.nuget/packages dotnet restore src/Maf.Lab.ComplianceAgent/Maf.Lab.ComplianceAgent.csproj \
-    && dotnet restore src/Maf.Lab.ComplianceAgent/Maf.Lab.ComplianceAgent.csproj --force --source /root/.nuget/packages
-RUN dotnet publish src/Maf.Lab.ComplianceAgent/Maf.Lab.ComplianceAgent.csproj -c Release -o /app /p:UseAppHost=false --no-restore
+    NUGET_PACKAGES=/root/.nuget/packages dotnet restore plugins/compliance/service/Maf.Lab.ComplianceAgent.csproj \
+    && dotnet restore plugins/compliance/service/Maf.Lab.ComplianceAgent.csproj --force --source /root/.nuget/packages
+RUN dotnet publish plugins/compliance/service/Maf.Lab.ComplianceAgent.csproj -c Release -o /app /p:UseAppHost=false --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.12-noble
 WORKDIR /app

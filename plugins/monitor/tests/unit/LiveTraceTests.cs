@@ -66,7 +66,7 @@ public class LiveTraceTests
                     ["accountId"] = "A-1042", ["amount"] = -200m, ["reason"] = "overcharged in Q2",
                 })
                 : ScriptedChatClient.Text("Done."));
-        using var api = MonitorPluginSupport.Api(chat, new FakeToolSource(), settings: new Dictionary<string, string?> { ["Compliance:BaseUrl"] = "" });
+        using var api = MonitorPluginSupport.Api(chat, new FakeToolSource(), settings: new Dictionary<string, string?>());
         var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var proposed = await ApiFactory.ChatAsync(adam, "adjust the fee on A-1042 down by 200");
         var resumed = await ApiFactory.ResumeAsync(adam, ApiFactory.ThreadOf(proposed),

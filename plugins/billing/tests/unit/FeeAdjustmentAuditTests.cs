@@ -35,7 +35,7 @@ public class FeeAdjustmentAuditTests
 
     private static ApiFactory Api(FakeToolSource tools) => new(ProposingModel(), tools)
     {
-        ExtraSettings = new Dictionary<string, string?> { ["Compliance:BaseUrl"] = "" },
+        ExtraSettings = new Dictionary<string, string?>(),
         // Billing's own flow for the fakes' write tool, in place of the core fixture's.
         ConfigureTestServices = FeeAdjustmentFlow.Install,
     };

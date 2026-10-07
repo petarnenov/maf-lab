@@ -129,13 +129,13 @@ The balancer's routes, as `compose/lb/nginx.conf`, the api upstream template and
 | `/dev/` | prefix | `api` |
 | `/.well-known/agent-card.json` | exact | `api` |
 | `/a2a` | prefix | `api` |
-| `/compliance` | prefix | `compliance` |
 | `/v1/traces` | prefix | `otel-collector` |
 | `/jaeger` | prefix | `jaeger` |
 | `/` | prefix | `web` |
 | `/example/mcp` | exact | `mcp-example` at `/mcp` (plugin `_example`) |
 | `/mcp` | exact | `mcp-retrieval` (plugin `billing`) |
 | `/code/mcp` | exact | `mcp-code` at `/mcp` (plugin `code`) |
+| `/compliance` | prefix | `compliance` (plugin `compliance`) |
 | `/portfolio/mcp` | exact | `mcp-portfolio` at `/mcp` (plugin `portfolio`) |
 <!-- /generated:lb-routes -->
 
@@ -187,7 +187,7 @@ make help                  # every target
 |---|---|
 | `make all` | Start everything: build, run, wait for health, index if empty (default) |
 | `make help` | List the targets |
-| `make up` | Build and start the stack (replicas via API_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy |
+| `make up` | Build and start the stack (api replicas via API_REPLICAS; a plugin's own in its plugin.mk), wait until healthy |
 | `make core` | Start the core with no plugin (MAF_PLUGINS=none), so no domain; declines every turn (decision 5h); a plain make brings them back |
 | `make product-check` | Build the product image variant (api, web) and check it holds no dev-or-qa-only plugin code |
 | `make plugins` | List every plugin: kind, scope, environments, whether installed, dependencies, description |
@@ -269,6 +269,7 @@ allows, `none` means the core alone (`make core`), otherwise a comma-separated l
 | `a2a-inspector` | infra | installation | dev, qa | The A2A Inspector (a2aproject), opened on the lab's agent cards with a fresh partner token: a dev and qa tool. |
 | `billing` | mcp | tenant | dev, qa, stage, prod | Fee billing as a domain: its MCP server (mcp-retrieval: documentation search, run status and history, the billing graph, fee adjustments), its corpus and seeds, and its domain descriptor and routing. |
 | `code` | mcp | installation | dev, qa | The lab's own source code as a domain: the codebase MCP server (search_codebase and the code-graph tools), its domain descriptor and routing, and the chat's Code snippets pane. |
+| `compliance` | a2a | tenant | dev, qa, stage, prod | The compliance reviewer: an A2A agent (two replicas behind /compliance) that reviews a large fee adjustment before a person is asked to confirm it, the client that consults it, and the audit screen (verify, browse and export the tenant's audit record). |
 | `conversation-history` | app | installation | dev, qa, stage, prod | The chat's conversation list: the caller's own conversations, searched and paged, renamed and deleted, beside the chat. Without it, a conversation is still reopened by its URL and a new one started from the chat's header. |
 | `mcp-inspector` | infra | installation | dev, qa | The MCP Inspector, listing the lab's MCP servers with a dev user's token: a dev and qa tool. |
 | `monitor` | app | installation | dev, qa | Behind the scenes of every chat turn: the full trace (model calls, prompt, retrieval diagnostics, guard, answer check), live while it runs and kept for a while after, with the run's AG-UI frames and time travel. |

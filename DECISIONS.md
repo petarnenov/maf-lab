@@ -3460,6 +3460,42 @@ No package version moves in this change.
   - The core tests run on a `fixture-portfolio` stand-in beside `fixture-billing`, pinned to the plugin's table by its
     drift test. The neutral-id rename of the shared fakes stays deferred.
 
+- **Part H (extract-compliance).**
+  - `tool_requires: compliance` means "the compliance plugin is in use", read from the plugin catalogue.
+    `BuiltInDomains.LegacyCapabilities` is deleted, and with it the last setting that stood in for a plugin.
+    Without the plugin, the core's `NoReviewer` (Null Object) answers `IReviewerConsultation` with "unreachable", so a
+    flow still resolves, and the tool that needs a reviewer isn't offered.
+  - `BuiltIn/` is deleted by the extraction that moves its last reader: JevStatistics (insights), FeedbackEndpoints
+    (feedback-review), TopologyProbe (topology), EvalAgentHost and DomainSuite (evals). Until then it keeps the two
+    name constants, and the scanner keeps its exemption.
+  - **Amends part F's rejection of a `service/` glob.** The test projects reference `plugins/*/service/*.csproj`
+    through `Directory.Build.targets` under the extern alias `service`. Only the tests that host an agent opt in
+    (`extern alias service;`). The api and the product images never reference a service. The alias is needed because
+    a service's top-level `Program` is global and would shadow the core's. Rejected: a glob by csproj name (it names a
+    plugin's project from outside its folder); namespacing the template's `Program` (every service would have to
+    remember it); qualifying the call sites (nine places, and the next service breaks them again).
+  - A consultation is a step of a write's audit. The client records through `IWriteAudit` (kind
+    `a2a.consultation`, the operation as the step), which gains an additive overload with the step's duration. Its
+    actor is the request's principal instead of a synthetic `maf-lab-assistant`, and its conversation and turn are
+    filled in.
+  - The audit screen reads through `IAuditTrail` (Abstractions; verify, a page, an export), implemented by the core's
+    `CoreAuditTrail`. The records, the chain and the export's own record stay core (5y). The tenant comes from the
+    principal, and DTOs come back. Rejected: the plugin holding a `DbContext` on the core's tables.
+  - The api's reviewer client settings stay in the core's `compose/env/compliance.env`. They are the deployment's
+    outbound client registration (OAuth 2.0 client credentials are issued per authorization server), and a fragment
+    never changes the api (introduce-plugins §2). Rejected: an api override in the plugin's compose, a mounted file,
+    exporting from `plugin.mk`. extract-a2a generalizes it to `A2A:Clients:<agent>`.
+  - The client owns its copy of the reviewer's token request and response and of the card's well-known path, so the
+    plugin needs no core code; the wire is the contract. `TokenWireTests` pins both copies to one shape until
+    extract-a2a gives both sides one definition. Rejected: the records in Abstractions (the core contract grows for
+    one client), and allowing `Maf.Lab.A2A` in the architecture test.
+  - An outbound DTO's tenant field passes the scanner by design. The review request's data part (`ReviewAsk`) carries
+    `firmId`, the adjustment's firm taken from the principal-scoped flow. CLAUDE.md's rule is about input surfaces
+    (a tool, an endpoint, a query builder), and the scanner reads constructor and method parameters, so a named DTO
+    with init properties is the outbound shape.
+  - Billing's fee-flow tests run on the core's `ScriptedReviewer` at the port. Reading each hostile verdict off the
+    wire is compliance's (`HostileVerdictTests`). The real path end to end over A2A is `make ci-e2e`'s.
+
 ## 82. The stop-anything tests run on a fake clock (deterministic-stop-anything-tests, 2026-10-06)
 
 - **Why.** Three tests (`TaskCancelWatchTests.Disposed_it_stops_reading`,

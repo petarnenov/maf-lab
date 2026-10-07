@@ -82,7 +82,6 @@ context: |
       Maf.Lab.A2A/                   A2A code both agents share: partner identity, the signed card, the 1.0 wire format, the request handler
       Maf.Lab.Api/                   ASP.NET Core host: the agents behind the Agent Framework's AG-UI server (MapAGUIServer), history, feedback, admin, A2A
       Maf.Lab.CodeSearch/            MCP server over the repository itself: search_codebase, ask_codebase (own collection)
-      Maf.Lab.ComplianceAgent/       The compliance reviewer: a second agent, an A2A server under /compliance
       Maf.Lab.CoverageRunner/        The coverage runner: builds and tests a commit plus a diff with coverage, with no secrets and no egress
       Maf.Lab.Domain/                Shared contracts ONLY (principal, tenant, result shapes)
       Maf.Lab.Eval/                  Console app: eval datasets, runners, metrics, report

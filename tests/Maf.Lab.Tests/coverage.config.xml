@@ -6,7 +6,7 @@
   <CodeCoverage>
     <ModulePaths>
       <Include>
-        <ModulePath>.*Maf\.Lab\.(Api|Retrieval|Portfolio|CodeSearch|ComplianceAgent|A2A|Hosting|Domain|Indexing|Eval|TestAgent|CoverageRunner)\.dll$</ModulePath>
+        <ModulePath>.*Maf\.Lab\.(Api|Retrieval|Portfolio|CodeSearch|A2A|Hosting|Domain|Indexing|Eval|TestAgent|CoverageRunner)\.dll$</ModulePath>
       </Include>
       <Exclude>
         <ModulePath>.*Maf\.Lab\.Tests\.dll$</ModulePath>

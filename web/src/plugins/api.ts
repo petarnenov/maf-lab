@@ -13,6 +13,9 @@ export { ApiError } from '../api/client';
 /** The signed-in user's api client: a plugin's own routes, called as the user, with the core's errors and stop. */
 export { useApi } from '../auth/useAuth';
 
+/** The signed-in session (who, which tenant, which role), for what a plugin's page shows about the caller. */
+export { useAuth } from '../auth/useAuth';
+
 /** The signed-in persona as a query key's part: a plugin's cached reads never show one user's data to another. */
 export { useUserKey } from '../history/historyApi';
 

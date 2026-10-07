@@ -26,7 +26,6 @@ public sealed class TestHostContentRootTests
     {
         { "Maf.Lab.CoverageRunner", "maf-lab-coverage-runner" },
         { "Maf.Lab.TestAgent", "maf-lab-test-agent" },
-        { "Maf.Lab.ComplianceAgent", "maf-lab-compliance" },
     };
 
     [Theory]
@@ -42,12 +41,11 @@ public sealed class TestHostContentRootTests
     {
         "Maf.Lab.CoverageRunner" => Maf.Lab.CoverageRunner.Program.BuildApp(ProjectDir.ContentRootArgs(project)),
         "Maf.Lab.TestAgent" => Maf.Lab.TestAgent.Program.BuildApp(ProjectDir.ContentRootArgs(project), InMemoryStores),
-        "Maf.Lab.ComplianceAgent" => Maf.Lab.ComplianceAgent.Program.BuildApp(ProjectDir.ContentRootArgs(project), InMemoryStores),
         _ => throw new ArgumentOutOfRangeException(nameof(project)),
     };
 
     // The agents keep their A2A tasks in Redis; building them needs only a store, not a server.
-    private static void InMemoryStores(WebApplicationBuilder builder)
+    internal static void InMemoryStores(WebApplicationBuilder builder)
     {
         builder.Services.AddSingleton<global::A2A.ITaskStore>(new global::A2A.InMemoryTaskStore());
         builder.Services.AddSingleton<IPushConfigStore>(new FakePushConfigStore());

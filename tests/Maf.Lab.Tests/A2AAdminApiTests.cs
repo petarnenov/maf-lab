@@ -24,7 +24,7 @@ public class A2AAdminApiTests
         new(ApiFactory.ProceduralModel())
         {
             SimulatedStepMs = stepMs,
-            ExtraSettings = new Dictionary<string, string?> { ["Compliance:BaseUrl"] = "" },
+            ExtraSettings = new Dictionary<string, string?>(),
         };
 
     private static async Task<HttpClient> PartnerAsync(ApiFactory api)

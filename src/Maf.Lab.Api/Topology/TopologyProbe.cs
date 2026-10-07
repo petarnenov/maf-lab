@@ -50,7 +50,7 @@ public sealed class TopologyProbe(
     IOptions<QdrantOptions> qdrant,
     IOptions<ModelOptions> models,
     IOptions<AgentOptions> agent,
-    IOptions<A2A.ComplianceOptions> compliance,
+    IConfiguration configuration,
     IOptions<Coverage.TestAgentOptions> testAgent,
     IToolSource tools,
     QdrantClient qdrantClient,
@@ -248,8 +248,10 @@ public sealed class TopologyProbe(
     private async Task<TopologyNode> ComplianceAsync(IReadOnlyList<string> addresses, TimeSpan timeout, CancellationToken ct)
     {
         var node = await ReplicasAsync("compliance", "compliance", addresses, timeout, ct);
-        var facts = new Dictionary<string, string>(node.Facts) { ["baseUrl"] = compliance.Value.BaseUrl };
-        if (string.IsNullOrWhiteSpace(compliance.Value.BaseUrl))
+        // The reviewer's address as the compliance plugin is configured (its own options type is the plugin's).
+        var baseUrl = configuration["Compliance:BaseUrl"] ?? "";
+        var facts = new Dictionary<string, string>(node.Facts) { ["baseUrl"] = baseUrl };
+        if (string.IsNullOrWhiteSpace(baseUrl))
         {
             return node with { Facts = facts, Health = NodeHealth.Degraded, Reason = "no compliance agent is configured" };
         }
@@ -258,7 +260,7 @@ public sealed class TopologyProbe(
             using var cts = Linked(timeout, ct);
             var client = http.CreateClient("topology");
             var card = await client.GetFromJsonAsync<System.Text.Json.JsonElement>(
-                $"{compliance.Value.BaseUrl.TrimEnd('/')}{Maf.Lab.A2A.AgentCardFactory.WellKnownPath}", cts.Token);
+                $"{baseUrl.TrimEnd('/')}{Maf.Lab.A2A.AgentCardFactory.WellKnownPath}", cts.Token);
             facts["agent"] = card.TryGetProperty("name", out var name) ? name.GetString() ?? "?" : "?";
             facts["skills"] = string.Join(", ", card.GetProperty("skills").EnumerateArray()
                 .Select(s => s.GetProperty("id").GetString()));

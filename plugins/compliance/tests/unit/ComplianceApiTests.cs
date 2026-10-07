@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using Maf.Lab.Api.Compliance;
-using Maf.Lab.Api.Endpoints;
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.TestSupport;
@@ -34,7 +34,7 @@ public class ComplianceApiTests
     [Fact]
     public async Task Only_a_firm_admin_may_verify_or_export()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = CompliancePluginSupport.Installed };
         var advisor = api.ClientFor("adam", "firm-a", Role.USER);
 
         Assert.Equal(HttpStatusCode.Forbidden, (await advisor.GetAsync("/api/admin/compliance/verify", Ct)).StatusCode);
@@ -45,7 +45,7 @@ public class ComplianceApiTests
     [Fact]
     public async Task Verification_reports_an_intact_chain_and_then_the_row_that_was_altered()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = CompliancePluginSupport.Installed };
         var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var alice = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
         await ChatAsync(api, adam, "what is the procedure when a fee schedule is missing");
@@ -75,7 +75,7 @@ public class ComplianceApiTests
     [Fact]
     public async Task Deleting_a_conversation_is_recorded_and_a_refused_delete_is_not()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = CompliancePluginSupport.Installed };
         var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var conversationId = await ChatAsync(api, adam, "what is the procedure when a fee schedule is missing");
 
@@ -99,7 +99,7 @@ public class ComplianceApiTests
     [Fact]
     public async Task A_tool_call_and_a_deletion_sit_in_one_ordered_chain()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = CompliancePluginSupport.Installed };
         var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var conversationId = await ChatAsync(api, adam, "what is the procedure when a fee schedule is missing");
         await api.ConversationsOf("adam", "firm-a").DeleteAsync(conversationId, Ct);
@@ -117,7 +117,7 @@ public class ComplianceApiTests
     [Fact]
     public async Task The_package_holds_the_firms_own_data_with_a_manifest_that_can_be_rechecked()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = CompliancePluginSupport.Installed };
         var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var alice = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
         var bob = api.ClientFor("bob", "firm-b", Role.USER);
@@ -150,7 +150,7 @@ public class ComplianceApiTests
     [Fact]
     public async Task The_record_can_be_browsed_a_page_at_a_time_newest_first()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = CompliancePluginSupport.Installed };
         var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var alice = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
         var first = await ChatAsync(api, adam, "what is the procedure when a fee schedule is missing");
@@ -175,7 +175,7 @@ public class ComplianceApiTests
     [Fact]
     public async Task Browsing_filters_by_person_and_kind_and_says_when_there_is_nothing()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = CompliancePluginSupport.Installed };
         var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var olga = api.ClientFor("olga", "firm-a", Role.USER);
         var alice = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
@@ -199,7 +199,7 @@ public class ComplianceApiTests
     [Fact]
     public async Task Browsing_stays_in_the_firm_leaves_no_trace_and_needs_an_admin()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = CompliancePluginSupport.Installed };
         var bob = api.ClientFor("bob", "firm-b", Role.USER);
         var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var alice = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
@@ -254,7 +254,7 @@ public class ComplianceApiTests
     [Fact]
     public async Task Another_firm_cannot_be_reached_by_any_parameter()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = CompliancePluginSupport.Installed };
         var bob = api.ClientFor("bob", "firm-b", Role.USER);
         var alice = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
         await ChatAsync(api, bob, "what is the procedure when a fee schedule is missing");
@@ -270,7 +270,7 @@ public class ComplianceApiTests
     [Fact]
     public async Task A_subject_scoped_package_holds_only_that_person()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = CompliancePluginSupport.Installed };
         var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var olga = api.ClientFor("olga", "firm-a", Role.USER);
         var alice = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
@@ -289,7 +289,7 @@ public class ComplianceApiTests
     [Fact]
     public async Task The_export_is_itself_recorded_and_appears_in_the_next_one()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = CompliancePluginSupport.Installed };
         var adam = api.ClientFor("adam", "firm-a", Role.USER);
         var alice = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
         await ChatAsync(api, adam, "what is the procedure when a fee schedule is missing");

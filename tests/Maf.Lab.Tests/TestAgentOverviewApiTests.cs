@@ -26,7 +26,6 @@ public sealed class TestAgentOverviewApiTests
     {
         var settings = new Dictionary<string, string?>
         {
-            ["Compliance:BaseUrl"] = "",
             ["TestAgent:BaseUrl"] = baseUrl,
             ["TestAgent:ClientId"] = "maf-lab-assistant",
             ["TestAgent:ClientSecret"] = Secret,

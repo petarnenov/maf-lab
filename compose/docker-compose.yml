@@ -79,26 +79,6 @@ services:
     entrypoint: ["/bin/sh", "/warm-models.sh"]
     restart: "no"
 
-  compliance:
-    build:
-      context: ..
-      dockerfile: src/Maf.Lab.ComplianceAgent/Dockerfile
-    deploy:
-      replicas: 2
-    env_file: [env/retrieval.env, env/platform.env]
-    environment:
-      Urls: http://+:8080
-      # Its own audience and its own registry: a token for the assistant's surface is no good here.
-      A2A__Audience: maf-lab-compliance
-      A2A__PublicBaseUrl: ${COMPLIANCE_PUBLIC_URL:-http://localhost:7171/compliance}
-      A2A__PathBase: /compliance
-      A2A__RequiredScope: a2a.compliance.review
-      A2A__Partners__maf-lab-assistant__Secret: ${COMPLIANCE_CLIENT_SECRET:-assistant-dev-secret}
-      A2A__Partners__maf-lab-assistant__Scopes__0: a2a.compliance.review
-    depends_on:
-      redis:
-        condition: service_healthy
-
   # Hands the api's volume to the user the api runs as: a new volume's mount point is created by root, and volumes from
   # before the api ran as that user hold root's files.
   api-data-init:
@@ -120,7 +100,7 @@ services:
     # The user who runs make (exported by it): the api writes into the repository (branches, merges) and evals/,
     # and on Linux whatever it writes there belongs to this user. Root here left root-owned files in the checkout.
     user: "${MAF_LAB_UID:-1000}:${MAF_LAB_GID:-1000}"
-    env_file: [env/retrieval.env, env/platform.env, env/graph.env, env/a2a.env, env/compliance.env]
+    env_file: [env/retrieval.env, env/platform.env, env/graph.env, env/a2a.env]
     environment:
       Urls: http://+:8080
       # Writable by any user; a uid with no passwd entry would otherwise get HOME=/.
@@ -339,8 +319,6 @@ services:
       retries: 20
     depends_on:
       api:
-        condition: service_healthy
-      compliance:
         condition: service_healthy
       test-agent:
         condition: service_healthy

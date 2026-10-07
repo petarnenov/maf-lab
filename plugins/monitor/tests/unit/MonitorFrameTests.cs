@@ -79,7 +79,7 @@ public class MonitorFrameTests
                 })
                 : ScriptedChatClient.Text("Done.");
         });
-        using var api = MonitorPluginSupport.Api(model, new FakeToolSource(), new Dictionary<string, string?> { ["Compliance:BaseUrl"] = "" });
+        using var api = MonitorPluginSupport.Api(model, new FakeToolSource(), new Dictionary<string, string?>());
         var adam = api.ClientFor("adam", "firm-a", Role.USER);
 
         var proposed = await ApiFactory.ChatAsync(adam, "adjust the fee on A-1042 down by 200");

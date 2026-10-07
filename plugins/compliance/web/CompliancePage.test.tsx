@@ -1,8 +1,8 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import type { ActionPage, AuditAction, ChainReport, ExportManifest } from '../api/types';
-import { jsonResponse, makeSession, renderWithProviders } from '../test/render';
+import type { ActionPage, AuditAction, ChainReport, ExportManifest } from './types';
+import { jsonResponse, makeSession, renderWithProviders } from '@maf/testing';
 import { CompliancePage } from './CompliancePage';
 
 const intact: ChainReport = {
@@ -204,18 +204,12 @@ describe('CompliancePage', () => {
     expect(screen.queryByRole('table', { name: 'Actions' })).not.toBeInTheDocument();
   });
 
-  it('is refused to a non-admin, as the other admin screens are', async () => {
-    stubFetch();
-    const { RequireAdmin } = await import('../components/RequireAdmin');
-    renderWithProviders(
-      <RequireAdmin>
-        <CompliancePage />
-      </RequireAdmin>,
-      { session: makeSession('USER') },
-    );
-
-    expect(screen.getByText('Access denied')).toBeInTheDocument();
-    expect(screen.queryByRole('region', { name: 'Audit chain' })).not.toBeInTheDocument();
+  it('is a route for administrators only, as the other admin screens are', async () => {
+    // The core guards every plugin route marked admin, and this one is marked.
+    const plugin = (await import('./index')).default;
+    expect(plugin.routes).toEqual([
+      expect.objectContaining({ path: 'admin/compliance', admin: true }),
+    ]);
   });
 
   it('exports the chosen range and shows the manifest afterwards', async () => {

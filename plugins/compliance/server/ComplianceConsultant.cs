@@ -5,14 +5,11 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using A2A;
 using Maf.Lab.A2A;
-using Maf.Lab.Api.Agent;
-using Maf.Lab.Domain.Tenancy;
-using Microsoft.Agents.AI;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MessageRole = A2A.Role;
-using UserRole = Maf.Lab.Domain.Tenancy.Role;
 
-namespace Maf.Lab.Api.A2A;
+namespace Maf.Lab.Plugins.Compliance;
 
 /// <summary>
 /// Consults the compliance reviewer — a different system, with its own identity, its own pace and its own right to
@@ -24,13 +21,19 @@ namespace Maf.Lab.Api.A2A;
 /// </summary>
 public sealed class ComplianceConsultant(
     IHttpClientFactory http,
-    ToolAudit audit,
+    IWriteAudit audit,
     IOptions<ComplianceOptions> options,
     TimeProvider time,
     ILogger<ComplianceConsultant> logger) : IReviewerConsultation
 {
-    /// <summary>The audited action's name; the kind it is filed under is the sub-agent kind.</summary>
+    /// <summary>The audited action's name; the kind it is filed under is <see cref="AuditKind"/>.</summary>
     public const string Operation = "a2a.consult";
+
+    /// <summary>The named HTTP client the consultation goes out on.</summary>
+    public const string HttpClientName = "a2a-consult";
+
+    /// <summary>The kind of every consultation record: a request this system sent to another agent over A2A.</summary>
+    public const string AuditKind = "a2a.consultation";
 
     /// <summary>The audited name of cancelling a review over there because the run that asked for it was stopped.</summary>
     public const string CancelOperation = "a2a.consult.cancel";
@@ -168,7 +171,7 @@ public sealed class ComplianceConsultant(
 
             var baseUrl = options.Value.BaseUrl.TrimEnd('/');
             var token = await TokenAsync(baseUrl, ct);
-            var authenticated = http.CreateClient("a2a-consult");
+            var authenticated = http.CreateClient(HttpClientName);
             authenticated.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
             // The resolver appends the well-known path to the *origin*, so an agent served under a prefix — as it
@@ -206,7 +209,7 @@ public sealed class ComplianceConsultant(
 
     private async Task<string> TokenAsync(string baseUrl, CancellationToken ct)
     {
-        var anonymous = http.CreateClient("a2a-consult");
+        var anonymous = http.CreateClient(HttpClientName);
         var response = await anonymous.PostAsJsonAsync($"{baseUrl}/a2a/token",
             new A2AEndpoints.TokenRequest(options.Value.ClientId, options.Value.ClientSecret), ct);
         response.EnsureSuccessStatusCode();
@@ -358,12 +361,10 @@ public sealed class ComplianceConsultant(
     {
         try
         {
-            var firm = TenantId.TryParse(adjustment.FirmId, out var parsed) ? parsed : TenantId.Shared;
-            await audit.RecordAsync(new AuditEntry(
-                new Principal("maf-lab-assistant", firm, UserRole.READ_ONLY),
-                null, null, operation,
+            // Filed under the request's principal (its tenant is the adjustment's firm), as a step of the write it is for.
+            await audit.RecordAsync(AuditKind, operation,
                 $"agent=compliance adjustmentId={adjustment.AdjustmentId} taskId={taskId ?? "-"}",
-                outcome, (long)took.TotalMilliseconds, Compliance.AuditKinds.A2AConsultation), ct);
+                outcome, (long)took.TotalMilliseconds, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

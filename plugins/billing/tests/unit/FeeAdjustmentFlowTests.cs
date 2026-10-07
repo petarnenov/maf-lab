@@ -1,3 +1,4 @@
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.Domain.Billing;
 using Maf.Lab.Domain.Tenancy;
@@ -35,33 +36,32 @@ public class FeeAdjustmentFlowTests
             return ScriptedChatClient.Text("Done.");
         });
 
-    private static async Task<(ComplianceFactory Agent, string Url)> ReviewerAsync(
-        double askRate = 0, int reviewMs = 10, decimal refuseAbove = 1_000m)
-    {
-        var agent = new ComplianceFactory { AskRate = askRate, ReviewMs = reviewMs, RefuseAbove = refuseAbove };
-        return (agent, (await agent.ListenAsync()).TrimEnd('/'));
-    }
+    /// <summary>
+    /// The reviewer at the port (<see cref="ScriptedReviewer"/>): it refuses above its own limit, asks first when told to,
+    /// or reports the deadline passed — the reviewer agent's behaviours, without the agent (its own tests are the
+    /// compliance plugin's).
+    /// </summary>
+    private static ScriptedReviewer Reviewer(bool askFirst = false, bool late = false, decimal refuseAbove = 1_000m) =>
+        new() { AskFirst = askFirst, Late = late, RefuseAbove = refuseAbove };
 
-    private static ApiFactory ApiFor(string? reviewerUrl, FakeToolSource tools, decimal threshold = 500m, string? deadline = null)
+    /// <summary>Billing's own flow for the fakes' write tool, with the given reviewer at the port (none: no reviewer installed).</summary>
+    private static ApiFactory ApiFor(ScriptedReviewer? reviewer, FakeToolSource tools, decimal threshold = 500m)
     {
         var settings = new Dictionary<string, string?>
         {
-            ["Compliance:BaseUrl"] = reviewerUrl ?? "",
-            ["Compliance:ClientId"] = "maf-lab-assistant",
-            ["Compliance:ClientSecret"] = "assistant-secret",
-            ["Compliance:Deadline"] = "00:00:10",
             ["FeeAdjustments:ReviewAboveAmount"] = threshold.ToString(System.Globalization.CultureInfo.InvariantCulture),
         };
-        if (deadline is not null)
-        {
-            settings["Compliance:Deadline"] = deadline;
-        }
-
-        // Billing's own flow for the fakes' write tool, in place of the core fixture's (generalize-write-confirmation).
         return new ApiFactory(ProposingModel(), tools)
         {
             ExtraSettings = settings,
-            ConfigureTestServices = Maf.Lab.Plugins.Billing.FeeAdjustmentFlow.Install,
+            ConfigureTestServices = services =>
+            {
+                Maf.Lab.Plugins.Billing.FeeAdjustmentFlow.Install(services);
+                if (reviewer is not null)
+                {
+                    services.AddSingleton<IReviewerConsultation>(reviewer);
+                }
+            },
         };
     }
 
@@ -75,10 +75,9 @@ public class FeeAdjustmentFlowTests
     [Fact]
     public async Task An_adjustment_within_the_threshold_goes_straight_to_the_advisor()
     {
-        var (agent, url) = await ReviewerAsync();
-        await using var _ = agent;
+        var reviewer = Reviewer();
         var tools = new FakeToolSource();
-        using var api = ApiFor(url, tools);
+        using var api = ApiFor(reviewer, tools);
         var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by 200");
@@ -95,17 +94,17 @@ public class FeeAdjustmentFlowTests
     [Fact]
     public async Task A_large_adjustment_is_reviewed_before_the_advisor_is_asked()
     {
-        var (agent, url) = await ReviewerAsync();
-        await using var _ = agent;
+        var reviewer = Reviewer();
         var tools = new FakeToolSource();
-        using var api = ApiFor(url, tools);
+        using var api = ApiFor(reviewer, tools);
         var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
 
         Assert.NotNull(ApiFactory.InterruptOf(events));
         var audit = await AuditAsync(api);
-        Assert.Single(audit, a => a.Kind == "a2a.consultation");
+        // Consulted once, before the advisor was asked (the consultation's own record is the compliance plugin's).
+        Assert.Single(reviewer.Calls);
         Assert.Contains(audit, a => a.ToolName == "fee.adjustment.proposed");
         Assert.Contains(audit, a => a.ToolName == "fee.adjustment.reviewed" && a.Outcome == "approved");
     }
@@ -113,10 +112,9 @@ public class FeeAdjustmentFlowTests
     [Fact]
     public async Task A_refused_review_is_the_end_of_it()
     {
-        var (agent, url) = await ReviewerAsync(refuseAbove: 1_000m);
-        await using var _ = agent;
+        var reviewer = Reviewer(refuseAbove: 1_000m);
         var tools = new FakeToolSource();
-        using var api = ApiFor(url, tools);
+        using var api = ApiFor(reviewer, tools);
         var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         // An increase of 1,200 is over the reviewer's own threshold.
@@ -131,7 +129,7 @@ public class FeeAdjustmentFlowTests
     public async Task A_reviewer_that_is_not_there_is_the_end_of_it_too()
     {
         var tools = new FakeToolSource();
-        using var api = ApiFor(reviewerUrl: null, tools);
+        using var api = ApiFor(reviewer: null, tools);
         var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
@@ -143,10 +141,9 @@ public class FeeAdjustmentFlowTests
     [Fact]
     public async Task A_review_that_outlives_the_turn_is_not_a_verdict()
     {
-        var (agent, url) = await ReviewerAsync(reviewMs: 5_000);
-        await using var _ = agent;
+        var reviewer = Reviewer(late: true);
         var tools = new FakeToolSource();
-        using var api = ApiFor(url, tools, deadline: "00:00:00.300");
+        using var api = ApiFor(reviewer, tools);
         var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
@@ -158,10 +155,9 @@ public class FeeAdjustmentFlowTests
     [Fact]
     public async Task A_question_from_the_reviewer_reaches_the_advisor_and_no_confirmation_is_offered()
     {
-        var (agent, url) = await ReviewerAsync(askRate: 1);
-        await using var _ = agent;
+        var reviewer = Reviewer(askFirst: true);
         var tools = new FakeToolSource();
-        using var api = ApiFor(url, tools);
+        using var api = ApiFor(reviewer, tools);
         var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
@@ -184,10 +180,9 @@ public class FeeAdjustmentFlowTests
     public async Task The_advisors_justification_continues_the_same_review()
     {
         // Asks the first time, answers the second: the review is one review, not two.
-        var (agent, url) = await ReviewerAsync(askRate: 1);
-        await using var _ = agent;
+        var reviewer = Reviewer(askFirst: true);
         var tools = new FakeToolSource();
-        using var api = ApiFor(url, tools);
+        using var api = ApiFor(reviewer, tools);
         var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var first = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
@@ -200,15 +195,17 @@ public class FeeAdjustmentFlowTests
         Assert.NotNull(ApiFactory.InterruptOf(second));
         var reviews = (await AuditAsync(api)).Where(a => a.ToolName == "fee.adjustment.reviewed").ToList();
         Assert.Equal(["input-required", "approved"], reviews.Select(r => r.Outcome));
+        // The advisor's words went to the reviewer as the answer on the review's own task, not as a second review.
+        Assert.Equal([null, ScriptedReviewer.TaskId], reviewer.Calls.Select(c => c.TaskId));
+        Assert.Contains("agreed in writing", reviewer.Calls.Last().Justification);
     }
 
     [Fact]
     public async Task No_step_of_a_write_carries_the_advisors_words()
     {
-        var (agent, url) = await ReviewerAsync();
-        await using var _ = agent;
+        var reviewer = Reviewer();
         var tools = new FakeToolSource();
-        using var api = ApiFor(url, tools);
+        using var api = ApiFor(reviewer, tools);
         var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
@@ -223,10 +220,9 @@ public class FeeAdjustmentFlowTests
     [Fact]
     public async Task Every_step_is_attributed_to_the_person_who_acted()
     {
-        var (agent, url) = await ReviewerAsync();
-        await using var _ = agent;
+        var reviewer = Reviewer();
         var tools = new FakeToolSource();
-        using var api = ApiFor(url, tools);
+        using var api = ApiFor(reviewer, tools);
         var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by 200");
@@ -244,10 +240,9 @@ public class FeeAdjustmentFlowTests
     [Fact]
     public async Task A_review_never_produces_a_proposal_of_its_own()
     {
-        var (agent, url) = await ReviewerAsync();
-        await using var _ = agent;
+        var reviewer = Reviewer();
         var tools = new FakeToolSource();
-        using var api = ApiFor(url, tools);
+        using var api = ApiFor(reviewer, tools);
         var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
@@ -265,10 +260,9 @@ public class FeeAdjustmentFlowTests
     [Fact]
     public async Task Every_step_of_a_write_shows_in_the_trace_in_order()
     {
-        var (agent, url) = await ReviewerAsync();
-        await using var _ = agent;
+        var reviewer = Reviewer();
         var tools = new FakeToolSource();
-        using var api = ApiFor(url, tools);
+        using var api = ApiFor(reviewer, tools);
         var client = api.ClientFor("adam", "firm-a", Role.USER);
 
         var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by a large amount");
