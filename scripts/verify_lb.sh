@@ -318,7 +318,7 @@ def propose(amount, reason, request_state=None, approve=None):
     return body
 
 def summary_of(result):
-    return next((r.get("params", {}).get("_meta", {}).get("maf-lab/adjustment", {})
+    return next((r.get("params", {}).get("_meta", {}).get("maf-lab/write-summary", {})
                  for r in (result.get("inputRequests") or {}).values()), {})
 
 if plugin_in_use("billing"):
