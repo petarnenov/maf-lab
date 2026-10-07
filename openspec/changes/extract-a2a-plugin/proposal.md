@@ -14,6 +14,13 @@ code; it changes no behaviour, except where a line below says so.
 - The library `Maf.Lab.A2A` stays core.
 - `a2a-inspector` gains `depends = ["a2a"]` (§10, 5o).
 - Removed: its line from the core-names-no-domain allow-list.
+- The deployment's outbound A2A client registrations generalize from `Compliance:*` (`compose/env/compliance.env`,
+  extract-compliance-plugin) to `A2A:Clients:<agent>` (client id and secret per agent consulted), mirroring
+  `A2A:Partners:<id>` for the inbound side. Its endpoint defaults from the agent's manifest (`[agent]`, or its card)
+  through the catalogue, as an MCP plugin's endpoint does. Client credentials are issued per authorization server, so
+  they stay the deployment's configuration, not a plugin folder's.
+- Also: `PartnerIdentity`'s default store keyspace (`compliance`, live Redis data) and `A2AAdminEndpoints`' agent
+  fallback, left as they were by extract-compliance-plugin.
 
 ## Capabilities
 

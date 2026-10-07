@@ -11,9 +11,15 @@ code; it changes no behaviour, except where a line below says so.
 
 - **`plugins/compliance/`** (kind `a2a`, tenant scope, every environment):
   - `service/`: the reviewer agent (the project `Maf.Lab.ComplianceAgent`, moved from `src/`), in its own container.
-    `compose.yml` runs it (two replicas, `COMPLIANCE_REPLICAS` from its `plugin.mk`) and gives the api the client's
-    settings (`files/compliance.env`) only while the plugin is in use. `lb.http.conf`/`lb.server.conf` route
-    `/compliance` to it.
+    `compose.yml` runs it (two replicas, `COMPLIANCE_REPLICAS` from its `plugin.mk`) and holds only that service.
+    `lb.http.conf`/`lb.server.conf` route `/compliance` to it.
+  - The api's client settings stay in the core's `compose/env/compliance.env`, given to the api whether the plugin is in
+    use or not. They are the deployment's outbound client registration: OAuth 2.0 client credentials are issued per
+    authorization server, so per reviewer, and a fragment never changes the api's environment (introduce-plugins §2).
+    So `make plugin-on/off NAME=compliance` needs only the replica restart. extract-a2a-plugin generalizes it to
+    `A2A:Clients:<agent>`. Rejected: an api override in the plugin's compose (the rule, and a restart keeps the old
+    environment), a mounted file (secrets in a tracked folder, no interpolation), exporting from `plugin.mk` (compose
+    still needs the key on the api).
   - `server/` (`Maf.Lab.Plugins.Compliance`):
     - the client, `ComplianceConsultant`, implements extract-billing's `IReviewerConsultation`;
     - the audit screen's routes stay at their paths (`/api/admin/compliance/{verify,actions,export}`).
@@ -46,7 +52,7 @@ code; it changes no behaviour, except where a line below says so.
   - The billing and real-reviewer path end to end over A2A is covered by `make ci-e2e` (`verify_lb.sh` 4.6 and the
     live fee flow).
 - **Make**:
-  - `--scale compliance` and `COMPLIANCE_REPLICAS` leave the core Makefile;
+  - `--scale compliance` and `COMPLIANCE_REPLICAS` leave the core Makefile (the plugin's compose reads the replicas);
   - the eval's `Compliance__*` come from the plugin's `plugin.mk` through a general `EVAL_ENV`;
   - `a2a-inspector` declares `depends = ["compliance"]`.
 - Removed: `BuiltInDomains.LegacyCapabilities`, and with it `BuiltIn/` and the scanner's `BuiltIn/` exemption (after

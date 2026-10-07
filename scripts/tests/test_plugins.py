@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import tomllib
 import os
 import shutil
 import subprocess
@@ -186,12 +187,15 @@ class InstallTests(PluginsTestCase):
 class ComposeTests(PluginsTestCase):
     """A plugin's compose file holds only its own services: the core services are byte-identical with any set (task 2.3)."""
 
-    def core_services(self, *plugin_files: Path) -> dict:
+    def core_services(self, *plugin_files: Path, strict: bool = False) -> dict:
         files = [ROOT / "compose/docker-compose.yml", ROOT / "compose/docker-compose.dev.yml", *plugin_files]
         env = dict(os.environ, COMPOSE_FILE=os.pathsep.join(str(f) for f in files), MAF_LAB_REPO=str(ROOT))
         out = subprocess.run(["docker", "compose", "-p", "maf-lab-config-test", "config", "--format", "json"],
                              capture_output=True, text=True, env=env)
         if out.returncode != 0:
+            # No docker is a reason to skip; a real fragment compose refuses is a failure.
+            if strict and shutil.which("docker"):
+                self.fail(f"docker compose config failed: {out.stderr.strip()[:300]}")
             self.skipTest(f"docker compose config failed: {out.stderr.strip()[:200]}")
         services = json.loads(out.stdout)["services"]
         core = json.loads(subprocess.run(["docker", "compose", "-p", "maf-lab-config-test", "config", "--format", "json"],
@@ -205,6 +209,31 @@ class ComposeTests(PluginsTestCase):
         none = self.core_services()
         for files in ([a], [b], [a, b]):
             self.assertEqual(none, self.core_services(*files), files)
+
+    def test_no_real_plugin_changes_the_api_the_balancer_or_the_runtime(self):
+        # The rule as the real fragments keep it (introduce-plugins §2): a fragment never adds environment, depends_on or
+        # ports to api, lb or copilot-runtime, so switching a plugin needs only a restart, never a recreate. Synthetic
+        # fragments cannot catch a real one that does (extract-compliance-plugin).
+        real = sorted((ROOT / "plugins").glob("*/compose.yml"))
+        self.assertTrue(real, "no plugins/*/compose.yml")
+
+        def with_depends(fragment: Path) -> list[Path]:
+            # A plugin is installed with what it depends on, so its fragment is rendered with theirs.
+            seen, todo = [], [fragment.parent.name]
+            while todo:
+                name = todo.pop()
+                if name in seen:
+                    continue
+                seen.append(name)
+                manifest = tomllib.loads((ROOT / "plugins" / name / "plugin.toml").read_text(encoding="utf-8"))
+                todo.extend(manifest.get("depends", []))
+            return [ROOT / "plugins" / n / "compose.yml" for n in seen if (ROOT / "plugins" / n / "compose.yml").exists()]
+
+        shared = ("api", "lb", "copilot-runtime")
+        none = {name: service for name, service in self.core_services().items() if name in shared}
+        for files in [with_depends(f) for f in real] + [real]:
+            rendered = {name: service for name, service in self.core_services(*files, strict=True).items() if name in shared}
+            self.assertEqual(none, rendered, [f.parent.name for f in files])
 
 
 if __name__ == "__main__":

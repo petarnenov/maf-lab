@@ -100,7 +100,7 @@ services:
     # The user who runs make (exported by it): the api writes into the repository (branches, merges) and evals/,
     # and on Linux whatever it writes there belongs to this user. Root here left root-owned files in the checkout.
     user: "${MAF_LAB_UID:-1000}:${MAF_LAB_GID:-1000}"
-    env_file: [env/retrieval.env, env/platform.env, env/graph.env, env/a2a.env]
+    env_file: [env/retrieval.env, env/platform.env, env/graph.env, env/a2a.env, env/compliance.env]
     environment:
       Urls: http://+:8080
       # Writable by any user; a uid with no passwd entry would otherwise get HOME=/.
