@@ -54,7 +54,8 @@ code; it changes no behaviour, except where a line below says so.
 - **Make**:
   - `--scale compliance` and `COMPLIANCE_REPLICAS` leave the core Makefile (the plugin's compose reads the replicas);
   - the eval's `Compliance__*` come from the plugin's `plugin.mk` through a general `EVAL_ENV`;
-  - `a2a-inspector` declares `depends = ["compliance"]`.
+  - `a2a-inspector` declares `depends = ["compliance"]`;
+  - `compliance` joins `CI_PLUGINS`, as each extraction does, so `make ci-e2e` still consults the real reviewer.
 - Removed: `BuiltInDomains.LegacyCapabilities`. `BuiltIn/` (two name constants) and the scanner's exemption stay: `BuiltIn/`
   is deleted by the extraction that moves its last reader. The readers are JevStatistics (insights), FeedbackEndpoints
   (feedback-review), TopologyProbe (topology), and EvalAgentHost and DomainSuite (evals).
