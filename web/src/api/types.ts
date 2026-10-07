@@ -68,6 +68,36 @@ export interface ConfirmationRequiredData {
   expiresAt?: string | null;
 }
 
+/**
+ * The JSON Schema 2020-12 annotations a write's flow describes its summary with: display only, never a form. Each
+ * property is shown by its `title`, in property order, formatted by `type` and `format`.
+ */
+export interface SummarySchema {
+  type?: string;
+  properties?: Record<string, SummaryProperty>;
+}
+
+export interface SummaryProperty {
+  title?: string;
+  description?: string;
+  type?: string;
+  format?: string;
+}
+
+/**
+ * A write waiting for a person, whichever plugin's tool proposed it (generalize-write-confirmation). The summary is the
+ * tool's own; the opaque state never reaches the browser — an answer names the write by its id.
+ */
+export interface PendingWrite {
+  writeId: string;
+  toolName: string;
+  summary: unknown;
+  /** The schema the tool's flow describes the summary with; null when no installed plugin has a flow for the tool. */
+  summarySchema?: SummarySchema | null;
+  question: string;
+  expiresAt?: string | null;
+}
+
 /** A proposal a conversation is still waiting on, as `GET /api/conversations/{id}/pending` reports it. */
 export interface PendingProposal {
   adjustmentId: string;

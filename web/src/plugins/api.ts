@@ -138,6 +138,15 @@ export type PluginToolLabels = Record<
 /** A data card's renderer, by its AG-UI activity type. */
 export type PluginCards = Record<string, ComponentType<{ content: unknown }>>;
 
+/**
+ * How a plugin shows the summary of a write waiting for a person, by the write tool's name. It overrides the card's
+ * rendering from the summary's schema for that tool; display only — the card keeps the question and the two answers.
+ */
+export type PluginConfirmations = Record<
+  string,
+  ComponentType<{ summary: unknown; schema: unknown }>
+>;
+
 /** A tab of the monitor (the monitor plugin owns the panel; others add tabs to it). */
 export interface PluginMonitorTab {
   id: string;
@@ -173,6 +182,7 @@ export interface MafWebPlugin {
   turnActions?: readonly PluginTurnAction[];
   sourceActions?: readonly PluginSourceAction[];
   cards?: PluginCards;
+  confirmations?: PluginConfirmations;
   toolLabels?: PluginToolLabels;
   monitorTabs?: readonly PluginMonitorTab[];
   runObservers?: readonly PluginRunObserver[];

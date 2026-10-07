@@ -49,6 +49,19 @@ export function cardRenderers(registry: PluginRegistry): NonNullable<MafWebPlugi
   return cards;
 }
 
+/** The confirmation renderers of every plugin in use, by write tool; the first plugin to claim a tool keeps it. */
+export function confirmationRenderers(
+  registry: PluginRegistry,
+): NonNullable<MafWebPlugin['confirmations']> {
+  const renderers: NonNullable<MafWebPlugin['confirmations']> = {};
+  for (const plugin of registry.plugins) {
+    for (const [tool, renderer] of Object.entries(plugin.confirmations ?? {})) {
+      if (!(tool in renderers)) renderers[tool] = renderer;
+    }
+  }
+  return renderers;
+}
+
 /** The tool labels of every plugin in use, by tool name; the first plugin to label a tool keeps it. */
 export function toolLabels(registry: PluginRegistry): NonNullable<MafWebPlugin['toolLabels']> {
   const labels: NonNullable<MafWebPlugin['toolLabels']> = {};

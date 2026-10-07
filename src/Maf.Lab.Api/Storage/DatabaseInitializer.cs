@@ -37,7 +37,8 @@ public static partial class DatabaseInitializer
     public static async Task InitializeAsync(MafDbContext db, CancellationToken ct = default)
     {
         // First: a column the model renamed must be renamed in place before the additive pass, or that pass would add an
-        // empty column beside it (rename-firm-to-tenant).
+        // empty column beside it (rename-firm-to-tenant). A renamed table goes first, so its columns are found under it.
+        await RenameLegacyTablesAsync(db, RenamedTables, ct);
         await RenameLegacyColumnsAsync(db, ct);
         await DropRetiredTablesAsync(db, ct);
         var script = db.Database.GenerateCreateScript();
@@ -70,6 +71,95 @@ public static partial class DatabaseInitializer
             await db.Database.ExecuteSqlRawAsync($"DROP TABLE IF EXISTS \"{table}\"", ct);
 #pragma warning restore EF1002
         }
+    }
+
+    /// <summary>
+    /// Tables renamed by the model, old name → new name, kept with their rows. Empty until a model renames one: an entry
+    /// lands in the same change as the model's new mapping, or the create pass would add an empty table under the old name
+    /// while the rows sit under the new one (generalize-write-confirmation).
+    /// </summary>
+    internal static readonly IReadOnlyList<(string From, string To)> RenamedTables = [];
+
+    /// <summary>
+    /// Renames each table of <paramref name="renames"/> that still has its old name and not yet its new one, and drops the
+    /// indexes named after the old table, so the index pass creates their successors. Each check and rename is one
+    /// <c>BEGIN IMMEDIATE</c> transaction, so a second replica starting at the same moment waits, then sees the new name
+    /// and skips it; a lost race is tolerated. Idempotent. Returns how many tables this call renamed.
+    /// </summary>
+    internal static async Task<int> RenameLegacyTablesAsync(MafDbContext db, IReadOnlyList<(string From, string To)> renames,
+        CancellationToken ct)
+    {
+        if (renames.Count == 0)
+        {
+            return 0;
+        }
+        var connection = (Microsoft.Data.Sqlite.SqliteConnection)db.Database.GetDbConnection();
+        await db.Database.OpenConnectionAsync(ct);
+        try
+        {
+            var renamed = 0;
+            foreach (var (from, to) in renames)
+            {
+                renamed += await RenameTableAsync(connection, from, to, ct) ? 1 : 0;
+            }
+            return renamed;
+        }
+        finally
+        {
+            await db.Database.CloseConnectionAsync();
+        }
+    }
+
+    private static async Task<bool> RenameTableAsync(Microsoft.Data.Sqlite.SqliteConnection connection, string from, string to,
+        CancellationToken ct)
+    {
+        // Not deferred = BEGIN IMMEDIATE: the write lock is taken before the schema is read, so check and rename are one step.
+        await using var transaction = connection.BeginTransaction(deferred: false);
+        try
+        {
+            if (!await TableExistsAsync(connection, transaction, from, ct) || await TableExistsAsync(connection, transaction, to, ct))
+            {
+                await transaction.CommitAsync(ct);
+                return false;
+            }
+            // Table names come from RenamedTables, never from a request.
+            var indexes = new List<string>();
+            await using (var list = connection.CreateCommand())
+            {
+                list.Transaction = transaction;
+                list.CommandText = "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = $table AND name LIKE $pattern ESCAPE '\\'";
+                list.Parameters.AddWithValue("$table", from);
+                list.Parameters.AddWithValue("$pattern", $"IX\\_{from}\\_%");
+                await using var reader = await list.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                {
+                    indexes.Add(reader.GetString(0));
+                }
+            }
+            foreach (var index in indexes)
+            {
+                await ExecuteAsync(connection, transaction, $"DROP INDEX IF EXISTS \"{index}\"", ct);
+            }
+            await ExecuteAsync(connection, transaction, $"ALTER TABLE \"{from}\" RENAME TO \"{to}\"", ct);
+            await transaction.CommitAsync(ct);
+            return true;
+        }
+        catch (Microsoft.Data.Sqlite.SqliteException ex) when (ex.Message.Contains("no such table", StringComparison.OrdinalIgnoreCase))
+        {
+            // Another replica renamed it first.
+            await transaction.RollbackAsync(CancellationToken.None);
+            return false;
+        }
+    }
+
+    private static async Task<bool> TableExistsAsync(Microsoft.Data.Sqlite.SqliteConnection connection,
+        Microsoft.Data.Sqlite.SqliteTransaction transaction, string table, CancellationToken ct)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = $table";
+        command.Parameters.AddWithValue("$table", table);
+        return Convert.ToInt64(await command.ExecuteScalarAsync(ct), System.Globalization.CultureInfo.InvariantCulture) > 0;
     }
 
     /// <summary>Columns renamed by the model, old name → new name. A table is touched only when it has the old one.</summary>

@@ -1,23 +1,27 @@
 ## Stage A (now, beside extract-billing)
 
-- [ ] A.1 `Maf.Lab.Plugins.Abstractions` (new files only): `IContributesWriteConfirmation`, `IWriteConfirmationFlow`,
+- [x] A.1 `Maf.Lab.Plugins.Abstractions` (new files only): `IContributesWriteConfirmation`, `IWriteConfirmationFlow`,
       `WriteFlowOutcome` (`AskPerson`, `AskInput`, `TellModel`), `WriteProposal` (with `OpenInputs`),
       `WriteResolution`, `IStatesConfirmationFacts`, the ports `IWriteAudit`, `IConsultationScreening`,
       `IWriteTraceStep`, and `WriteConfirmationKeys` (five keys).
-- [ ] A.2 `DatabaseInitializer`: a `RenamedTables` step (empty list) before the column renames. One `BEGIN IMMEDIATE`
+- [x] A.2 `DatabaseInitializer`: a `RenamedTables` step (empty list) before the column renames. One `BEGIN IMMEDIATE`
       per table; it drops the old table's `IX_*` indexes, runs `RENAME TO`, and tolerates the loser's "no such table".
       A test renames a test table holding rows, with concurrent initializers.
-- [ ] A.3 Web, added beside today's code (nothing removed yet):
+- [x] A.3 Web, added beside today's code (nothing removed yet):
       - `PendingWrite` in `web/src/api/types.ts`; the fee types stay until B.5;
       - a display-only `WriteSummary` component that renders a `<dl>` from the schema's titles, in property order, with
         `type`/`format` formatting;
       - `MafWebPlugin.confirmations`;
       - tests for each.
       `ConfirmationCard` and its consumers switch to them in B.5, with the server.
-- [ ] A.4 Proof: one full parallel `dotnet test` run and `make test-web`; `openspec validate --strict --all`;
-      `make docs-check`; the warnings-as-errors build.
+- [x] A.4 Proof: one full parallel `dotnet test` run and `make test-web`; `openspec validate --strict --all`;
+      `make docs-check`; the warnings-as-errors build. Done: 1842 passed, 0 failed; the web suite green; lint and `tsc -b` clean.
 
 ## Stage B (after extract-billing is archived)
+
+Order: B.1 lands the `PendingAdjustments` → `PendingWrites` entry, the backfills and the `MafDbContext` mapping in
+one commit (never the entry alone); B.5 switches `ConfirmationCard` and its consumers and removes the fee types.
+
 
 - [ ] B.1 `MafDbContext` maps `PendingWrites` (`FlowJson`; `ReviewTaskId`/`Questions` unmapped). `RenamedTables`
       gains `("PendingAdjustments", "PendingWrites")`, and `BackfillAsync` gains `awaiting_justification` →
