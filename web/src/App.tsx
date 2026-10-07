@@ -9,7 +9,6 @@ import { Layout } from './components/Layout';
 import { RequireAdmin } from './components/RequireAdmin';
 import { EvalsPage } from './evals/EvalsPage';
 import { JevPage } from './jev/JevPage';
-import { TelemetryPage } from './telemetry/TelemetryPage';
 import { TopologyPage } from './topology/TopologyPage';
 import { PluginBoundary } from './plugins/PluginBoundary';
 import { usePlugins } from './plugins/context';
@@ -25,7 +24,6 @@ export function App() {
         <Route path="chat/:conversationId?" element={<ChatPage />} />
         <Route path="evals" element={<EvalsPage />} />
         <Route path="topology" element={<TopologyPage />} />
-        <Route path="telemetry" element={<TelemetryPage />} />
         <Route path="coverage" element={<CoveragePage />} />
         <Route path="curriculum" element={<CurriculumPage />} />
         <Route

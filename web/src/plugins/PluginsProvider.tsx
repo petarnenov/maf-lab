@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { apiRequest } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import type { MafWebPlugin } from './api';
@@ -61,6 +61,30 @@ export function PluginsProvider({
       current = false;
     };
   }, [names, modules]);
+
+  // Each loaded plugin is activated once, and deactivated when it leaves the set or the provider goes. The effect re-runs
+  // on every change to the set, so the activations live in a ref, keyed by plugin name.
+  const active = useRef(new Map<string, (() => void) | undefined>());
+  useEffect(() => {
+    const present = new Set(loaded.map((plugin) => plugin.name));
+    for (const [name, deactivate] of active.current) {
+      if (present.has(name)) continue;
+      active.current.delete(name);
+      deactivate?.();
+    }
+    for (const plugin of loaded) {
+      if (active.current.has(plugin.name)) continue;
+      const deactivate = plugin.activate?.();
+      active.current.set(plugin.name, typeof deactivate === 'function' ? deactivate : undefined);
+    }
+  }, [loaded]);
+  useEffect(() => {
+    const activations = active.current;
+    return () => {
+      for (const deactivate of activations.values()) deactivate?.();
+      activations.clear();
+    };
+  }, []);
 
   const listed = inUse.data?.plugins;
   const registry = useMemo<PluginRegistry>(

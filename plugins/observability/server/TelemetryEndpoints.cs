@@ -1,10 +1,12 @@
-using Maf.Lab.Api.Telemetry;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 
-namespace Maf.Lab.Api.Endpoints;
+namespace Maf.Lab.Plugins.Observability;
 
 public static class TelemetryEndpoints
 {
-    public static IEndpointRouteBuilder MapTelemetry(this IEndpointRouteBuilder app)
+    public static void Map(IEndpointRouteBuilder app)
     {
         // What the stack has measured about itself, over a window the caller picks from a list. The queries are
         // the server's; a caller chooses which period to see, and nothing else.
@@ -18,7 +20,5 @@ public static class TelemetryEndpoints
                     ["window"] = [$"window must be one of: {string.Join(", ", TelemetryQueries.Windows.Keys)}."],
                 });
         }).RequireAuthorization();
-
-        return app;
     }
 }

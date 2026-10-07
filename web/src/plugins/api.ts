@@ -189,6 +189,12 @@ export interface PluginReviewPanel {
 export interface MafWebPlugin {
   /** The plugin's name: its folder under plugins/, and the name /api/plugins lists. */
   name: string;
+  /**
+   * Called once when the plugin comes into use, before its contributions matter; what it returns, if anything, is called
+   * when the plugin leaves the set or the app goes (VS Code's activate/deactivate). For what a plugin starts that is not
+   * a contribution, such as the browser's own tracing.
+   */
+  activate?: () => void | (() => void);
   routes?: readonly PluginRoute[];
   nav?: readonly PluginNavLink[];
   chatPanes?: readonly PluginChatPane[];

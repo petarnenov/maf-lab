@@ -16,9 +16,9 @@ Pinned versions and the architectural decisions of maf-lab. **If a version moves
 | Ollama | `ollama/ollama:0.34.2` | `compose/docker-compose.yml` |
 | Node (build and runtime) | `node:24.21.0-alpine`, `node:24.21.0-bookworm-slim` (CI: Node 24; every dev machine: 24.21.0) | `web/Dockerfile`, `copilot-runtime/Dockerfile`, `src/Maf.Lab.CoverageRunner/Dockerfile`, `.github/workflows/ci.yml` |
 | nginx (web runtime and load balancer) | `nginx:1.30.5-alpine` | `web/Dockerfile`, `compose/docker-compose.yml` (`lb`) |
-| OpenTelemetry Collector | `otel/opentelemetry-collector-contrib:0.161.0` | `compose/docker-compose.yml` |
-| Prometheus | `prom/prometheus:v3.14.0` | `compose/docker-compose.yml` |
-| Jaeger | `jaegertracing/all-in-one:1.76.0` | `compose/docker-compose.yml` |
+| OpenTelemetry Collector | `otel/opentelemetry-collector-contrib:0.161.0` | the `observability` plugin's `compose.yml` |
+| Prometheus | `prom/prometheus:v3.14.0` | the `observability` plugin's `compose.yml` |
+| Jaeger | `jaegertracing/all-in-one:1.76.0` | the `observability` plugin's `compose.yml` |
 | Redis | `redis:8.8.3-alpine` | `compose/docker-compose.yml` |
 | Neo4j (graph store, §75) | `neo4j:2026.09.0-community` (compose and Testcontainers) | `compose/docker-compose.yml`, `tests/.../Neo4jFixture.cs` |
 | socat (Neo4j Browser inspector, §75) | `alpine/socat:1.8.1.3` | `compose/docker-compose.yml` (`neo4j-browser`) |
@@ -3495,6 +3495,45 @@ No package version moves in this change.
     with init properties is the outbound shape.
   - Billing's fee-flow tests run on the core's `ScriptedReviewer` at the port. Reading each hostile verdict off the
     wire is compliance's (`HostileVerdictTests`). The real path end to end over A2A is `make ci-e2e`'s.
+- **Part I (extract-observability).**
+  - The telemetry stack is the `observability` plugin (app, installation, every environment, no `depends`): the
+    `otel-collector`, `prometheus` and `jaeger` services and the `prometheus-data` volume (its `compose.yml`, with the
+    collector on the default and runner networks), the collector's and Prometheus's config (`files/otel/`), the
+    balancer's `otel_pool`/`jaeger_pool` (`lb.http.conf`) and `/v1/traces`/`^~ /jaeger` (`lb.server.conf`), the
+    Telemetry screen, its route `/api/telemetry` and its queries. The balancer no longer `depends_on` the three (part A:
+    a fragment never adds to it). `LabTelemetry` stays core: every service's OpenTelemetry SDK is the core's.
+  - The export address keeps its static default. `platform.env` still says `http://otel-collector:4317`, and
+    test-agent and coverage-runner keep their copy. A plugin's compose fragment never changes a core service's
+    environment, and `plugin-on` restarts a container with the environment it has. So a make-exported variable would
+    reach no service until the next `make up`, and the collector would start receiving nothing. This is also the OTLP
+    exporter's standard behaviour: it has a default and exports regardless. Without the plugin the exports go nowhere,
+    quietly (self-diagnostics only, no retry, a bounded batch queue); `TELEMETRY_ENDPOINT=` switches them off.
+    Rejected: an empty default set by the plugin's `plugin.mk` (the switch does not take effect), and each service
+    reading `plugins/.installed` (a `/plugins` mount in every service).
+  - A turn's trace link is a port with a Null Object: `ITraceLink { string? UrlFor(string traceId) }` in the
+    abstractions. The core registers `NoTraceLink` with `TryAddSingleton` and `ChatTurnRunner` asks it. The plugin
+    registers `JaegerTraceLink` from `Telemetry:TraceUrlTemplate`. `turn.start` carries a `traceUrl` only when something
+    can open it, so a core-only stack shows no dead link. `TelemetryQueryOptions`, `TelemetryQueries` and the report
+    contracts (out of `Maf.Lab.Domain`) moved whole; the core keeps no telemetry option. The api's three
+    `Telemetry__*` keys moved from its inline environment to `compose/env/observability.env`, which the api reads
+    whether or not the plugin is in use, with unchanged values. Rejected: a turn-enricher seam (a new capability under a
+    move), and a core option set by `plugin.mk`.
+  - The web plugin API gains `activate?(): void | (() => void)`, VS Code's activate/deactivate lifecycle. The
+    PluginsProvider calls it once per loaded plugin (kept in a ref, since its effect re-runs on every change to the
+    set) and calls the returned function when the plugin leaves the set or the provider unmounts. The browser's own
+    tracing moved into the plugin's web part through it, and its deactivation unregisters the fetch instrumentation,
+    shuts the provider down and disables the global tracer. The first `/api/plugins` request is therefore no longer
+    traced. Vite's `dedupe` lists the OpenTelemetry web packages, which stay pinned in `web/package.json`. Rejected:
+    an import-time side effect (every bundled plugin is imported, installed or not), and keeping browser tracing in the
+    core gated on the installed set (the core would name the plugin).
+  - The topology reports `otel-collector`, `prometheus` and `jaeger` as not installed (NotProbed, "the telemetry stack
+    is not installed") without the plugin, as it does neo4j and qdrant. Its edges, `NodeIds` and the drawn diagram
+    are unchanged; they belong to extract-topology.
+  - The curriculum's observability entry keeps its lesson but no longer links to `/telemetry`, a route that exists
+    only with the plugin. Its paths stay the core's (`LabTelemetry.cs`, `TurnTrace.cs`): a path under `plugins/` would
+    fail the curriculum test once the folder is deleted.
+  - CI installs it (`CI_PLUGINS`), so `ci-e2e` keeps the collector and `ci-e2e-core` runs without it. It has no
+    `compose.ci.yml`: CI's override does not touch these services.
 
 ## 82. The stop-anything tests run on a fake clock (deterministic-stop-anything-tests, 2026-10-06)
 

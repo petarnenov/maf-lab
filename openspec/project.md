@@ -43,8 +43,9 @@ production system.
 - Containers: Docker Compose — the core's lb (nginx, the one entry point on 7171),
   api (as the host user), api-data-init, mcp-retrieval, mcp-portfolio,
   compliance, test-agent, coverage-runner, web, copilot-runtime, qdrant,
-  neo4j, ollama, ollama-batch, ollama-init, ollama-warm, redis, otel-collector, prometheus and jaeger;
-  and each plugin's own, merged by make for the installed set: mcp-code (`code`), mcp-example (`_example`), and the
+  neo4j, ollama, ollama-batch, ollama-init, ollama-warm and redis;
+  and each plugin's own, merged by make for the installed set: mcp-code (`code`), mcp-example (`_example`),
+  otel-collector, prometheus and jaeger (`observability`), and the
   dev-only inspectors a2a-inspector, mcp-inspector, redis-insight and neo4j-browser (each its own plugin, off in CI).
   One command (`make`) brings everything up; `make core` brings up the core alone.
 - Plugins: everything optional is a plugin, one folder under `plugins/` with a
@@ -66,7 +67,7 @@ maf-lab/
   .claude/                         Agent tooling: the OpenSpec skills and commands this repository's agents use
   .github/                         GitHub Actions workflows (ci, evals) and the Copilot instructions
   .vscode/                         Compound api + web debugging, and tasks for compose up, index and eval
-  compose/                         docker-compose.yml, the nginx load balancer, the Ollama stub for CI, OpenTelemetry config
+  compose/                         docker-compose.yml, the nginx load balancer, the Ollama stub for CI
   copilot-runtime/                 CopilotKit's runtime (Node), wiring only: the web reaches the api's AG-UI agents through it; the AG-UI conformance check
   docs/                            HTTP API, trace events, telemetry and shared-state references; rules; screenshots; docs-sync.toml
   evals/                           JSONL datasets per suite, the accepted baseline, and the run reports

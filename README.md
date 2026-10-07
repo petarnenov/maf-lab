@@ -23,8 +23,8 @@ connect: billing relationships (`trace_billing_relationships`) and the code grap
 - HTTP contract between API and web: [`docs/http-api.md`](docs/http-api.md); the trace event format:
   [`docs/trace-events.md`](docs/trace-events.md); telemetry: [`docs/telemetry.md`](docs/telemetry.md); shared state:
   [`docs/shared-state.md`](docs/shared-state.md)
-- Screens: `/chat`, `/evals`, `/topology`, `/telemetry`, `/coverage`, `/curriculum`, and for admins `/admin/index`, `/admin/feedback`,
-  `/admin/compliance`, `/admin/jev`, `/admin/a2a`
+- Screens: `/chat`, `/evals`, `/topology`, `/coverage`, `/curriculum`, and for admins `/admin/index`, `/admin/feedback`,
+  `/admin/compliance`, `/admin/jev`, `/admin/a2a`; `/telemetry` while the `observability` plugin is installed
 
 ```mermaid
 flowchart TB
@@ -60,7 +60,7 @@ flowchart TB
     jev["TypeSafe Jev<br/>domains · guard · relevance · answer check"]
   end
 
-  obs["📊 OTel collector → Prometheus · Jaeger"]
+  obs["📊 OTel collector → Prometheus · Jaeger<br/>(observability plugin)"]
 
   clients --> lb
   lb -- "/" --> web
@@ -98,7 +98,8 @@ Everything user- and agent-facing goes through **one entry point on port 7171**.
 portfolio plugins' servers (mcp-retrieval, mcp-portfolio) run two replicas each, mcp-code and copilot-runtime one
 (`X-Instance` response header shows which one answered).
 test-agent and coverage-runner run one each and have no route of their own: the api reaches them inside the compose
-network. The balancer also serves Jaeger at `/jaeger` and takes the browser's OTLP traces at `/v1/traces`. Besides
+network. While the `observability` plugin is installed, the balancer also serves Jaeger at `/jaeger` and takes the
+browser's OTLP traces at `/v1/traces`; without it the services' exports go nowhere. Besides
 7171, only Qdrant (while the `qdrant` plugin is installed) and the two Ollamas are published, Neo4j's Bolt port on `127.0.0.1:7687` for the host-side indexer
 (while the `neo4j` plugin is installed),
 plus the [developer tools](#developer-tools) on `127.0.0.1` (7172–7175) while their plugins are installed.
@@ -129,13 +130,13 @@ The balancer's routes, as `compose/lb/nginx.conf`, the api upstream template and
 | `/dev/` | prefix | `api` |
 | `/.well-known/agent-card.json` | exact | `api` |
 | `/a2a` | prefix | `api` |
-| `/v1/traces` | prefix | `otel-collector` |
-| `/jaeger` | prefix | `jaeger` |
 | `/` | prefix | `web` |
 | `/example/mcp` | exact | `mcp-example` at `/mcp` (plugin `_example`) |
 | `/mcp` | exact | `mcp-retrieval` (plugin `billing`) |
 | `/code/mcp` | exact | `mcp-code` at `/mcp` (plugin `code`) |
 | `/compliance` | prefix | `compliance` (plugin `compliance`) |
+| `/v1/traces` | prefix | `otel-collector` (plugin `observability`) |
+| `/jaeger` | prefix | `jaeger` (plugin `observability`) |
 | `/portfolio/mcp` | exact | `mcp-portfolio` at `/mcp` (plugin `portfolio`) |
 <!-- /generated:lb-routes -->
 
@@ -275,6 +276,7 @@ allows, `none` means the core alone (`make core`), otherwise a comma-separated l
 | `monitor` | app | installation | dev, qa | Behind the scenes of every chat turn: the full trace (model calls, prompt, retrieval diagnostics, guard, answer check), live while it runs and kept for a while after, with the run's AG-UI frames and time travel. |
 | `neo4j` | infra | installation | dev, qa, stage, prod | The graph store (Neo4j Community): billing's relationships and the repository's code graph, read through the core's one tenant-scoped graph method. A store that domain plugins depend on. |
 | `neo4j-browser` | infra | installation | dev, qa | Neo4j Browser on the graph store, forwarded on loopback: a dev and qa tool. |
+| `observability` | app | installation | dev, qa, stage, prod | The telemetry stack and its screen: the OpenTelemetry collector every service exports to, Prometheus and Jaeger behind it, the browser's own spans, a turn's link to its trace, and the Telemetry screen's numbers. Without it the services' exports go nowhere. |
 | `portfolio` | mcp | tenant | dev, qa, stage, prod | Investment portfolios as a domain: its MCP server (mcp-portfolio: documentation search, an account's holdings, its quarter-end AUM history and the accounts a user can access), its corpus and seed, its data cards, and its domain descriptor and routing. |
 | `qdrant` | infra | installation | dev, qa, stage, prod | The vector store (Qdrant): each domain's chunks and their dense and sparse vectors, read through the core's one tenant-scoped query method. A store that domain plugins depend on. |
 | `redis-insight` | infra | installation | dev, qa | Redis Insight on the lab's Redis (run state, stops, shared stores), loopback only: a dev and qa tool. |

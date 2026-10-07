@@ -10,8 +10,14 @@ Every .NET service — api, mcp-retrieval, compliance — calls `AddLabTelemetry
 traces, metrics and logs over OTLP. Every signal carries `service.name` and `service.instance.id`, which is the
 instance name the load balancer already reports, so a number can be attributed to the replica that produced it.
 
-Configured by `Telemetry:Endpoint`. **Unset it and nothing is exported** — which is what the tests and `make dev`
-do, so neither needs a collector.
+Configured by `Telemetry:Endpoint`, which `compose/env/platform.env` defaults to the collector's address. **Unset it
+and nothing is exported** — which is what the tests and `make dev` do, so neither needs a collector.
+
+The collector, the metrics store, the trace store, the Telemetry screen and a turn's link to its trace are the
+`observability` plugin's. Without that plugin installed, the default address names no service: the exports go
+nowhere, quietly — the OTLP exporter's own behaviour (no log line, no retry, a bounded queue) — and a turn carries no
+trace link. Set `TELEMETRY_ENDPOINT=` to switch export off altogether. The plugin's own documentation says where the
+signals go and how the screen reads them.
 
 ## Where it comes from
 
@@ -45,24 +51,3 @@ text and reasoning and refuses any that reaches its logs or spans.
 What a span does carry, and should: `gen_ai.tool.description` holds the tool's own description — the text this
 system wrote to tell the model what a tool is for. It is configuration, not anybody's data, and the turn trace
 already shows it. Searching an exported trace for a phrase that appears in a tool description will find it there.
-
-## Where the signals go
-
-Services speak OTLP to one collector, which exports metrics to Prometheus and traces to Jaeger. The services know
-only the collector's address: which backend keeps what is decided in `compose/docker-compose.yml`, not in any
-service's configuration.
-
-Through the load balancer on `http://localhost:7171`:
-
-- `/telemetry` — the screen, which reads the numbers through the api
-- `/jaeger` — the trace store; a turn also links straight to its own trace
-- `/v1/traces` — where the browser's own spans go
-
-One turn is one trace: the browser starts it, `traceparent` carries it to the api, the api's HTTP client carries
-it to the MCP server, and the MCP server hangs its work under it rather than starting a trace of its own.
-
-## Reading the numbers
-
-`GET /api/telemetry?window=…` runs a fixed set of queries against Prometheus and returns their results. The
-caller picks the period and nothing else, so the screen is not a way to run arbitrary queries, and Prometheus
-never has to be reachable from a browser. See [http-api.md](http-api.md).

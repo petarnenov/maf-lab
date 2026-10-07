@@ -73,6 +73,9 @@ public sealed class TopologyProbe(
     /// <summary>The infra plugin that runs the vector store, and the node that shows it.</summary>
     private const string VectorStorePlugin = "qdrant";
 
+    /// <summary>The plugin that runs the telemetry stack: the collector, the metrics store and the trace store.</summary>
+    private const string ObservabilityPlugin = "observability";
+
     private static readonly TopologyEdge[] Edges =
     [
         new("lb", "web", "/"),
@@ -171,9 +174,16 @@ public sealed class TopologyProbe(
         var store = QdrantAsync(timeout, ct);
         var graph = GraphAsync(timeout, ct);
         var embeddings = EmbeddingsAsync(timeout, ct);
-        var collector = Http("otel-collector", "otel collector", o.CollectorHealthUrl, timeout, ct);
-        var metrics = Http("prometheus", "prometheus", o.PrometheusHealthUrl, timeout, ct);
-        var traces = Http("jaeger", "jaeger", o.JaegerHealthUrl, timeout, ct);
+        // The telemetry stack is a plugin (extract-observability): without it there is nothing to probe, and that is not a fault.
+        var stack = plugins is null || plugins.Current.Contains(ObservabilityPlugin);
+        Task<TopologyNode> Telemetry(string id, string name, string url) => stack
+            ? Http(id, name, url, timeout, ct)
+            : Task.FromResult(new TopologyNode(id, name, NodeHealth.NotProbed, [],
+                new Dictionary<string, string> { ["url"] = url, ["endpoint"] = "not installed" },
+                "the telemetry stack is not installed"));
+        var collector = Telemetry("otel-collector", "otel collector", o.CollectorHealthUrl);
+        var metrics = Telemetry("prometheus", "prometheus", o.PrometheusHealthUrl);
+        var traces = Telemetry("jaeger", "jaeger", o.JaegerHealthUrl);
         var shared = SharedStateAsync(ct);
 
         // Each installed plugin that names a topology address (introduce-plugins decision 3) is probed like any other

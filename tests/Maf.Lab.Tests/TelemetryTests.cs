@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using System.Text.Json;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Domain.Tracing;
 using Maf.Lab.TestSupport;
@@ -202,6 +203,18 @@ public class TelemetryTests
         Assert.False(string.IsNullOrWhiteSpace(traceId));
         // It is the trace the turn's own spans are in, so opening it finds them.
         Assert.Contains(signals.Activities, a => a.TraceId.ToHexString() == traceId);
+    }
+
+    [Fact]
+    public async Task Without_a_trace_store_a_turn_offers_no_link_to_its_trace()
+    {
+        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER),
+            "what is the procedure when a fee schedule is missing");
+
+        // The trace id is the core's; where it opens is a plugin's (ITraceLink), and the core alone has nowhere to send it.
+        var start = ApiFactory.TracesOf(events).First(t => t.GetProperty("kind").GetString() == TraceKinds.TurnStart);
+        Assert.True(!start.GetProperty("data").TryGetProperty("traceUrl", out var url) || url.ValueKind == JsonValueKind.Null);
     }
 
     /// <summary>

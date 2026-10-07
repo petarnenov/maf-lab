@@ -13,7 +13,6 @@ const LINKS = [
   { to: '/chat', label: 'Chat' },
   { to: '/evals', label: 'Evals' },
   { to: '/topology', label: 'Topology' },
-  { to: '/telemetry', label: 'Telemetry' },
   { to: '/coverage', label: 'Coverage' },
   { to: '/admin/index', label: 'Index admin' },
   { to: '/admin/feedback', label: 'Feedback review' },

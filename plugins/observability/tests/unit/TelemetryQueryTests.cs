@@ -2,8 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
-using Maf.Lab.Api.Telemetry;
-using Maf.Lab.Domain.Telemetry;
+using Maf.Lab.Plugins.Observability;
 using Maf.Lab.Domain.Tenancy;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -54,7 +53,7 @@ public class TelemetryQueryTests
     [Fact]
     public async Task A_window_the_server_does_not_know_is_refused_rather_than_passed_on()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = ObservabilityPluginSupport.Api();
         var adam = api.ClientFor("adam", "firm-a", Role.USER);
 
         var refused = await adam.GetAsync("/api/telemetry?window=1h)%20or%20drop", Ct);
@@ -92,7 +91,7 @@ public class TelemetryQueryTests
     [Fact]
     public async Task Signing_in_is_required()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = ObservabilityPluginSupport.Api();
         var anonymous = api.CreateClient();
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/telemetry", Ct)).StatusCode);
     }
