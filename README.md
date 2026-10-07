@@ -180,7 +180,7 @@ make setup                 # install what's missing (.NET SDK at the version glo
 export OLLAMA_API_KEY=…    # chat runs on Ollama Cloud (gpt-oss:120b); the key is only read from the environment
 export JEV_MAF_LAB=…       # intent classification runs on TypeSafe Jev; same rule
 make                       # doctor-lite → build → start → wait until healthy → index if empty → http://localhost:7171
-make core                  # the core alone: no plugin, so no domain; every turn declines (plain make brings them back)
+make core                  # the core alone: no domain plugin, only the core's providers; every turn declines (plain make brings them back)
 make help                  # every target
 ```
 

@@ -3781,9 +3781,11 @@ No package version moves in this change.
 - **Data keeps its "jev" wording:** trace kinds, signal names, the stats screen and its routes, the relevance
   reranker's kind (`Retrieval:Reranker=jev`) and the diagnostics field `rerankedByJev` are data the insights plugin and
   older traces read. Types, namespaces (`Maf.Lab.Api.Agent.Decisions`) and messages no longer name Jev.
-- **Provider code goes into a named list of hosts** (`Directory.Build.targets`, `_MafProviderHost`: the api, Retrieval,
-  CodeSearch, Portfolio, Indexing, TestAgent, Eval and the two test projects), from `plugins/<name>/lib/*.csproj`, which
-  references the abstractions and the domain only. **Supersedes §81's "the api and the test hosts" for the provider
+- **Provider code goes into every host that opts in** with `<MafProviderHost>true</MafProviderHost>` in its own csproj
+  (the api, Retrieval, CodeSearch, Portfolio, Indexing, TestAgent, Eval and the two test projects), from
+  `plugins/<name>/lib/*.csproj`, which references the abstractions and the domain only. Not a list of project names in
+  `Directory.Build.targets`: once a host moves into a plugin (the evals follow-up), that list would name a plugin's
+  project from outside its folder. **Supersedes §81's "the api and the test hosts" for the provider
   kind.** Each host calls `ProviderHost.AddInstalledProviders`, which registers the installed providers found next to
   it and validates on start (`OptionsBuilder.ValidateOnStart` with an `IValidateOptions`, the first in the repo) that
   exactly one decision engine is installed. The MCP servers mount `/plugins` read-only for `.installed`, and their

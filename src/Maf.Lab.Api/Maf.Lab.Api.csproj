@@ -1,5 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
+    <!-- Takes the installed provider plugins' code (Directory.Build.targets; introduce-provider-plugins). -->
+    <MafProviderHost>true</MafProviderHost>
     <Description>ASP.NET Core host: the agents behind the Agent Framework's AG-UI server (MapAGUIServer), history, feedback, admin, A2A</Description>
   </PropertyGroup>
   <ItemGroup>

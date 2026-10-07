@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
-    <Description>MCP server exposing search_documents; Qdrant access; BM25; the Jev relevance judge</Description>
+    <!-- Takes the installed provider plugins' code (Directory.Build.targets; introduce-provider-plugins). -->
+    <MafProviderHost>true</MafProviderHost>
+    <Description>MCP server exposing search_documents; Qdrant access; BM25; the relevance judge (over the installed decision engine)</Description>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol.AspNetCore" />

@@ -37,6 +37,8 @@ This change was split out of `introduce-plugins` to keep that one reviewable.
 
 - `make-workflow`: a new requirement, the core's minimum providers. `make core` from `introduce-plugins` now installs
   `MAF_CORE_PROVIDERS`.
+- `plugins`: `MAF_PLUGINS=none` means no domain, app or dev plugin, only the core's providers, which are installed first
+  whatever `MAF_PLUGINS` says.
 
 ## Principles
 
