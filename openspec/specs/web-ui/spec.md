@@ -808,13 +808,14 @@ When a turn touched more than one domain, the monitor header SHALL show the path
 
 ### Requirement: Curriculum map screen
 The `/curriculum` screen SHALL explain where the concepts and rules of the 5-day Fullstack AI Engineer study plan
-(revision 7) are applied in the lab. It SHALL be reachable from the main navigation.
+(revision 7) are applied in the lab while the curriculum plugin is in use. It SHALL be reachable from the main
+navigation then; without the plugin, neither the screen nor its link exists.
 
 The screen SHALL group its entries by the plan's days, in the plan's order, followed by a section for the plan's
 rules. Each entry SHALL give:
 - the concept's name;
 - a short explanation, of two or three sentences, of how the lab applies it;
-- the repository paths that implement it;
+- the repository paths that implement it, the core's only (never a path into a plugin's folder);
 - the spec that states it;
 - a link to the screen where it can be seen, when such a screen exists.
 
@@ -840,6 +841,10 @@ session or a dev persona.
 #### Scenario: Honest about gaps
 - **WHEN** the user reaches the end of the page
 - **THEN** each topic of the plan that the lab does not implement is listed with its reason
+
+#### Scenario: Without the plugin
+- **WHEN** the curriculum plugin is not in use
+- **THEN** the main navigation has no Curriculum link, and `/curriculum` lands on the chat like any unknown route
 
 ### Requirement: The monitor shows Jev's answer check
 The monitor's timeline SHALL show a turn's `answer.check` event as a row of its own, in a colour of its own kind, with a
@@ -1253,21 +1258,21 @@ border, so page content scrolling under it is not visible through it. It SHALL w
 width needs, and the behaviour SHALL follow its real height at any width, without assuming a fixed height.
 
 It SHALL show above page content (tooltips, menus, sticky table columns) and below the app's overlays (dialogs, the
-chat history drawer and its backdrop). In-page jumps (a link to an `#anchor`, such as the Curriculum section links,
-and an element scrolled into view) SHALL bring their target to rest below the header, not under it. A screen that sizes
-itself to the window SHALL fit below the header without making the window scroll as well.
+chat history drawer and its backdrop). In-page jumps (a link to an `#anchor`, such as the section links of a long page
+like the Curriculum screen, and an element scrolled into view) SHALL bring their target to rest below the header, not
+under it. A screen that sizes itself to the window SHALL fit below the header without making the window scroll as well.
 
 When the header would take more than a third of the window's height, it SHALL NOT stay in view and SHALL scroll with
 the page, so it does not take most of a small screen. It SHALL NOT stay in view when the page is printed.
 
 #### Scenario: Long page
-- **WHEN** a user scrolls down the Curriculum screen in a 1440×900 window
+- **WHEN** a user scrolls down a long page, such as the Curriculum screen, in a 1440×900 window
 - **THEN** the header with the main navigation, the persona picker and the theme button stays at the top of the window,
   and the cards scroll under it without showing through
 
 #### Scenario: Section link lands below the header
-- **WHEN** a user clicks "Not covered" in the Curriculum section links
-- **THEN** the page scrolls so the "Not covered" heading is fully visible just below the header
+- **WHEN** a user clicks a section link of a long page, such as "Not covered" on the Curriculum screen
+- **THEN** the page scrolls so that section's heading is fully visible just below the header
 
 #### Scenario: Wrapped header
 - **WHEN** the window is 800 pixels wide and 900 tall, so the header wraps to several rows
