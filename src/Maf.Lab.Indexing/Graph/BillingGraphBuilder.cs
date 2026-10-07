@@ -14,8 +14,8 @@ namespace Maf.Lab.Indexing.Graph;
 /// </summary>
 public static partial class BillingGraphBuilder
 {
-    private sealed record AccountSeed(string FirmId, string AccountId, string? Name);
-    private sealed record HouseholdSeed(string FirmId, string AccountId, string? HouseholdId);
+    /// <summary>An account as billing seeds it: the household it belongs to is billing's own fact (fee aggregation).</summary>
+    private sealed record AccountSeed(string FirmId, string AccountId, string? Name, string? HouseholdId);
     private sealed record RunSeed(string FirmId, string RunId, string? Status, string? PeriodStart, string? PeriodEnd);
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -27,7 +27,7 @@ public static partial class BillingGraphBuilder
     [GeneratedRegex(@"(?<![A-Za-z0-9-])[A-Z]{2,6}(?:-[A-Z0-9]{2,6}){1,3}-20\d{2}-\d{3}(?![A-Za-z0-9-])")]
     internal static partial Regex FeeScheduleCode();
 
-    public static GraphBuild Build(string accountsJson, string householdsJson, string runsJson, IReadOnlyList<SourceDocument> documents)
+    public static GraphBuild Build(string accountsJson, string runsJson, IReadOnlyList<SourceDocument> documents)
     {
         var nodes = new Dictionary<(string Label, string Tenant, string Key), GraphNode>();
         var edges = new HashSet<GraphEdge>();
@@ -48,6 +48,7 @@ public static partial class BillingGraphBuilder
         }
 
         var accounts = new List<(TenantId Tenant, string Id)>();
+        var households = new List<(TenantId Tenant, string Id)>();
         foreach (var a in Deserialize<AccountSeed>(accountsJson))
         {
             if (Firm(a.FirmId, $"account {a.AccountId}") is not { } tenant || string.IsNullOrWhiteSpace(a.AccountId))
@@ -57,25 +58,17 @@ public static partial class BillingGraphBuilder
             Node(GraphLabels.Account, tenant, a.AccountId, new() { ["name"] = a.Name });
             edges.Add(Edge(GraphLabels.Account, tenant, a.AccountId, GraphRelations.BelongsTo, GraphLabels.Firm, tenant, tenant.Value));
             accounts.Add((tenant, a.AccountId));
-        }
-
-        var households = new List<(TenantId Tenant, string Id)>();
-        foreach (var h in Deserialize<HouseholdSeed>(householdsJson))
-        {
-            if (Firm(h.FirmId, $"household of {h.AccountId}") is not { } tenant || string.IsNullOrWhiteSpace(h.HouseholdId))
+            if (string.IsNullOrWhiteSpace(a.HouseholdId))
             {
                 continue;
             }
-            Node(GraphLabels.Household, tenant, h.HouseholdId, new() { ["name"] = null });
-            edges.Add(Edge(GraphLabels.Household, tenant, h.HouseholdId, GraphRelations.BelongsTo, GraphLabels.Firm, tenant, tenant.Value));
-            if (!households.Contains((tenant, h.HouseholdId)))
+            Node(GraphLabels.Household, tenant, a.HouseholdId, new() { ["name"] = null });
+            edges.Add(Edge(GraphLabels.Household, tenant, a.HouseholdId, GraphRelations.BelongsTo, GraphLabels.Firm, tenant, tenant.Value));
+            if (!households.Contains((tenant, a.HouseholdId)))
             {
-                households.Add((tenant, h.HouseholdId));
+                households.Add((tenant, a.HouseholdId));
             }
-            if (accounts.Contains((tenant, h.AccountId)))
-            {
-                edges.Add(Edge(GraphLabels.Account, tenant, h.AccountId, GraphRelations.InHousehold, GraphLabels.Household, tenant, h.HouseholdId));
-            }
+            edges.Add(Edge(GraphLabels.Account, tenant, a.AccountId, GraphRelations.InHousehold, GraphLabels.Household, tenant, a.HouseholdId));
         }
 
         foreach (var r in Deserialize<RunSeed>(runsJson))

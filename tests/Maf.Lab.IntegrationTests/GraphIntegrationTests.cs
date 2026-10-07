@@ -112,7 +112,6 @@ public sealed class GraphIntegrationTests(Neo4jFixture neo4j) : IDisposable
         Directory.CreateDirectory(Path.Combine(corpus, "firm-b", "docs"));
         Directory.CreateDirectory(Path.Combine(corpus, "firm-a", "docs"));
         File.WriteAllText(Path.Combine(seed, "accounts.json"), accountsJson);
-        File.WriteAllText(Path.Combine(seed, "households.json"), """[{"firmId":"firm-a","accountId":"A-1","householdId":"HH-1"},{"firmId":"firm-a","accountId":"A-2","householdId":"HH-1"}]""");
         File.WriteAllText(Path.Combine(seed, "runs.json"), """[{"firmId":"firm-a","runId":"4410","status":"completed","periodStart":"2026-01-01","periodEnd":"2026-01-31"}]""");
         File.WriteAllText(Path.Combine(corpus, "firm-b", "docs", "profile.md"), "# Esposito Household\n\nOn fee schedule NW-INST-2026-083.");
         File.WriteAllText(Path.Combine(corpus, "firm-b", "docs", "note.md"), "# Note NW-INST-2026-083\n\nApplies to NW-INST-2026-083.");
@@ -120,14 +119,13 @@ public sealed class GraphIntegrationTests(Neo4jFixture neo4j) : IDisposable
         var provider = neo4j.Services(v =>
         {
             v["Billing:AccountsSeedPath"] = Path.Combine(seed, "accounts.json");
-            v["Portfolio:SeedPath"] = Path.Combine(seed, "households.json");
             v["Billing:SeedPath"] = Path.Combine(seed, "runs.json");
             v["Graph:CorpusRoot"] = corpus;
         });
         return (provider.GetRequiredService<GraphBuildService>(), provider);
     }
 
-    private const string TwoAccounts = """[{"firmId":"firm-a","accountId":"A-1","name":"One"},{"firmId":"firm-a","accountId":"A-2","name":"Two"}]""";
+    private const string TwoAccounts = """[{"firmId":"firm-a","accountId":"A-1","name":"One","householdId":"HH-1"},{"firmId":"firm-a","accountId":"A-2","name":"Two","householdId":"HH-1"}]""";
 
     [Fact]
     public async Task Drift_lists_every_billing_document_node_with_its_tenant_and_source_hash_only()
@@ -177,7 +175,7 @@ public sealed class GraphIntegrationTests(Neo4jFixture neo4j) : IDisposable
             Assert.Equal(["firm-b/docs/note.md", "firm-b/docs/profile.md"], schedule.Documents.Select(d => d.DocumentId).Order(StringComparer.Ordinal));
         }
 
-        var (second, provider2) = BillingBuild("""[{"firmId":"firm-a","accountId":"A-1","name":"One"}]""");
+        var (second, provider2) = BillingBuild("""[{"firmId":"firm-a","accountId":"A-1","name":"One","householdId":"HH-1"}]""");
         await using (provider2)
         {
             var removed = Assert.Single(await second.RunAsync([GraphSources.Billing], null, Ct));

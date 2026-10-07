@@ -8,10 +8,8 @@
 export Billing__SeedPath ?= $(ROOT)/plugins/billing/files/seed/billing-runs.json
 export Billing__AccountsSeedPath ?= $(ROOT)/plugins/billing/files/seed/billing-accounts.json
 
-# Billing's corpus lives in this folder too; its collection is maf_chunks. The billing graph builder still reads the
-# portfolio seed (it stays core until extract-portfolio).
-BILLING_ENV = Indexing__CorpusRoot=$(ROOT)/plugins/billing/files/corpus Qdrant__Collection=maf_chunks Qdrant__MetaCollection=maf_meta \
-              Portfolio__SeedPath=$(ROOT)/compose/seed/portfolio-households.json
+# Billing's corpus lives in this folder too; its collection is maf_chunks.
+BILLING_ENV = Indexing__CorpusRoot=$(ROOT)/plugins/billing/files/corpus Qdrant__Collection=maf_chunks Qdrant__MetaCollection=maf_meta
 
 # The api's admin index run reads this corpus through its /plugins mount (plugins-root-relative, like a manifest's paths);
 # passed to compose through make's environment, unset = no corpus. Transitional: index-admin takes it from the manifests.

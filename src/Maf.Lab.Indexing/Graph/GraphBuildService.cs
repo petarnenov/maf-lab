@@ -67,10 +67,9 @@ public sealed class GraphBuildService(TenantScopedGraphMaintenance graph, IOptio
     public GraphBuild BuildBilling()
     {
         var accounts = SeedPaths.Read(configuration, "Billing:AccountsSeedPath", "billing-accounts.json");
-        var households = SeedPaths.Read(configuration, "Portfolio:SeedPath", "portfolio-households.json");
         var runs = SeedPaths.Read(configuration, "Billing:SeedPath", "billing-runs.json");
         var corpus = BillingCorpus().LoadCorpus();
-        var build = BillingGraphBuilder.Build(accounts, households, runs, corpus.Documents);
+        var build = BillingGraphBuilder.Build(accounts, runs, corpus.Documents);
         return build with { Rejected = [.. build.Rejected, .. corpus.Rejected.Select(r => $"{r.Path}: {r.Reason}")] };
     }
 
