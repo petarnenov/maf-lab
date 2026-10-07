@@ -11,7 +11,8 @@
 - [x] 2.1 `make test`, `make docs-check` and `openspec validate --strict` pass with the folder present, and again with
       it moved aside. With the folder present: make test-dotnet 1864 (1863 passed, 1 skipped), vitest 699, docs-check
       in sync (56 routes), validate --strict valid. Moved aside (after make docs): test-dotnet 1817, vitest 679,
-      docs-check in sync (54 routes). Rebased onto 5d6dc91: test-dotnet 1864, vitest 699.
+      docs-check in sync (54 routes). Rebased onto 5d6dc91: test-dotnet 1864, vitest 699. Rebased onto
+      5c04ce4 (compliance landed): test-dotnet 1875, vitest 699.
 - [x] 2.2 `make ci-e2e` (every plugin) and `make ci-e2e-core` (the core alone) pass. Both green at 9a9ba2b:
       ci-e2e-core (the decline with no domain, 8 AG-UI conformance checks), and ci-e2e with insights in `CI_PLUGINS`
       (verify, a2a-conformance, AG-UI conformance, test generation end to end).
