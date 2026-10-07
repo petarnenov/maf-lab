@@ -3460,6 +3460,30 @@ No package version moves in this change.
   - The core tests run on a `fixture-portfolio` stand-in beside `fixture-billing`, pinned to the plugin's table by its
     drift test. The neutral-id rename of the shared fakes stays deferred.
 
+- **Part J (extract-insights).**
+  - The Jev and intent statistics are the `insights` plugin (app, installation, dev and qa): the aggregators, the two
+    routes, their DTOs (out of `Maf.Lab.Domain`), the Jev screen and its charts. It keeps nothing of its own.
+  - It reads the turns through a read port, `ITurnRecords.SinceAsync(from)`, which returns each turn's creation time and
+    core record (`StoredTurnRecord`). Like `IConversationStore`, it takes no tenant: the core reads the caller's tenant
+    from the principal and serves a tenant admin only (the rule stays the core's). Rejected: moving `TurnRow` into
+    `Maf.Lab.Domain` so a plugin can query it through `IDbContextFactory<DbContext>`, which hands the plugin an entity
+    and the tenant filter.
+  - It reads the guard's thresholds through `IGuardSettings`, the effective configuration read-only, as
+    `IInstalledPlugins.McpEndpoint` is (the cross-tenant threshold resolved by the core). `JevOptions` it reads
+    directly, being the retrieval library's, as billing and code do. Rejected: moving `GuardOptions` into the library
+    for one reader, and the plugin binding its own `Guard` section (drift).
+  - Both ports are in `CoreReads.cs` in the abstractions. The routes require the core's tenant-admin policy by its name,
+    `PolicyNames.TenantAdmin` (extract-compliance's).
+  - `DomainStats` keeps its fixed billing and portfolio counts, now as the plugin's own literals (a plugin may name
+    domains). Deferred: a per-domain breakdown, which changes the report's shape and the screen.
+  - The web part contributes the `admin/jev` route behind the admin guard and the **Jev** link, shown to everyone as
+    before, now after the core's links. The `/admin/intents` redirect is dropped (a plugin does not use react-router,
+    part C), so the old link lands on the chat. The curriculum's router entry no longer links a screen
+    (`curriculum.test.ts` checks every link against the core's routes). Deferred to extract-curriculum: entries a
+    plugin contributes.
+  - The eval history on the screen reads `/api/evals/reports` with the evals screen's shapes, copied into the plugin's
+    `types.ts` until extract-evals-plugin.
+
 ## 82. The stop-anything tests run on a fake clock (deterministic-stop-anything-tests, 2026-10-06)
 
 - **Why.** Three tests (`TaskCancelWatchTests.Disposed_it_stops_reading`,

@@ -11,6 +11,13 @@ code; it changes no behaviour, except where a line below says so.
 
 - `plugins/insights/` (app, installation, dev and qa, not in the product image): the Jev and intent statistics
   screens and routes, reading the core turn record.
+- Two read ports in `Maf.Lab.Plugins.Abstractions` (`CoreReads.cs`), implemented by the core: `ITurnRecords` (the
+  caller's tenant's turns' core records since a time, for a tenant admin, the tenant from the principal) and
+  `IGuardSettings` (the guard's effective thresholds). The statistics' DTOs leave `Maf.Lab.Domain` with them. The routes
+  require the core's tenant-admin policy by its name, `PolicyNames.TenantAdmin` (extract-compliance-plugin's).
+- Behaviour: the old `/admin/intents` link, which redirected to `/admin/jev`, is gone; like any unknown path it now
+  lands on the chat. The **Jev** link moves after the core's links in the main navigation, and the curriculum's
+  router entry no longer links a screen.
 - Removed: its line (`JevStatistics`) from the core-names-no-domain allow-list.
 
 ## Capabilities

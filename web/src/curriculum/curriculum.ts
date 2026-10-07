@@ -251,7 +251,6 @@ export const CURRICULUM: CurriculumSection[] = [
           "The plan's first-phase answer: one assistant, and a classifier that picks the domain before the first model call. Jev decides the intent and which domains are in scope, and only the searches of those domains are forced.",
         paths: ['src/Maf.Lab.Api/Agent/Jev/JevIntentClassifier.cs'],
         spec: 'intent-classification',
-        screen: { to: '/admin/jev', label: 'Jev' },
       },
       {
         concept: 'AG-UI event stream',

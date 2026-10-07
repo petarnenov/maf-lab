@@ -8,15 +8,15 @@ import type {
   RelevanceStats,
   RoutingStats,
   DomainStats,
-} from '../api/types';
-import { useApi, useAuth } from '../auth/useAuth';
-import page from '../shared/Page.module.css';
-import { StopHint } from '../shared/StopHint';
-import { useEscToStop } from '../shared/useEscToStop';
-import { Bars, Columns, Legend, Lines } from '../intents/charts';
-import { EvalHistory, IntentSection, Kpi, Panel } from '../intents/IntentSection';
-import styles from '../intents/IntentStats.module.css';
-import { bucketLabel, formatMs, percent } from '../intents/scale';
+} from './types';
+import { useApi, useUserKey } from '@maf/plugin-api';
+import page from '@maf/shared/Page.module.css';
+import { StopHint } from '@maf/shared/StopHint';
+import { useEscToStop } from '@maf/shared/useEscToStop';
+import { Bars, Columns, Legend, Lines } from './charts';
+import { EvalHistory, IntentSection, Kpi, Panel } from './IntentSection';
+import styles from './IntentStats.module.css';
+import { bucketLabel, formatMs, percent } from './scale';
 
 /** The windows the server will answer for; trace retention is seven days, so nothing longer exists. */
 const WINDOWS: { id: string; label: string }[] = [
@@ -37,15 +37,14 @@ const UNSCREENED = { label: 'unscreened', className: styles.seriesMuted };
  * passage is on this screen.
  */
 export function JevPage() {
-  const { session } = useAuth();
+  const userKey = useUserKey();
   const api = useApi();
   const [window, setWindow] = useState('24h');
 
   const stats = useQuery({
-    queryKey: ['admin', 'jev-stats', window, session?.token],
+    queryKey: ['admin', 'jev-stats', window, userKey],
     queryFn: ({ signal }) =>
       api<JevStatsReport>(`/api/admin/jev-stats?window=${window}`, { signal }),
-    enabled: !!session,
     refetchInterval: 60_000,
   });
   // A read still loading stops on Esc (stop-anything); the screen keeps what it last showed.

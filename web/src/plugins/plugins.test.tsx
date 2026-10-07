@@ -105,7 +105,6 @@ describe('web plugins', () => {
       'Index admin',
       'Feedback review',
       'Compliance',
-      'Jev',
       'Agent to agent',
       'Curriculum',
     ]);

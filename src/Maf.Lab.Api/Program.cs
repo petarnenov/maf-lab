@@ -86,6 +86,8 @@ public partial class Program
         builder.Services.AddSingleton<IDbContextFactory<DbContext>, Storage.PluginDbContextFactory>();
         builder.Services.AddScoped<Maf.Lab.Plugins.Abstractions.ITurnAccess, Storage.TurnAccess>();
         builder.Services.AddScoped<Maf.Lab.Plugins.Abstractions.IConversationStore, Storage.ConversationStore>();
+        builder.Services.AddScoped<Maf.Lab.Plugins.Abstractions.ITurnRecords, Storage.TurnRecords>();
+        builder.Services.AddSingleton<Maf.Lab.Plugins.Abstractions.IGuardSettings, Agent.CoreGuardSettings>();
         builder.Services.AddScoped<ChatTurnRunner>();
         builder.Services.AddScoped<Agent.RunRejoin>();
         // Every agent reaches a browser through the Agent Framework's own AG-UI server (agui-protocol-only).
@@ -193,8 +195,6 @@ public partial class Program
         app.MapHistory();
         app.MapTopology();
         app.MapCompliance();
-        app.MapIntentStats();
-        app.MapJevStats();
         app.MapA2AAdmin();
         app.MapCoverage();
         app.MapA2ASurface();
