@@ -118,14 +118,7 @@ describe('web plugins', () => {
       within(nav)
         .getAllByRole('link')
         .map((l) => l.textContent),
-    ).toEqual([
-      'Chat',
-      'Evals',
-      'Topology',
-      'Coverage',
-      'Feedback review',
-      'Agent to agent',
-    ]);
+    ).toEqual(['Chat', 'Evals', 'Topology', 'Coverage', 'Feedback review', 'Agent to agent']);
   });
 
   it('shows a plugin whose service is down as unavailable, not hidden, and not as a link to follow', async () => {
