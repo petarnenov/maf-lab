@@ -23,7 +23,7 @@ import { ToolCallCard } from './ToolCallCard';
 import { TurnFeedback } from './TurnFeedback';
 import { useChatStream } from './useChatStream';
 import { stepLabel } from './runStep';
-import { Progress } from '../components/Progress';
+import { Progress } from '../shared/Progress';
 import { StopHint } from '../shared/StopHint';
 import { useEscToStop } from '../shared/useEscToStop';
 import type { ChatContext, ChatTurnView, TurnViewOverride } from '../plugins/api';

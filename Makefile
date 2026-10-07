@@ -34,7 +34,7 @@ ifeq ($(CI_MODE),1)
 # CI's plugin set, a positive list kept here only (introduce-plugins 5.1): CI_MODE means no downloads and no secrets,
 # so the developer tools stay out (a2a-inspector even builds from a git context). Each plugin extracted from the core
 # adds itself here in the same commit.
-CI_PLUGINS    ?= billing,code,monitor,conversation-history,_example
+CI_PLUGINS    ?= billing,code,monitor,conversation-history,index-admin,_example
 MAF_PLUGINS   := $(CI_PLUGINS)
 endif
 export MAF_ENV MAF_PLUGINS

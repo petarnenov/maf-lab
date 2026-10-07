@@ -23,7 +23,7 @@ connect: billing relationships (`trace_billing_relationships`) and the code grap
 - HTTP contract between API and web: [`docs/http-api.md`](docs/http-api.md); the trace event format:
   [`docs/trace-events.md`](docs/trace-events.md); telemetry: [`docs/telemetry.md`](docs/telemetry.md); shared state:
   [`docs/shared-state.md`](docs/shared-state.md)
-- Screens: `/chat`, `/evals`, `/topology`, `/telemetry`, `/coverage`, `/curriculum`, and for admins `/admin/index`, `/admin/feedback`,
+- Screens: `/chat`, `/evals`, `/topology`, `/telemetry`, `/coverage`, `/curriculum`, and for admins `/admin/index` (plugin `index-admin`), `/admin/feedback`,
   `/admin/compliance`, `/admin/jev`, `/admin/a2a`
 
 ```mermaid
@@ -104,7 +104,7 @@ network. The balancer also serves Jaeger at `/jaeger` and takes the browser's OT
 plus the [developer tools](#developer-tools) on `127.0.0.1` (7172–7175) while their plugins are installed.
 
 The embedding model runs in **two Ollama instances**: `ollama` (11435) embeds search queries only, `ollama-batch`
-(11436) embeds documents — `make index*`, `rebuild-index`, `migrate` and index runs from `/admin/index`. A batch takes
+(11436) embeds documents — `make index*`, `rebuild-index`, `migrate` and index runs from `/admin/index` (plugin `index-admin`). A batch takes
 ~20 s on CPU and Ollama serves one request at a time, so on one instance a search would queue behind it. Each instance
 is pinned to its own CPUs (`OLLAMA_INTERACTIVE_CPUS=0-3`, `OLLAMA_BATCH_CPUS=4-15`) and every request names the
 matching thread count (`OLLAMA_INTERACTIVE_THREADS=4`, `OLLAMA_BATCH_THREADS=12`): Ollama does not derive it from the
@@ -270,6 +270,7 @@ allows, `none` means the core alone (`make core`), otherwise a comma-separated l
 | `billing` | mcp | tenant | dev, qa, stage, prod | Fee billing as a domain: its MCP server (mcp-retrieval: documentation search, run status and history, the billing graph, fee adjustments), its corpus and seeds, and its domain descriptor and routing. |
 | `code` | mcp | installation | dev, qa | The lab's own source code as a domain: the codebase MCP server (search_codebase and the code-graph tools), its domain descriptor and routing, and the chat's Code snippets pane. |
 | `conversation-history` | app | installation | dev, qa, stage, prod | The chat's conversation list: the caller's own conversations, searched and paged, renamed and deleted, beside the chat. Without it, a conversation is still reopened by its URL and a new one started from the chat's header. |
+| `index-admin` | app | installation | dev, qa, stage, prod | The index administration screen and its routes: a tenant admin indexes, checks the drift of and migrates the corpora the installed plugins declare, as admin jobs in the core's job store. Brings the indexing pipeline into the api. |
 | `mcp-inspector` | infra | installation | dev, qa | The MCP Inspector, listing the lab's MCP servers with a dev user's token: a dev and qa tool. |
 | `monitor` | app | installation | dev, qa | Behind the scenes of every chat turn: the full trace (model calls, prompt, retrieval diagnostics, guard, answer check), live while it runs and kept for a while after, with the run's AG-UI frames and time travel. |
 | `neo4j` | infra | installation | dev, qa, stage, prod | The graph store (Neo4j Community): billing's relationships and the repository's code graph, read through the core's one tenant-scoped graph method. A store that domain plugins depend on. |

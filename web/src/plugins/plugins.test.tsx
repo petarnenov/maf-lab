@@ -102,7 +102,6 @@ describe('web plugins', () => {
       'Topology',
       'Telemetry',
       'Coverage',
-      'Index admin',
       'Feedback review',
       'Compliance',
       'Jev',

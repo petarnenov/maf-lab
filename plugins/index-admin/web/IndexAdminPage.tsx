@@ -1,36 +1,54 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import type { AdminJob, DriftReport, IndexStatus } from '../api/types';
-import { useApi, useAuth } from '../auth/useAuth';
-import styles from '../shared/Page.module.css';
-import { Progress } from '../components/Progress';
-import { StopHint } from '../shared/StopHint';
-import { useEscToStop } from '../shared/useEscToStop';
-import { formatDate } from '../shared/format';
+import { type AdminJob, useApi, useUserKey } from '@maf/plugin-api';
+import styles from '@maf/shared/Page.module.css';
+import { Progress } from '@maf/shared/Progress';
+import { StopHint } from '@maf/shared/StopHint';
+import { useEscToStop } from '@maf/shared/useEscToStop';
+import { formatDate } from '@maf/shared/format';
 import { isJobActive } from './jobs';
+import type { CorpusView, DriftReport, IndexStatus } from './types';
+
+/** Graph drift as the card says it: in sync or not, unreachable, or no graph built for this corpus. */
+function graphLine(drift: DriftReport): string | null {
+  const graph = drift.graph;
+  if (!graph) return null;
+  if (graph.available) return `Graph: ${graph.outOfSync} of ${drift.totalDocuments} out of sync`;
+  return graph.reason === 'not-built' ? 'Graph: not built for this corpus' : 'Graph: unavailable';
+}
 
 export function IndexAdminPage() {
-  const { session } = useAuth();
   const api = useApi();
+  const userKey = useUserKey();
   const queryClient = useQueryClient();
   const [jobId, setJobId] = useState<string | null>(null);
   const [targetModel, setTargetModel] = useState('');
-  const token = session?.token;
+  const [chosen, setChosen] = useState<string | null>(null);
+
+  // The corpora the installed plugins declare; the first is shown until the admin picks another.
+  const corpora = useQuery({
+    queryKey: ['admin', 'index', 'corpora', userKey],
+    queryFn: ({ signal }) => api<CorpusView[]>('/api/admin/index/corpora', { signal }),
+  });
+  const corpus = chosen ?? corpora.data?.[0]?.name ?? null;
+  const query = corpus ? `?corpus=${encodeURIComponent(corpus)}` : '';
 
   const status = useQuery({
-    queryKey: ['admin', 'index', 'status', token],
-    queryFn: ({ signal }) => api<IndexStatus>('/api/admin/index/status', { signal }),
+    queryKey: ['admin', 'index', 'status', corpus, userKey],
+    queryFn: ({ signal }) => api<IndexStatus>(`/api/admin/index/status${query}`, { signal }),
+    enabled: !!corpus,
   });
-  const driftKey = ['admin', 'index', 'drift', token];
+  const driftKey = ['admin', 'index', 'drift', corpus, userKey];
   const drift = useQuery({
     queryKey: driftKey,
-    queryFn: ({ signal }) => api<DriftReport>('/api/admin/index/drift', { signal }),
+    queryFn: ({ signal }) => api<DriftReport>(`/api/admin/index/drift${query}`, { signal }),
+    enabled: !!corpus,
   });
 
   const trackedJobId =
     jobId ?? (isJobActive(status.data?.currentJob) ? status.data!.currentJob!.jobId : null);
   const job = useQuery({
-    queryKey: ['admin', 'jobs', trackedJobId, token],
+    queryKey: ['admin', 'jobs', trackedJobId, userKey],
     queryFn: ({ signal }) =>
       api<AdminJob>(`/api/admin/jobs/${encodeURIComponent(trackedJobId!)}`, { signal }),
     enabled: !!trackedJobId,
@@ -45,19 +63,19 @@ export function IndexAdminPage() {
   }, [job.data, queryClient]);
 
   const runIndex = useMutation({
-    mutationFn: () => api<AdminJob>('/api/admin/index/run', { method: 'POST' }),
+    mutationFn: () => api<AdminJob>('/api/admin/index/run', { method: 'POST', body: { corpus } }),
     onSuccess: (started) => setJobId(started.jobId),
   });
   const migrate = useMutation({
     mutationFn: () =>
       api<AdminJob>('/api/admin/index/migrate', {
         method: 'POST',
-        body: targetModel.trim() ? { targetModel: targetModel.trim() } : {},
+        body: targetModel.trim() ? { corpus, targetModel: targetModel.trim() } : { corpus },
       }),
     onSuccess: (started) => setJobId(started.jobId),
   });
 
-  const busy = jobActive || runIndex.isPending || migrate.isPending;
+  const busy = !corpus || jobActive || runIndex.isPending || migrate.isPending;
 
   // Stopping (stop-anything): the job is asked through its cancel route, and the page says "Stopping…" until the job's
   // own state says it has ended; a drift report still loading is aborted, request and all.
@@ -82,6 +100,38 @@ export function IndexAdminPage() {
   return (
     <div className={styles.page}>
       <h1 className={styles.heading}>Index administration</h1>
+
+      {corpora.isError && <p className={styles.error}>Could not load the corpora.</p>}
+      {corpora.data?.length === 0 && (
+        <p className={styles.muted} data-testid="no-corpus">
+          No installed plugin declares a corpus.
+        </p>
+      )}
+      {corpora.data && corpora.data.length > 1 && (
+        <label className={styles.muted}>
+          Corpus{' '}
+          <select
+            aria-label="Corpus"
+            value={corpus ?? ''}
+            disabled={jobActive}
+            onChange={(e) => {
+              setChosen(e.target.value);
+              setDriftStopped(false);
+            }}
+          >
+            {corpora.data.map((c) => (
+              <option key={c.name} value={c.name}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {corpora.data?.length === 1 && (
+        <p className={styles.muted} data-testid="corpus">
+          Corpus: {corpus}
+        </p>
+      )}
 
       <div className={styles.cards}>
         <div className={styles.card}>
@@ -116,11 +166,9 @@ export function IndexAdminPage() {
               <div className={styles.muted}>
                 {drift.data.staleDocuments} of {drift.data.totalDocuments} documents
               </div>
-              {drift.data.graph && (
+              {graphLine(drift.data) && (
                 <div className={styles.muted} data-testid="drift-graph">
-                  {drift.data.graph.available
-                    ? `Graph: ${drift.data.graph.outOfSync} of ${drift.data.totalDocuments} out of sync`
-                    : 'Graph: unavailable'}
+                  {graphLine(drift.data)}
                 </div>
               )}
             </>

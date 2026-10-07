@@ -52,8 +52,17 @@ public interface IContributesTurnObserver
     ITurnObserver CreateObserver(IServiceProvider services);
 }
 
-/// <summary>A plugin's long work, so removing the plugin can stop it first through its own store (decision 2).</summary>
+/// <summary>
+/// A plugin's long work, so removing the plugin can stop it first through its own store (decision 2). A factory method,
+/// so the open work takes its dependencies from the composed services; created once.
+/// </summary>
 public interface IContributesOpenWork
+{
+    IOpenWork CreateOpenWork(IServiceProvider services);
+}
+
+/// <summary>A plugin's open work, read and cancelled through the store that owns it.</summary>
+public interface IOpenWork
 {
     Task<IReadOnlyList<OpenWorkItem>> ListOpenAsync(CancellationToken ct);
 
@@ -75,6 +84,13 @@ public interface IInstalledPlugins
     /// remote of the plugin's server.json; null when it has neither or is not installed.
     /// </summary>
     string? McpEndpoint(string plugin);
+
+    /// <summary>
+    /// The corpora the installed plugins declare in their manifests (extract-index-admin-plugin), each with its root made
+    /// absolute under the plugins folder; re-read as the installed set changes. None unless the implementation reads
+    /// the manifests, as a stand-in's does not.
+    /// </summary>
+    IReadOnlyList<PluginCorpus> Corpora() => [];
 }
 
 /// <summary>

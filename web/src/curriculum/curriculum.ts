@@ -146,7 +146,6 @@ export const CURRICULUM: CurriculumSection[] = [
           'src/Maf.Lab.Indexing/Chunking/ProcedureChunker.cs',
         ],
         spec: 'document-indexing',
-        screen: { to: '/admin/index', label: 'Index admin' },
       },
       {
         concept: 'Hybrid retrieval through the Query API',
@@ -185,7 +184,6 @@ export const CURRICULUM: CurriculumSection[] = [
           'src/Maf.Lab.Indexing/Pipeline/DriftService.cs',
         ],
         spec: 'document-indexing',
-        screen: { to: '/admin/index', label: 'Index admin' },
       },
       {
         concept: 'Prompt injection in layers',

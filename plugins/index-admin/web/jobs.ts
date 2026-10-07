@@ -1,4 +1,4 @@
-import type { AdminJob } from '../api/types';
+import type { AdminJob } from '@maf/plugin-api';
 
 /** A job is active (queued or running) until it ends — succeeded, failed or canceled; polling stops then. */
 export const isJobActive = (job: AdminJob | null | undefined) =>

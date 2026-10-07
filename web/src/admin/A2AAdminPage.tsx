@@ -8,7 +8,7 @@ import {
 import type { A2AActivity } from '../api/types';
 import { useApi, useAuth } from '../auth/useAuth';
 import styles from '../shared/Page.module.css';
-import { Progress } from '../components/Progress';
+import { Progress } from '../shared/Progress';
 import { StopHint } from '../shared/StopHint';
 import { useEscToStop } from '../shared/useEscToStop';
 import { formatDate } from '../shared/format';

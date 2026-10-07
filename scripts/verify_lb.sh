@@ -185,37 +185,40 @@ finally:
     # nginx.conf), so reload it as `make up` does, or later checks would see one replica.
     subprocess.run(f"{COMPOSE} exec -T lb nginx -c /etc/nginx/lb/nginx.conf -s reload", shell=True, capture_output=True)
 
-# 4.4 admin jobs across replicas ------------------------------------------------------------------------
+# 4.4 admin jobs across replicas (the index-admin plugin's) -------------------------------------------
+# Over the first corpus an installed plugin declares; index-admin depends on the qdrant plugin, so a run reaches its
+# collection and succeeds.
 alice = token("alice", "firm-a", "TENANT_ADMIN")
-status, _, body = req("/api/admin/index/run", "POST", token=alice)
-job = json.loads(body)
-started_jobs.append((job["jobId"], alice))
-status2, _, body2 = req("/api/admin/index/run", "POST", token=alice)
-second = json.loads(body2)
-# A different id is only correct if the first job had already finished (dedup applies to *running* jobs).
-_, _, first_now = req(f"/api/admin/jobs/{job['jobId']}", token=alice)
-first_done = json.loads(first_now)["state"] in ("succeeded", "failed")
-check("second start while running returns the same job", status == 202 and (second["jobId"] == job["jobId"] or first_done),
-      f"{job['jobId']} vs {second['jobId']} (first finished: {first_done})")
-seen, state, polls = collections.Counter(), job["state"], 0
-deadline = time.time() + 900
-# Keep polling for at least 8 reads so the "any replica can answer" check does not depend on how fast the job is.
-while (state not in ("succeeded", "failed") or polls < 8) and time.time() < deadline:
-    polls += 1
-    s, h, b = req(f"/api/admin/jobs/{job['jobId']}", token=alice)
-    if s != 200:
-        check("job status readable on every poll", False, f"HTTP {s} from {h.get('X-Instance')}")
-        break
-    seen[h.get("X-Instance")] += 1
-    state = json.loads(b)["state"]
-    time.sleep(0.3)
-# Without the vector store (the qdrant plugin) an index run cannot reach a collection and fails: it still finishes, and
-# that is what the core alone can show (a clean refusal is extract-index-admin's).
-if plugin_in_use("qdrant"):
+corpora = []
+if plugin_in_use("index-admin"):
+    _, _, offered = req("/api/admin/index/corpora", token=alice)
+    corpora = [c["name"] for c in json.loads(offered or "[]")]
+    check("an installed plugin declares a corpus", bool(corpora), offered)
+if corpora:
+    status, _, body = req("/api/admin/index/run", "POST", {"corpus": corpora[0]}, token=alice)
+    job = json.loads(body)
+    started_jobs.append((job["jobId"], alice))
+    status2, _, body2 = req("/api/admin/index/run", "POST", {"corpus": corpora[0]}, token=alice)
+    second = json.loads(body2)
+    # A different id is only correct if the first job had already finished (dedup applies to *running* jobs).
+    _, _, first_now = req(f"/api/admin/jobs/{job['jobId']}", token=alice)
+    first_done = json.loads(first_now)["state"] in ("succeeded", "failed")
+    check("second start while running returns the same job", status == 202 and (second["jobId"] == job["jobId"] or first_done),
+          f"{job['jobId']} vs {second['jobId']} (first finished: {first_done})")
+    seen, state, polls = collections.Counter(), job["state"], 0
+    deadline = time.time() + 900
+    # Keep polling for at least 8 reads so the "any replica can answer" check does not depend on how fast the job is.
+    while (state not in ("succeeded", "failed") or polls < 8) and time.time() < deadline:
+        polls += 1
+        s, h, b = req(f"/api/admin/jobs/{job['jobId']}", token=alice)
+        if s != 200:
+            check("job status readable on every poll", False, f"HTTP {s} from {h.get('X-Instance')}")
+            break
+        seen[h.get("X-Instance")] += 1
+        state = json.loads(b)["state"]
+        time.sleep(0.3)
     check("job finishes succeeded", state == "succeeded", state)
-else:
-    check("job finishes (failed without a vector store)", state in ("succeeded", "failed"), state)
-check("job status was served by >= 2 replicas", len(seen) >= 2, str(dict(seen)))
+    check("job status was served by >= 2 replicas", len(seen) >= 2, str(dict(seen)))
 
 # 4.5 the A2A surface through the balancer ------------------------------------------------------------
 status, _, card = req("/.well-known/agent-card.json")

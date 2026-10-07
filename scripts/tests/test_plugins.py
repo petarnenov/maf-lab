@@ -142,6 +142,22 @@ class ManifestTests(PluginsTestCase):
         self.add("__twice", manifest("__twice"))
         self.assertTrue(any(p.startswith("/name") for p in plugins.discover()["__twice"].problems))
 
+    def test_a_corpus_stays_inside_its_folder(self):
+        # extract-index-admin: the index admin reads a corpus under the plugins mount, never outside its plugin's folder.
+        corpus = '\n[corpus]\npath = "{}"\ncollection = "c_{}"\nmeta_collection = "m_{}"\n'
+        self.add("x", manifest("x") + corpus.format("files/corpus", "x", "x"))
+        self.assertEqual([], plugins.discover()["x"].problems)
+        self.add("y", manifest("y") + corpus.format("../x/files/corpus", "y", "y"))
+        self.assertTrue(any(p.startswith("/corpus/path") for p in plugins.discover()["y"].problems), plugins.discover()["y"].problems)
+
+    def test_two_corpora_may_not_share_a_collection(self):
+        corpus = '\n[corpus]\npath = "files/corpus"\ncollection = "{}"\nmeta_collection = "{}"\n'
+        self.add("a", manifest("a") + corpus.format("shared_chunks", "a_meta"))
+        self.add("b", manifest("b") + corpus.format("shared_chunks", "b_meta"))
+        self.add("c", manifest("c") + corpus.format("c_chunks", "c_meta"))
+        self.assertEqual(["plugins/b/plugin.toml: /corpus/collection: `shared_chunks` is already plugins/a's"],
+                         plugins.collection_clashes(plugins.discover()))
+
     def test_the_folder_and_the_name_agree(self):
         self.add("x", manifest("y"))
         self.assertTrue(any("differs from the folder name" in p for p in plugins.discover()["x"].problems))

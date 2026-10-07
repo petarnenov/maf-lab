@@ -23,9 +23,8 @@
     <ProjectReference Include="..\Maf.Lab.TestGen\Maf.Lab.TestGen.csproj" />
     <ProjectReference Include="..\Maf.Lab.Hosting\Maf.Lab.Hosting.csproj" />
     <ProjectReference Include="..\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />
-    <!-- Admin endpoints reuse the indexing pipeline; chat never queries the store directly (only via MCP tools). -->
+    <!-- Chat never queries the store directly (only via MCP tools); the index admin's pipeline is the index-admin plugin's. -->
     <ProjectReference Include="..\Maf.Lab.Retrieval\Maf.Lab.Retrieval.csproj" />
-    <ProjectReference Include="..\Maf.Lab.Indexing\Maf.Lab.Indexing.csproj" />
     <ProjectReference Include="..\Maf.Lab.Plugins.Abstractions\Maf.Lab.Plugins.Abstractions.csproj" />
   </ItemGroup>
   <ItemGroup>

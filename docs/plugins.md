@@ -51,9 +51,13 @@ as Compose does for every merged file: `../plugins/<name>/files/…`. A plugin's
 
 A `plugin.mk` may also export what a host-side run needs from the plugin's folder, the way make passes `MAF_LAB_REPO`:
 billing's exports its seed paths (`Billing__SeedPath`, `Billing__AccountsSeedPath`) for `make dev`, `make test` and
-the indexer, and `MAF_ADMIN_INDEX_CORPUS`, the folder of the corpus the api's admin index reads through its `/plugins`
-mount (transitional: index-admin takes each plugin's corpus from its manifest). Use `export NAME ?= value`, so the
-environment still wins.
+the indexer. Use `export NAME ?= value`, so the environment still wins.
+
+A plugin that owns a corpus declares it in its manifest's `[corpus]` table: `path` (relative to its folder),
+`collection` and `meta_collection` (its Qdrant collections, which no other plugin may name), `layout` (`tenants`, the
+default, or `repository`) and an optional `graph` (the graph source its documents are built into). The index-admin
+plugin offers a tenant admin the `tenants`-layout corpora of the installed plugins, read through the api's `/plugins`
+mount. The plugin's `plugin.mk` still names the same corpus for the indexer CLI (`make index`).
 
 Two kinds of plugin cover almost everything:
 
@@ -153,10 +157,13 @@ The core never references a plugin; a plugin reaches the core only through `Maf.
 - `IMafPlugin` — identity (its name), nothing else;
 - `IContributesServices`, `IContributesEndpoints`, `IContributesModel`, `IContributesDomainBehaviour`,
   `IContributesTurnObserver`, `IContributesOpenWork`, `IContributesBrandProvider`, `IContributesWriteConfirmation` —
-  implement only what you give;
+  implement only what you give. `IContributesTurnObserver` and `IContributesOpenWork` are factory methods
+  (`CreateObserver`, `CreateOpenWork`), so what they create takes its dependencies from the composed services;
 - `IMafEndpoints` — your route group (behind the core's gate) and `MapPluginAgent`, the one way to serve an AG-UI agent;
-- ports: `IDomainBehaviour`, `ITurnObserver`, `ITurnAccess`, `IConversationStore`, `IInstalledPlugins`,
-  `IBrandProvider`. A port reads the caller from the request; none takes a principal, a tenant or a user.
+- ports: `IDomainBehaviour`, `ITurnObserver`, `ITurnAccess`, `IConversationStore`, `IInstalledPlugins` (with the
+  installed plugins' `Corpora()`), `IAdminJobs` (long work in the core's admin job store: started, read and stopped
+  from any replica), `IBrandProvider`. A port reads the caller from the request; none takes a principal, a tenant or a
+  user.
 - a tool that writes asks a person first: its first call answers MCP's `input_required` with a summary, an opaque state
   and an expiry under `WriteConfirmationKeys` (`Maf.Lab.Domain.Writes`), and your `IWriteConfirmationFlow` for that
   tool's name decides what happens next — ask the person (`AskPerson`), have the model ask them something first
@@ -164,7 +171,7 @@ The core never references a plugin; a plugin reaches the core only through `Maf.
   `title`, in order, is what the card shows) and the confirmed call's arguments; the core keeps the proposal, pauses the
   run, takes the answer and calls the tool with the state. The flow reaches the core only through `IWriteAudit`,
   `IConsultationScreening`, `IWriteTraceStep` and `IReviewerConsultation`; `IStatesConfirmationFacts` is for the eval.
-- web: `definePlugin` with `routes`, `nav`, `chatPanes`, `chatSidebars` (content only: the chat draws the sidebar's
+- web: the `AdminJob` type of the job store's routes, and `definePlugin` with `routes`, `nav`, `chatPanes`, `chatSidebars` (content only: the chat draws the sidebar's
   chrome), `turnActions`, `sourceActions`, `cards`, `confirmations` (your write tool's summary on the confirmation card,
   instead of the schema's), `toolLabels`, `runObservers` and `reviewPanels`; `ChatContext`
   gives a pane the selected turn and the chat's own actions (`openPane`, `setTurnView`, `openConversation`,

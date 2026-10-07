@@ -152,6 +152,25 @@ def form_errors(manifest: dict) -> list[str]:
     return errors
 
 
+def collection_clashes(available: dict[str, Plugin]) -> list[str]:
+    """
+    A Qdrant collection two manifests' corpora name (extract-index-admin-plugin): indexing one corpus would replace the
+    other's documents, so no two plugins may share one, installed together or not.
+    """
+    owners: dict[str, str] = {}
+    problems = []
+    for name, p in available.items():
+        corpus = p.manifest.get("corpus") or {}
+        for key in ("collection", "meta_collection"):
+            collection = corpus.get(key)
+            if not collection:
+                continue
+            if collection in owners and owners[collection] != name:
+                problems.append(f"plugins/{name}/plugin.toml: /corpus/{key}: `{collection}` is already plugins/{owners[collection]}'s")
+            owners.setdefault(collection, name)
+    return problems
+
+
 def discover() -> dict[str, Plugin]:
     """Every plugin folder present, by name, each with the problems its manifest has."""
     root = plugins_root()
@@ -436,7 +455,9 @@ def main(argv: list[str]) -> int:
                 print(f"{name:<22} {m.get('kind', '?'):<9} {m.get('scope', '?'):<13} {','.join(p.environments):<16} "
                       f"{state:<10} depends={','.join(p.depends) or '-'}  {m.get('description', '')}")
         elif command == "validate":
-            problems = [f"plugins/{n}/plugin.toml: {pr}" for n, p in discover().items() for pr in p.problems]
+            available = discover()
+            problems = [f"plugins/{n}/plugin.toml: {pr}" for n, p in available.items() for pr in p.problems]
+            problems += collection_clashes(available)
             for line in problems:
                 print(line, file=sys.stderr)
             return 1 if problems else 0

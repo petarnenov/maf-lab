@@ -29,6 +29,11 @@ public sealed class IndexingOptions
     /// <summary>BM25 tokenizer the vocabulary is built with: "words" or "code" (identifiers also split into their parts).</summary>
     public string Bm25Tokenizer { get; set; } = Retrieval.Sparse.Bm25Tokenizers.Words;
     public int EmbeddingBatchSize { get; set; } = 32;
+    /// <summary>
+    /// The graph source drift compares the corpus with; empty = the corpus has no graph, and drift's graph section says
+    /// so. The billing graph unless set, as the CLI's <c>make drift</c> always compared (extract-index-admin-plugin).
+    /// </summary>
+    public string GraphSource { get; set; } = Retrieval.Graph.GraphSources.Billing;
     public string CacheDirectory { get; set; } = ".cache";
 
     public bool RepositoryLayout => string.Equals(Layout, CorpusLayouts.Repository, StringComparison.OrdinalIgnoreCase);

@@ -1,5 +1,6 @@
 using Maf.Lab.Api.Storage;
 using Maf.Lab.Domain.Admin;
+using Maf.Lab.Plugins.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -12,14 +13,6 @@ public sealed class AdminJobOptions
     public TimeSpan StaleAfter { get; set; } = TimeSpan.FromSeconds(60);
     /// <summary>How often a running job looks at its row for a cancel another replica recorded (stop-anything).</summary>
     public TimeSpan CancelPollEvery { get; set; } = TimeSpan.FromSeconds(1);
-}
-
-/// <summary>What a cancel found: the job stopping, a job that had already ended, or none at all.</summary>
-public enum AdminJobCancel
-{
-    Canceling,
-    AlreadyEnded,
-    NotFound,
 }
 
 /// <summary>A job that failed for a reason its summary may name: the message is shown to the administrator.</summary>
@@ -98,7 +91,7 @@ public sealed class AdminJobRunner(
     /// Cancels a running job of the firm, whichever replica runs it: one guarded update moves its row to canceled, and
     /// the replica running it stops the work when it sees that.
     /// </summary>
-    public async Task<(AdminJobCancel Outcome, AdminJob? Job)> CancelAsync(string tenantId, string jobId, CancellationToken ct)
+    public async Task<AdminJobCancelResult> CancelAsync(string tenantId, string jobId, CancellationToken ct)
     {
         await using var ctx = await db.CreateDbContextAsync(ct);
         var now = time.GetUtcNow().UtcDateTime;
@@ -111,9 +104,35 @@ public sealed class AdminJobRunner(
         var row = await ctx.AdminJobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == jobId && j.TenantId == tenantId, ct);
         if (row is null)
         {
-            return (AdminJobCancel.NotFound, null);
+            return new(AdminJobCancel.NotFound, null);
         }
-        return (canceled == 1 ? AdminJobCancel.Canceling : AdminJobCancel.AlreadyEnded, ToContract(row));
+        return new(canceled == 1 ? AdminJobCancel.Canceling : AdminJobCancel.AlreadyEnded, ToContract(row));
+    }
+
+    /// <summary>The running jobs of these kinds across every tenant, for removing the plugin that owns them.</summary>
+    public async Task<IReadOnlyList<AdminJob>> OpenAsync(IReadOnlyCollection<string> kinds, CancellationToken ct)
+    {
+        await using var ctx = await db.CreateDbContextAsync(ct);
+        var rows = await ctx.AdminJobs.AsNoTracking()
+            .Where(j => kinds.Contains(j.Kind) && j.State == AdminJobStates.Running)
+            .OrderBy(j => j.StartedAt).ToListAsync(ct);
+        return [.. rows.Select(ToContract)];
+    }
+
+    /// <summary>
+    /// Cancels the running jobs of these kinds across every tenant, by the same guarded update as one cancel; the replicas
+    /// running them stop the work when they see it.
+    /// </summary>
+    public async Task CancelOpenAsync(IReadOnlyCollection<string> kinds, CancellationToken ct)
+    {
+        await using var ctx = await db.CreateDbContextAsync(ct);
+        var now = time.GetUtcNow().UtcDateTime;
+        await ctx.AdminJobs
+            .Where(j => kinds.Contains(j.Kind) && j.State == AdminJobStates.Running)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(j => j.State, AdminJobStates.Canceled)
+                .SetProperty(j => j.Summary, CanceledSummary)
+                .SetProperty(j => j.FinishedAt, now), ct);
     }
 
     public async Task<AdminJob?> CurrentAsync(string tenantId, CancellationToken ct)

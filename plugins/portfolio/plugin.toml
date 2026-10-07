@@ -35,3 +35,9 @@ data = "an account's portfolio: what an account holds, its allocation, drift or 
 [domain.scope_summary]
 en = "portfolios (holdings, model portfolios, drift, rebalancing, quarter-end AUM)"
 bg = "с портфейлите (позиции, моделни портфейли, отклонение, ребалансиране, AUM към края на тримесечието)"
+
+# The corpus the index admin offers (extract-index-admin-plugin); make's PORTFOLIO_ENV still names it for the CLI.
+[corpus]
+path = "files/corpus"
+collection = "maf_portfolio_chunks"
+meta_collection = "maf_portfolio_meta"

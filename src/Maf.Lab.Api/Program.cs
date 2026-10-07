@@ -9,7 +9,7 @@ using Maf.Lab.Api.Endpoints;
 using Maf.Lab.Api.Feedback;
 using Maf.Lab.Api.Plugins;
 using Maf.Lab.Api.Storage;
-using Maf.Lab.Indexing;
+using Maf.Lab.Retrieval;
 using Maf.Lab.Retrieval.Auth;
 using Microsoft.EntityFrameworkCore;
 
@@ -48,7 +48,8 @@ public partial class Program
             sp.GetServices<Maf.Lab.Plugins.Abstractions.IDomainBehaviour>(), sp.GetService<Plugins.PluginCatalogue>(),
             sp.GetService<Microsoft.Extensions.Options.IOptions<Plugins.PluginOptions>>()));
 
-        builder.Services.AddMafIndexing(builder.Configuration);
+        // Qdrant, models and Jev for chat, A2A, topology and feedback; the index admin's pipeline is the index-admin plugin's.
+        builder.Services.AddMafRetrievalCore(builder.Configuration);
         builder.Services.AddDevJwtAuthentication(builder.Configuration);
         builder.Services.AddA2APartnerAuthentication(builder.Configuration);
         builder.Services.AddAuthorizationBuilder();
@@ -95,6 +96,8 @@ public partial class Program
         builder.Services.AddSingleton<DatasetWriter>();
         builder.Services.Configure<AdminJobOptions>(builder.Configuration.GetSection("AdminJobs"));
         builder.Services.AddSingleton<AdminJobRunner>();
+        // The job store as a plugin reaches it, scoped to the request's principal (extract-index-admin-plugin).
+        builder.Services.AddScoped<Maf.Lab.Plugins.Abstractions.IAdminJobs, CoreAdminJobs>();
         builder.Services.Configure<Topology.TopologyOptions>(builder.Configuration.GetSection(Topology.TopologyOptions.Section));
         builder.Services.AddMemoryCache();
         builder.Services.AddHttpClient("topology");
@@ -187,7 +190,6 @@ public partial class Program
         app.MapChatAgent();
         app.MapTestGenRunAgent();
         app.MapFeedback();
-        app.MapAdminIndex();
         app.MapEvalReports();
         app.MapTelemetry();
         app.MapHistory();

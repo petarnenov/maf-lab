@@ -81,7 +81,7 @@ public sealed class TopologyProbe(
         new("api", "chat-provider", "chat"),
         new("lb", "compliance", "/compliance"),
         new("api", "compliance", "A2A via lb"),
-        new("api", "qdrant", "index admin"),
+        new("api", "qdrant", "search"),
         new("mcp", "qdrant", "gRPC"),
         new("mcp", "ollama-embeddings", "embed"),
         // The portfolio domain's own server: a turn that crosses domains goes from one MCP server to the other.
