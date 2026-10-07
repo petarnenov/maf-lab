@@ -22,4 +22,6 @@
       DECISIONS line naming the plugin's path; reworded, and the contract class re-run 4/4), vitest 702, docs-check in
       sync (56 routes, 10 pages), validate --strict valid, lint-web clean. Moved aside (after make docs): test-dotnet
       1860, vitest 667, docs-check in sync, validate --strict valid, lint-web clean.
-- [ ] 2.2 `make ci-e2e` (every plugin) and `make ci-e2e-core` (the core alone) pass.
+- [x] 2.2 `make ci-e2e` (every plugin) and `make ci-e2e-core` (the core alone) pass. Both green at 1edd62c:
+      ci-e2e-core (the decline with no domain, 8 AG-UI conformance checks), and ci-e2e with curriculum in `CI_PLUGINS`
+      (verify, a2a-conformance 10/10, AG-UI conformance 8/8, test generation end to end).
