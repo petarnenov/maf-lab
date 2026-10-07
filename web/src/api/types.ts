@@ -444,8 +444,6 @@ export interface TestAgentOverview {
   recent: TestAgentRun[];
 }
 
-}
-
 // Coverage screen (add-coverage-dashboard-and-test-agent).
 
 export type Toolchain = 'dotnet' | 'vitest';

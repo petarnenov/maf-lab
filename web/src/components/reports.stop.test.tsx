@@ -10,18 +10,19 @@ import { jsonResponse, makeSession, renderWithProviders } from '../test/render';
  * paid — but everything can be stopped: the request is aborted, the page says so while it loads, and shows no error.
  */
 describe('reports still loading stop on Esc', () => {
-  it.each([
-    ['evals', () => <EvalsPage />, (url: string) => url.startsWith('/api/evals/reports')],
-  ])('the %s screen', async (_, page, holds) => {
-    const held = hangingFetch(holds, () => jsonResponse([]));
-    renderWithProviders(page(), { session: makeSession('TENANT_ADMIN') });
-    await waitFor(() => expect(held.length).toBeGreaterThan(0));
-    expect(await screen.findByTestId('stop-hint')).toHaveTextContent('Esc to stop');
+  it.each([['evals', () => <EvalsPage />, (url: string) => url.startsWith('/api/evals/reports')]])(
+    'the %s screen',
+    async (_, page, holds) => {
+      const held = hangingFetch(holds, () => jsonResponse([]));
+      renderWithProviders(page(), { session: makeSession('TENANT_ADMIN') });
+      await waitFor(() => expect(held.length).toBeGreaterThan(0));
+      expect(await screen.findByTestId('stop-hint')).toHaveTextContent('Esc to stop');
 
-    await userEvent.keyboard('{Escape}');
+      await userEvent.keyboard('{Escape}');
 
-    await waitFor(() => expect(held.every((h) => h.signal.aborted)).toBe(true));
-    expect(screen.queryByRole('alert')).toBeNull();
-    await waitFor(() => expect(screen.queryByTestId('stop-hint')).toBeNull());
-  });
+      await waitFor(() => expect(held.every((h) => h.signal.aborted)).toBe(true));
+      expect(screen.queryByRole('alert')).toBeNull();
+      await waitFor(() => expect(screen.queryByTestId('stop-hint')).toBeNull());
+    },
+  );
 });
