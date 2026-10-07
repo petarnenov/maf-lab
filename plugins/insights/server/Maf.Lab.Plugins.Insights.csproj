@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>The insights plugin's in-process part: the Jev and intent statistics routes over the turns' core records</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Maf.Lab.Plugins.Abstractions\Maf.Lab.Plugins.Abstractions.csproj" />
+    <ProjectReference Include="..\..\..\src\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />
+    <!-- JevOptions and the Jev client's circuit-open reason only. -->
+    <ProjectReference Include="..\..\..\src\Maf.Lab.Retrieval\Maf.Lab.Retrieval.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Maf.Lab.Tests" />
+    <InternalsVisibleTo Include="Maf.Lab.IntegrationTests" />
+  </ItemGroup>
+</Project>

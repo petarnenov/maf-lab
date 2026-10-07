@@ -1,9 +1,9 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import type { EvalReportSummary, IntentStatsReport, JevStatsReport } from '../api/types';
-import { App } from '../App';
-import { jsonResponse, makeSession, renderWithProviders } from '../test/render';
+import type { EvalReportSummary, IntentStatsReport, JevStatsReport } from './types';
+import { jsonResponse, makeSession, renderWithProviders } from '@maf/testing';
+import insights from './index';
 import { JevPage } from './JevPage';
 
 const bins = (fill: Record<number, [number, number]>) =>
@@ -469,24 +469,14 @@ describe('JevPage', () => {
   });
 });
 
-describe('/admin/jev', () => {
-  it('is reached from the main navigation', async () => {
+describe('the plugin', () => {
+  it('contributes the Jev screen behind the admin guard, with its link in the main navigation', async () => {
+    expect(insights.nav).toEqual([{ to: '/admin/jev', label: 'Jev' }]);
+    const [route] = insights.routes ?? [];
+    expect(route).toMatchObject({ path: 'admin/jev', admin: true });
+
     stub(() => jsonResponse(report()));
-    renderWithProviders(<App />, { route: '/admin/jev', session: admin });
-
+    renderWithProviders(<>{route.element}</>, { session: admin });
     expect(await screen.findByRole('heading', { name: 'Jev', level: 1 })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Jev' })).toHaveAttribute('href', '/admin/jev');
-  });
-
-  it('keeps the old /admin/intents link working', async () => {
-    stub(() => jsonResponse(report()));
-    renderWithProviders(<App />, { route: '/admin/intents', session: admin });
-
-    expect(await screen.findByRole('heading', { name: 'Jev', level: 1 })).toBeInTheDocument();
-  });
-
-  it('denies an advisor, as the other admin screens do', () => {
-    renderWithProviders(<App />, { route: '/admin/jev', session: makeSession('USER') });
-    expect(screen.getByRole('alert')).toHaveTextContent('Access denied');
   });
 });

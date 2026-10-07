@@ -147,7 +147,8 @@ The balancer's routes, as `compose/lb/nginx.conf`, the api upstream template and
   <img src="docs/screenshots/jev-light.png" alt="Jev statistics: requests, availability and latency per call site">
 </picture>
 
-**Jev** (`/admin/jev`): every call TypeSafe's Jev made for the firm's turns, and how often it was unavailable
+**Jev** (`/admin/jev`, plugin `insights`): every call TypeSafe's Jev made for the firm's turns, and how often it was
+unavailable
 </td>
 <td width="50%" valign="top">
 <picture>
@@ -271,6 +272,7 @@ allows, `none` means the core alone (`make core`), otherwise a comma-separated l
 | `code` | mcp | installation | dev, qa | The lab's own source code as a domain: the codebase MCP server (search_codebase and the code-graph tools), its domain descriptor and routing, and the chat's Code snippets pane. |
 | `compliance` | a2a | tenant | dev, qa, stage, prod | The compliance reviewer: an A2A agent (two replicas behind /compliance) that reviews a large fee adjustment before a person is asked to confirm it, the client that consults it, and the audit screen (verify, browse and export the tenant's audit record). |
 | `conversation-history` | app | installation | dev, qa, stage, prod | The chat's conversation list: the caller's own conversations, searched and paged, renamed and deleted, beside the chat. Without it, a conversation is still reopened by its URL and a new one started from the chat's header. |
+| `insights` | app | installation | dev, qa | The Jev and intent statistics: how every Jev call site — intent, guardrail, relevance, routing and the answer check — behaved on the firm's chat turns over a window, read from the turns' core records. Numbers only. |
 | `mcp-inspector` | infra | installation | dev, qa | The MCP Inspector, listing the lab's MCP servers with a dev user's token: a dev and qa tool. |
 | `monitor` | app | installation | dev, qa | Behind the scenes of every chat turn: the full trace (model calls, prompt, retrieval diagnostics, guard, answer check), live while it runs and kept for a while after, with the run's AG-UI frames and time travel. |
 | `neo4j` | infra | installation | dev, qa, stage, prod | The graph store (Neo4j Community): billing's relationships and the repository's code graph, read through the core's one tenant-scoped graph method. A store that domain plugins depend on. |

@@ -1,12 +1,11 @@
 using System.Text.Json;
-using Maf.Lab.Domain.Intent;
-using Maf.Lab.Domain.Jev;
 using Maf.Lab.Domain.Tracing;
+using Maf.Lab.Plugins.Abstractions;
 
-namespace Maf.Lab.Api.Agent;
+namespace Maf.Lab.Plugins.Insights;
 
-// names a domain until the insights follow-up moves it (introduce-plugins 8.1)
-// (DomainStats' fixed billing and portfolio counts; legacy rows without a domain count as billing; not a default for new rows)
+// DomainStats keeps its fixed billing and portfolio counts, and legacy rows without a domain count as billing (not a
+// default for new rows); a per-domain breakdown is deferred (extract-insights-plugin, DECISIONS §81 part J).
 /// <summary>
 /// Aggregates every Jev call site of a set of turns into a <see cref="JevStatsReport"/>. A pure function of its input:
 /// it reuses <see cref="IntentStatistics"/> for the intent section and reads only the <c>guardrail</c>, <c>relevance</c>,
@@ -22,10 +21,7 @@ public static class JevStatistics
     // The answer check budgets 3 s (Jev:AnswerCheck:TimeoutSeconds).
     private const double AnswerBudgetMs = 3000;
     // The reason every call site records for a call the circuit breaker skipped.
-    private const string CircuitOpen = Retrieval.Jev.JevClient.CircuitOpen;
-
-    /// <summary>The guard configuration surfaced with the numbers, as the running service has it.</summary>
-    public readonly record struct GuardSettings(bool Enabled, double PromptBlockAt, double ContentWithholdAt, double CrossTenantAt);
+    private const string CircuitOpen = Maf.Lab.Retrieval.Jev.JevClient.CircuitOpen;
 
     // A call an open circuit skipped (add-jev-circuit-breaker) sent nothing: it is counted as skipped, never as a
     // request, an unavailable request or a latency. Its own section still counts it where it counts unavailability.
@@ -137,8 +133,8 @@ public static class JevStatistics
 
     private static DomainStats Domains(List<DomainFact> domains) => new(
         domains.Count,
-        domains.Count(d => d.Verdict == BuiltIn.BuiltInDomains.Billing),
-        domains.Count(d => d.Verdict == BuiltIn.BuiltInDomains.Portfolio),
+        domains.Count(d => d.Verdict == "billing"),
+        domains.Count(d => d.Verdict == "portfolio"),
         domains.Count(d => d.Verdict == "both"),
         domains.Count(d => d.Verdict == "none"),
         domains.Count(d => d.Crossed),

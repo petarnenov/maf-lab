@@ -2,9 +2,8 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Maf.Lab.Api.Agent;
-using Maf.Lab.Domain.Intent;
 using Maf.Lab.Domain.Tenancy;
+using Maf.Lab.Plugins.Insights;
 using Maf.Lab.TestSupport;
 
 namespace Maf.Lab.Tests;
@@ -120,6 +119,7 @@ public class IntentStatsTests
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel())
         {
+            InstalledPlugins = InsightsPluginSupport.Installed,
             ExtraSettings = new Dictionary<string, string?> { ["Jev:TimeoutSeconds"] = "0.3" },
         };
         var adam = api.ClientFor("adam", "firm-a", Role.USER);
@@ -151,7 +151,7 @@ public class IntentStatsTests
     [Fact]
     public async Task A_firm_admin_never_sees_another_firms_turns()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = InsightsPluginSupport.Api(ApiFactory.ProceduralModel());
         await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "what is the procedure when a fee schedule is missing");
         await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "hello");
         await ApiFactory.ChatAsync(api.ClientFor("bob", "firm-b", Role.USER), "hello");
@@ -168,7 +168,7 @@ public class IntentStatsTests
     [Fact]
     public async Task Only_a_firm_admin_may_read_and_only_the_listed_windows()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = InsightsPluginSupport.Api(ApiFactory.ProceduralModel());
         foreach (var role in new[] { Role.USER, Role.USER })
         {
             Assert.Equal(HttpStatusCode.Forbidden, (await api.ClientFor("x", "firm-a", role).GetAsync("/api/admin/intent-stats", Ct)).StatusCode);
@@ -187,7 +187,7 @@ public class IntentStatsTests
     public async Task No_message_content_in_the_response_or_the_logs()
     {
         const string marker = "zq-sentinel-7781";
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = InsightsPluginSupport.Api(ApiFactory.ProceduralModel());
         await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), $"what is the procedure for {marker} fees");
 
         var response = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN).GetAsync("/api/admin/intent-stats", Ct);

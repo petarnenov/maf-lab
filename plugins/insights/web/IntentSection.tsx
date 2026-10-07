@@ -6,10 +6,10 @@ import type {
   IntentOutcome,
   IntentProbabilityBin,
   IntentStatsReport,
-} from '../api/types';
-import { useApi, useAuth } from '../auth/useAuth';
-import page from '../shared/Page.module.css';
-import { formatDate } from '../shared/format';
+} from './types';
+import { useApi, useUserKey } from '@maf/plugin-api';
+import page from '@maf/shared/Page.module.css';
+import { formatDate } from '@maf/shared/format';
 import { Bars, Columns, Legend, Lines, Scatter, type Series } from './charts';
 import styles from './IntentStats.module.css';
 import { PipelineDiagram } from './PipelineDiagram';
@@ -426,12 +426,11 @@ function ChoiceMatrix({ choices }: { choices: IntentChoiceCount[] }) {
 
 /** The offline intent eval over the runs this machine has kept, read from the eval report endpoint. */
 export function EvalHistory() {
-  const { session } = useAuth();
+  const userKey = useUserKey();
   const api = useApi();
   const reports = useQuery({
-    queryKey: ['evals', 'reports', session?.token],
+    queryKey: ['evals', 'reports', userKey],
     queryFn: ({ signal }) => api<EvalReportSummary[]>('/api/evals/reports', { signal }),
-    enabled: !!session,
   });
 
   const runs = (reports.data ?? [])

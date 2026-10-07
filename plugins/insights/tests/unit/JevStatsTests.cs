@@ -2,10 +2,9 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Maf.Lab.Api.Agent;
-using Maf.Lab.Domain.Intent;
-using Maf.Lab.Domain.Jev;
 using Maf.Lab.Domain.Tenancy;
+using Maf.Lab.Plugins.Abstractions;
+using Maf.Lab.Plugins.Insights;
 using Maf.Lab.TestSupport;
 
 namespace Maf.Lab.Tests;
@@ -20,7 +19,7 @@ public class JevStatsTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static readonly IntentStatsSettings IntentSettings = new("jev-1.13.0", 0.5, 0.2, 2);
-    private static readonly JevStatistics.GuardSettings Guard = new(true, 0.65, 0.85, 0.8);
+    private static readonly GuardSettings Guard = new(true, 0.65, 0.85, 0.8);
     private static readonly DateTimeOffset Now = new(2026, 9, 28, 12, 0, 0, TimeSpan.Zero);
 
     private static JevStatsReport Aggregate(params IntentStatistics.TraceRow[] rows) =>
@@ -345,6 +344,7 @@ public class JevStatsTests
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel())
         {
+            InstalledPlugins = InsightsPluginSupport.Installed,
             ExtraSettings = new Dictionary<string, string?> { ["Jev:RouteDataTools"] = "true" },
         };
         api.Jev.Guard = (text, id) => id == "guard_override" && text.Contains("ignore", StringComparison.OrdinalIgnoreCase) ? 0.98 : 0.02;
@@ -368,7 +368,7 @@ public class JevStatsTests
     [Fact]
     public async Task A_firm_admin_never_sees_another_firms_turns()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = InsightsPluginSupport.Api(ApiFactory.ProceduralModel());
         await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "what is the procedure when a fee schedule is missing");
         await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "hello");
         await ApiFactory.ChatAsync(api.ClientFor("bob", "firm-b", Role.USER), "hello");
@@ -385,7 +385,7 @@ public class JevStatsTests
     [Fact]
     public async Task Only_a_firm_admin_may_read_and_only_the_listed_windows()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = InsightsPluginSupport.Api(ApiFactory.ProceduralModel());
         foreach (var role in new[] { Role.USER, Role.USER })
         {
             Assert.Equal(HttpStatusCode.Forbidden, (await api.ClientFor("x", "firm-a", role).GetAsync("/api/admin/jev-stats", Ct)).StatusCode);
@@ -404,7 +404,7 @@ public class JevStatsTests
     public async Task No_message_content_in_the_response_or_the_logs()
     {
         const string marker = "zq-sentinel-7781";
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = InsightsPluginSupport.Api(ApiFactory.ProceduralModel());
         await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), $"what is the procedure for {marker} fees");
 
         var response = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN).GetAsync("/api/admin/jev-stats", Ct);
@@ -540,7 +540,7 @@ public class JevStatsTests
     [Fact]
     public async Task Answered_turns_reach_the_answer_section_through_the_api()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = InsightsPluginSupport.Api(ApiFactory.ProceduralModel());
         api.Jev.AnswerCheck = (id, question, _) => id == "answer_grounded" && question.StartsWith("hello") ? 0.1 : 0.9;
         var adam = api.ClientFor("adam", "firm-a", Role.USER);
 

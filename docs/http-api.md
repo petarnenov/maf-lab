@@ -261,8 +261,6 @@ summary a person was asked to approve, so the UI offers it only on a turn that a
 | POST | `/api/admin/index/migrate` | `{ targetModel? }` | `202 AdminJob` |
 | GET | `/api/admin/jobs/{jobId}` | — | `AdminJob` |
 | POST | `/api/admin/jobs/{jobId}/cancel` | — | `202` with the `AdminJob`, now `canceled`, while it stops; `409` when it had already ended; `404` for a job not of the admin's firm. Any replica takes it: the job's row is the stop, and the replica running the job watches it (stop-anything). Once the work has stopped, its `summary` says how far it got |
-| GET | `/api/admin/intent-stats?window=1h\|24h\|7d` | — | `IntentStatsReport` for the caller's firm (default `24h`; another window is `400`) |
-| GET | `/api/admin/jev-stats?window=1h\|24h\|7d` | — | `JevStatsReport` for the caller's firm, same windows |
 
 `AdminJob.state`: `queued` \| `running` \| `succeeded` \| `failed`. `migrate` accepts `{}` or no body.
 
@@ -274,18 +272,6 @@ summary a person was asked to approve, so the UI offers it only on a turn that a
 
 `LabelRequest.dataset`: `selection` (uses `expectedTools`), `retrieval` (uses
 `relevantChunkIds`), `generation` (uses `referenceAnswer`, `expectedDocIds`).
-
-The two statistics reports are numbers only: no question, answer, passage or identifier of a turn, conversation or
-user leaves the server. `IntentStatsReport` = `{ window, from, to, bucketMinutes, settings, totals, pipeline,
-reasons, choices, timeline, confidence, inDomain, points, meanProbabilities, latency, models }` — how the intent classifier
-answered on the firm's turns. `JevStatsReport` = `{ window, from, to, bucketMinutes, overview, intent, guardrail,
-relevance, routing, domains?, answerCheck? }` — every Jev call site on the firm's chat turns, with `intent` equal to
-the intent-stats report for the same window. Calls on the A2A path have no turn trace and are not counted. The
-shapes are in `Maf.Lab.Domain/Intent` and `Maf.Lab.Domain/Jev`. `answerCheck` = `{ answers, checked, pass,
-notRelevant, notGrounded, unchecked, unavailable, relevantFloor, groundedFloor, latency, uncertain? }`: `checked` counts
-every verdict but `unchecked`, the two "not" counts are taken against the floor recorded with each check, and
-`uncertain` — optional, so an older client still reads the response — counts the checked answers in the review band,
-which raise no review signal. An answer left unchecked because its sources were over the cap sent no request.
 
 ## Plugin routes
 
@@ -380,6 +366,27 @@ Reopening one by its id is the core's (`GET /api/conversations/{id}`).
 | GET | `/api/conversations?search=&limit=&before=` | — | `{ conversations: [{ conversationId, title, createdAt, lastActivityAt, turnCount }], nextCursor }` — own, non-deleted, non-empty conversations, newest activity first; `search` matches title, questions and answers (case-insensitive); `limit` default 30, max 100; pass `nextCursor` as `before` for the next page |
 | PATCH | `/api/conversations/{id}` | `{ title }` (1–120 chars) | `204`; `400` invalid title; `404` |
 | DELETE | `/api/conversations/{id}` | — | `204` (soft delete: hidden, cannot be continued; turns stay for the review queue; recorded as `conversation.delete` in the audit); `404` |
+
+### insights
+
+The Jev and intent statistics (tenant admin), read from the firm's turns' core records.
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | `/api/admin/intent-stats?window=1h\|24h\|7d` | — | `IntentStatsReport` for the caller's firm (default `24h`; another window is `400`) |
+| GET | `/api/admin/jev-stats?window=1h\|24h\|7d` | — | `JevStatsReport` for the caller's firm, same windows |
+
+The two statistics reports are numbers only: no question, answer, passage or identifier of a turn, conversation or
+user leaves the server. `IntentStatsReport` = `{ window, from, to, bucketMinutes, settings, totals, pipeline,
+reasons, choices, timeline, confidence, inDomain, points, meanProbabilities, latency, models }` — how the intent classifier
+answered on the firm's turns. `JevStatsReport` = `{ window, from, to, bucketMinutes, overview, intent, guardrail,
+relevance, routing, domains?, answerCheck? }` — every Jev call site on the firm's chat turns, with `intent` equal to
+the intent-stats report for the same window. Calls on the A2A path have no turn trace and are not counted. The
+shapes are in this plugin's `server/IntentStatsContracts.cs` and `server/JevStatsContracts.cs`. `answerCheck` = `{ answers, checked, pass,
+notRelevant, notGrounded, unchecked, unavailable, relevantFloor, groundedFloor, latency, uncertain? }`: `checked` counts
+every verdict but `unchecked`, the two "not" counts are taken against the floor recorded with each check, and
+`uncertain` — optional, so an older client still reads the response — counts the checked answers in the review band,
+which raise no review signal. An answer left unchecked because its sources were over the cap sent no request.
 
 ### monitor
 

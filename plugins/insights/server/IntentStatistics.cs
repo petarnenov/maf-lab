@@ -1,8 +1,7 @@
 using System.Text.Json;
-using Maf.Lab.Domain.Intent;
 using Maf.Lab.Domain.Tracing;
 
-namespace Maf.Lab.Api.Agent;
+namespace Maf.Lab.Plugins.Insights;
 
 /// <summary>
 /// Aggregates the <c>intent</c> trace events of a set of turns into <see cref="IntentStatsReport"/>. A pure function of
@@ -99,7 +98,7 @@ public static class IntentStatistics
 
     /// <summary>
     /// Which outcome a reason means, and the label it is counted under. The reasons are the ones
-    /// <see cref="Jev.JevIntentClassifier"/> writes; anything unrecognised is a failure under its own label, so a new
+    /// the api's <c>JevIntentClassifier</c> writes; anything unrecognised is a failure under its own label, so a new
     /// reason shows up rather than disappearing.
     /// </summary>
     public static (string Outcome, string Label) Classify(string? reason)
@@ -181,7 +180,7 @@ public static class IntentStatistics
             probabilities,
             model,
             // A classification the circuit breaker skipped sent nothing: it has no latency (add-jev-circuit-breaker).
-            reason == Retrieval.Jev.JevClient.CircuitOpen ? null : Number(data, "durationMs"),
+            reason == Maf.Lab.Retrieval.Jev.JevClient.CircuitOpen ? null : Number(data, "durationMs"),
             label == "timed out");
     }
 

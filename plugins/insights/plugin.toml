@@ -1,0 +1,8 @@
+schema = 1
+name = "insights"
+kind = "app"
+scope = "installation"
+environments = ["dev", "qa"]
+description = "The Jev and intent statistics: how every Jev call site — intent, guardrail, relevance, routing and the answer check — behaved on the firm's chat turns over a window, read from the turns' core records. Numbers only."
+progress = "Page: the statistics screens show their loading state while a report loads"
+stopping = "None — report reads abort with their request (React Query's signal); nothing outlives a request"

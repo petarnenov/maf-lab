@@ -1,4 +1,4 @@
-import type { IntentPipelineCounts, IntentStatsSettings } from '../api/types';
+import type { IntentPipelineCounts, IntentStatsSettings } from './types';
 import styles from './IntentStats.module.css';
 
 const W = 900;

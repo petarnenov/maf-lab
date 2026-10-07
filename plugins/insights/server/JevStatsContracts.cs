@@ -1,6 +1,4 @@
-using Maf.Lab.Domain.Intent;
-
-namespace Maf.Lab.Domain.Jev;
+namespace Maf.Lab.Plugins.Insights;
 
 /// <summary>The configuration the cross-cutting numbers are judged against, as the running services have it.</summary>
 /// <param name="Model">The Jev model the intent classifier reports.</param>

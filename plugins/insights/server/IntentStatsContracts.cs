@@ -1,4 +1,4 @@
-namespace Maf.Lab.Domain.Intent;
+namespace Maf.Lab.Plugins.Insights;
 
 /// <summary>What happened to one classification: Jev's answer was acted on, answered but overruled, or never usable.</summary>
 public static class IntentOutcome
