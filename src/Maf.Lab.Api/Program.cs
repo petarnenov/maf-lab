@@ -49,7 +49,7 @@ public partial class Program
             sp.GetServices<Maf.Lab.Plugins.Abstractions.IDomainBehaviour>(), sp.GetService<Plugins.PluginCatalogue>(),
             sp.GetService<Microsoft.Extensions.Options.IOptions<Plugins.PluginOptions>>()));
 
-        // Qdrant, models and Jev for chat, A2A, topology and feedback; the index admin's pipeline is the index-admin plugin's.
+        // Qdrant, models and Jev for chat, A2A, topology and feedback; indexing is a plugin's to register.
         builder.Services.AddMafRetrievalCore(builder.Configuration);
         builder.Services.AddDevJwtAuthentication(builder.Configuration);
         builder.Services.AddA2APartnerAuthentication(builder.Configuration);

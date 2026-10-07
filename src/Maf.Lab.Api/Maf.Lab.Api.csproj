@@ -23,7 +23,7 @@
     <ProjectReference Include="..\Maf.Lab.TestGen\Maf.Lab.TestGen.csproj" />
     <ProjectReference Include="..\Maf.Lab.Hosting\Maf.Lab.Hosting.csproj" />
     <ProjectReference Include="..\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />
-    <!-- Chat never queries the store directly (only via MCP tools); the index admin's pipeline is the index-admin plugin's. -->
+    <!-- Chat never queries the store directly (only via MCP tools); indexing is a plugin's to bring. -->
     <ProjectReference Include="..\Maf.Lab.Retrieval\Maf.Lab.Retrieval.csproj" />
     <ProjectReference Include="..\Maf.Lab.Plugins.Abstractions\Maf.Lab.Plugins.Abstractions.csproj" />
   </ItemGroup>
