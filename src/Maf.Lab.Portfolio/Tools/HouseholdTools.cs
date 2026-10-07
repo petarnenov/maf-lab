@@ -8,6 +8,8 @@ using ModelContextProtocol.Server;
 
 namespace Maf.Lab.Portfolio.Tools;
 
+// names a domain until the extract-evals-plugin follow-up moves it (introduce-plugins 8.1)
+// The portfolio host, which stays here until the eval stops hosting it in-process.
 /// <summary>The portfolio domain's read tools. None can change anything: this server has no write.</summary>
 [McpServerToolType]
 public sealed class HouseholdTools(PortfolioStore store, IPrincipalAccessor principals, ILogger<HouseholdTools> logger)

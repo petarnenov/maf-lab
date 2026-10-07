@@ -7,8 +7,10 @@ namespace Maf.Lab.Tests;
 /// home of the shipped domains, no api source file names billing, portfolio or codebase — except the consumers whose
 /// contract a follow-up plugin moves, each listed here and marked in its own file. The retrieval library is held to the
 /// same rule more strictly (extract-billing): any name containing a domain's, so a new billing type in the library fails
-/// too; its allow-list is the billing host and the billing graph, which stay there until extract-evals-plugin. The scan
-/// reads source text, not IL: the ids are constants, which the compiler inlines.
+/// too; its allow-list is the billing host and the billing graph, which stay there until extract-evals-plugin. Portfolio's
+/// server project is held to the same rule (extract-portfolio): all of it is portfolio's host, which stays until
+/// extract-evals-plugin as billing's does. The scan reads source text, not IL: the ids are constants, which the compiler
+/// inlines.
 /// </summary>
 public sealed class CoreNamesNoDomainTests
 {
@@ -46,9 +48,18 @@ public sealed class CoreNamesNoDomainTests
 
     private const string RetrievalFollowUp = "extract-evals-plugin";
 
+    /// <summary>Portfolio's server project: every file is its host's, each marked in its own file.</summary>
+    private static readonly IReadOnlyDictionary<string, string> PortfolioAllowList = new Dictionary<string, string>
+    {
+        ["Program.cs"] = RetrievalFollowUp,
+        ["Store/PortfolioStore.cs"] = RetrievalFollowUp,
+        ["Tools/HouseholdTools.cs"] = RetrievalFollowUp,
+        ["Tools/PortfolioSearchTool.cs"] = RetrievalFollowUp,
+    };
+
     // A domain's types count too: a reference to Maf.Lab.Domain.Billing is billing's, whatever the file calls it.
     private static readonly Regex NamesADomain =
-        new(@"BuiltInDomains\.(Billing|Portfolio|Codebase)\b|""(billing|portfolio|codebase)""|Maf\.Lab\.Domain\.Billing\b", RegexOptions.Compiled);
+        new(@"BuiltInDomains\.(Billing|Portfolio|Codebase)\b|""(billing|portfolio|codebase)""|Maf\.Lab\.Domain\.(Billing|Portfolio)\b", RegexOptions.Compiled);
 
     /// <summary>The retrieval library's rule: any identifier or string that contains a domain's name.</summary>
     private static readonly Regex ContainsADomain = new("billing|portfolio|codebase", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -56,6 +67,8 @@ public sealed class CoreNamesNoDomainTests
     private static string ApiRoot => Path.Combine(CorpusLoaderTests.RepoRoot(), "src", "Maf.Lab.Api");
 
     private static string RetrievalRoot => Path.Combine(CorpusLoaderTests.RepoRoot(), "src", "Maf.Lab.Retrieval");
+
+    private static string PortfolioRoot => Path.Combine(CorpusLoaderTests.RepoRoot(), "src", "Maf.Lab.Portfolio");
 
     /// <summary>The source with its comments removed (strings kept, so a literal in a string still counts).</summary>
     internal static string StripComments(string source) =>
@@ -68,14 +81,20 @@ public sealed class CoreNamesNoDomainTests
     ];
 
     internal static IReadOnlyList<string> RetrievalViolations(IReadOnlyDictionary<string, string> files) =>
+        LibraryViolations(files, RetrievalAllowList);
+
+    /// <summary>A library root's rule: outside its allow-list, no name or string contains a domain's.</summary>
+    internal static IReadOnlyList<string> LibraryViolations(IReadOnlyDictionary<string, string> files, IReadOnlyDictionary<string, string> allowed) =>
     [
-        .. files.Where(f => !RetrievalAllowList.ContainsKey(f.Key))
+        .. files.Where(f => !allowed.ContainsKey(f.Key))
             .SelectMany(f => ContainsADomain.Matches(StripComments(f.Value)).Select(m => $"{f.Key}: {m.Value}")),
     ];
 
     private static IReadOnlyDictionary<string, string> ApiSources() => Sources(ApiRoot);
 
     private static IReadOnlyDictionary<string, string> RetrievalSources() => Sources(RetrievalRoot);
+
+    private static IReadOnlyDictionary<string, string> PortfolioSources() => Sources(PortfolioRoot);
 
     private static IReadOnlyDictionary<string, string> Sources(string root) =>
         Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
@@ -114,6 +133,24 @@ public sealed class CoreNamesNoDomainTests
     {
         var sources = RetrievalSources();
         foreach (var (file, plugin) in RetrievalAllowList)
+        {
+            Assert.True(sources.ContainsKey(file), $"{file} is allow-listed but does not exist");
+            Assert.Matches(ContainsADomain, StripComments(sources[file]));
+            Assert.Contains($"// names a domain until the {plugin} follow-up moves it (introduce-plugins 8.1)", sources[file]);
+        }
+    }
+
+    [Fact]
+    public void No_portfolio_server_file_outside_its_allow_list_names_a_domain()
+    {
+        Assert.Empty(LibraryViolations(PortfolioSources(), PortfolioAllowList));
+    }
+
+    [Fact]
+    public void Each_allowed_portfolio_server_file_still_names_a_domain_and_says_which_follow_up_removes_it()
+    {
+        var sources = PortfolioSources();
+        foreach (var (file, plugin) in PortfolioAllowList)
         {
             Assert.True(sources.ContainsKey(file), $"{file} is allow-listed but does not exist");
             Assert.Matches(ContainsADomain, StripComments(sources[file]));

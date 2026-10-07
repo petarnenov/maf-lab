@@ -7,6 +7,8 @@ using Maf.Lab.Retrieval.Configuration;
 
 namespace Maf.Lab.Portfolio.Store;
 
+// names a domain until the extract-evals-plugin follow-up moves it (introduce-plugins 8.1)
+// The portfolio host, which stays here until the eval stops hosting it in-process.
 internal sealed record HoldingRecord(string AssetClass, decimal MarketValue, decimal TargetWeightPct);
 
 internal sealed record AumRecord(DateOnly QuarterEnd, decimal Aum);

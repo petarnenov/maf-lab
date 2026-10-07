@@ -16,23 +16,9 @@ describe('ToolCallCard', () => {
     );
     const card = screen.getByTestId('tool-call-card');
     expect(card).toHaveAttribute('data-state', 'running');
-    expect(card).toHaveTextContent('Searching documentation…');
+    expect(card).toHaveTextContent('Calling search_documents…');
     expect(card).toHaveTextContent('query="fee schedule"');
     expect(card).not.toHaveTextContent('sources');
-  });
-
-  it('renders a running run-status call with the run id', () => {
-    render(
-      <ToolCallCard
-        call={{
-          callId: 'c2',
-          toolName: 'get_billing_run_status',
-          argumentSummary: 'runId=4417',
-          status: 'running',
-        }}
-      />,
-    );
-    expect(screen.getByTestId('tool-call-card')).toHaveTextContent('Checking run 4417');
   });
 
   it('renders a finished call with result summary and source count', () => {
@@ -51,7 +37,7 @@ describe('ToolCallCard', () => {
     );
     const card = screen.getByTestId('tool-call-card');
     expect(card).toHaveAttribute('data-state', 'finished');
-    expect(card).toHaveTextContent('Searched documentation');
+    expect(card).toHaveTextContent('Called search_documents');
     expect(card).toHaveTextContent('5 snippets from 3 documents');
     expect(card).toHaveTextContent('5 sources');
   });

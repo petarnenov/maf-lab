@@ -6,6 +6,8 @@ using Maf.Lab.Retrieval.Auth;
 
 namespace Maf.Lab.Portfolio;
 
+// names a domain until the extract-evals-plugin follow-up moves it (introduce-plugins 8.1)
+// The portfolio host, which stays here until the eval stops hosting it in-process.
 /// <summary>
 /// The portfolio domain's MCP server (protocol 2026-07-28, Streamable HTTP, stateless): its own documentation, searched
 /// through its own collection, and read tools over household portfolios. Read-only, so it keeps no shared state.

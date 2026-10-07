@@ -10,6 +10,8 @@ using ModelContextProtocol.Server;
 
 namespace Maf.Lab.Portfolio.Tools;
 
+// names a domain until the extract-evals-plugin follow-up moves it (introduce-plugins 8.1)
+// The portfolio host, which stays here until the eval stops hosting it in-process.
 /// <summary>
 /// The portfolio domain's RAG tool. The same search as <c>search_documents</c> — hybrid, relevance-gated, reranked,
 /// through the one tenant-scoped query method — over this server's own collection, which is configuration

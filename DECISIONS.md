@@ -3436,6 +3436,30 @@ No package version moves in this change.
   - Known unmeasured configurations: any catalogue but billing, portfolio and code together, including a single
     domain, no domain, and a set without a mixed clause. The fixed text was equally unmeasured there.
 
+- **Part G (extract-portfolio).**
+  - No domain is built in any more. Portfolio is a plugin folder, so `Agent__BuiltInDomains`, the built-in ids,
+    descriptors, behaviours and stores, and `DomainCatalogue.AllBuiltIn` are gone. Outside any scope the catalogue is
+    empty, and `make core` is `MAF_PLUGINS=none`. `BuiltInDomains.cs` keeps two names for the allow-listed consumers,
+    and `LegacyCapabilities` until extract-compliance.
+  - Each bounded context owns its data and shares identifiers only. The account→household membership the billing
+    graph draws is billing's fact (fee aggregation), so billing's accounts seed carries it, copied once from
+    portfolio's, and the graph has the same nodes and edges. Rejected: billing reading portfolio's seed through a
+    variable portfolio's `plugin.mk` exports (hidden coupling), billing depending on portfolio, and a graph that
+    silently loses households when portfolio is absent.
+  - The vector store is the `qdrant` infra plugin, and billing, code and portfolio depend on it. Like Neo4j, the
+    topology shows it as not installed rather than as a fault. A plugin reaches its own collection through
+    `DomainChunkStore.For` (a library factory over the core's connection), never through the Qdrant client.
+  - `BuiltInDomains.CardResultTypes` is deleted. The core reads only a card's activity type, and "a card holds no free
+    text" is the plugin's own test over its own DTOs. Rejected: a result-type member on `IDomainBehaviour`, a type the
+    core never reads.
+  - Portfolio's cards and labels and billing's labels are their plugins' web parts, through the existing `cards` and
+    `toolLabels` contributions. A card renderer now also gets the question, the focus and a way to set it (additive).
+    The core labels no domain's tool.
+  - Portfolio's server project, `src/Maf.Lab.Portfolio`, stays until extract-evals-plugin, as billing's does.
+    `CoreNamesNoDomainTests` scans it, and the api also catches a reference to `Maf.Lab.Domain.Portfolio`.
+  - The core tests run on a `fixture-portfolio` stand-in beside `fixture-billing`, pinned to the plugin's table by its
+    drift test. The neutral-id rename of the shared fakes stays deferred.
+
 ## 82. The stop-anything tests run on a fake clock (deterministic-stop-anything-tests, 2026-10-06)
 
 - **Why.** Three tests (`TaskCancelWatchTests.Disposed_it_stops_reading`,
