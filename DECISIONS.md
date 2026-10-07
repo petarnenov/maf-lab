@@ -3774,7 +3774,10 @@ No package version moves in this change.
 - **Proof that nothing Jev reads changed:** golden files of every call site's exact `POST /v1/systemone` body, recorded
   from main before the move (eefaa3e core, e9b8882 code), compared as strings through the real `JevDecisionEngine` (the
   plugin's tests) and through the core tests' documented-shape engine (code's). One confirming `make eval
-  SUITE=selection` per landing, with the user's approval at the time; no other evals.
+  SUITE=selection` per landing, with the user's approval at the time; no other evals. Landing 1's run
+  (20261007-171311, through the jev engine): exactMatch 0.980, precision 0.982, recall 1, negativeAccuracy 1, against the
+  accepted 0.959 / 0.964 / 1 / 1; 420,156 decision-engine input tokens. The selection suite is now metered like the
+  intent, guardrail and answer-check suites, so a preflight shows the engine is answering.
 - **Named debt: the thresholds keep the `Jev:` section name** (`Jev:MinConfidence`, `Jev:AnswerCheck:MinRelevant`, …),
   bound by core option classes, so every deployment's settings keep working; the plugin binds only its transport keys
   from the same section. Renaming the section is a later change of its own.

@@ -180,7 +180,7 @@ public static class Program
 
             async Task<IReadOnlyList<EvalVariantResult>> RunSuiteAsync(string name, string runId) => name switch
             {
-                "selection" => await new SelectionSuite(host).RunAsync(ctx, ct),
+                "selection" => await Metered(() => new SelectionSuite(host).RunAsync(ctx, ct)),
                 "retrieval" => await RunRetrievalAsync(host, configuration, options, retrieval, ctx, flags, settings, ct),
                 "generation" => await RunGenerationAsync(host, options, root, runId, ctx, settings, ct),
                 "injection" => await new InjectionSuite(host).RunAsync(ctx, ct),
@@ -196,7 +196,8 @@ public static class Program
                 GraphDepthSuite.Name => await RunGraphDepthAsync(host, configuration, options, ctx, flags, settings, ct),
                 _ => throw new ArgumentException($"Unknown suite '{name}'."),
             };
-            // The Jev input tokens a suite that calls the production classes was charged for (extract-billing).
+            // The decision engine's input tokens a suite that calls the production classes was charged for (extract-billing;
+            // selection too since introduce-provider-plugins, so its preflight shows the engine is answering).
             async Task<IReadOnlyList<EvalVariantResult>> Metered(Func<Task<IReadOnlyList<EvalVariantResult>>> suite)
             {
                 var meter = host.Services.GetRequiredService<DecisionUsageMeter>();
