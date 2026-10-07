@@ -9,13 +9,17 @@ namespace Maf.Lab.Tests.Plugins;
 /// is present or not; its domain id is. Sameness with the billing plugin's table is pinned by that plugin's own test,
 /// not assumed here.
 /// </summary>
-public sealed class FixtureBillingPlugin : IMafPlugin, IContributesDomainBehaviour
+public sealed class FixtureBillingPlugin : IMafPlugin, IContributesDomainBehaviour, IContributesWriteConfirmation
 {
     public const string PluginName = "fixture-billing";
 
     public string Name => PluginName;
 
     public IDomainBehaviour Behaviour { get; } = new StandInBillingBehaviour();
+
+    /// <summary>The fakes' write tool is confirmed by the fixture's own flow: the seam's mechanics, not billing's rules.</summary>
+    public IWriteConfirmationFlow CreateFlow(IServiceProvider services) =>
+        new FixtureWriteFlow(Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<IWriteAudit>(services));
 
     /// <summary>The billing domain's [domain] table as of extract-billing, without its prompt (a file of the plugin's).</summary>
     public static DomainTable Domain { get; } = new()

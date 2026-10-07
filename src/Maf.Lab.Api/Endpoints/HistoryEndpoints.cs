@@ -11,8 +11,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Maf.Lab.Api.Endpoints;
 
-// names a domain until the generalize-write-confirmation follow-up moves it (introduce-plugins 8.1)
-// The fee-typed write confirmation, which has no seam yet (extract-billing part 3).
 /// <summary>
 /// A conversation reopened: the caller's own only (user and tenant must match); deleted ones are gone. The list, rename
 /// and delete are the conversation-history plugin's, over <see cref="Maf.Lab.Plugins.Abstractions.IConversationStore"/>.
@@ -57,7 +55,7 @@ public static class HistoryEndpoints
         // What this conversation is waiting on, so a proposal outlives the page that made it. The run is gone;
         // the proposal is not, and approving twice applies once either way.
         api.MapGet("/{id}/pending", async (string id, IPrincipalAccessor principals, IDbContextFactory<MafDbContext> db,
-            TimeProvider time, CancellationToken ct) =>
+            Agent.Writes.WriteFlows flows, TimeProvider time, CancellationToken ct) =>
         {
             var principal = principals.Current;
             await using var context = await db.CreateDbContextAsync(ct);
@@ -76,21 +74,13 @@ public static class HistoryEndpoints
                 .OrderByDescending(p => p.UpdatedAt)
                 .FirstOrDefaultAsync(ct);
 
-            if (row is null
-                || JsonSerializer.Deserialize<Maf.Lab.Domain.Billing.FeeAdjustmentSummary>(row.Summary, Json) is not { } summary
-                || (row.ExpiresAt is { } expiry && expiry <= time.GetUtcNow().UtcDateTime))
+            // Read-only: an expired proposal is not shown, and not recorded as expired either — an answer or a rejoin does that.
+            if (row is null || (row.ExpiresAt is { } expiry && expiry <= time.GetUtcNow().UtcDateTime))
             {
                 return Results.Ok(new { pending = (object?)null });
             }
 
-            return Results.Ok(new
-            {
-                pending = new Maf.Lab.Domain.Billing.PendingProposal(
-                    row.Id,
-                    summary,
-                    row.Question ?? "",
-                    row.ExpiresAt is { } at ? new DateTimeOffset(at, TimeSpan.Zero) : null),
-            });
+            return Results.Ok(new { pending = Agent.Writes.PendingWrite.From(row, flows.SchemaFor(row.ToolName)) });
         });
 
         return app;

@@ -163,13 +163,15 @@ it.
 |---|---|---|
 | GET | `/api/conversations/{id}/pending` | `200 { pending }`; `404` when the conversation is not the caller's own |
 
-`pending` is `null` or
-`{ adjustmentId, adjustment, question, expiresAt }`. The run that proposed it is gone once its stream ends; the
-proposal is not, so this is how a reopened page finds it again. A proposal that was applied, declined or has
-expired is not waiting. A conversation that is not the caller's own is `404`.
+`pending` is `null` or `{ writeId, toolName, summary, summarySchema, question, expiresAt }`, whichever tool proposed
+the write (generalize-write-confirmation): `summary` is the tool's own, and `summarySchema` the JSON Schema its plugin's
+flow describes it with (`null` when no installed plugin has a flow for the tool). A run that pauses for it carries the
+same object as its interrupt's `metadata`, with `writeId` as the interrupt's id. The run that proposed it is gone once
+its stream ends; the proposal is not, so this is how a reopened page finds it again. A proposal that was applied,
+declined or has expired is not waiting; asking changes nothing. A conversation that is not the caller's own is `404`.
 
-The opaque state is deliberately absent: it never leaves the run that issued it, and an answer names the
-proposal by `adjustmentId` rather than carrying what would execute.
+The opaque state is deliberately absent: it never leaves the server, and an answer names the write by `writeId`
+rather than carrying what would execute.
 
 ### Stopping and rejoining
 

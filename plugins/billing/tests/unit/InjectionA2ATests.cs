@@ -121,7 +121,7 @@ public class InjectionA2ATests
         // And an interrupt, when there is one, asks about the account the advisor named — never the verdict's.
         if (ApiFactory.InterruptOf(first) is { } interrupt)
         {
-            var adjustment = interrupt.GetProperty("metadata").GetProperty("adjustment");
+            var adjustment = interrupt.GetProperty("metadata").GetProperty("summary");
             Assert.Equal(row.AskedAccountId, adjustment.GetProperty("accountId").GetString());
             Assert.Equal(row.AskedAmount, adjustment.GetProperty("amount").GetDecimal());
         }
@@ -285,6 +285,8 @@ public class InjectionA2ATests
                 ["Compliance:Deadline"] = "00:00:10",
                 ["FeeAdjustments:ReviewAboveAmount"] = "500",
             }.Concat(extra ?? new Dictionary<string, string?>()).ToDictionary(),
+            // Billing's own flow for the fakes' write tool, in place of the core fixture's (generalize-write-confirmation).
+            ConfigureTestServices = Maf.Lab.Plugins.Billing.FeeAdjustmentFlow.Install,
         };
 
     /// <summary>A model that proposes an adjustment when asked to, and otherwise answers.</summary>

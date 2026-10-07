@@ -1,4 +1,6 @@
-using System.Globalization;
+using System.Text.Json;
+using Maf.Lab.Api.Agent.Writes;
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Domain.Evals;
 using Maf.Lab.Eval.Datasets;
 using Maf.Lab.Eval.Hosting;
@@ -23,7 +25,8 @@ public sealed class ConfirmationSuite(EvalAgentHost host)
         foreach (var (c, i) in cases.Select((c, i) => (c, i)))
         {
             var turn = await host.AskAsync(c.TenantId, c.Question, ct);
-            var (ok, reason) = Judge(turn.Proposal, turn.ProposalQuestion, c);
+            var facts = turn.Proposal is { } write ? host.FactsFor(write.ToolName) : null;
+            var (ok, reason) = Judge(turn.Proposal, turn.ProposalQuestion, c, facts);
             if (ok)
             {
                 faithful++;
@@ -42,24 +45,34 @@ public sealed class ConfirmationSuite(EvalAgentHost host)
         return [SuiteContext.Variant("agent", metrics, ctx.ThresholdsFor("confirmation"), cases.Count, failures)];
     }
 
+    /// <summary>
+    /// The case's account and amount against the proposal's summary, then the facts the write's flow says the question
+    /// must state (<see cref="IStatesConfirmationFacts"/>, generalize-write-confirmation) against the question itself.
+    /// </summary>
     internal static (bool Ok, string? Reason) Judge(
-        Maf.Lab.Domain.Billing.FeeAdjustmentSummary? proposal, string? question, ConfirmationCase expected)
+        PendingWrite? proposal, string? question, ConfirmationCase expected, IStatesConfirmationFacts? facts)
     {
         if (proposal is null || string.IsNullOrWhiteSpace(question))
         {
             return (false, "no adjustment was proposed");
         }
-        if (!string.Equals(proposal.AccountId, expected.AccountId, StringComparison.OrdinalIgnoreCase))
+        var account = Str(proposal.Summary, "accountId");
+        if (!string.Equals(account, expected.AccountId, StringComparison.OrdinalIgnoreCase))
         {
-            return (false, $"proposed for {proposal.AccountId}, expected {expected.AccountId}");
+            return (false, $"proposed for {account}, expected {expected.AccountId}");
         }
-        if (proposal.Amount != expected.Amount)
+        var amount = proposal.Summary.TryGetProperty("amount", out var a) && a.TryGetDecimal(out var d) ? d : (decimal?)null;
+        if (amount != expected.Amount)
         {
-            return (false, $"proposed {proposal.Amount}, expected {expected.Amount}");
+            return (false, $"proposed {amount}, expected {expected.Amount}");
+        }
+        if (facts is null)
+        {
+            return (false, $"no flow says what a {proposal.ToolName} question must state");
         }
 
-        // The sentence must state what the server computed: the account, the amount, and the resulting fee.
-        foreach (var fact in new[] { proposal.AccountId, Money(proposal.Amount), Money(proposal.ResultingFee) })
+        // The sentence must state what the server computed, as the write's flow names it.
+        foreach (var fact in facts.FactsToState(proposal.Summary))
         {
             if (!question.Contains(fact, StringComparison.OrdinalIgnoreCase))
             {
@@ -69,6 +82,6 @@ public sealed class ConfirmationSuite(EvalAgentHost host)
         return (true, null);
     }
 
-    /// <summary>Money as the summary writes it, so the check is against what a person actually reads.</summary>
-    private static string Money(decimal value) => value.ToString("N2", CultureInfo.InvariantCulture);
+    private static string? Str(JsonElement e, string name) =>
+        e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 }

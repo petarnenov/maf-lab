@@ -19,7 +19,7 @@ import type {
   FeedbackKind,
   HistoryTurn,
   SourceRef,
-  ConfirmationRequiredData,
+  PendingWrite,
 } from '../api/types';
 
 export interface ToolCallView {
@@ -77,7 +77,7 @@ export interface AssistantTurn {
   /** True for turns loaded from conversation history rather than streamed in this session. */
   restored?: boolean;
   /** A write this turn put to the advisor, and what has become of it. */
-  confirmation?: ConfirmationRequiredData;
+  confirmation?: PendingWrite;
   confirmationState?: ConfirmationState;
 }
 
@@ -120,13 +120,13 @@ export type ChatAction =
   | { type: 'hydrate'; conversationId: string; turns: HistoryTurn[]; focus?: FocusAccount | null }
   /** The user chose an account to focus on, or cleared it; nothing runs until they send. */
   | { type: 'set_focus'; focus: FocusAccount | null }
-  | { type: 'pending'; confirmation: ConfirmationRequiredData; expired: boolean }
+  | { type: 'pending'; confirmation: PendingWrite; expired: boolean }
   /** A person opened or closed a turn's reasoning; from then on the block is theirs, not the answer's. */
   | { type: 'toggle_reasoning'; turnId: string; open: boolean }
-  | { type: 'answering'; adjustmentId: string }
+  | { type: 'answering'; writeId: string }
   | {
       type: 'answered';
-      adjustmentId: string;
+      writeId: string;
       outcome: Exclude<ConfirmationState, 'waiting' | 'answering'>;
     }
   /**
@@ -204,7 +204,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       };
 
     case 'answering':
-      return updateConfirmation(state, action.adjustmentId, 'answering');
+      return updateConfirmation(state, action.writeId, 'answering');
 
     case 'start_answer':
       // Adds a streaming assistant turn for the resume run so the monitor panel follows it.
@@ -228,29 +228,22 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       };
 
     case 'answered': {
-      return updateConfirmation(state, action.adjustmentId, action.outcome);
+      return updateConfirmation(state, action.writeId, action.outcome);
     }
   }
 }
 
 /** True when a proposal can no longer be answered. The server decides again; this only stops asking. */
-export function expired(
-  confirmation: Pick<ConfirmationRequiredData, 'expiresAt'>,
-  now = Date.now(),
-): boolean {
+export function expired(confirmation: Pick<PendingWrite, 'expiresAt'>, now = Date.now()): boolean {
   const at = confirmation.expiresAt;
   return typeof at === 'string' && Date.parse(at) <= now;
 }
 
-function updateConfirmation(
-  state: ChatState,
-  adjustmentId: string,
-  next: ConfirmationState,
-): ChatState {
+function updateConfirmation(state: ChatState, writeId: string, next: ConfirmationState): ChatState {
   return {
     ...state,
     turns: state.turns.map((turn) =>
-      turn.role === 'assistant' && turn.confirmation?.adjustmentId === adjustmentId
+      turn.role === 'assistant' && turn.confirmation?.writeId === writeId
         ? { ...turn, confirmationState: next }
         : turn,
     ),
@@ -538,24 +531,23 @@ function stopped(state: ChatState): ChatState {
 }
 
 /**
- * The question a paused run put to a person, as the protocol's interrupt carries it. What it is about travels in the
- * interrupt's metadata; an interrupt without it is still a question this screen can show and answer.
+ * The write a paused run put to a person, as the protocol's interrupt carries it (generalize-write-confirmation): the
+ * write's id is the interrupt's, and its tool, summary and schema travel in the metadata. The opaque state never does.
+ * An interrupt without them is still a question this screen can show and answer.
  */
 function confirmationOf(interrupt: {
   id: string;
   message?: string;
-  toolCallId?: string;
   expiresAt?: string;
   metadata?: unknown;
-}): ConfirmationRequiredData {
+}): PendingWrite {
   const metadata = (interrupt.metadata ?? {}) as Record<string, unknown>;
   return {
-    callId: interrupt.toolCallId ?? '',
-    toolName: typeof metadata.tool === 'string' ? metadata.tool : '',
-    adjustmentId: interrupt.id,
-    adjustment: metadata.adjustment as ConfirmationRequiredData['adjustment'],
+    writeId: interrupt.id,
+    toolName: typeof metadata.toolName === 'string' ? metadata.toolName : '',
+    summary: metadata.summary ?? null,
+    summarySchema: (metadata.summarySchema as PendingWrite['summarySchema']) ?? null,
     question: interrupt.message ?? '',
-    state: typeof metadata.state === 'string' ? metadata.state : '',
     expiresAt: interrupt.expiresAt ?? null,
   };
 }

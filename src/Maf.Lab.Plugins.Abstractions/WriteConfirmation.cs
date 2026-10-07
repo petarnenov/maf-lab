@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Maf.Lab.Domain.Tenancy;
 
 namespace Maf.Lab.Plugins.Abstractions;
@@ -32,15 +33,28 @@ public interface IWriteConfirmationFlow
     /// <summary>The tool asked for input: decide what the person is asked, if anything.</summary>
     Task<WriteFlowOutcome> ProposedAsync(WriteProposal proposal, CancellationToken ct);
 
-    /// <summary>The core resolved the proposal (applied, declined, expired): the flow records its own step.</summary>
-    Task ResolvedAsync(WriteProposal proposal, WriteResolution resolution, CancellationToken ct);
+    /// <summary>
+    /// The arguments the confirmed call sends because the tool declares them. The server executes the signed state and
+    /// treats these as declarative only; the flow owns its tool's argument shape, so the core reads no summary field.
+    /// </summary>
+    IReadOnlyDictionary<string, object?> ConfirmArguments(JsonElement summary);
+
+    /// <summary>
+    /// The core resolved the proposal: the flow records its own step. <paramref name="outcome"/> is the tool's status when
+    /// it was called (e.g. <c>applied</c>, <c>already_applied</c>, <c>error</c>), or the answer's (<c>rejected</c>,
+    /// <c>expired</c>).
+    /// </summary>
+    Task ResolvedAsync(WriteProposal proposal, WriteResolution resolution, string outcome, CancellationToken ct);
 }
 
 /// <summary>What a flow decided about a proposal.</summary>
 public abstract record WriteFlowOutcome
 {
-    /// <summary>Put it to the person: the proposal waits for confirmation and the run pauses with this question.</summary>
-    public sealed record AskPerson(string Question, string? FlowJson) : WriteFlowOutcome;
+    /// <summary>
+    /// Put it to the person: the proposal waits for confirmation and the run pauses with this question, or with the
+    /// question the tool itself asked when <paramref name="Question"/> is null.
+    /// </summary>
+    public sealed record AskPerson(string? Question, string? FlowJson) : WriteFlowOutcome;
 
     /// <summary>
     /// The person must answer something first: the model is told to ask it, and the proposal waits for input. Their
@@ -48,8 +62,11 @@ public abstract record WriteFlowOutcome
     /// </summary>
     public sealed record AskInput(string MessageToModel, string? FlowJson) : WriteFlowOutcome;
 
-    /// <summary>Nothing will be confirmed: the model is told why and answers in its own words.</summary>
-    public sealed record TellModel(string Message) : WriteFlowOutcome;
+    /// <summary>
+    /// Nothing will be confirmed: the model is told why and answers in its own words. <paramref name="Refused"/> when it
+    /// was refused (e.g. by a reviewer) rather than failed.
+    /// </summary>
+    public sealed record TellModel(string Message, bool Refused = false) : WriteFlowOutcome;
 }
 
 /// <summary>
@@ -57,6 +74,8 @@ public abstract record WriteFlowOutcome
 /// which only the core hands back to the tool. The principal is the caller's, so the tenant comes from it.
 /// </summary>
 /// <param name="OpenInputs">The conversation's proposals of the same tool still waiting for input.</param>
+/// <param name="PersonMessage">What the person said this turn — what a reviewer is told, or a reviewer's question is answered
+/// with. Content: a flow may hand it to a reviewer, never to a record or a log. Empty outside a turn.</param>
 public sealed record WriteProposal(
     string WriteId,
     string ToolName,
@@ -65,7 +84,8 @@ public sealed record WriteProposal(
     Principal Principal,
     string ConversationId,
     string TurnId,
-    IReadOnlyList<OpenWriteInput> OpenInputs);
+    IReadOnlyList<OpenWriteInput> OpenInputs,
+    string PersonMessage = "");
 
 /// <summary>A proposal of the same tool still waiting for the person's input.</summary>
 public sealed record OpenWriteInput(string WriteId, JsonElement Summary, string? FlowJson);
@@ -76,6 +96,7 @@ public enum WriteResolution
     Applied,
     Declined,
     Expired,
+    Failed,
 }
 
 /// <summary>
@@ -96,8 +117,10 @@ public interface IStatesConfirmationFacts
 /// </summary>
 public interface IWriteAudit
 {
-    /// <param name="Step">A dotted name the flow chooses, e.g. <c>fee.adjustment.reviewed</c>.</param>
-    Task RecordAsync(string step, string toolName, string writeId, string outcome, CancellationToken ct);
+    /// <param name="kind">The kind of action the record covers, e.g. <c>fee.adjustment</c>.</param>
+    /// <param name="step">The step, e.g. <c>fee.adjustment.reviewed</c>.</param>
+    /// <param name="identifiers">What the step was about, as <c>key=value</c> identifiers — never free text.</param>
+    Task RecordAsync(string kind, string step, string identifiers, string outcome, CancellationToken ct);
 }
 
 /// <summary>
@@ -112,19 +135,5 @@ public interface IConsultationScreening
 /// <summary>A step of the current turn's trace (a Port the core implements over the turn's trace). No message content.</summary>
 public interface IWriteTraceStep
 {
-    void Record(string kind, JsonElement data);
-}
-
-/// <summary>
-/// The wire keys of a confirmed write, owned by the core so no plugin and no core file names another plugin's: the
-/// summary, state and expiry in the input request's <c>_meta</c>, the idempotency key in the confirmed call's
-/// <c>_meta</c>, and the key the tool's request for input declares for the confirmation.
-/// </summary>
-public static class WriteConfirmationKeys
-{
-    public const string Summary = "maf-lab/write-summary";
-    public const string State = "maf-lab/write-state";
-    public const string ExpiresAt = "maf-lab/write-expires-at";
-    public const string IdempotencyKey = "maf-lab/idempotencyKey";
-    public const string Confirmation = "confirmation";
+    void Record(string kind, string title, JsonObject data);
 }

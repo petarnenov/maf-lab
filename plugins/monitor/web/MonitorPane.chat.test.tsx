@@ -57,7 +57,9 @@ const paused = () =>
           toolCallId: 'c1',
           expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
           metadata: {
-            adjustment: {
+            writeId: 'adj_1',
+            toolName: 'propose_fee_adjustment',
+            summary: {
               adjustmentId: 'adj_1',
               accountId: 'A-1042',
               accountName: 'Ridgeline Family Trust',
@@ -68,8 +70,6 @@ const paused = () =>
               periodStart: '2026-10-01',
               periodEnd: '2026-10-31',
             },
-            state: 'opaque',
-            tool: 'propose_fee_adjustment',
           },
         },
       ],

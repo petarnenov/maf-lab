@@ -1,30 +1,12 @@
 namespace Maf.Lab.Domain.Billing;
 
 /// <summary>
-/// The write tool's contract, shared by the server that offers it and the host that consumes it: its name,
-/// the input it asks for, and the _meta keys the question carries.
+/// The write tool's name, shared by the server that offers it and the flow that confirms it. The keys its question and
+/// its confirmed call carry are every write tool's: <see cref="Maf.Lab.Domain.Writes.WriteConfirmationKeys"/>.
 /// </summary>
 public static class FeeAdjustmentTool
 {
     public const string Name = "propose_fee_adjustment";
-
-    /// <summary>The key of the one input the tool asks for.</summary>
-    public const string ConfirmationKey = "confirmation";
-
-    /// <summary>
-    /// Where a caller's own idempotency key travels: in the request's metadata rather than in an argument, so a
-    /// model never invents one and the key belongs to whoever is retrying.
-    /// </summary>
-    public const string IdempotencyMetaKey = "maf-lab/idempotencyKey";
-
-    /// <summary>The summary a person checks, carried in the question's _meta.</summary>
-    public const string SummaryKey = "maf-lab/adjustment";
-
-    /// <summary>The opaque state, repeated in _meta because a client resolving an elicitation cannot see it otherwise.</summary>
-    public const string StateKey = "maf-lab/proposal-state";
-
-    /// <summary>When the proposal stops being answerable. Only the signer knows it; the host must be told.</summary>
-    public const string ExpiresAtKey = "maf-lab/proposal-expires-at";
 }
 
 /// <summary>An account as anything outside the store may see it. Deliberately has no free-text note field.</summary>

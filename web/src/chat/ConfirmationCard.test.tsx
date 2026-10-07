@@ -1,43 +1,63 @@
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import type { PendingWrite } from '../api/types';
+import { PluginsContext } from '../plugins/context';
 import { renderWithProviders } from '../test/render';
 import { ConfirmationCard } from './ConfirmationCard';
 
-const confirmation = (expiresAt: string | null = null) => ({
-  callId: 'c1',
+const confirmation = (expiresAt: string | null = null): PendingWrite => ({
+  writeId: 'w_1',
   toolName: 'propose_fee_adjustment',
-  adjustmentId: 'adj_1',
-  adjustment: {
-    adjustmentId: 'adj_1',
-    accountId: 'A-1042',
-    accountName: 'Ridgeline Family Trust',
-    currentFee: 1200,
-    amount: -200,
-    resultingFee: 1000,
-    currency: 'USD',
-    periodStart: '2026-10-01',
-    periodEnd: '2026-10-31',
+  summary: { accountId: 'A-1042', amount: -200, periodStart: '2026-10-01' },
+  summarySchema: {
+    type: 'object',
+    properties: {
+      accountId: { title: 'Account', type: 'string' },
+      amount: { title: 'Adjustment', type: 'number' },
+      periodStart: { title: 'From', type: 'string', format: 'date' },
+    },
   },
   question: 'Apply a fee adjustment of -200.00 USD to A-1042 (Ridgeline Family Trust)?',
-  state: 'opaque',
   expiresAt,
 });
 
+/** A plugin that renders this tool's summary itself, as a domain's web part may. */
+const Rendered = ({ summary }: { summary: unknown; schema: unknown }) => (
+  <p>rendered by the plugin: {(summary as { accountId: string }).accountId}</p>
+);
+
 describe('ConfirmationCard', () => {
-  it('shows what a person needs in order to answer', () => {
+  it("shows what a person needs in order to answer, from the summary's schema", () => {
     renderWithProviders(
       <ConfirmationCard confirmation={confirmation()} state="waiting" onAnswer={vi.fn()} />,
     );
 
     expect(screen.getByText(/Apply a fee adjustment of -200.00 USD/)).toBeInTheDocument();
-    expect(screen.getByText(/A-1042 — Ridgeline Family Trust/)).toBeInTheDocument();
-    expect(screen.getByText('1,200.00 USD')).toBeInTheDocument();
-    expect(screen.getByText('-200.00 USD')).toBeInTheDocument();
-    expect(screen.getByText('1,000.00 USD')).toBeInTheDocument();
-    expect(screen.getByText('2026-10-01 to 2026-10-31')).toBeInTheDocument();
+    expect(screen.getAllByRole('term').map((t) => t.textContent)).toEqual([
+      'Account',
+      'Adjustment',
+      'From',
+    ]);
+    expect(screen.getByText('A-1042')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Reject' })).toBeEnabled();
+  });
+
+  it("lets the write's plugin render its summary", () => {
+    renderWithProviders(
+      <PluginsContext.Provider
+        value={{
+          plugins: [{ name: 'fixture', confirmations: { propose_fee_adjustment: Rendered } }],
+        }}
+      >
+        <ConfirmationCard confirmation={confirmation()} state="waiting" onAnswer={vi.fn()} />
+      </PluginsContext.Provider>,
+    );
+
+    expect(screen.getByText('rendered by the plugin: A-1042')).toBeInTheDocument();
+    expect(screen.queryByTestId('write-summary')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled();
   });
 
   it('claims nothing while it waits', () => {

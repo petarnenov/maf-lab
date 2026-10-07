@@ -1,20 +1,26 @@
-import type { ConfirmationRequiredData } from '../api/types';
+import type { PendingWrite } from '../api/types';
+import { usePlugins } from '../plugins/context';
+import { PluginBoundary } from '../plugins/PluginBoundary';
+import { confirmationRenderers } from '../plugins/registry';
 import type { ConfirmationState } from './chatReducer';
 import styles from './ConfirmationCard.module.css';
+import { WriteSummary } from './WriteSummary';
 
 interface Props {
-  confirmation: ConfirmationRequiredData;
+  confirmation: PendingWrite;
   state: ConfirmationState;
   onAnswer: (approve: boolean) => void;
 }
 
 /**
- * A write waiting for the advisor, in the conversation where it was proposed rather than over it.
- * It shows what the server would do — the account, the fee now, the change, the fee after — and offers the two
- * answers. Once it has been answered, or is too late to answer, it says so instead of asking again.
+ * A write waiting for the advisor, in the conversation where it was proposed rather than over it. It shows what the
+ * server would do — through the write's plugin's renderer for its tool when it has one, otherwise from the summary's
+ * schema (generalize-write-confirmation) — and offers the two answers. Once it has been answered, or is too late to
+ * answer, it says so instead of asking again.
  */
 export function ConfirmationCard({ confirmation, state, onAnswer }: Props) {
-  const a = confirmation.adjustment;
+  const plugins = usePlugins();
+  const contributed = confirmationRenderers(plugins)[confirmation.toolName];
   const answerable = state === 'waiting' || state === 'answering';
 
   return (
@@ -25,17 +31,16 @@ export function ConfirmationCard({ confirmation, state, onAnswer }: Props) {
     >
       <p className={styles.question}>{confirmation.question}</p>
 
-      <dl className={styles.facts}>
-        <Fact label="Account">
-          {a.accountId} — {a.accountName}
-        </Fact>
-        <Fact label="Fee now">{money(a.currentFee, a.currency)}</Fact>
-        <Fact label="Adjustment">{money(a.amount, a.currency)}</Fact>
-        <Fact label="Fee after">{money(a.resultingFee, a.currency)}</Fact>
-        <Fact label="Period">
-          {a.periodStart} to {a.periodEnd}
-        </Fact>
-      </dl>
+      {contributed ? (
+        <PluginBoundary plugin={contributed.plugin}>
+          <contributed.Renderer
+            summary={confirmation.summary}
+            schema={confirmation.summarySchema}
+          />
+        </PluginBoundary>
+      ) : (
+        <WriteSummary summary={confirmation.summary} schema={confirmation.summarySchema} />
+      )}
 
       {answerable ? (
         <>
@@ -70,15 +75,6 @@ export function ConfirmationCard({ confirmation, state, onAnswer }: Props) {
   );
 }
 
-function Fact({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className={styles.fact}>
-      <dt>{label}</dt>
-      <dd>{children}</dd>
-    </div>
-  );
-}
-
 function outcomeText(state: ConfirmationState): string {
   switch (state) {
     case 'applied':
@@ -86,14 +82,11 @@ function outcomeText(state: ConfirmationState): string {
     case 'declined':
       return 'Declined. Nothing was changed.';
     case 'expired':
-      return 'This proposal is too old to apply. Ask for the adjustment again.';
+      return 'This proposal is too old to apply. Ask for it again.';
     default:
       return 'This proposal is no longer waiting for an answer.';
   }
 }
-
-const money = (value: number, currency: string) =>
-  `${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
 
 const when = (iso: string) =>
   new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });

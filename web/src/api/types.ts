@@ -44,30 +44,6 @@ export interface SourceRef {
   language?: string;
 }
 
-/** A fee adjustment waiting for the advisor. `state` is opaque: hand it back, never read it. */
-export interface FeeAdjustmentSummary {
-  adjustmentId: string;
-  accountId: string;
-  accountName: string;
-  currentFee: number;
-  amount: number;
-  resultingFee: number;
-  currency: string;
-  periodStart: string;
-  periodEnd: string;
-}
-
-export interface ConfirmationRequiredData {
-  callId: string;
-  toolName: string;
-  adjustmentId: string;
-  adjustment: FeeAdjustmentSummary;
-  question: string;
-  state: string;
-  /** When the proposal stops being answerable, as the server issued it. */
-  expiresAt?: string | null;
-}
-
 /**
  * The JSON Schema 2020-12 annotations a write's flow describes its summary with: display only, never a form. Each
  * property is shown by its `title`, in property order, formatted by `type` and `format`.
@@ -85,7 +61,8 @@ export interface SummaryProperty {
 }
 
 /**
- * A write waiting for a person, whichever plugin's tool proposed it (generalize-write-confirmation). The summary is the
+ * A write waiting for a person, whichever plugin's tool proposed it (generalize-write-confirmation), as the run's pause
+ * and `GET /api/conversations/{id}/pending` carry it. The summary is the
  * tool's own; the opaque state never reaches the browser — an answer names the write by its id.
  */
 export interface PendingWrite {
@@ -94,14 +71,6 @@ export interface PendingWrite {
   summary: unknown;
   /** The schema the tool's flow describes the summary with; null when no installed plugin has a flow for the tool. */
   summarySchema?: SummarySchema | null;
-  question: string;
-  expiresAt?: string | null;
-}
-
-/** A proposal a conversation is still waiting on, as `GET /api/conversations/{id}/pending` reports it. */
-export interface PendingProposal {
-  adjustmentId: string;
-  adjustment: FeeAdjustmentSummary;
   question: string;
   expiresAt?: string | null;
 }

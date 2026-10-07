@@ -87,7 +87,7 @@ describe('runs recorded from the running stack', () => {
       expect(turn.toolCalls.every((c) => c.status === 'finished')).toBe(true);
 
       if (run.expect.pending) {
-        expect(turn.confirmation?.adjustmentId).toBe(run.expect.pending.id);
+        expect(turn.confirmation?.writeId).toBe(run.expect.pending.id);
         expect(turn.confirmationState).toBe('waiting');
       } else {
         expect(turn.confirmation).toBeUndefined();

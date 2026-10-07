@@ -79,8 +79,9 @@ state it keeps for that id.
 Only the person a proposal was put to SHALL be able to answer it. Confirming SHALL call the write tool with the
 proposal's state as the confirmation, and the write that executes SHALL be the one the state describes. Rejecting
 SHALL write nothing and tell the agent the person declined. A proposal past its expiry SHALL NOT be answerable. When an
-answer or a rejoin finds it so, it SHALL be recorded as expired. Each outcome SHALL be handed to the tool's flow so it
-can record its own step.
+answer or a rejoin finds it so, it SHALL be recorded as expired. Each outcome SHALL be handed to the tool's flow,
+with the tool's own status when it was called, so it can record its own step. The arguments of the confirmed call
+SHALL come from the flow, and the tool SHALL execute the state, not those arguments.
 
 #### Scenario: Confirmed
 - **WHEN** the person confirms a waiting proposal

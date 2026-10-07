@@ -15,8 +15,8 @@ describe('confirmationRenderers', () => {
 
     const renderers = confirmationRenderers({ plugins });
 
-    expect(renderers.propose_fee_adjustment).toBe(Billing);
-    expect(renderers.other_write).toBe(Other);
+    expect(renderers.propose_fee_adjustment).toEqual({ plugin: 'billing', Renderer: Billing });
+    expect(renderers.other_write).toEqual({ plugin: 'other', Renderer: Other });
     expect(Object.keys(renderers)).toEqual(['propose_fee_adjustment', 'other_write']);
   });
 });

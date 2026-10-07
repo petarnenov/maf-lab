@@ -3481,3 +3481,56 @@ No package version moves in this change.
 - Rejected: hunting the code path that leaves a handle dirty (the bugs are upstream, and every context is already
   disposed), and moving to EF Core 11 previews (an unstable package move). Revisit when Microsoft.EntityFrameworkCore.Sqlite
   10.x ships the fix (the note on its line in Directory.Packages.props).
+
+## 85. A write any plugin proposes is confirmed through one seam (generalize-write-confirmation, 2026-10-07)
+
+- **Why.** Asking a person before a write was core, but the core only knew the fee adjustment: `ConfirmationService`,
+  `ConfirmationSink`, `ChatTurnRunner`, `RunRejoin`, `/pending` and the store named `FeeAdjustmentSummary` and
+  `PendingAdjustments`, and `FeeAdjustmentFlow` lived in the api. Billing could not become a plugin without leaving its
+  write flow behind, and no other plugin could ask before it writes.
+- **The seam (Strategy).**
+  - `IWriteConfirmationFlow`, keyed by the write tool's name and contributed by a plugin (`IContributesWriteConfirmation`).
+    It decides `AskPerson`, `AskInput` (the model asks the person something first, and the proposal waits for input) or
+    `TellModel`. It owns its summary's JSON Schema and the confirmed call's arguments (`ConfirmArguments`: the server
+    executes the signed state and ignores them). It records its own steps in `ResolvedAsync`.
+  - It reaches the core only through ports: `IReviewerConsultation` (extract-billing part 3), `IWriteAudit`,
+    `IConsultationScreening` (the guard on a reviewer's words) and `IWriteTraceStep`. The actor and the turn come
+    from the request (`WriteTurnContext`), never from a parameter. `IStatesConfirmationFacts` serves the eval only.
+  - The core keeps the algorithm (`WriteConfirmations`, `ConfirmationService`, `RunRejoin`). A write tool with no
+    flow is refused (`write.refused`, `no_flow`). When a proposal resolves, the same tool's proposals still waiting for
+    input in that conversation resolve with it, as a core rule. A flow is handed those open proposals, so a
+    justification continues the same review.
+  - `WriteProposal.PersonMessage` carries what the person said this turn, which is what a reviewer is told. It is
+    content: a flow may hand it to a reviewer, never to a record or a log.
+  - A write tool's confirmed result is read for `status` and `message` (structured content), and nothing else.
+  - Rejected: a `switch` on the tool in the core; one generic flow with fee options; storing the model's arguments
+    (they hold the reason, free text); optional tool arguments (they would change the schema the model sees).
+- **Billing.** `FeeAdjustmentFlow` moved into the billing plugin's server part and runs on the ports. The audit kinds and
+  outcomes are as before (`fee.adjustment.*`, `proposed`/`approved`/`applied`/`rejected`), plus
+  `fee.adjustment.expired`. The core's tests run it through the `fixture-billing` plugin. One fix: the question count
+  is now the open review's plus one. It used to be the new row's, which never reached the limit.
+- **The pause.** One builder (`PendingWrite.ToQuestion`) composes the interrupt for the turn and for a rejoin:
+  `{ writeId, toolName, summary, summarySchema, question, expiresAt }`. The opaque state is no longer in it: the
+  answer names the write, and the server uses the state it keeps. `/pending` answers the same object and stays
+  read-only. `expired` is written only when an answer or a rejoin finds the proposal past its expiry.
+- **The store.** `PendingAdjustments` becomes `PendingWrites`, its rows kept, through `DatabaseInitializer`:
+  - a `RenamedTables` step (one `BEGIN IMMEDIATE` per table, the old `IX_*` indexes dropped, a lost race tolerated);
+  - the additive pass adds `FlowJson`;
+  - the backfill moves `awaiting_justification` to `awaiting_input` and the review into `FlowJson` as
+    `{reviewTaskId, questions}`, the shape billing reads (pinned by a test).
+  - `ReviewTaskId`/`Questions` stay in the table, unmapped.
+  - This amends §17's "Destructive or renaming changes would need a real migration": a rename is done in the
+    initializer. Rejected: EF Core migrations now (the `dotnet-ef` tool, a baseline for every database,
+    `__EFMigrationsHistory`, a package move).
+- **Own: the wire keys.** `WriteConfirmationKeys` in `Maf.Lab.Domain.Writes`, with no aliases:
+  - `maf-lab/write-summary`, `maf-lab/write-state` and `maf-lab/write-expires-at` in the input request's `_meta`;
+  - `maf-lab/idempotencyKey` in the confirmed call's `_meta`;
+  - `confirmation`, the input key.
+  They replace §25's fee-named keys. MCP leaves a tool's own data to `_meta` under a vendor prefix, and there is no
+  standard key for these. They are in Domain, not Abstractions, because the MCP server must not depend on the plugin
+  contract.
+- **Web.** The confirmation card is display only: a `<dl>` of each property's `title` in order, by `type`/`format`
+  (JSON Schema 2020-12's annotation vocabulary, no form library). `MafWebPlugin.confirmations` overrides it per tool;
+  billing's web part renders the fee with its currency and period. `evals/ui-events.jsonl` was captured before this
+  change and still carries the old interrupt metadata. The reducer reads only the interrupt's id and message from it,
+  so it replays unchanged; re-capture it against the live stack.

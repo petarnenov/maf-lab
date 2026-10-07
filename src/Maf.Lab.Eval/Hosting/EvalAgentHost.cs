@@ -162,12 +162,18 @@ public sealed class EvalAgentHost : IAsyncDisposable
         // api's (make eval passes the stack's Compliance:*), so the fee adjustment that needs a reviewer is offered, and a
         // case over the review threshold consults the stack's reviewer. A stop reaches it too: the eval exits 130 on
         // Ctrl+C or SIGTERM, and the consultant sends A2A tasks/cancel within 5 s.
-        services.Configure<FeeAdjustmentOptions>(configuration.GetSection("FeeAdjustments"));
         services.Configure<Maf.Lab.Api.A2A.ComplianceOptions>(configuration.GetSection("Compliance"));
         services.AddHttpClient("a2a-consult");
         services.AddSingleton<Maf.Lab.Api.A2A.ComplianceConsultant>();
         services.AddSingleton<Maf.Lab.Plugins.Abstractions.IReviewerConsultation>(sp => sp.GetRequiredService<Maf.Lab.Api.A2A.ComplianceConsultant>());
-        services.AddTransient<FeeAdjustmentFlow>();
+        // The installed plugins' write flows over the core's ports, as the api composes them (generalize-write-confirmation).
+        services.AddScoped<Maf.Lab.Api.Agent.Writes.WriteTurnContext>();
+        services.AddScoped<Maf.Lab.Plugins.Abstractions.IWriteAudit, Maf.Lab.Api.Agent.Writes.CoreWriteAudit>();
+        services.AddScoped<Maf.Lab.Plugins.Abstractions.IConsultationScreening, Maf.Lab.Api.Agent.Writes.CoreConsultationScreening>();
+        services.AddScoped<Maf.Lab.Plugins.Abstractions.IWriteTraceStep, Maf.Lab.Api.Agent.Writes.CoreWriteTraceStep>();
+        services.AddScoped(sp => new Maf.Lab.Api.Agent.Writes.WriteFlows(Maf.Lab.Api.Plugins.PluginHost.InstalledWriteFlows(
+            sp.GetRequiredService<Maf.Lab.Api.Plugins.PluginCatalogue>().Current, sp)));
+        services.AddScoped<Maf.Lab.Api.Agent.Writes.WriteConfirmations>();
         services.AddTransient<ChatTurnRunner>();
 
         var provider = services.BuildServiceProvider();
@@ -205,6 +211,10 @@ public sealed class EvalAgentHost : IAsyncDisposable
     }
 
     public static Principal EvalPrincipal(string tenantId) => new($"eval-{tenantId}", TenantId.Firm(tenantId), Role.USER);
+
+    /// <summary>What a write tool's question must state, as its installed flow says (none when no flow says).</summary>
+    public Maf.Lab.Plugins.Abstractions.IStatesConfirmationFacts? FactsFor(string toolName) =>
+        Services.GetRequiredService<Maf.Lab.Api.Agent.Writes.WriteFlows>().For(toolName) as Maf.Lab.Plugins.Abstractions.IStatesConfirmationFacts;
 
     public async Task<TurnResult> AskAsync(string tenantId, string question, CancellationToken ct)
     {

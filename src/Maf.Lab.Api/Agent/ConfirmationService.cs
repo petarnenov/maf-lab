@@ -1,21 +1,24 @@
 using System.Text.Json;
 using System.Threading.Channels;
+using Maf.Lab.Api.Agent.Writes;
 using Maf.Lab.Api.Storage;
-using Maf.Lab.Domain.Billing;
 using Maf.Lab.Domain.Tenancy;
+using Maf.Lab.Plugins.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 
 namespace Maf.Lab.Api.Agent;
 
-// names a domain until the generalize-write-confirmation follow-up moves it (introduce-plugins 8.1)
-// The fee-typed write confirmation, which has no seam yet (extract-billing part 3).
 /// <summary>What became of a person's answer.</summary>
 public abstract record ConfirmationOutcome
 {
-    public sealed record Applied(FeeAdjustmentOutcomeDto Result) : ConfirmationOutcome;
+    /// <summary>The tool applied it; its own status (e.g. <c>applied</c>, <c>already_applied</c>) and words.</summary>
+    public sealed record Applied(string Status, string Message) : ConfirmationOutcome;
 
-    public sealed record Rejected(string AdjustmentId) : ConfirmationOutcome;
+    public sealed record Rejected(string WriteId) : ConfirmationOutcome;
+
+    /// <summary>It was past its expiry when the answer arrived: it must be proposed again.</summary>
+    public sealed record Expired(string WriteId) : ConfirmationOutcome;
 
     /// <summary>No such proposal is waiting for this person.</summary>
     public sealed record NotFound : ConfirmationOutcome;
@@ -23,28 +26,29 @@ public abstract record ConfirmationOutcome
     public sealed record Failed(string Message) : ConfirmationOutcome;
 }
 
-/// <summary>What the tool reported back. Mirrors the tool's own result shape, which the API only passes on.</summary>
-public sealed record FeeAdjustmentOutcomeDto(string Status, FeeAdjustmentApplied? Adjustment, string Message);
-
 /// <summary>
-/// A person's answer to a proposal. The answer travels back to the server with the state the proposal was
-/// issued with, so what executes is what was put to them — not what anything has said since.
+/// A person's answer to a write waiting for them, whichever tool proposed it (generalize-write-confirmation). The
+/// answer travels back to the server with the state the proposal was issued with, so what executes is what was put to
+/// them — not what anything has said since. Every change of the proposal's status is one guarded update from the status
+/// it is expected to have, so whichever replica takes an answer, it is taken once.
 /// </summary>
 public sealed class ConfirmationService(
     IToolSource tools,
-    FeeAdjustmentFlow flow,
+    WriteFlows flows,
+    WriteConfirmations writes,
+    WriteTurnContext context,
     IDbContextFactory<MafDbContext> db,
     TimeProvider time,
     ILogger<ConfirmationService> logger)
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    public const string NoLongerAvailable = "That change can no longer be confirmed here; nothing has been changed.";
 
     public async Task<ConfirmationOutcome> AnswerAsync(
-        Principal principal, string bearerToken, string conversationId, string adjustmentId, bool approve,
+        Principal principal, string bearerToken, string conversationId, string writeId, bool approve,
         string? idempotencyKey, CancellationToken ct)
     {
-        await using var context = await db.CreateDbContextAsync(ct);
-        var row = await context.PendingWrites.FirstOrDefaultAsync(p => p.Id == adjustmentId, ct);
+        await using var store = await db.CreateDbContextAsync(ct);
+        var row = await store.PendingWrites.AsNoTracking().FirstOrDefaultAsync(p => p.Id == writeId, ct);
 
         // A proposal belongs to the person it was put to. Anyone else is told only that there is nothing here.
         if (row is null
@@ -56,22 +60,29 @@ public sealed class ConfirmationService(
             return new ConfirmationOutcome.NotFound();
         }
 
-        var summary = JsonSerializer.Deserialize<FeeAdjustmentSummary>(row.Summary, Json);
-        if (summary is null)
-        {
-            return new ConfirmationOutcome.Failed("That proposal can no longer be read. Propose the adjustment again.");
-        }
+        context.Set(principal, conversationId, row.TurnId, "", null);
+        var flow = flows.For(row.ToolName);
+        var proposal = new WriteProposal(row.Id, row.ToolName, WriteConfirmations.Parse(row.Summary), row.FlowJson, principal,
+            conversationId, row.TurnId, []);
 
-        await flow.RecordAsync(principal, conversationId, row.TurnId,
-            approve ? FeeAdjustmentFlow.Confirmed : FeeAdjustmentFlow.Rejected, summary,
-            approve ? "approved" : "rejected", 0, ct);
+        if (row.ExpiresAt is { } expiry && expiry <= time.GetUtcNow().UtcDateTime)
+        {
+            return await ResolveAsync(row, PendingWriteStatus.Expired, ct)
+                ? await ResolvedAsync(flow, proposal, row, WriteResolution.Expired, "expired", new ConfirmationOutcome.Expired(row.Id), ct)
+                : new ConfirmationOutcome.NotFound();
+        }
 
         if (!approve)
         {
-            await ResolveAsync(row.Id, PendingWriteStatus.Declined, ct);
-            return new ConfirmationOutcome.Rejected(row.Id);
+            return await ResolveAsync(row, PendingWriteStatus.Declined, ct)
+                ? await ResolvedAsync(flow, proposal, row, WriteResolution.Declined, "rejected", new ConfirmationOutcome.Rejected(row.Id), ct)
+                : new ConfirmationOutcome.NotFound();
         }
 
+        if (flow is null)
+        {
+            return new ConfirmationOutcome.Failed(NoLongerAvailable);
+        }
         await using var set = await tools.GetToolsAsync(bearerToken, null, ct);
         if (set.Confirm is not { } confirm)
         {
@@ -81,39 +92,27 @@ public sealed class ConfirmationService(
         ModelContextProtocol.Protocol.CallToolResult result;
         try
         {
-            result = await confirm(
-                row.ToolName,
-                new Dictionary<string, object?>
-                {
-                    // Ignored by the server, which executes the state; sent because the tool declares them.
-                    ["accountId"] = summary.AccountId,
-                    ["amount"] = summary.Amount,
-                    ["reason"] = "confirmed by the advisor",
-                },
-                row.State,
-                approve: true,
-                idempotencyKey,
-                ct);
+            // The server executes the state; these are what the tool declares, sent as the flow says, and not believed.
+            result = await confirm(row.ToolName, flow.ConfirmArguments(proposal.Summary), row.State, approve: true, idempotencyKey, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogWarning("confirmation call failed ({Error})", ex.GetType().Name);
-            await flow.RecordAsync(principal, conversationId, row.TurnId, FeeAdjustmentFlow.Applied, summary, "error", 0, ct);
-            return new ConfirmationOutcome.Failed("The adjustment could not be applied; nothing has been changed.");
+            // Not resolved: the proposal is still waiting, and sending the answer again is safe.
+            await flow.ResolvedAsync(proposal, WriteResolution.Failed, "error", ct);
+            return new ConfirmationOutcome.Failed("The change could not be applied; nothing has been changed.");
         }
 
         if (result.IsError == true || result.StructuredContent is not { } structured)
         {
-            await flow.RecordAsync(principal, conversationId, row.TurnId, FeeAdjustmentFlow.Applied, summary, "error", 0, ct);
-            await ResolveAsync(row.Id, PendingWriteStatus.Failed, ct);
-            return new ConfirmationOutcome.Failed(Text(result));
+            await ResolveAsync(row, PendingWriteStatus.Failed, ct);
+            return await ResolvedAsync(flow, proposal, row, WriteResolution.Failed, "error", new ConfirmationOutcome.Failed(Text(result)), ct);
         }
 
-        var outcome = JsonSerializer.Deserialize<FeeAdjustmentOutcomeDto>(structured.GetRawText(), Json)
-            ?? new FeeAdjustmentOutcomeDto("applied", null, "Applied.");
-        await flow.RecordAsync(principal, conversationId, row.TurnId, FeeAdjustmentFlow.Applied, summary, outcome.Status, 0, ct);
-        await ResolveAsync(row.Id, PendingWriteStatus.Applied, ct);
-        return new ConfirmationOutcome.Applied(outcome);
+        var status = Str(structured, "status") ?? "applied";
+        await ResolveAsync(row, PendingWriteStatus.Applied, ct);
+        return await ResolvedAsync(flow, proposal, row, WriteResolution.Applied, status,
+            new ConfirmationOutcome.Applied(status, Str(structured, "message") ?? "Applied."), ct);
     }
 
     /// <summary>
@@ -129,8 +128,9 @@ public sealed class ConfirmationService(
 
         var text = outcome switch
         {
-            ConfirmationOutcome.Applied applied => applied.Result.Message,
-            ConfirmationOutcome.Rejected => "Nothing was applied. The advisor declined the adjustment.",
+            ConfirmationOutcome.Applied applied => applied.Message,
+            ConfirmationOutcome.Rejected => "Nothing was applied. The advisor declined the change.",
+            ConfirmationOutcome.Expired => "That proposal is too old to apply. Propose it again.",
             ConfirmationOutcome.NotFound => "That proposal is no longer waiting for an answer.",
             _ => ((ConfirmationOutcome.Failed)outcome).Message,
         };
@@ -153,20 +153,38 @@ public sealed class ConfirmationService(
         && (p.ValueKind == JsonValueKind.True
             || p.ValueKind == JsonValueKind.Object && p.TryGetProperty("approve", out var approve) && approve.ValueKind == JsonValueKind.True);
 
-    private async Task ResolveAsync(string id, string status, CancellationToken ct)
+    /// <summary>One guarded update from waiting: false when someone else resolved it first.</summary>
+    private async Task<bool> ResolveAsync(PendingWriteRow row, string status, CancellationToken ct)
     {
-        await using var context = await db.CreateDbContextAsync(ct);
-        var row = await context.PendingWrites.FirstOrDefaultAsync(p => p.Id == id, ct);
-        if (row is null)
-        {
-            return;
-        }
-        row.Status = status;
-        row.UpdatedAt = time.GetUtcNow().UtcDateTime;
-        await context.SaveChangesAsync(ct);
+        await using var store = await db.CreateDbContextAsync(ct);
+        var now = time.GetUtcNow().UtcDateTime;
+        return await store.PendingWrites
+            .Where(p => p.Id == row.Id && p.Status == PendingWriteStatus.AwaitingConfirmation)
+            .ExecuteUpdateAsync(s => s.SetProperty(p => p.Status, status).SetProperty(p => p.UpdatedAt, now), ct) == 1;
     }
+
+    /// <summary>The flow records its own step, and what was waiting for input on the way to this proposal is over too.</summary>
+    private async Task<ConfirmationOutcome> ResolvedAsync(IWriteConfirmationFlow? flow, WriteProposal proposal, PendingWriteRow row,
+        WriteResolution resolution, string outcome, ConfirmationOutcome answer, CancellationToken ct)
+    {
+        if (flow is not null)
+        {
+            await flow.ResolvedAsync(proposal, resolution, outcome, ct);
+        }
+        await writes.ResolveOpenInputsAsync(row, resolution switch
+        {
+            WriteResolution.Applied => PendingWriteStatus.Applied,
+            WriteResolution.Declined => PendingWriteStatus.Declined,
+            WriteResolution.Expired => PendingWriteStatus.Expired,
+            _ => PendingWriteStatus.Failed,
+        }, ct);
+        return answer;
+    }
+
+    private static string? Str(JsonElement e, string name) =>
+        e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
     private static string Text(ModelContextProtocol.Protocol.CallToolResult result) =>
         result.Content.OfType<ModelContextProtocol.Protocol.TextContentBlock>().FirstOrDefault()?.Text
-        ?? "The adjustment could not be applied; nothing has been changed.";
+        ?? "The change could not be applied; nothing has been changed.";
 }

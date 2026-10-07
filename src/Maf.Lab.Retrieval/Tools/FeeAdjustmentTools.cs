@@ -34,10 +34,10 @@ public sealed class FeeAdjustmentTools(
     ILogger<FeeAdjustmentTools> logger)
 {
     public const string ProposeName = FeeAdjustmentTool.Name;
-    public const string ConfirmationKey = FeeAdjustmentTool.ConfirmationKey;
-    public const string SummaryKey = FeeAdjustmentTool.SummaryKey;
-    public const string StateKey = FeeAdjustmentTool.StateKey;
-    public const string ExpiresAtKey = FeeAdjustmentTool.ExpiresAtKey;
+    public const string ConfirmationKey = Maf.Lab.Domain.Writes.WriteConfirmationKeys.Confirmation;
+    public const string SummaryKey = Maf.Lab.Domain.Writes.WriteConfirmationKeys.Summary;
+    public const string StateKey = Maf.Lab.Domain.Writes.WriteConfirmationKeys.State;
+    public const string ExpiresAtKey = Maf.Lab.Domain.Writes.WriteConfirmationKeys.ExpiresAt;
 
     [McpServerTool(
         Name = ProposeName,
@@ -247,7 +247,7 @@ public sealed class FeeAdjustmentTools(
     /// <summary>The caller's key, from the request's metadata. Never an argument: a model must not invent one.</summary>
     private static string? IdempotencyKeyOf(RequestContext<CallToolRequestParams> context) =>
         context.Params?.Meta is { } meta
-        && meta.TryGetPropertyValue(FeeAdjustmentTool.IdempotencyMetaKey, out var value)
+        && meta.TryGetPropertyValue(Maf.Lab.Domain.Writes.WriteConfirmationKeys.IdempotencyKey, out var value)
             ? value?.GetValue<string>()
             : null;
 

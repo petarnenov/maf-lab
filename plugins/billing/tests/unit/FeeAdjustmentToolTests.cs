@@ -136,7 +136,7 @@ public class FeeAdjustmentToolTests : IDisposable
             // Where a caller's own key travels: the request's metadata, never an argument a model could invent.
             parameters.Meta = new System.Text.Json.Nodes.JsonObject
             {
-                [Maf.Lab.Domain.Billing.FeeAdjustmentTool.IdempotencyMetaKey] = idempotencyKey,
+                [Maf.Lab.Domain.Writes.WriteConfirmationKeys.IdempotencyKey] = idempotencyKey,
             };
         }
         return new RequestContext<CallToolRequestParams>(

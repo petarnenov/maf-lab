@@ -73,8 +73,14 @@ public partial class Program
         builder.Services.AddSingleton<IToolSource, McpToolSource>();
         builder.Services.AddSingleton<ConversationService>();
         builder.Services.AddJevIntentClassifier(builder.Configuration);
-        builder.Services.Configure<Agent.FeeAdjustmentOptions>(builder.Configuration.GetSection("FeeAdjustments"));
-        builder.Services.AddScoped<Agent.FeeAdjustmentFlow>();
+        // Writes a person confirms (generalize-write-confirmation): the core's half of the seam and the ports a plugin's
+        // flow reaches it through; the flows themselves are the installed plugins' (PluginHost).
+        builder.Services.AddScoped<Agent.Writes.WriteTurnContext>();
+        builder.Services.AddScoped<Maf.Lab.Plugins.Abstractions.IWriteAudit, Agent.Writes.CoreWriteAudit>();
+        builder.Services.AddScoped<Maf.Lab.Plugins.Abstractions.IConsultationScreening, Agent.Writes.CoreConsultationScreening>();
+        builder.Services.AddScoped<Maf.Lab.Plugins.Abstractions.IWriteTraceStep, Agent.Writes.CoreWriteTraceStep>();
+        builder.Services.AddScoped<Agent.Writes.WriteFlows>();
+        builder.Services.AddScoped<Agent.Writes.WriteConfirmations>();
         builder.Services.AddScoped<Agent.ConfirmationService>();
         // The turn observers of the installed plugins, as one (decision 7); none of the core's own.
         builder.Services.AddSingleton<Agent.Tracing.TurnObservers>();

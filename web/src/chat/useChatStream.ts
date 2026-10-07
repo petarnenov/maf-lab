@@ -3,7 +3,7 @@ import type { BaseEvent } from '@ag-ui/core';
 import { useCopilotKit } from '@copilotkit/react-core/v2/context';
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { authHeaders } from '../api/client';
-import type { ConversationDetail, FocusAccount, PendingProposal } from '../api/types';
+import type { ConversationDetail, FocusAccount, PendingWrite } from '../api/types';
 import { agentNamed } from '../agents/agents';
 import { useAuth } from '../auth/useAuth';
 import type { PluginRunObserver } from '../plugins/api';
@@ -181,17 +181,17 @@ export function useChatStream() {
    * conversation like any other, and what became of the proposal is read from what the run said.
    */
   const answer = useCallback(
-    async (adjustmentId: string, approve: boolean) => {
+    async (writeId: string, approve: boolean) => {
       const conversationId = conversationRef.current;
       if (!conversationId) return;
 
       // The same answer to the same proposal is the same attempt, however many times the stream drops on the
       // way. The key says so; the server then replays its first answer rather than applying anything twice.
-      const idempotencyKey = keyFor(adjustmentId, approve);
+      const idempotencyKey = keyFor(writeId, approve);
       const assistantTurnId = nextId('a');
       // Opens a streaming assistant turn so the monitor panel follows the answer run.
       dispatch({ type: 'start_answer', assistantTurnId });
-      dispatch({ type: 'answering', adjustmentId });
+      dispatch({ type: 'answering', writeId });
 
       let said = '';
       const ended = await run(
@@ -200,7 +200,7 @@ export function useChatStream() {
           agent.threadId = conversationId;
           agent.setMessages([]);
         },
-        [{ interruptId: adjustmentId, status: 'resolved', payload: { approve, idempotencyKey } }],
+        [{ interruptId: writeId, status: 'resolved', payload: { approve, idempotencyKey } }],
         (event) => {
           if (event.type === 'TEXT_MESSAGE_CONTENT')
             said += (event as BaseEvent & { delta: string }).delta;
@@ -210,7 +210,7 @@ export function useChatStream() {
       if (ended === 'stopped') return;
       dispatch({
         type: 'answered',
-        adjustmentId,
+        writeId,
         outcome: ended ? outcomeOf(said, approve) : 'gone',
       });
     },
@@ -251,19 +251,11 @@ export function useChatStream() {
           headers: authHeaders(token),
         });
         if (!response.ok) return;
-        const body = (await response.json()) as { pending: PendingProposal | null };
+        const body = (await response.json()) as { pending: PendingWrite | null };
         if (!body.pending) return;
         dispatch({
           type: 'pending',
-          confirmation: {
-            callId: '',
-            toolName: '',
-            adjustmentId: body.pending.adjustmentId,
-            adjustment: body.pending.adjustment,
-            question: body.pending.question,
-            state: '',
-            expiresAt: body.pending.expiresAt,
-          },
+          confirmation: body.pending,
           expired: expired({ expiresAt: body.pending.expiresAt }),
         });
       } catch {
@@ -280,8 +272,8 @@ export function useChatStream() {
  * A caller's idempotency key for one answer to one proposal. It is derived rather than random, so a retry of the
  * same answer carries the same key — which is the whole point of having one.
  */
-function keyFor(adjustmentId: string, approve: boolean): string {
-  return `${adjustmentId}:${approve ? 'approve' : 'decline'}`;
+function keyFor(writeId: string, approve: boolean): string {
+  return `${writeId}:${approve ? 'approve' : 'decline'}`;
 }
 
 /**
@@ -294,8 +286,10 @@ function isStop(event: BaseEvent): boolean {
 }
 
 /** What the run said, read as what became of the proposal. The words are the server's own. */
-function outcomeOf(said: string, approve: boolean): 'applied' | 'declined' | 'gone' {
+function outcomeOf(said: string, approve: boolean): 'applied' | 'declined' | 'expired' | 'gone' {
   if (/no longer waiting/i.test(said)) return 'gone';
+  // Past its expiry when the answer arrived: the server recorded it expired and applied nothing.
+  if (/too old to apply/i.test(said)) return 'expired';
   return approve ? 'applied' : 'declined';
 }
 

@@ -9,7 +9,6 @@ using Maf.Lab.Api.Agent.Tracing;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.Domain.Tracing;
 using Maf.Lab.Hosting;
-using Maf.Lab.Domain.Billing;
 using Maf.Lab.Domain.Chat;
 using Maf.Lab.Domain.Feedback;
 using Maf.Lab.Domain.Portfolio;
@@ -23,13 +22,11 @@ using Microsoft.Extensions.Options;
 
 namespace Maf.Lab.Api.Agent;
 
-// names a domain until the generalize-write-confirmation follow-up moves it (introduce-plugins 8.1)
-// The fee-typed write confirmation, which has no seam yet (extract-billing part 3).
 public sealed record TurnResult(string ConversationId, string TurnId, Intent Intent, bool ForcedRetrieval, string Answer,
     IReadOnlyList<ToolCallRecord> ToolCalls, IReadOnlyList<SourceRef> Sources, IReadOnlyList<string> Signals, string? Error)
 {
     /// <summary>The write this turn put to a person, when it paused for one, and the sentence it asked.</summary>
-    public Maf.Lab.Domain.Billing.FeeAdjustmentSummary? Proposal { get; init; }
+    public Writes.PendingWrite? Proposal { get; init; }
 
     public string? ProposalQuestion { get; init; }
 
@@ -62,7 +59,7 @@ public sealed partial class ChatTurnRunner(
     SystemPrompt prompt,
     ToolAudit audit,
     TokenCounter tokens,
-    FeeAdjustmentFlow adjustments,
+    Writes.WriteConfirmations writes,
     Guardrail guardrail,
     Jev.JevAnswerCheck answerCheck,
     IDbContextFactory<MafDbContext> db,
@@ -1032,30 +1029,30 @@ public sealed partial class ChatTurnRunner(
     private async ValueTask<object?> ProposedAsync(TurnState state, CapturedConfirmation captured, string callId,
         string name, long latency, CancellationToken ct)
     {
-        var outcome = await adjustments.ProposedAsync(
-            state.Principal, state.ConversationId, state.TurnId, callId, name, state.UserMessage, captured, state.Trace, ct);
+        var outcome = await writes.ProposedAsync(state.Principal, state.ConversationId, state.TurnId, callId, name, state.UserMessage,
+            captured, state.Trace, ct);
 
-        var summary = $"proposed {captured.Adjustment.Amount:0.##} on {captured.Adjustment.AccountId}";
-        state.ToolCalls.Add(new ToolCallRecord(name, $"accountId={captured.Adjustment.AccountId}", "input_required", 0, [], [], callId, summary));
+        const string summary = "proposed, waiting for a person";
+        state.ToolCalls.Add(new ToolCallRecord(name, "", "input_required", 0, [], [], callId, summary));
         state.Summaries[callId] = Result(name, summary, [], isError: false);
 
-        if (outcome is FlowOutcome.AskUser ask)
+        if (outcome is Writes.WriteStep.Ask ask)
         {
-            state.Trace.Add(TraceKinds.Adjustment, $"Waiting for the advisor to confirm {ask.Interrupt.Id}", new JsonObject
+            state.Trace.Add(TraceKinds.Adjustment, $"Waiting for the advisor to confirm {ask.Write.WriteId}", new JsonObject
             {
                 ["callId"] = callId,
                 ["step"] = "awaiting_confirmation",
-                ["adjustmentId"] = ask.Interrupt.Id,
-                ["accountId"] = captured.Adjustment.AccountId,
+                ["writeId"] = ask.Write.WriteId,
+                ["tool"] = name,
             });
-            state.Interrupt = ask.Interrupt;
-            state.Proposal = captured.Adjustment;
+            state.Interrupt = ask.Question;
+            state.Proposal = ask.Write;
             state.AwaitingConfirmation = true;
             // The model gets nothing more to say this turn: the next word is the advisor's.
             return ToolDataEnvelope.Wrap(name, "Waiting for the advisor to confirm. Nothing has been changed.");
         }
 
-        var told = ((FlowOutcome.TellModel)outcome).Message;
+        var told = ((Writes.WriteStep.Tell)outcome).Message;
         state.Read.Add(Jev.ReadItem.Whole(name, told, state.Tools?.DomainOf(name) ?? Domains.OfTool(name) ?? Domains.None));
         var envelope = ToolDataEnvelope.Wrap(name, told);
         state.Trace.Add(TraceKinds.Envelope, $"Data envelope handed to the model ({envelope.Length} chars)", new JsonObject
@@ -1376,7 +1373,7 @@ public sealed partial class ChatTurnRunner(
         public PersonQuestion? Interrupt { get; set; }
 
         /// <summary>The proposal behind that interrupt, for anything that judges what was put to the person.</summary>
-        public Maf.Lab.Domain.Billing.FeeAdjustmentSummary? Proposal { get; set; }
+        public Writes.PendingWrite? Proposal { get; set; }
 
         /// <summary>Identifier-only argument summaries by tool-call id, for what reaches the client.</summary>
         public Dictionary<string, string> Arguments { get; } = [];

@@ -127,11 +127,11 @@ public sealed class FakeToolSource : IToolSource
                 Message = $"Apply a fee adjustment of {amount} to {accountId}?",
                 Meta = new System.Text.Json.Nodes.JsonObject
                 {
-                    [Maf.Lab.Domain.Billing.FeeAdjustmentTool.SummaryKey] =
+                    [Maf.Lab.Domain.Writes.WriteConfirmationKeys.Summary] =
                         System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(summary, new JsonSerializerOptions(JsonSerializerDefaults.Web))),
                     // A state per proposal, as the real server issues: two proposals are never the same one.
-                    [Maf.Lab.Domain.Billing.FeeAdjustmentTool.StateKey] = $"{ProposalState}-{Invocations.Count}",
-                    [Maf.Lab.Domain.Billing.FeeAdjustmentTool.ExpiresAtKey] = ProposalExpiresAt.ToString("O"),
+                    [Maf.Lab.Domain.Writes.WriteConfirmationKeys.State] = $"{ProposalState}-{Invocations.Count}",
+                    [Maf.Lab.Domain.Writes.WriteConfirmationKeys.ExpiresAt] = ProposalExpiresAt.ToString("O"),
                 },
             });
             return Mcp("""{"status":"not_confirmed","adjustment":null,"message":"Nothing was applied: no confirmation was given for that proposal."}""");

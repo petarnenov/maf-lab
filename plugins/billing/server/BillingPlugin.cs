@@ -11,7 +11,7 @@ namespace Maf.Lab.Plugins.Billing;
 /// review queue resolves a billing search's sources in. Its descriptor is the manifest's [domain] table and its MCP
 /// server the mcp-retrieval service; this part only adds what data cannot express.
 /// </summary>
-public sealed class BillingPlugin : IMafPlugin, IContributesDomainBehaviour, IContributesServices
+public sealed class BillingPlugin : IMafPlugin, IContributesDomainBehaviour, IContributesServices, IContributesWriteConfirmation
 {
     public const string PluginName = "billing";
 
@@ -23,6 +23,12 @@ public sealed class BillingPlugin : IMafPlugin, IContributesDomainBehaviour, ICo
     public IDomainBehaviour Behaviour { get; } = new BillingBehaviour();
 
     // Billing's chunks are the core library's default collection (maf_chunks), so its store is the default one.
-    public void ConfigureServices(IServiceCollection services, IConfiguration configuration) =>
+    public void ConfigureServices(IServiceCollection services, IConfiguration configuration)
+    {
         services.AddKeyedSingleton(DomainId, (sp, _) => sp.GetRequiredService<TenantScopedMaintenance>());
+        FeeAdjustmentFlow.Configure(services);
+    }
+
+    /// <summary>A fee adjustment is confirmed by a person, after the reviewer when it is large (generalize-write-confirmation).</summary>
+    public IWriteConfirmationFlow CreateFlow(IServiceProvider services) => FeeAdjustmentFlow.Create(services);
 }

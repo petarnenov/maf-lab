@@ -28,6 +28,16 @@ const adjustment = {
   periodEnd: '2026-10-31',
 };
 
+/** The schema billing's flow describes the summary with; the core card renders it without knowing it is a fee. */
+const summarySchema = {
+  type: 'object',
+  properties: {
+    accountId: { title: 'Account', type: 'string' },
+    accountName: { title: 'Account name', type: 'string' },
+    resultingFee: { title: 'Fee after', type: 'number' },
+  },
+};
+
 /** A run that pauses on a proposal, as the server streams it. */
 const paused = () =>
   sse(EventType.RUN_FINISHED, {
@@ -42,7 +52,13 @@ const paused = () =>
           message: 'Apply a fee adjustment of -200.00 USD to A-1042 (Ridgeline Family Trust)?',
           toolCallId: 'c1',
           expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
-          metadata: { adjustment, state: 'opaque', tool: 'propose_fee_adjustment' },
+          // The write as the server composes it; the opaque state never reaches the browser.
+          metadata: {
+            writeId: 'adj_1',
+            toolName: 'propose_fee_adjustment',
+            summary: adjustment,
+            summarySchema,
+          },
         },
       ],
     },
@@ -90,8 +106,10 @@ describe('ChatPage reopened with a write waiting', () => {
   };
 
   const pending = {
-    adjustmentId: 'adj_1',
-    adjustment,
+    writeId: 'adj_1',
+    toolName: 'propose_fee_adjustment',
+    summary: adjustment,
+    summarySchema,
     question: 'Apply a fee adjustment of -200.00 USD to A-1042 (Ridgeline Family Trust)?',
     expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
   };
@@ -120,8 +138,9 @@ describe('ChatPage reopened with a write waiting', () => {
     reopen({ pending });
 
     const card = await screen.findByTestId('confirmation-card');
-    expect(within(card).getByText(/A-1042 — Ridgeline Family Trust/)).toBeInTheDocument();
-    expect(within(card).getByText('1,000.00 USD')).toBeInTheDocument();
+    expect(within(card).getByText('A-1042')).toBeInTheDocument();
+    expect(within(card).getByText('Ridgeline Family Trust')).toBeInTheDocument();
+    expect(within(card).getByText(new Intl.NumberFormat().format(1000))).toBeInTheDocument();
     expect(within(card).getByRole('button', { name: 'Approve' })).toBeEnabled();
   });
 
@@ -147,8 +166,9 @@ describe('ChatPage with a write waiting', () => {
     await propose('unused');
 
     const card = screen.getByTestId('confirmation-card');
-    expect(within(card).getByText(/A-1042 — Ridgeline Family Trust/)).toBeInTheDocument();
-    expect(within(card).getByText('1,000.00 USD')).toBeInTheDocument();
+    expect(within(card).getByText('A-1042')).toBeInTheDocument();
+    expect(within(card).getByText('Ridgeline Family Trust')).toBeInTheDocument();
+    expect(within(card).getByText(new Intl.NumberFormat().format(1000))).toBeInTheDocument();
     // The conversation is still there to read, and still usable.
     expect(screen.getByText('I have put it to you.')).toBeInTheDocument();
     expect(screen.getByLabelText('Message')).toBeInTheDocument();

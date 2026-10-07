@@ -76,20 +76,27 @@ public interface IWriteConfirmationFlow
     // A write tool asked for input (MCP input_required). The proposal carries the conversation's open awaiting_input rows for this tool.
     Task<WriteFlowOutcome> ProposedAsync(WriteProposal proposal, CancellationToken ct);
 
-    // The core resolved the proposal (applied, declined, expired): the flow records its own step.
-    Task ResolvedAsync(WriteProposal proposal, WriteResolution resolution, CancellationToken ct);
+    // The arguments the confirmed call sends because the tool declares them. The server executes the signed state and
+    // treats these as declarative only; the flow owns its tool's argument shape, so the core reads no summary field.
+    IReadOnlyDictionary<string, object?> ConfirmArguments(JsonElement summary);
+
+    // The core resolved the proposal: the flow records its own step. `outcome` is the tool's status when it was called
+    // ("applied", "already_applied", "error") or the answer's ("rejected", "expired").
+    Task ResolvedAsync(WriteProposal proposal, WriteResolution resolution, string outcome, CancellationToken ct);
 }
+
+public enum WriteResolution { Applied, Declined, Expired, Failed }
 
 public abstract record WriteFlowOutcome
 {
-    // Put it to the person: the row is awaiting_confirmation and the run pauses.
-    public sealed record AskPerson(string Question, string? FlowJson) : WriteFlowOutcome;
+    // Put it to the person: the row is awaiting_confirmation and the run pauses (with the tool's own question when null).
+    public sealed record AskPerson(string? Question, string? FlowJson) : WriteFlowOutcome;
 
     // Tell the model to ask the person for input: the row is awaiting_input with FlowJson; no pause.
     public sealed record AskInput(string MessageToModel, string? FlowJson) : WriteFlowOutcome;
 
     // Nothing will be confirmed; the model is told why.
-    public sealed record TellModel(string Message) : WriteFlowOutcome;
+    public sealed record TellModel(string Message, bool Refused = false) : WriteFlowOutcome;  // refused vs failed
 }
 
 // Optional, for the eval only (interface segregation): the facts a question must state.
@@ -99,6 +106,7 @@ public interface IStatesConfirmationFacts
     IReadOnlyList<string> FactsToState(JsonElement summary);
 }
 
+// Maf.Lab.Domain.Writes — wire constants the MCP server and the client share (not the plugin contract).
 public static class WriteConfirmationKeys
 {
     public const string Summary = "maf-lab/write-summary";        // input request _meta
@@ -109,7 +117,9 @@ public static class WriteConfirmationKeys
 }
 ```
 
-- `WriteProposal` is `(WriteId, ToolName, Summary, FlowJson, TenantId, UserId, ConversationId, TurnId, OpenInputs)`.
+- `WriteProposal` is `(WriteId, ToolName, Summary, FlowJson, Principal, ConversationId, TurnId, OpenInputs,
+  PersonMessage)`. The principal is the request's (the tenant comes from it). `PersonMessage` is what the person said this
+  turn — what a reviewer is told — and is content: never recorded or logged.
   `OpenInputs` holds the conversation's `awaiting_input` rows for the same tool (`WriteId`, `Summary`, `FlowJson`), so
   billing's flow continues the review the reviewer paused, as `OpenReviewAsync` does today. The opaque state is not in
   it: only the core hands the state back to the tool.
@@ -117,11 +127,12 @@ public static class WriteConfirmationKeys
   billing's `Resolve` does that; after this change it is a core rule.
 - The ports are owned by Abstractions, implemented by the core, and taken from `IServiceProvider` in `CreateFlow`:
   - `IReviewerConsultation`: extract-billing part 3's, used as it is;
-  - `IWriteAudit.RecordAsync(step, toolName, writeId, outcome)`: the step is a dotted name the flow chooses (billing keeps
-    `fee.adjustment.*`). Identifiers only;
+  - `IWriteAudit.RecordAsync(step, identifiers, outcome)`: the step is a dotted name the flow chooses (billing keeps
+    `fee.adjustment.*`), and its kind is the name without the last part. Identifiers only; the actor is the request's;
   - `IConsultationScreening.ScreenAsync(ConsultationResult)`: the core's `Guardrail.ScreenConsultationAsync` on the
     reviewer's words;
-  - `IWriteTraceStep.Record(kind, data)`: one step in the turn's trace, through the core's `TurnTrace`.
+  - `IWriteTraceStep.Record(kind, title, data)`: one step in the turn's trace, through the core's `TurnTrace` (the core
+    adds the tool call's id).
 - The core keeps the algorithm:
   1. capture the input request (the client's elicitation handler, `ConfirmationSink`);
   2. find the flow by `ToolName`. No flow means the write is refused and the model is told so;
@@ -179,7 +190,8 @@ interrupt's metadata: `{ writeId, toolName, summary, summarySchema, question, ex
 ## Migration Plan
 
 - **Stage A** (now):
-  1. Abstractions: the seam, the ports and `WriteConfirmationKeys` (new files only).
+  1. Abstractions: the seam and the ports (new files only). `WriteConfirmationKeys` started here and moves to
+     `Maf.Lab.Domain.Writes` in Stage B, because an MCP server must not depend on the plugin contract.
   2. `DatabaseInitializer`: the `RenamedTables` step as a mechanism with an empty list, plus a test that renames a
      test table holding rows, run by concurrent initializers. The `PendingAdjustments` entry is NOT added here: while
      `MafDbContext` still maps `PendingAdjustments`, renaming it would make the create pass add an empty table under the

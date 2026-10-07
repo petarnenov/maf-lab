@@ -1,14 +1,16 @@
 using System.Text.Json;
-using Maf.Lab.Domain.Billing;
+using Maf.Lab.Domain.Writes;
 using ModelContextProtocol.Protocol;
 
 namespace Maf.Lab.Api.Agent;
 
-// names a domain until the generalize-write-confirmation follow-up moves it (introduce-plugins 8.1)
 // The fee-typed write confirmation, which has no seam yet (extract-billing part 3).
-/// <summary>A confirmation the server asked for and nobody has answered yet.</summary>
+/// <summary>
+/// A confirmation a write tool asked for and nobody has answered yet. The summary is the tool's own: the core keeps it,
+/// shows it and hands it back, and reads none of its fields.
+/// </summary>
 public sealed record CapturedConfirmation(
-    FeeAdjustmentSummary Adjustment,
+    JsonElement Summary,
     string State,
     string Question,
     DateTimeOffset? ExpiresAt,
@@ -39,19 +41,14 @@ public sealed class ConfirmationSink
     private static CapturedConfirmation? Read(ElicitRequestParams? request)
     {
         if (request?.Meta is not { } meta
-            || meta[FeeAdjustmentTool.SummaryKey] is not { } summary
-            || meta[FeeAdjustmentTool.StateKey]?.GetValue<string>() is not { Length: > 0 } state)
+            || meta[WriteConfirmationKeys.Summary] is not { } summary
+            || meta[WriteConfirmationKeys.State]?.GetValue<string>() is not { Length: > 0 } state)
         {
             return null;
         }
 
-        var adjustment = JsonSerializer.Deserialize<FeeAdjustmentSummary>(summary.ToJsonString(), Json);
-        if (adjustment is null)
-        {
-            return null;
-        }
-
-        var expiresAt = meta[FeeAdjustmentTool.ExpiresAtKey]?.GetValue<string>() is { Length: > 0 } text
+        var written = JsonSerializer.SerializeToElement(summary, Json);
+        var expiresAt = meta[WriteConfirmationKeys.ExpiresAt]?.GetValue<string>() is { Length: > 0 } text
             && DateTimeOffset.TryParse(text, System.Globalization.CultureInfo.InvariantCulture, out var parsed)
                 ? parsed
                 : (DateTimeOffset?)null;
@@ -59,6 +56,6 @@ public sealed class ConfirmationSink
             ? JsonSerializer.SerializeToElement(requested, Json)
             : (JsonElement?)null;
 
-        return new CapturedConfirmation(adjustment, state, request.Message ?? "", expiresAt, schema);
+        return new CapturedConfirmation(written, state, request.Message ?? "", expiresAt, schema);
     }
 }

@@ -530,7 +530,7 @@ function AssistantBubble({
   onShow: () => void;
   /** The button opens the side pane on this turn, or closes it when this turn is the one showing. */
   onToggle: () => void;
-  onAnswer: (adjustmentId: string, approve: boolean) => void;
+  onAnswer: (writeId: string, approve: boolean) => void;
   /** What a source's action is told: this turn, and how to open a pane beside it (introduce-plugins 5.2). */
   sourceContext: ChatContext;
   /** The account in focus, and how to choose another (add-focus-state). */
@@ -638,7 +638,7 @@ function AssistantBubble({
         <ConfirmationCard
           confirmation={turn.confirmation}
           state={turn.confirmationState ?? 'waiting'}
-          onAnswer={(approve) => onAnswer(turn.confirmation!.adjustmentId, approve)}
+          onAnswer={(approve) => onAnswer(turn.confirmation!.writeId, approve)}
         />
       )}
       <SourcesPanel sources={sources} context={sourceContext} />

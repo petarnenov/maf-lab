@@ -65,7 +65,8 @@ This change comes right after extract-billing in the confirmed order. It builds 
 - **A summary the core does not read.** `CapturedConfirmation` carries the summary as a `JsonElement`.
   `TurnResult.Proposal` becomes a `PendingWrite` (tool, summary, question). `/pending` and the rejoin look the schema
   up from the flow by tool name, and a tool with no flow degrades to no schema.
-- **Five wire keys owned by the core.** `WriteConfirmationKeys` in Abstractions replaces the fee-named constants, with
+- **Five wire keys owned by the core.** `WriteConfirmationKeys` in `Maf.Lab.Domain` (`Maf.Lab.Domain.Writes`), the
+  shared contracts both the MCP server and the client already reference, replaces the fee-named constants, with
   no aliases:
   - `maf-lab/write-summary`, `maf-lab/write-state` and `maf-lab/write-expires-at`, in the input request's `_meta`;
   - `maf-lab/idempotencyKey`, in the confirmed call's `_meta`;
@@ -84,6 +85,19 @@ This change comes right after extract-billing in the confirmed order. It builds 
   `{ pending: { writeId, toolName, summary, summarySchema, question, expiresAt } | null }`, and stays read-only. The
   interrupt's metadata has the same shape. **BREAKING** for the old `{ adjustmentId, adjustment }`: our web is the only
   client, and it changes in the same change.
+- **Behaviour changes** (everything else is as before):
+  - **A bug fix in billing's flow:** the reviewer's question count is now the open review's plus one. Before, it was
+    the new proposal's own count, always one, so the limit of two questions was never reached. "Not asked a third time"
+    is pinned by `FeeAdjustmentFlowTests`.
+  - **What the model and the person are told:**
+    - a declined write: "Nothing was applied. The advisor declined the change." (was "…the adjustment.");
+    - an answer past its expiry: "That proposal is too old to apply. Propose it again.", recorded as `expired`;
+    - a write tool with no flow: `WriteConfirmations.NoFlow`.
+  - **The audit:** a step `fee.adjustment.expired` is new.
+- **Tests.** The core tests run the seam's mechanics on the fixture plugin's own simple flow (`FixtureWriteFlow`).
+  The tests of billing's fee rules (`FeeAdjustmentFlowTests`, `InjectionA2ATests`, `ConfirmationSuiteTests`,
+  `FeeAdjustmentAuditTests`) live in `plugins/billing/tests/unit` and install billing's flow, so with `plugins/billing`
+  moved aside the core still builds and passes.
 - **Allow-list.** The six `CoreNamesNoDomainTests` entries marked "until the generalize-write-confirmation follow-up"
   are removed, so the existing test now holds for these files.
 
@@ -133,8 +147,9 @@ This change comes right after extract-billing in the confirmed order. It builds 
     package move that changes every later schema change).
 - Own: the five `WriteConfirmationKeys` (`maf-lab/write-summary`, `maf-lab/write-state`, `maf-lab/write-expires-at`,
   `maf-lab/idempotencyKey`, `confirmation`). MCP leaves a tool's domain data to `_meta` under a vendor prefix, and
-  there is no standard key for a write's summary, state or idempotency. They replace the fee-named keys DECISIONS §25 introduced; the next free DECISIONS section at
-  landing amends §25.
+  there is no standard key for a write's summary, state or idempotency. They live in `Maf.Lab.Domain.Writes`: wire
+  constants shared by the server and the client, which an MCP server must not reach through the plugin contract. They
+  replace the fee-named keys DECISIONS §25 introduced; the next free DECISIONS section at landing amends §25.
 
 ## Progress
 
@@ -154,7 +169,7 @@ None — the change adds no command and no new long step. A review that takes te
 ## Stages (the architect's fence)
 
 - **Stage A**, now, beside extract-billing. It touches only:
-  - new Abstractions files (the seam, the ports, `WriteConfirmationKeys`);
+  - new Abstractions files (the seam, the ports; `WriteConfirmationKeys` moved to `Maf.Lab.Domain` in Stage B);
   - `DatabaseInitializer`'s `RenamedTables` step as a mechanism, with an empty list, and its test. The
     `PendingAdjustments` entry lands in Stage B with the `MafDbContext` mapping: renaming the table while the model
     still maps the old name would make the create pass add an empty table under the old name;

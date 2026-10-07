@@ -68,6 +68,12 @@ public static class PluginHost
             // Composed into the core's TurnObservers (decision 7): the core registers no observer of its own.
             builder.Services.AddSingleton<ITurnObserver>(sp => plugin.CreateObserver(sp));
         }
+        foreach (var plugin in loaded.OfType<IContributesWriteConfirmation>())
+        {
+            // A flow per write tool, chosen by the core's WriteFlows (generalize-write-confirmation). Scoped: its ports act
+            // for the request that hands it a proposal.
+            builder.Services.AddScoped<IWriteConfirmationFlow>(sp => plugin.CreateFlow(sp));
+        }
         foreach (var plugin in loaded.OfType<IContributesOpenWork>())
         {
             builder.Services.AddSingleton(new NamedOpenWork(((IMafPlugin)plugin).Name, plugin));
@@ -89,6 +95,21 @@ public static class PluginHost
             .Select(t => Activator.CreateInstance(t))
             .OfType<IContributesDomainBehaviour>()
             .Select(p => p.Behaviour)];
+    }
+
+    /// <summary>
+    /// The write-confirmation flows of the installed plugins whose code is in this process, for a host that composes no web
+    /// app (the eval's agent host), each created over that host's services.
+    /// </summary>
+    public static IReadOnlyList<IWriteConfirmationFlow> InstalledWriteFlows(PluginSet installed, IServiceProvider services)
+    {
+        var types = Discover([]);
+        return [.. installed.Plugins
+            .Select(p => types.GetValueOrDefault(p.Name))
+            .OfType<Type>()
+            .Select(t => Activator.CreateInstance(t))
+            .OfType<IContributesWriteConfirmation>()
+            .Select(p => p.CreateFlow(services))];
     }
 
     /// <summary>A plugin installed in an environment its manifest does not allow stops the start, naming it (task 3.8).</summary>

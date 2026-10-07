@@ -16,7 +16,8 @@ namespace Maf.Lab.Api.Agent;
 /// each tool call and how it ended — and, when that run stopped for a person, it ends paused on the same question.
 /// Ownership was checked before the run started (<see cref="AGUI.ChatRunFilter"/>).
 /// </summary>
-public sealed class RunRejoin(IRunStateStore runs, IDbContextFactory<MafDbContext> db)
+public sealed class RunRejoin(IRunStateStore runs, IDbContextFactory<MafDbContext> db, Writes.WriteFlows flows,
+    Writes.WriteConfirmations writes, TimeProvider time)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -54,27 +55,36 @@ public sealed class RunRejoin(IRunStateStore runs, IDbContextFactory<MafDbContex
         }
     }
 
-    /// <summary>The question the lost run stopped on, rebuilt from the proposal it is about.</summary>
-    private async Task<PersonQuestion?> QuestionAsync(Principal principal, string adjustmentId, RunState state, CancellationToken ct)
+    /// <summary>
+    /// The question the lost run stopped on, rebuilt from the proposal it is about by the same builder the turn used. A
+    /// proposal past its expiry is recorded as expired and nothing is replayed.
+    /// </summary>
+    private async Task<PersonQuestion?> QuestionAsync(Principal principal, string writeId, RunState state, CancellationToken ct)
     {
         await using var context = await db.CreateDbContextAsync(ct);
-        var row = await context.PendingWrites.FirstOrDefaultAsync(p => p.Id == adjustmentId
+        var row = await context.PendingWrites.AsNoTracking().FirstOrDefaultAsync(p => p.Id == writeId
             && p.UserId == principal.UserId && p.TenantId == principal.TenantId.Value
             && p.Status == PendingWriteStatus.AwaitingConfirmation, ct);
         if (row is null)
         {
             return null;
         }
-        var callId = state.ToolCalls.LastOrDefault(c => c.ToolName == row.ToolName)?.CallId ?? "";
-        var metadata = new Dictionary<string, JsonElement>
+        var now = time.GetUtcNow().UtcDateTime;
+        if (row.ExpiresAt is { } expiry && expiry <= now)
         {
-            ["adjustment"] = JsonDocument.Parse(row.Summary).RootElement.Clone(),
-            ["state"] = JsonSerializer.SerializeToElement(row.State, Json),
-            ["tool"] = JsonSerializer.SerializeToElement(row.ToolName, Json),
-        };
-        return new PersonQuestion(row.Id, row.Question ?? "", "approval_required", callId,
-            row.ExpiresAt is { } at ? new DateTimeOffset(at, TimeSpan.Zero).ToString("O") : null, null,
-            JsonSerializer.SerializeToElement(metadata, Json));
+            var expired = await context.PendingWrites
+                .Where(p => p.Id == row.Id && p.Status == PendingWriteStatus.AwaitingConfirmation)
+                .ExecuteUpdateAsync(s => s.SetProperty(p => p.Status, PendingWriteStatus.Expired).SetProperty(p => p.UpdatedAt, now), ct);
+            if (expired == 1 && flows.For(row.ToolName) is { } flow)
+            {
+                await flow.ResolvedAsync(new Maf.Lab.Plugins.Abstractions.WriteProposal(row.Id, row.ToolName, Writes.WriteConfirmations.Parse(row.Summary),
+                    row.FlowJson, principal, row.ConversationId, row.TurnId, []), Maf.Lab.Plugins.Abstractions.WriteResolution.Expired, "expired", ct);
+                await writes.ResolveOpenInputsAsync(row, PendingWriteStatus.Expired, ct);
+            }
+            return null;
+        }
+        var callId = state.ToolCalls.LastOrDefault(c => c.ToolName == row.ToolName)?.CallId ?? "";
+        return Writes.PendingWrite.From(row, flows.SchemaFor(row.ToolName)).ToQuestion(callId, null);
     }
 
     /// <summary>The identifier-only arguments back from their summary ("accountId=A-1043 runId=4417").</summary>

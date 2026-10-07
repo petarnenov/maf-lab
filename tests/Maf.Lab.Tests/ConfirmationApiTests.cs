@@ -141,11 +141,11 @@ public class ConfirmationApiTests
 
         await using var scope = api.Services.CreateAsyncScope();
         var db = await scope.ServiceProvider.GetRequiredService<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(Ct);
-        var steps = await db.Audit.Where(a => a.Kind == "fee.adjustment").OrderBy(a => a.Id).ToListAsync(Ct);
+        var steps = await db.Audit.Where(a => a.Kind == Plugins.FixtureWriteFlow.AuditKind).OrderBy(a => a.Id).ToListAsync(Ct);
 
-        Assert.Equal(
-            ["fee.adjustment.proposed", "fee.adjustment.confirmed", "fee.adjustment.applied"],
-            steps.Select(s => s.ToolName));
+        // The flow records its own steps, handed the tool's status (generalize-write-confirmation).
+        Assert.Equal(["fixture.write.proposed", "fixture.write.applied"], steps.Select(s => s.ToolName));
+        Assert.Equal(["proposed", "applied"], steps.Select(s => s.Outcome));
         Assert.All(steps, s => Assert.Equal("adam", s.PrincipalId));
         Assert.All(steps, s => Assert.DoesNotContain("overcharged", s.Arguments, StringComparison.OrdinalIgnoreCase));
 
@@ -165,9 +165,10 @@ public class ConfirmationApiTests
 
         await using var scope = api.Services.CreateAsyncScope();
         var db = await scope.ServiceProvider.GetRequiredService<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(Ct);
-        var steps = await db.Audit.Where(a => a.Kind == "fee.adjustment").OrderBy(a => a.Id).ToListAsync(Ct);
+        var steps = await db.Audit.Where(a => a.Kind == Plugins.FixtureWriteFlow.AuditKind).OrderBy(a => a.Id).ToListAsync(Ct);
 
-        Assert.Equal(["fee.adjustment.proposed", "fee.adjustment.rejected"], steps.Select(s => s.ToolName));
-        Assert.DoesNotContain(steps, s => s.ToolName == "fee.adjustment.applied");
+        Assert.Equal(["fixture.write.proposed", "fixture.write.declined"], steps.Select(s => s.ToolName));
+        Assert.Equal(["proposed", "rejected"], steps.Select(s => s.Outcome));
+        Assert.Empty(tools.Applied);
     }
 }

@@ -57,7 +57,12 @@ public class FeeAdjustmentFlowTests
             settings["Compliance:Deadline"] = deadline;
         }
 
-        return new ApiFactory(ProposingModel(), tools) { ExtraSettings = settings };
+        // Billing's own flow for the fakes' write tool, in place of the core fixture's (generalize-write-confirmation).
+        return new ApiFactory(ProposingModel(), tools)
+        {
+            ExtraSettings = settings,
+            ConfigureTestServices = Maf.Lab.Plugins.Billing.FeeAdjustmentFlow.Install,
+        };
     }
 
     private static async Task<List<AuditRow>> AuditAsync(ApiFactory api)
@@ -80,7 +85,7 @@ public class FeeAdjustmentFlowTests
 
         var interrupt = ApiFactory.InterruptOf(events);
         Assert.NotNull(interrupt);
-        Assert.Equal("A-1042", interrupt.Value.GetProperty("metadata").GetProperty("adjustment").GetProperty("accountId").GetString());
+        Assert.Equal("A-1042", interrupt.Value.GetProperty("metadata").GetProperty("summary").GetProperty("accountId").GetString());
         Assert.Equal("RUN_FINISHED", events[^1].Name);
 
         // The reviewer was not troubled for a small one.

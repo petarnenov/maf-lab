@@ -152,12 +152,21 @@ The core never references a plugin; a plugin reaches the core only through `Maf.
 
 - `IMafPlugin` — identity (its name), nothing else;
 - `IContributesServices`, `IContributesEndpoints`, `IContributesModel`, `IContributesDomainBehaviour`,
-  `IContributesTurnObserver`, `IContributesOpenWork`, `IContributesBrandProvider` — implement only what you give;
+  `IContributesTurnObserver`, `IContributesOpenWork`, `IContributesBrandProvider`, `IContributesWriteConfirmation` —
+  implement only what you give;
 - `IMafEndpoints` — your route group (behind the core's gate) and `MapPluginAgent`, the one way to serve an AG-UI agent;
 - ports: `IDomainBehaviour`, `ITurnObserver`, `ITurnAccess`, `IConversationStore`, `IInstalledPlugins`,
   `IBrandProvider`. A port reads the caller from the request; none takes a principal, a tenant or a user.
+- a tool that writes asks a person first: its first call answers MCP's `input_required` with a summary, an opaque state
+  and an expiry under `WriteConfirmationKeys` (`Maf.Lab.Domain.Writes`), and your `IWriteConfirmationFlow` for that
+  tool's name decides what happens next — ask the person (`AskPerson`), have the model ask them something first
+  (`AskInput`), or tell the model why not (`TellModel`). The flow owns its summary's JSON Schema (each property's
+  `title`, in order, is what the card shows) and the confirmed call's arguments; the core keeps the proposal, pauses the
+  run, takes the answer and calls the tool with the state. The flow reaches the core only through `IWriteAudit`,
+  `IConsultationScreening`, `IWriteTraceStep` and `IReviewerConsultation`; `IStatesConfirmationFacts` is for the eval.
 - web: `definePlugin` with `routes`, `nav`, `chatPanes`, `chatSidebars` (content only: the chat draws the sidebar's
-  chrome), `turnActions`, `sourceActions`, `cards`, `toolLabels`, `runObservers` and `reviewPanels`; `ChatContext`
+  chrome), `turnActions`, `sourceActions`, `cards`, `confirmations` (your write tool's summary on the confirmation card,
+  instead of the schema's), `toolLabels`, `runObservers` and `reviewPanels`; `ChatContext`
   gives a pane the selected turn and the chat's own actions (`openPane`, `setTurnView`, `openConversation`,
   `startNew`). A plugin never navigates by itself (no `react-router`).
 

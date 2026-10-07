@@ -20,17 +20,7 @@ public sealed class CoreNamesNoDomainTests
         ["Agent/JevStatistics.cs"] = "insights",
         ["A2A/BillingAgentCard.cs"] = "a2a",
         ["A2A/BillingAgentHandler.cs"] = "a2a",
-        // The fee-typed write confirmation: it has no seam yet, so it stays until generalize-write-confirmation gives it one
-        // (extract-billing part 3).
-        ["Agent/FeeAdjustmentFlow.cs"] = WriteConfirmation,
-        ["Agent/ConfirmationService.cs"] = WriteConfirmation,
-        ["Agent/ConfirmationSink.cs"] = WriteConfirmation,
-        ["Agent/ChatTurnRunner.cs"] = WriteConfirmation,
-        ["Agent/ToolSource.cs"] = WriteConfirmation,
-        ["Endpoints/HistoryEndpoints.cs"] = WriteConfirmation,
     };
-
-    private const string WriteConfirmation = "generalize-write-confirmation";
 
     /// <summary>
     /// The retrieval library's files that still name a domain: the billing host (its Program.cs, Billing/ and its tools)

@@ -4,8 +4,6 @@ using Microsoft.Extensions.Options;
 
 namespace Maf.Lab.Api.Agent;
 
-// names a domain until the generalize-write-confirmation follow-up moves it (introduce-plugins 8.1)
-// The fee-typed write confirmation, which has no seam yet (extract-billing part 3).
 /// <summary>Supplies the agent's tools for one turn, authenticated as the calling user.</summary>
 public interface IToolSource
 {
@@ -167,12 +165,12 @@ public sealed class McpToolSource(IOptions<AgentOptions> options, ILoggerFactory
                 Meta = idempotencyKey is { Length: > 0 }
                     ? new System.Text.Json.Nodes.JsonObject
                     {
-                        [Maf.Lab.Domain.Billing.FeeAdjustmentTool.IdempotencyMetaKey] = idempotencyKey,
+                        [Maf.Lab.Domain.Writes.WriteConfirmationKeys.IdempotencyKey] = idempotencyKey,
                     }
                     : null,
                 InputResponses = new Dictionary<string, ModelContextProtocol.Protocol.InputResponse>
                 {
-                    [Maf.Lab.Domain.Billing.FeeAdjustmentTool.ConfirmationKey] =
+                    [Maf.Lab.Domain.Writes.WriteConfirmationKeys.Confirmation] =
                         ModelContextProtocol.Protocol.InputResponse.FromElicitResult(new ModelContextProtocol.Protocol.ElicitResult
                         {
                             Action = approve ? "accept" : "decline",

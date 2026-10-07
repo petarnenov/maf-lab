@@ -1,12 +1,6 @@
 import { EventType, type BaseEvent } from '@ag-ui/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type {
-  ConfirmationRequiredData,
-  DataCard,
-  FocusAccount,
-  HistoryTurn,
-  SourceRef,
-} from '../api/types';
+import type { PendingWrite, DataCard, FocusAccount, HistoryTurn, SourceRef } from '../api/types';
 import {
   chatReducer,
   hydrateTurn,
@@ -43,7 +37,7 @@ type Happened =
   | { type: 'sources'; data: { sources: SourceRef[] } }
   | { type: 'state'; data: { focus: FocusAccount | null } }
   | { type: 'card'; data: DataCard }
-  | { type: 'confirmation_required'; data: ConfirmationRequiredData }
+  | { type: 'confirmation_required'; data: PendingWrite }
   | { type: 'run_started'; data: { conversationId: string } }
   | { type: 'done'; data: { conversationId: string; turnId: string; error?: string | null } };
 
@@ -123,16 +117,13 @@ function official(happened: Happened): BaseEvent[] {
             type: 'interrupt',
             interrupts: [
               {
-                id: happened.data.adjustmentId,
+                id: happened.data.writeId,
                 reason: 'approval_required',
                 message: happened.data.question,
-                toolCallId: happened.data.callId,
+                toolCallId: 'c1',
                 expiresAt: happened.data.expiresAt ?? undefined,
-                metadata: {
-                  adjustment: happened.data.adjustment,
-                  state: happened.data.state,
-                  tool: happened.data.toolName,
-                },
+                // The write as the server's one builder composes it: no opaque state reaches the browser.
+                metadata: happened.data,
               },
             ],
           },
@@ -442,13 +433,12 @@ describe('a write waiting for a person', () => {
     periodStart: '2026-10-01',
     periodEnd: '2026-10-31',
   };
-  const confirmation = (expiresAt?: string | null) => ({
-    callId: 'c1',
+  const confirmation = (expiresAt?: string | null): PendingWrite => ({
+    writeId: 'adj_1',
     toolName: 'propose_fee_adjustment',
-    adjustmentId: 'adj_1',
-    adjustment,
+    summary: adjustment,
+    summarySchema: null,
     question: 'Apply a fee adjustment of -200.00 USD to A-1042?',
-    state: 'opaque',
     expiresAt,
   });
 
@@ -469,7 +459,8 @@ describe('a write waiting for a person', () => {
   it('waits once a proposal arrives', () => {
     const state = proposing(new Date(Date.now() + 60_000).toISOString());
     expect(card(state).confirmationState).toBe('waiting');
-    expect(card(state).confirmation?.adjustment.accountId).toBe('A-1042');
+    expect((card(state).confirmation?.summary as { accountId: string }).accountId).toBe('A-1042');
+    expect(card(state).confirmation?.toolName).toBe('propose_fee_adjustment');
   });
 
   it('is already too late when the proposal arrives expired', () => {
@@ -484,22 +475,22 @@ describe('a write waiting for a person', () => {
 
   it('moves through answering to what it became', () => {
     let state = proposing(new Date(Date.now() + 60_000).toISOString());
-    state = chatReducer(state, { type: 'answering', adjustmentId: 'adj_1' });
+    state = chatReducer(state, { type: 'answering', writeId: 'adj_1' });
     expect(card(state).confirmationState).toBe('answering');
 
-    state = chatReducer(state, { type: 'answered', adjustmentId: 'adj_1', outcome: 'applied' });
+    state = chatReducer(state, { type: 'answered', writeId: 'adj_1', outcome: 'applied' });
     expect(card(state).confirmationState).toBe('applied');
   });
 
   it.each(['declined', 'gone', 'expired'] as const)('settles into %s', (outcome) => {
     let state = proposing(new Date(Date.now() + 60_000).toISOString());
-    state = chatReducer(state, { type: 'answered', adjustmentId: 'adj_1', outcome });
+    state = chatReducer(state, { type: 'answered', writeId: 'adj_1', outcome });
     expect(card(state).confirmationState).toBe(outcome);
   });
 
   it('leaves another proposal alone', () => {
     let state = proposing(new Date(Date.now() + 60_000).toISOString());
-    state = chatReducer(state, { type: 'answered', adjustmentId: 'adj_other', outcome: 'applied' });
+    state = chatReducer(state, { type: 'answered', writeId: 'adj_other', outcome: 'applied' });
     expect(card(state).confirmationState).toBe('waiting');
   });
 
@@ -735,27 +726,16 @@ describe('a run the person stopped', () => {
     state = apply(state, {
       type: 'confirmation_required',
       data: {
-        callId: 'c1',
+        writeId: 'adj_1',
         toolName: 'propose_fee_adjustment',
-        adjustmentId: 'adj_1',
-        adjustment: {
-          adjustmentId: 'adj_1',
-          accountId: 'A-1042',
-          accountName: 'Ridgeline Family Trust',
-          currentFee: 1200,
-          amount: -200,
-          resultingFee: 1000,
-          currency: 'USD',
-          periodStart: '2026-10-01',
-          periodEnd: '2026-10-31',
-        },
+        summary: { accountId: 'A-1042', amount: -200 },
+        summarySchema: null,
         question: 'Apply a fee adjustment of -200.00 USD to A-1042?',
-        state: 'opaque',
         expiresAt: null,
       },
     });
     state = chatReducer(state, { type: 'start_answer', assistantTurnId: 'a2' });
-    state = chatReducer(state, { type: 'answering', adjustmentId: 'adj_1' });
+    state = chatReducer(state, { type: 'answering', writeId: 'adj_1' });
 
     state = event(chatReducer(state, { type: 'stop_requested' }), aborted);
 

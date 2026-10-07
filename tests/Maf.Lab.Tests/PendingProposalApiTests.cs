@@ -35,7 +35,7 @@ public class PendingProposalApiTests
     private static ApiFactory Api(FakeToolSource tools) =>
         new(ProposingModel(), tools) { ExtraSettings = new Dictionary<string, string?> { ["Compliance:BaseUrl"] = "" } };
 
-    private static async Task<(string ConversationId, string AdjustmentId)> ProposeAsync(HttpClient client)
+    private static async Task<(string ConversationId, string WriteId)> ProposeAsync(HttpClient client)
     {
         var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by 200");
         var interrupt = ApiFactory.InterruptOf(events);
@@ -56,12 +56,18 @@ public class PendingProposalApiTests
         var tools = new FakeToolSource();
         using var api = Api(tools);
         var client = api.ClientFor("adam", "firm-a", Role.USER);
-        var (conversationId, adjustmentId) = await ProposeAsync(client);
+        var (conversationId, writeId) = await ProposeAsync(client);
 
         var pending = await PendingAsync(client, conversationId);
 
-        Assert.Equal(adjustmentId, pending.GetProperty("adjustmentId").GetString());
-        var adjustment = pending.GetProperty("adjustment");
+        // The write as its tool and its flow describe it; the opaque state stays on the server.
+        Assert.Equal(writeId, pending.GetProperty("writeId").GetString());
+        Assert.Equal(FeeAdjustmentTool.Name, pending.GetProperty("toolName").GetString());
+        Assert.False(pending.TryGetProperty("state", out _));
+        // The schema is the tool's flow's (here the fixture's), looked up by the tool's name.
+        Assert.Equal("Amount", pending.GetProperty("summarySchema").GetProperty("properties").GetProperty("amount")
+            .GetProperty("title").GetString());
+        var adjustment = pending.GetProperty("summary");
         Assert.Equal("A-1042", adjustment.GetProperty("accountId").GetString());
         Assert.Equal(-200m, adjustment.GetProperty("amount").GetDecimal());
         Assert.Equal(1000m, adjustment.GetProperty("resultingFee").GetDecimal());
@@ -113,6 +119,49 @@ public class PendingProposalApiTests
         }
 
         Assert.Equal(JsonValueKind.Null, (await PendingAsync(client, conversationId)).ValueKind);
+    }
+
+    [Fact]
+    public async Task An_answer_after_the_expiry_writes_nothing_and_records_it_expired()
+    {
+        var tools = new FakeToolSource();
+        using var api = Api(tools);
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
+        var (conversationId, writeId) = await ProposeAsync(client);
+        await using (var scope = api.Services.CreateAsyncScope())
+        {
+            var db = await scope.ServiceProvider.GetRequiredService<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(Ct);
+            var row = await db.PendingWrites.SingleAsync(Ct);
+            row.ExpiresAt = DateTime.UtcNow.AddMinutes(-1);
+            await db.SaveChangesAsync(Ct);
+        }
+
+        var events = await ApiFactory.ResumeAsync(client, conversationId, writeId, approve: true);
+
+        Assert.Contains(events, e => e.Name == "TEXT_MESSAGE_CONTENT" && e.Data.GetRawText().Contains("too old", StringComparison.Ordinal));
+        Assert.Empty(tools.Applied);
+        await using var check = await api.Services.GetRequiredService<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(Ct);
+        Assert.Equal(PendingWriteStatus.Expired, (await check.PendingWrites.SingleAsync(Ct)).Status);
+    }
+
+    [Fact]
+    public async Task A_write_no_installed_plugin_has_a_flow_for_is_refused()
+    {
+        var tools = new FakeToolSource();
+        using var api = new ApiFactory(ProposingModel(), tools)
+        {
+            ExtraSettings = new Dictionary<string, string?> { ["Compliance:BaseUrl"] = "" },
+            // The tool still asks; nobody contributes a flow for it.
+            ConfigureTestServices = s => s.AddScoped(_ => new Maf.Lab.Api.Agent.Writes.WriteFlows([])),
+        };
+        var client = api.ClientFor("adam", "firm-a", Role.USER);
+
+        var events = await ApiFactory.ChatAsync(client, "adjust the fee on A-1042 down by 200");
+
+        Assert.Null(ApiFactory.InterruptOf(events));
+        await using var db = await api.Services.GetRequiredService<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(Ct);
+        Assert.Empty(await db.PendingWrites.ToListAsync(Ct));
+        Assert.Contains(await db.Audit.ToListAsync(Ct), a => a.ToolName == "write.refused" && a.Outcome == "no_flow");
     }
 
     [Fact]
