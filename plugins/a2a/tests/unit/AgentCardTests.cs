@@ -3,7 +3,6 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using A2A;
-using Maf.Lab.Api.A2A;
 using Maf.Lab.Plugins.A2A;
 using Maf.Lab.Domain.Configuration;
 using Maf.Lab.Retrieval.Configuration;

@@ -5,6 +5,6 @@ kind = "app"
 # enable-plugins-per-tenant).
 scope = "tenant"
 environments = ["dev", "qa", "stage", "prod"]
-description = "The assistant's A2A surface: its agent card, partner tokens, and the protocol over which a partner system asks questions and follows long-running tasks (the simulated billing run while billing is installed)."
+description = "The assistant's A2A surface: its agent card, partner tokens, and the protocol over which a partner system asks questions and follows long-running tasks (the simulated billing run while billing is installed); and the firm's view of that traffic on the Agent to agent screen."
 progress = "Page: the A2A admin page shows its loading state; a partner follows a long task through its status updates"
 stopping = "Key: the partner's own client; Stop: an A2A tasks/cancel, through the run state store; Recorded in: the task's state in the shared store; Shown: the task reads canceled"

@@ -67,7 +67,7 @@ public class A2AGuardrailTests : IDisposable
 
     private static (AssistantAgentHandler Handler, ApiFactory Api) Partner(FakeJev jev)
     {
-        var api = new ApiFactory(ApiFactory.ProceduralModel(), jev: jev);
+        var api = new ApiFactory(ApiFactory.ProceduralModel(), jev: jev) { InstalledPlugins = A2APluginSupport.Installed };
         var partner = new PartnerPrincipal("acme-portal", new HashSet<TenantId> { TenantId.Firm("firm-a") },
             new HashSet<string> { A2AScopes.BillingRead });
         var handler = new AssistantAgentHandler(

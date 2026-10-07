@@ -230,7 +230,6 @@ export const CURRICULUM: CurriculumSection[] = [
           'The lab publishes an Agent Card and hosts a billing agent whose tasks move from submitted through working to completed or input-required. Tasks are stored so a run continues after the stream drops, with push notifications for long tasks.',
         paths: ['src/Maf.Lab.A2A/AgentCardFactory.cs', 'src/Maf.Lab.A2A/A2AEndpoints.cs'],
         spec: 'a2a-hosting',
-        screen: { to: '/admin/a2a', label: 'Agent to agent' },
       },
       {
         concept: 'A2A client',
@@ -238,7 +237,6 @@ export const CURRICULUM: CurriculumSection[] = [
           "Before a fee adjustment, the assistant consults a separate compliance agent found by its Agent Card, over a streaming A2A message. It authenticates as itself — the user's token is not forwarded — and every way the consultation can end, including a question back or a timeout, is a typed result.",
         paths: ['src/Maf.Lab.Plugins.Abstractions/ReviewerConsultation.cs', 'src/Maf.Lab.A2A'],
         spec: 'a2a-client',
-        screen: { to: '/admin/a2a', label: 'Agent to agent' },
       },
       {
         concept: 'One assistant with a router',

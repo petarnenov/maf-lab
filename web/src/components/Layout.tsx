@@ -15,7 +15,6 @@ const LINKS = [
   { to: '/topology', label: 'Topology' },
   { to: '/coverage', label: 'Coverage' },
   { to: '/admin/feedback', label: 'Feedback review' },
-  { to: '/admin/a2a', label: 'Agent to agent' },
 ];
 
 export function Layout() {

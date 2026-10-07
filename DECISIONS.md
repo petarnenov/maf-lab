@@ -3560,6 +3560,50 @@ No package version moves in this change.
     fail the curriculum test once the folder is deleted.
   - CI installs it (`CI_PLUGINS`), so `ci-e2e` keeps the collector and `ci-e2e-core` runs without it. It has no
     `compose.ci.yml`: CI's override does not touch these services.
+- **Part K (extract-a2a).**
+  - The assistant's A2A surface is the `a2a` plugin (app, tenant, every environment): the agent card and the handler
+    (`AssistantAgentCard`, `AssistantAgentHandler`, renamed from `Billing*` for what they are), the SDK's protocol
+    server, partner authentication (a second JwtBearer scheme; the dev issuer's stays the default, pinned by a test),
+    the card, token and protocol routes at the root and their balancer locations, the SQLite task and push-config
+    stores and the push dispatcher, their three tables (`IContributesModel`, names unchanged, so a database keeps its
+    tasks), its open work, the activity screen and `/api/admin/a2a`, `verify` 4.5 and `eval-a2a`. Without it the card,
+    `/a2a` and the activity routes answer `404` (a test pins it), and the balancer reserves the A2A shapes at the root
+    as it does under an agent's prefix.
+  - `Maf.Lab.A2A` becomes a shared library a plugin may reference (the card factory, partner identity, the wire
+    adapter, the Redis stores the agents use, the task-cancel watch); `UseA2ASpecWire` stays in the core's pipeline.
+  - Three ports in the abstractions. `IAssistantAnswer.AnswerAsync(principal, question)`: the core answers with the
+    chat agent (screen, a token for that principal, the run) and the plugin keeps only the A2A framing.
+    `IDomainToolCall.CallAsync(principal, domain, tool, arguments)`: a domain's tool through the core's tool source,
+    its structured content, or null for "absent or unavailable" (an error result, a domain not installed, a server
+    that cannot answer) — never an exception the caller has to tell from a refusal. `IActivityAudit.RecordAsync`: an
+    audit row with an explicit actor and kind (one `a2a.request` per message, as before, and `a2a.cancel`). It is not
+    `IWriteAudit` (part F): that one records a write a person confirmed in a turn; a partner's request has no turn and
+    its actor is the partner. Rejected: the plugin referencing the api (the core would be the plugin's to change), and
+    one audit port with optional turn fields (two meanings behind one call).
+  - The handler takes no tenant: it derives one read-only principal per firm the partner is entitled to
+    (`Readers(PartnerPrincipal)`), and every call takes a principal, so no principal exists for a firm the partner was
+    not registered for. The architecture test (no plugin method takes a tenant) found the earlier `ReadOnly(firm)`
+    once the handler was a plugin's.
+  - The activity screen reads the audit through `IAuditTrail` (part H), one page per kind: the newest 200 partner
+    requests and the newest 200 consultations, where the core read the newest 500 of both mixed — a documented change,
+    not a hidden one. Its cancel injects the protocol server and records through `IActivityAudit`.
+  - Open work (part L's factory shape): the tasks not in a terminal state; plugin-off cancels each through the task
+    store's guarded save, so a task that has ended keeps its end, the run watching the store stops at its next step,
+    and the partner's webhook hears it.
+  - The test agent's section and `/api/admin/a2a/test-agent` move to the coverage page as
+    `/api/admin/coverage/test-agent`: they describe the coverage runner's agent, not a partner.
+  - Named debt, fenced in code (`names a domain until generalize-a2a-skills`): the card's skills and the handler's run
+    status and simulated run are billing's, offered only while billing is installed, and the partner scope stays
+    `a2a.billing.read` (partners hold tokens for it). The card's name reads "maf-lab assistant".
+  - Follow-ups, in order: **a2a-client-registrations** (after this change's archive, before topology's move): the
+    outbound registrations from `Compliance:*` to `A2A:Clients:<agent>`, `compose/env/compliance.env` folded into
+    `a2a.env`, and `A2AOptions.StoreKeyspace` required (its default is `compliance`, the reviewer's live Redis data) —
+    a cross-plugin rename the move did not depend on, reviewed by compliance's owner; until it lands the test agent's
+    client keys stay `TestAgent__*`. **generalize-a2a-skills**: a domain contributes its own A2A skills, and the fences
+    go. A test-suite note: one run saw `A2AAdminApiTests.Another_firm_sees_none_of_it` fail with an
+    `ObjectDisposedException` on the `SQLitePCL.sqlite3` handle during startup (`DatabaseInitializer`); reading found no
+    shared connection, file or pool (§84), and it did not recur. If it does, capture a dump
+    (`DOTNET_DbgEnableMiniDump`) rather than change code on a guess.
 - **Part L (extract-index-admin).**
   - The index admin's screen, its six `/api/admin` routes and the api's reference to `Maf.Lab.Indexing` are the
     index-admin plugin's. `Maf.Lab.Indexing` becomes a shared library a plugin may reference, beside Domain and

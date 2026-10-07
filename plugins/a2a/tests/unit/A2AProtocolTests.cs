@@ -4,7 +4,6 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using A2A;
-using Maf.Lab.Api.A2A;
 using Maf.Lab.Plugins.A2A;
 using Maf.Lab.Api.Storage;
 using Microsoft.EntityFrameworkCore;
@@ -196,7 +195,7 @@ public class A2AProtocolTests
         string configId;
         await using (var db = ChatApiTests.Db(api))
         {
-            var row = Assert.Single(await db.A2APushConfigs.Where(c => c.TaskId == "task-push").ToListAsync(Ct));
+            var row = Assert.Single(await db.Set<A2APushConfigRow>().Where(c => c.TaskId == "task-push").ToListAsync(Ct));
             Assert.Equal("shhh", row.Token);
             configId = row.Id;
         }
@@ -214,7 +213,7 @@ public class A2AProtocolTests
         Assert.Equal(JsonValueKind.Object, nothing.ValueKind);
 
         await using var after = ChatApiTests.Db(api);
-        Assert.Empty(await after.A2APushConfigs.Where(c => c.TaskId == "task-push").ToListAsync(Ct));
+        Assert.Empty(await after.Set<A2APushConfigRow>().Where(c => c.TaskId == "task-push").ToListAsync(Ct));
     }
 
     [Fact]

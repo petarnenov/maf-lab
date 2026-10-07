@@ -2,7 +2,6 @@ using Maf.Lab.A2A;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Maf.Lab.Api.A2A;
 using Maf.Lab.Plugins.A2A;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;

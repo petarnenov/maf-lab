@@ -291,43 +291,6 @@ export interface TopologyReport {
 
 // ---- Compliance ----
 
-// ---- A2A activity (admin) ----
-
-export interface InboundTask {
-  taskId: string;
-  partnerId: string;
-  operation: string;
-  state: string;
-  createdAt: string;
-  updatedAt: string;
-  durationMs: number;
-  cancellable: boolean;
-}
-
-export interface OutboundConsultation {
-  taskId: string;
-  agent: string;
-  outcome: string;
-  durationMs: number;
-  at: string;
-}
-
-export interface PushDelivery {
-  taskId: string;
-  state: string;
-  url: string;
-  attempts: number;
-  delivered: boolean;
-  error?: string | null;
-  at: string;
-}
-
-export interface A2AActivity {
-  inbound: InboundTask[];
-  outbound: OutboundConsultation[];
-  deliveries: PushDelivery[];
-}
-
 /** Whether the test agent's card answered just now; reachable means the card answered, not that a run would succeed. */
 export interface TestAgentStatus {
   configured: boolean;

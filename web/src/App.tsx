@@ -1,5 +1,4 @@
 import { Navigate, Route, Routes } from 'react-router';
-import { A2AAdminPage } from './admin/A2AAdminPage';
 import { FeedbackAdminPage } from './admin/FeedbackAdminPage';
 import { ChatPage } from './chat/ChatPage';
 import { CoveragePage } from './coverage/CoveragePage';
@@ -27,14 +26,6 @@ export function App() {
           element={
             <RequireAdmin>
               <FeedbackAdminPage />
-            </RequireAdmin>
-          }
-        />
-        <Route
-          path="admin/a2a"
-          element={
-            <RequireAdmin>
-              <A2AAdminPage />
             </RequireAdmin>
           }
         />

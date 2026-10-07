@@ -52,17 +52,17 @@ MCP note: workspace MCP server config lives in `.mcp.json` (Playwright server vi
 | Path | Match | Served by |
 |---|---|---|
 | `^/[a-z0-9-]+/mcp$` | regex | the balancer itself |
-| `^/[a-z0-9-]+/(a2a\|\.well-known/agent-card\.json)(/\|$)` | regex | the balancer itself |
+| `^/([a-z0-9-]+/)?(a2a\|\.well-known/agent-card\.json)(/\|$)` | regex | the balancer itself |
 | `/lb-health` | exact | the balancer itself |
 | `/api/coverage/runs/agent` | exact | `api` |
 | `/copilotkit/` | prefix | `copilot-runtime` |
 | `/api/chat` | exact | `api` |
 | `/api/` | prefix | `api` |
 | `/dev/` | prefix | `api` |
-| `/.well-known/agent-card.json` | exact | `api` |
-| `/a2a` | prefix | `api` |
 | `/` | prefix | `web` |
 | `/example/mcp` | exact | `mcp-example` at `/mcp` (plugin `_example`) |
+| `/.well-known/agent-card.json` | exact | `api` (plugin `a2a`) |
+| `/a2a` | prefix | `api` (plugin `a2a`) |
 | `/mcp` | exact | `mcp-retrieval` (plugin `billing`) |
 | `/code/mcp` | exact | `mcp-code` at `/mcp` (plugin `code`) |
 | `/compliance` | prefix | `compliance` (plugin `compliance`) |

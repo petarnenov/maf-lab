@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Description>The a2a plugin's in-process part: the assistant's agent card and the A2A handler partners talk to</Description>
+    <Description>The a2a plugin's in-process part: the assistant's agent card, the A2A handler partners talk to, and its task and push stores</Description>
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
@@ -10,6 +10,8 @@
     <ProjectReference Include="..\..\..\src\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />
     <!-- The shared A2A protocol library: the card descriptor, partner identity and options, the task-cancel watch. -->
     <ProjectReference Include="..\..\..\src\Maf.Lab.A2A\Maf.Lab.A2A.csproj" />
+    <!-- The request's principal (the admin screen's firm) only; the tables are reached through the core's store. -->
+    <ProjectReference Include="..\..\..\src\Maf.Lab.Retrieval\Maf.Lab.Retrieval.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Maf.Lab.Tests" />

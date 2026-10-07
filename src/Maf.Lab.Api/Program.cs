@@ -1,6 +1,5 @@
 using Maf.Lab.Api.Agent.AGUI;
 using Maf.Lab.A2A;
-using Maf.Lab.Api.A2A;
 using Maf.Lab.Api.Admin;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Jev;
@@ -109,7 +108,7 @@ public partial class Program
         builder.Services.AddSingleton<Topology.TopologyProbe>();
         // A turn's link to its trace: none until a plugin that keeps the traces registers its own (Null Object).
         builder.Services.TryAddSingleton<Maf.Lab.Plugins.Abstractions.ITraceLink, Maf.Lab.Plugins.Abstractions.NoTraceLink>();
-        // The assistant's agent card and handler are the a2a plugin's (extract-a2a); it reaches the core through these.
+        // The A2A surface, its stores and its tables are the a2a plugin's (extract-a2a); it reaches the core through these.
         builder.Services.AddSingleton<Maf.Lab.Plugins.Abstractions.IAssistantAnswer, Agent.AssistantAnswer>();
         builder.Services.AddSingleton<Maf.Lab.Plugins.Abstractions.IDomainToolCall, Agent.DomainToolCall>();
         builder.Services.AddSingleton<Maf.Lab.Plugins.Abstractions.IActivityAudit, Agent.ActivityAudit>();
@@ -118,15 +117,6 @@ public partial class Program
         builder.Services.TryAddSingleton<Maf.Lab.Plugins.Abstractions.IReviewerConsultation, Agent.Writes.NoReviewer>();
         // The audit record as a screen reads it; the screen is the compliance plugin's.
         builder.Services.AddScoped<Maf.Lab.Plugins.Abstractions.IAuditTrail, Compliance.CoreAuditTrail>();
-        builder.Services.AddHttpClient("a2a-push");
-        builder.Services.AddSingleton<A2A.PushNotificationDispatcher>();
-        // The store reads the partner behind the request it serves. Transitional (extract-a2a batch 1): the a2a plugin
-        // registers the same accessor with its partner authentication; batch 2 moves the store, and this line, into it.
-        builder.Services.TryAddSingleton<Maf.Lab.A2A.IPartnerAccessor, Maf.Lab.A2A.HttpPartnerAccessor>();
-        builder.Services.AddSingleton<global::A2A.ITaskStore, A2A.SqliteTaskStore>();
-        // The protocol server, its partner authentication and its routes are the a2a plugin's (extract-a2a); the stores they
-        // read stay here until batch 2 moves them with their tables.
-        builder.Services.AddSingleton<IPushConfigStore, A2A.SqlitePushConfigStore>();
         builder.Services.Configure<Storage.MessageRetentionOptions>(
             builder.Configuration.GetSection(Storage.MessageRetentionOptions.Section));
         builder.Services.AddSingleton<Storage.MessageRetentionService>();
@@ -192,7 +182,6 @@ public partial class Program
         app.MapEvalReports();
         app.MapHistory();
         app.MapTopology();
-        app.MapA2AAdmin();
         app.MapCoverage();
         app.MapPlugins();
         app.MapMafPlugins();

@@ -24,7 +24,7 @@ connect: billing relationships (`trace_billing_relationships`) and the code grap
   [`docs/trace-events.md`](docs/trace-events.md); telemetry: [`docs/telemetry.md`](docs/telemetry.md); shared state:
   [`docs/shared-state.md`](docs/shared-state.md)
 - Screens: `/chat`, `/evals`, `/topology`, `/coverage`, `/curriculum` (plugin `curriculum`), and for admins `/admin/index` (plugin `index-admin`), `/admin/feedback`,
-  `/admin/compliance`, `/admin/jev`, `/admin/a2a`; `/telemetry` while the `observability` plugin is installed
+  `/admin/compliance`, `/admin/jev`, `/admin/a2a` (plugin `a2a`); `/telemetry` while the `observability` plugin is installed
 
 ```mermaid
 flowchart TB
@@ -121,17 +121,17 @@ The balancer's routes, as `compose/lb/nginx.conf`, the api upstream template and
 | Path | Match | Served by |
 |---|---|---|
 | `^/[a-z0-9-]+/mcp$` | regex | the balancer itself |
-| `^/[a-z0-9-]+/(a2a\|\.well-known/agent-card\.json)(/\|$)` | regex | the balancer itself |
+| `^/([a-z0-9-]+/)?(a2a\|\.well-known/agent-card\.json)(/\|$)` | regex | the balancer itself |
 | `/lb-health` | exact | the balancer itself |
 | `/api/coverage/runs/agent` | exact | `api` |
 | `/copilotkit/` | prefix | `copilot-runtime` |
 | `/api/chat` | exact | `api` |
 | `/api/` | prefix | `api` |
 | `/dev/` | prefix | `api` |
-| `/.well-known/agent-card.json` | exact | `api` |
-| `/a2a` | prefix | `api` |
 | `/` | prefix | `web` |
 | `/example/mcp` | exact | `mcp-example` at `/mcp` (plugin `_example`) |
+| `/.well-known/agent-card.json` | exact | `api` (plugin `a2a`) |
+| `/a2a` | prefix | `api` (plugin `a2a`) |
 | `/mcp` | exact | `mcp-retrieval` (plugin `billing`) |
 | `/code/mcp` | exact | `mcp-code` at `/mcp` (plugin `code`) |
 | `/compliance` | prefix | `compliance` (plugin `compliance`) |
@@ -268,7 +268,7 @@ allows, `none` means the core alone (`make core`), otherwise a comma-separated l
 | Plugin | Kind | Scope | Environments | What it is |
 |---|---|---|---|---|
 | `_example` | mcp | tenant | dev, qa | The authoring template: a small MCP server in its own container with one tool, get_example_fact, and a domain descriptor that routes questions about the sample fact to it. Off unless asked for. |
-| `a2a` | app | tenant | dev, qa, stage, prod | The assistant's A2A surface: its agent card, partner tokens, and the protocol over which a partner system asks questions and follows long-running tasks (the simulated billing run while billing is installed). |
+| `a2a` | app | tenant | dev, qa, stage, prod | The assistant's A2A surface: its agent card, partner tokens, and the protocol over which a partner system asks questions and follows long-running tasks (the simulated billing run while billing is installed); and the firm's view of that traffic on the Agent to agent screen. |
 | `a2a-inspector` | infra | installation | dev, qa | The A2A Inspector (a2aproject), opened on the lab's agent cards with a fresh partner token: a dev and qa tool. |
 | `billing` | mcp | tenant | dev, qa, stage, prod | Fee billing as a domain: its MCP server (mcp-retrieval: documentation search, run status and history, the billing graph, fee adjustments), its corpus and seeds, and its domain descriptor and routing. |
 | `code` | mcp | installation | dev, qa | The lab's own source code as a domain: the codebase MCP server (search_codebase and the code-graph tools), its domain descriptor and routing, and the chat's Code snippets pane. |
@@ -363,7 +363,7 @@ self-assessment. It writes a report in the same shape every eval suite writes, t
 `make ci-e2e` runs it. `make eval SUITE=…` does **not** — that target dispatches into the harness, which links
 against the service.
 
-**`/admin/a2a`** (TENANT_ADMIN) is where that traffic is visible: what arrived from partners, what this system
+**`/admin/a2a`** (TENANT_ADMIN, plugin `a2a`) is where that traffic is visible: what arrived from partners, what this system
 asked of the reviewer, and every push delivery — each with its state, when it happened and how long it took. A
 task still running can be cancelled from there, through the same protocol call a partner would make. The same
 page shows the test-generation agent, through the api: whether its card answers, what the card says, what a run
@@ -412,7 +412,7 @@ exposes a bug is skipped and reported, not worked around.
 The api then checks the result itself before anyone sees it, commits it to a candidate branch
 (`test-agent/<file-slug>-<runId>`), and waits for a TENANT_ADMIN to accept it — a conflict-free merge into `main` — or
 discard it. A suspected bug whose test still fails when un-skipped becomes a GitHub issue (`GITHUB_ISSUES_TOKEN`). The page
-follows a run live, and `/admin/a2a` shows the agent and its runs. `make testgen-e2e` drives the whole path without a
+follows a run live, and its test-agent section shows the agent and its runs. `make testgen-e2e` drives the whole path without a
 model; `make ci-e2e` includes it.
 
 The api writes to the repository (those branches and merges) and `evals/` as the user who ran `make`

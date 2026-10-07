@@ -1,9 +1,10 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import type { A2AActivity } from '../api/types';
-import { jsonResponse, makeSession, renderWithProviders } from '../test/render';
+import { jsonResponse, renderWithProviders } from '@maf/testing';
 import { A2AAdminPage } from './A2AAdminPage';
+import a2a from './index';
+import type { A2AActivity } from './types';
 
 const activity: A2AActivity = {
   inbound: [
@@ -150,18 +151,9 @@ describe('A2AAdminPage', () => {
     );
   });
 
-  it('is refused to an advisor, as the other admin screens are', async () => {
-    vi.stubGlobal('fetch', serve(activity));
-    const { RequireAdmin } = await import('../components/RequireAdmin');
-    renderWithProviders(
-      <RequireAdmin>
-        <A2AAdminPage />
-      </RequireAdmin>,
-      { session: makeSession('USER') },
-    );
-
-    expect(screen.getByText('Access denied')).toBeInTheDocument();
-    expect(screen.queryByTestId('a2a-inbound')).not.toBeInTheDocument();
+  it('is behind the core admin guard, as the other admin screens are', () => {
+    const route = a2a.routes?.find((r) => r.path === 'admin/a2a');
+    expect(route).toMatchObject({ path: 'admin/a2a', admin: true });
   });
 
   it('says so when no agent has talked to this system', async () => {

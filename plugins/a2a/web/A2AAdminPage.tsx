@@ -5,13 +5,13 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import type { A2AActivity } from '../api/types';
-import { useApi, useAuth } from '../auth/useAuth';
-import styles from '../shared/Page.module.css';
-import { Progress } from '../shared/Progress';
-import { StopHint } from '../shared/StopHint';
-import { useEscToStop } from '../shared/useEscToStop';
-import { formatDate } from '../shared/format';
+import { useApi, useUserKey } from '@maf/plugin-api';
+import styles from '@maf/shared/Page.module.css';
+import { Progress } from '@maf/shared/Progress';
+import { StopHint } from '@maf/shared/StopHint';
+import { useEscToStop } from '@maf/shared/useEscToStop';
+import { formatDate } from '@maf/shared/format';
+import type { A2AActivity } from './types';
 
 /**
  * What the agents have been doing: what partners asked of this system, what it asked of the reviewer, and
@@ -19,12 +19,12 @@ import { formatDate } from '../shared/format';
  * worked on. Below it, the test-generation agent: its card, whether it answers, its defaults and its runs.
  */
 export function A2AAdminPage() {
-  const { session } = useAuth();
+  const userKey = useUserKey();
   const api = useApi();
   const queryClient = useQueryClient();
 
   const activity = useQuery({
-    queryKey: ['admin', 'a2a', session?.token],
+    queryKey: ['admin', 'a2a', userKey],
     queryFn: ({ signal }) => api<A2AActivity>('/api/admin/a2a', { signal }),
   });
 

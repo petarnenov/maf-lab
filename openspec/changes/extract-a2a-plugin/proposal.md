@@ -21,14 +21,11 @@ code; it changes no behaviour, except where a line below says so.
   the core still never references a plugin. `UseA2ASpecWire` stays in the core's pipeline (the library's wire adapter).
 - The billing skills (run status, the simulated start-run) stay in the a2a plugin, fenced until generalize-a2a-skills,
   guarded by billing being installed as today: a skills seam is a capability of its own, not a move.
-- `compose/env/a2a.env` stays the api's (the deployment's inbound registration). The deployment's outbound A2A client
-  registrations generalize from `Compliance:*` (`compose/env/compliance.env`, extract-compliance-plugin) to
-  `A2A:Clients:<agent>` (client id and secret per agent consulted), mirroring `A2A:Partners:<id>` for the inbound side.
-  Its endpoint defaults from the agent's manifest (`[agent]`, or its card) through the catalogue, as an MCP plugin's
-  endpoint does. Client credentials are issued per authorization server, so they stay the deployment's configuration,
-  not a plugin folder's.
-- Also: `PartnerIdentity`'s default store keyspace (`compliance`, live Redis data) and `A2AAdminEndpoints`' agent
-  fallback, left as they were by extract-compliance-plugin.
+- `compose/env/a2a.env` stays the api's (the deployment's inbound registration). Moved to a2a-client-registrations:
+  the outbound A2A client registrations' generalization from `Compliance:*` to `A2A:Clients:<agent>`, and
+  `PartnerIdentity`'s store keyspace made required (its default is `compliance`, live Redis data) — a cross-plugin
+  configuration rename nothing in this move depends on. `A2AAdminEndpoints`' agent fallback (`compliance`) moves with
+  the endpoint as it is.
 - The coverage test agent's admin section and its route move to the coverage page: `/api/admin/a2a/test-agent` becomes
   `/api/admin/coverage/test-agent`.
 - `a2a-inspector` gains `depends = ["a2a", "compliance"]` (§10, 5o).
@@ -36,6 +33,8 @@ code; it changes no behaviour, except where a line below says so.
 - Behaviour: the agent card's name reads "maf-lab assistant" (was "maf-lab billing assistant"); the partner scope
   `a2a.billing.read` is unchanged (partner compatibility; recorded as debt).
 - Behaviour: the test agent's admin route moves under `/api/admin/coverage/`.
+- Behaviour: the A2A admin screen reads the audit through the core's `IAuditTrail`, one page per kind — the newest 200
+  partner requests and the newest 200 consultations — where the core read the newest 500 of both mixed.
 
 ## Capabilities
 

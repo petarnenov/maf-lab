@@ -1,15 +1,25 @@
-using System.Text.Json;
-using Maf.Lab.Api.Compliance;
-using Maf.Lab.Api.Storage;
 using Maf.Lab.Domain.Tenancy;
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Retrieval.Auth;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 
-namespace Maf.Lab.Api.Endpoints;
+namespace Maf.Lab.Plugins.A2A;
 
-/// <summary>What the agents have been doing, for the firm whose data they were doing it with.</summary>
+/// <summary>
+/// What the agents have been doing, for the firm whose data they were doing it with (extract-a2a batch 2): the tasks
+/// partners started, read from this plugin's own table; the consultations the assistant made of other agents and how
+/// each request ended, read from the core's audit record through <see cref="IAuditTrail"/>; and the webhook deliveries.
+/// The firm is the caller's own; there is no way to name another.
+/// </summary>
 public static class A2AAdminEndpoints
 {
+    /// <summary>The audit kinds this screen reads: a partner's request, and a consultation of another agent.</summary>
+    public const string RequestKind = AssistantAgentHandler.RequestKind;
+    public const string ConsultationKind = "a2a.consultation";
+
     /// <summary>An inbound task, as an operator needs to see it: no message content, only what happened.</summary>
     public sealed record InboundTask(string TaskId, string PartnerId, string Operation, string State,
         DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, long DurationMs, bool Cancellable);
@@ -23,60 +33,58 @@ public static class A2AAdminEndpoints
         IReadOnlyList<PushDelivery> Deliveries);
 
     /// <summary>States a task can still be stopped in.</summary>
-    private static readonly HashSet<string> Running =
+    internal static readonly HashSet<string> Running =
         new(StringComparer.OrdinalIgnoreCase) { "submitted", "working", "input-required", "auth-required" };
 
-    public static IEndpointRouteBuilder MapA2AAdmin(this IEndpointRouteBuilder app)
-    {
-        var api = app.MapGroup("/api/admin/a2a").RequireAuthorization(AuthPolicies.TenantAdmin);
+    /// <summary>How many of each audit kind the screen reads: the audit trail's page size.</summary>
+    private const int AuditPage = 200;
 
-        api.MapGet("", async (IPrincipalAccessor principals, IDbContextFactory<MafDbContext> db, CancellationToken ct) =>
+    public static void Map(IEndpointRouteBuilder app)
+    {
+        var api = app.MapGroup("/api/admin/a2a").RequireAuthorization(PolicyNames.TenantAdmin);
+
+        api.MapGet("", async (IPrincipalAccessor principals, IDbContextFactory<DbContext> db, IAuditTrail audit,
+            CancellationToken ct) =>
         {
-            var principal = principals.Current;
+            var tenantId = principals.Current.TenantId.Value;
             await using var context = await db.CreateDbContextAsync(ct);
 
             // A task carries the firm its partner was entitled to act for, stamped when it was created. The audit
             // would have been the other candidate, but it is written when a request *finishes*, so a task still
             // running would be invisible — and an operator's first question is about exactly those.
-            var tasks = await context.A2ATasks.AsNoTracking()
-                .Where(t => t.TenantId == principal.TenantId.Value)
+            var tasks = await context.Set<A2ATaskRow>().AsNoTracking()
+                .Where(t => t.TenantId == tenantId)
                 .OrderByDescending(t => t.UpdatedAt)
                 .Take(100)
                 .ToListAsync(ct);
 
             var taskIds = tasks.Select(t => t.Id).ToList();
 
-            // The audit says what each request was and how long it took, for the ones that have finished.
-            var records = await context.Audit
-                .Where(a => a.TenantId == principal.TenantId.Value
-                    && (a.Kind == AuditKinds.A2ARequest || a.Kind == AuditKinds.A2AConsultation))
-                .OrderByDescending(a => a.Id)
-                .Take(500)
-                .ToListAsync(ct);
+            // The audit says what each request was and how long it took, for the ones that have finished: the caller's
+            // firm's records, newest first, as the core's audit trail pages them.
+            var requests = (await audit.PageAsync(new AuditFilter(null, null, null, RequestKind, AuditPage, null), ct)).Actions;
+            var consultations = (await audit.PageAsync(new AuditFilter(null, null, null, ConsultationKind, AuditPage, null), ct)).Actions;
 
-            var byTask = records
-                .Where(a => a.Kind == AuditKinds.A2ARequest && TaskIdOf(a.Arguments) is { Length: > 0 })
+            var byTask = requests
+                .Where(a => TaskIdOf(a.Arguments) is { Length: > 0 })
                 .GroupBy(a => TaskIdOf(a.Arguments)!)
                 .ToDictionary(g => g.Key, g => g.First());
 
             var inbound = tasks.Select(t => new InboundTask(
                 t.Id,
                 t.PartnerId ?? "unknown",
-                byTask.TryGetValue(t.Id, out var record) ? record.ToolName : "a2a.message",
+                byTask.TryGetValue(t.Id, out var record) ? record.Action : "a2a.message",
                 t.State,
                 new DateTimeOffset(t.CreatedAt, TimeSpan.Zero),
                 new DateTimeOffset(t.UpdatedAt, TimeSpan.Zero),
                 record?.DurationMs ?? 0,
                 Running.Contains(t.State))).ToList();
 
-            var outbound = records
-                .Where(a => a.Kind == AuditKinds.A2AConsultation)
-                .Select(a => new OutboundConsultation(
-                    TaskIdOf(a.Arguments) ?? "-", AgentOf(a.Arguments), a.Outcome, a.DurationMs,
-                    new DateTimeOffset(a.At, TimeSpan.Zero)))
+            var outbound = consultations
+                .Select(a => new OutboundConsultation(TaskIdOf(a.Arguments) ?? "-", AgentOf(a.Arguments), a.Outcome, a.DurationMs, a.At))
                 .ToList();
 
-            var deliveries = await context.A2APushDeliveries.AsNoTracking()
+            var deliveries = await context.Set<A2APushDeliveryRow>().AsNoTracking()
                 .Where(d => taskIds.Contains(d.TaskId))
                 .OrderByDescending(d => d.At)
                 .Take(100)
@@ -89,20 +97,13 @@ public static class A2AAdminEndpoints
 
         // The firm whose data is being worked on may stop the work. It ends the way a partner's cancel ends,
         // through the same server, so the task's final state and its events are the same either way.
-        api.MapPost("/tasks/{id}/cancel", async (string id, IPrincipalAccessor principals,
-            IDbContextFactory<MafDbContext> db, IServiceProvider services, Agent.ToolAudit audit,
-            TimeProvider time, CancellationToken ct) =>
+        api.MapPost("/tasks/{id}/cancel", async (string id, IPrincipalAccessor principals, IDbContextFactory<DbContext> db,
+            global::A2A.A2AServer server, IActivityAudit audit, TimeProvider time, CancellationToken ct) =>
         {
-            // The protocol server is the a2a plugin's (extract-a2a). Transitional until batch 2 moves this route with it:
-            // with the plugin off there is no A2A surface, and so nothing to cancel through.
-            if (services.GetService<global::A2A.A2AServer>() is not { } server)
-            {
-                return Results.NotFound(new { message = "no A2A surface" });
-            }
             var principal = principals.Current;
             await using var context = await db.CreateDbContextAsync(ct);
 
-            var row = await context.A2ATasks.AsNoTracking()
+            var row = await context.Set<A2ATaskRow>().AsNoTracking()
                 .FirstOrDefaultAsync(t => t.Id == id && t.TenantId == principal.TenantId.Value, ct);
             if (row is null)
             {
@@ -118,14 +119,11 @@ public static class A2AAdminEndpoints
             var state = cancelled.Status?.State.ToString() ?? "Canceled";
 
             // Stopping another system's work is an action, and an action is recorded — naming who did it.
-            await audit.RecordAsync(new Agent.AuditEntry(
-                principal, null, null, "a2a.cancel", $"taskId={id} partner={row.PartnerId ?? "-"}", state,
-                (long)(time.GetUtcNow() - started).TotalMilliseconds, AuditKinds.A2ARequest), ct);
+            await audit.RecordAsync(principal, RequestKind, "a2a.cancel", $"taskId={id} partner={row.PartnerId ?? "-"}", state,
+                (long)(time.GetUtcNow() - started).TotalMilliseconds, ct);
 
             return Results.Ok(new { taskId = id, state });
         });
-
-        return app;
     }
 
     /// <summary>The audit's arguments are `key=value` pairs; these are the two this screen reads.</summary>

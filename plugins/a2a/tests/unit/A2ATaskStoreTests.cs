@@ -1,7 +1,6 @@
 using Maf.Lab.A2A;
+using Maf.Lab.Plugins.A2A;
 using A2A;
-using Maf.Lab.Api.A2A;
-using Maf.Lab.Api.Storage;
 using Maf.Lab.TestSupport;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,7 +30,7 @@ public class A2ATaskStoreTests
     [InlineData(TaskState.Completed)]
     public async Task A_cancelled_task_is_not_written_over(TaskState late)
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = A2APluginSupport.Installed };
         var store = Store(api);
         await store.SaveTaskAsync("t-c", Task("t-c", TaskState.Working), Ct);
         await store.SaveTaskAsync("t-c", Task("t-c", TaskState.Canceled), Ct);
@@ -44,7 +43,7 @@ public class A2ATaskStoreTests
     [Fact]
     public async Task A_running_task_still_finishes_and_its_end_can_be_saved_again()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = A2APluginSupport.Installed };
         var store = Store(api);
         await store.SaveTaskAsync("t-w", Task("t-w", TaskState.Working), Ct);
         await store.SaveTaskAsync("t-w", Task("t-w", TaskState.Completed), Ct);
@@ -61,7 +60,7 @@ public class A2ATaskStoreTests
     [Fact]
     public async Task A_task_round_trips_with_its_history_and_artifacts()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = A2APluginSupport.Installed };
         var store = Store(api);
         var task = Task("t-1", TaskState.Working);
         task.Artifacts = [new Artifact { ArtifactId = "a-1", Name = "run", Parts = [new Part { Text = "completed" }] }];
@@ -79,11 +78,11 @@ public class A2ATaskStoreTests
     [Fact]
     public async Task Another_replica_sees_the_same_task()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = A2APluginSupport.Installed };
         // Two stores over one database stand in for two replicas over one volume.
         var first = Store(api);
         var second = new SqliteTaskStore(
-            api.Services.GetRequiredService<IDbContextFactory<MafDbContext>>(),
+            api.Services.GetRequiredService<IDbContextFactory<DbContext>>(),
             TimeProvider.System,
             api.Services.GetRequiredService<PushNotificationDispatcher>(),
             api.Services.GetRequiredService<Maf.Lab.A2A.IPartnerAccessor>());
@@ -100,7 +99,7 @@ public class A2ATaskStoreTests
     [Fact]
     public async Task Transitions_are_not_lost_when_they_arrive_together()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = A2APluginSupport.Installed };
         var store = Store(api);
         await store.SaveTaskAsync("t-3", Task("t-3", TaskState.Submitted), Ct);
 
@@ -114,13 +113,13 @@ public class A2ATaskStoreTests
         Assert.Contains(read!.Status!.State, new[] { TaskState.Working, TaskState.Completed });
 
         await using var db = ChatApiTests.Db(api);
-        Assert.Equal(1, await db.A2ATasks.CountAsync(t => t.Id == "t-3", Ct));
+        Assert.Equal(1, await db.Set<A2ATaskRow>().CountAsync(t => t.Id == "t-3", Ct));
     }
 
     [Fact]
     public async Task Listing_is_scoped_by_context_and_state()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = A2APluginSupport.Installed };
         var store = Store(api);
         await store.SaveTaskAsync("t-4", Task("t-4", TaskState.Working, "ctx-a"), Ct);
         await store.SaveTaskAsync("t-5", Task("t-5", TaskState.Completed, "ctx-a"), Ct);
@@ -136,12 +135,12 @@ public class A2ATaskStoreTests
     [Fact]
     public async Task Deleting_a_task_takes_its_push_configuration_with_it()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = A2APluginSupport.Installed };
         var store = Store(api);
         await store.SaveTaskAsync("t-7", Task("t-7", TaskState.Working), Ct);
         await using (var db = ChatApiTests.Db(api))
         {
-            db.A2APushConfigs.Add(new A2APushConfigRow
+            db.Set<A2APushConfigRow>().Add(new A2APushConfigRow
             {
                 Id = "p-1", TaskId = "t-7", Url = "http://localhost/hook", Token = "tok", CreatedAt = DateTime.UtcNow,
             });
@@ -152,6 +151,6 @@ public class A2ATaskStoreTests
 
         Assert.Null(await store.GetTaskAsync("t-7", Ct));
         await using var after = ChatApiTests.Db(api);
-        Assert.Empty(await after.A2APushConfigs.Where(c => c.TaskId == "t-7").ToListAsync(Ct));
+        Assert.Empty(await after.Set<A2APushConfigRow>().Where(c => c.TaskId == "t-7").ToListAsync(Ct));
     }
 }

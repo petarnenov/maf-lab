@@ -77,8 +77,8 @@ public class A2AAdminApiTests
         throw new InvalidOperationException("no task was ever running");
     }
 
-    private static Task<A2AAdminEndpoints.A2AActivity?> ActivityAsync(HttpClient admin) =>
-        admin.GetFromJsonAsync<A2AAdminEndpoints.A2AActivity>("/api/admin/a2a", Json, Ct);
+    private static Task<Maf.Lab.Plugins.A2A.A2AAdminEndpoints.A2AActivity?> ActivityAsync(HttpClient admin) =>
+        admin.GetFromJsonAsync<Maf.Lab.Plugins.A2A.A2AAdminEndpoints.A2AActivity>("/api/admin/a2a", Json, Ct);
 
     [Fact]
     public async Task What_a_partner_did_is_visible_to_the_firm_it_concerned()

@@ -1,10 +1,10 @@
 using Maf.Lab.A2A;
 using A2A;
-using Maf.Lab.Api.Storage;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace Maf.Lab.Api.A2A;
+namespace Maf.Lab.Plugins.A2A;
 
 /// <summary>
 /// Delivers one POST per task state change to whatever webhook the caller registered.
@@ -15,7 +15,7 @@ namespace Maf.Lab.Api.A2A;
 /// not the task's problem.
 /// </summary>
 public sealed class PushNotificationDispatcher(
-    IDbContextFactory<MafDbContext> db,
+    IDbContextFactory<DbContext> db,
     IHttpClientFactory http,
     IOptions<A2AOptions> options,
     TimeProvider time,
@@ -24,7 +24,7 @@ public sealed class PushNotificationDispatcher(
     public async Task OnStateChangedAsync(string taskId, AgentTask task, CancellationToken ct)
     {
         await using var ctx = await db.CreateDbContextAsync(ct);
-        var configs = await ctx.A2APushConfigs.AsNoTracking().Where(c => c.TaskId == taskId).ToListAsync(ct);
+        var configs = await ctx.Set<A2APushConfigRow>().AsNoTracking().Where(c => c.TaskId == taskId).ToListAsync(ct);
         if (configs.Count == 0)
         {
             return;
@@ -33,7 +33,7 @@ public sealed class PushNotificationDispatcher(
         foreach (var config in configs)
         {
             var (delivered, attempts, error) = await DeliverAsync(config, taskId, task, ct);
-            ctx.A2APushDeliveries.Add(new A2APushDeliveryRow
+            ctx.Set<A2APushDeliveryRow>().Add(new A2APushDeliveryRow
             {
                 TaskId = taskId,
                 State = state,

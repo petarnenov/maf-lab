@@ -6,8 +6,8 @@ using Maf.Lab.Domain.Tenancy;
 namespace Maf.Lab.Tests;
 
 /// <summary>
-/// The core without the A2A surface (extract-a2a): no plugin maps the agent card or the protocol, so both are simply not
-/// there — the api starts and answers 404, never a 500 from a half-wired server.
+/// The core without the A2A surface (extract-a2a): no plugin maps the agent card, the protocol or the activity screen's
+/// routes, so they are simply not there — the api starts and answers 404, never a 500 from a half-wired server.
 /// </summary>
 public class ProtocolSurfaceAbsentTests
 {
@@ -27,13 +27,15 @@ public class ProtocolSurfaceAbsentTests
     }
 
     [Fact]
-    public async Task Without_the_surface_an_admin_cancel_says_there_is_none()
+    public async Task Without_the_surface_its_admin_activity_is_not_found()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
 
-        var response = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN).PostAsync("/api/admin/a2a/tasks/t-1/cancel", null, Ct);
+        var activity = await admin.GetAsync("/api/admin/a2a", Ct);
+        var cancel = await admin.PostAsync("/api/admin/a2a/tasks/t-1/cancel", null, Ct);
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        Assert.Contains("no A2A surface", await response.Content.ReadAsStringAsync(Ct));
+        Assert.Equal(HttpStatusCode.NotFound, activity.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, cancel.StatusCode);
     }
 }

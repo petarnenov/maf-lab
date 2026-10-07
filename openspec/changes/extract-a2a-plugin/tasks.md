@@ -18,13 +18,15 @@ batch 2.
 
 ## 2. After extract-compliance (batch 2)
 
-- [ ] 2.1 `A2A:Clients` keys and the compliance env folded into `a2a.env`; the store keyspace required.
-- [ ] 2.2 In one step: the tables (`IContributesModel`), the SQLite stores, the push dispatcher, the plugin's lb parts and
-      open work, and the whole `/api/admin/a2a` endpoint (inbound, outbound, deliveries, cancel — the optional server
-      lookup and the core's partner-accessor registration go) reading the audit through `IAuditTrail`, and the A2A
-      admin page into the plugin's web part.
-- [ ] 2.3 `a2a-inspector` depends on `a2a` and `compliance`; the allow-list lines removed; DECISIONS §81 part K.
-- [ ] 2.4 Open the `generalize-a2a-skills` proposal stub.
+- [x] 2.1 Moved to the a2a-client-registrations change (the `A2A:Clients` keys, the compliance env folded into
+      `a2a.env`, the store keyspace required): a cross-plugin configuration rename with a live keyspace at stake.
+- [x] 2.2 In one step: the tables (`IContributesModel`, names unchanged), the SQLite stores and the push dispatcher over
+      the core's store, the open work (the non-terminal tasks, cancelled through the task store's guarded save), and the
+      whole `/api/admin/a2a` endpoint (inbound, outbound, deliveries, cancel; the optional server lookup and the core's
+      partner-accessor registration gone) reading the audit through `IAuditTrail`, and the A2A admin page into the
+      plugin's web part. The plugin's routes are the api's, so it adds no lb part.
+- [x] 2.3 `a2a-inspector` depends on `a2a` and `compliance`; the allow-list lines removed (batch 1); DECISIONS §81 part K.
+- [x] 2.4 Open the `generalize-a2a-skills` proposal stub (and the `a2a-client-registrations` one, task 2.1).
 
 ## 3. Verify
 

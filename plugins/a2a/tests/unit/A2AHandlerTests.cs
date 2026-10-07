@@ -1,6 +1,5 @@
 using Maf.Lab.A2A;
 using A2A;
-using Maf.Lab.Api.A2A;
 using Maf.Lab.Plugins.A2A;
 // Both libraries have a Role; the message role is the one this file means.
 using MessageRole = A2A.Role;
@@ -38,7 +37,7 @@ public class A2AHandlerTests
 
     private static (AssistantAgentHandler Handler, ApiFactory Api) Build(A2AOptions a2a, string? dataDir, params string[] firms)
     {
-        var api = new ApiFactory(ApiFactory.ProceduralModel(), dataDir: dataDir);
+        var api = new ApiFactory(ApiFactory.ProceduralModel(), dataDir: dataDir) { InstalledPlugins = A2APluginSupport.Installed };
         var partner = new PartnerPrincipal("acme-portal", firms.Select(TenantId.Firm).ToHashSet(),
             new HashSet<string> { A2AScopes.BillingRead });
         var handler = new AssistantAgentHandler(
@@ -189,7 +188,7 @@ public class A2AHandlerTests
         // Two api replicas over one database: the run goes on one, the cancel is recorded through the other.
         var (handler, working) = Build(new A2AOptions { SimulatedStepMs = 400, CancelPollMs = 20 }, null, "firm-a");
         using var _ = working;
-        using var other = new ApiFactory(ApiFactory.ProceduralModel(), dataDir: working.DataDir);
+        using var other = new ApiFactory(ApiFactory.ProceduralModel(), dataDir: working.DataDir) { InstalledPlugins = A2APluginSupport.Installed };
         var shared = other.Services.GetRequiredService<ITaskStore>();
         await shared.SaveTaskAsync("t-x", new AgentTask
         {

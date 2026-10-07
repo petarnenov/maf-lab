@@ -1,10 +1,9 @@
 using Maf.Lab.A2A;
 using System.Text.Json;
 using A2A;
-using Maf.Lab.Api.Storage;
 using Microsoft.EntityFrameworkCore;
 
-namespace Maf.Lab.Api.A2A;
+namespace Maf.Lab.Plugins.A2A;
 
 /// <summary>
 /// Task state in the database the replicas already share. The SDK ships only <see cref="InMemoryTaskStore"/>, which
@@ -15,7 +14,7 @@ namespace Maf.Lab.Api.A2A;
 /// transition passes through.
 /// </summary>
 public sealed class SqliteTaskStore(
-    IDbContextFactory<MafDbContext> db,
+    IDbContextFactory<DbContext> db,
     TimeProvider time,
     PushNotificationDispatcher push,
     Maf.Lab.A2A.IPartnerAccessor partners)
@@ -24,13 +23,13 @@ public sealed class SqliteTaskStore(
     private static readonly JsonSerializerOptions Json = A2AJsonUtilities.DefaultOptions;
 
     /// <summary>The states a task does not leave, as this store writes them.</summary>
-    private static readonly string[] Terminal =
+    internal static readonly string[] Terminal =
         [.. new[] { TaskState.Completed, TaskState.Canceled, TaskState.Failed, TaskState.Rejected }.Select(s => s.ToString())];
 
     public async Task<AgentTask?> GetTaskAsync(string taskId, CancellationToken cancellationToken = default)
     {
         await using var ctx = await db.CreateDbContextAsync(cancellationToken);
-        var row = await ctx.A2ATasks.AsNoTracking().FirstOrDefaultAsync(t => t.Id == taskId, cancellationToken);
+        var row = await ctx.Set<A2ATaskRow>().AsNoTracking().FirstOrDefaultAsync(t => t.Id == taskId, cancellationToken);
         return row is null ? null : JsonSerializer.Deserialize<AgentTask>(row.Json, Json);
     }
 
@@ -39,11 +38,11 @@ public sealed class SqliteTaskStore(
         var state = task.Status?.State.ToString() ?? "";
         await using (var ctx = await db.CreateDbContextAsync(cancellationToken))
         {
-            var row = await ctx.A2ATasks.FirstOrDefaultAsync(t => t.Id == taskId, cancellationToken);
+            var row = await ctx.Set<A2ATaskRow>().FirstOrDefaultAsync(t => t.Id == taskId, cancellationToken);
             var changed = row is null || row.State != state;
             if (row is null)
             {
-                ctx.A2ATasks.Add(new A2ATaskRow
+                ctx.Set<A2ATaskRow>().Add(new A2ATaskRow
                 {
                     Id = taskId,
                     ContextId = task.ContextId ?? "",
@@ -63,7 +62,7 @@ public sealed class SqliteTaskStore(
                 // whichever late step of its own run — writes after it. The same end saved again (more history) is kept.
                 var json = JsonSerializer.Serialize(task, Json);
                 var now = time.GetUtcNow().UtcDateTime;
-                var saved = await ctx.A2ATasks
+                var saved = await ctx.Set<A2ATaskRow>()
                     .Where(t => t.Id == taskId && (!Terminal.Contains(t.State) || t.State == state))
                     .ExecuteUpdateAsync(u => u
                         .SetProperty(t => t.State, state)
@@ -86,14 +85,14 @@ public sealed class SqliteTaskStore(
     public async Task DeleteTaskAsync(string taskId, CancellationToken cancellationToken = default)
     {
         await using var ctx = await db.CreateDbContextAsync(cancellationToken);
-        await ctx.A2ATasks.Where(t => t.Id == taskId).ExecuteDeleteAsync(cancellationToken);
-        await ctx.A2APushConfigs.Where(c => c.TaskId == taskId).ExecuteDeleteAsync(cancellationToken);
+        await ctx.Set<A2ATaskRow>().Where(t => t.Id == taskId).ExecuteDeleteAsync(cancellationToken);
+        await ctx.Set<A2APushConfigRow>().Where(c => c.TaskId == taskId).ExecuteDeleteAsync(cancellationToken);
     }
 
     public async Task<ListTasksResponse> ListTasksAsync(ListTasksRequest request, CancellationToken cancellationToken = default)
     {
         await using var ctx = await db.CreateDbContextAsync(cancellationToken);
-        var query = ctx.A2ATasks.AsNoTracking().AsQueryable();
+        var query = ctx.Set<A2ATaskRow>().AsNoTracking().AsQueryable();
         if (!string.IsNullOrWhiteSpace(request.ContextId))
         {
             query = query.Where(t => t.ContextId == request.ContextId);

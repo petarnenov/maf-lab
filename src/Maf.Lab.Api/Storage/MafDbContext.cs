@@ -17,9 +17,6 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
     public DbSet<LabelRow> Labels => Set<LabelRow>();
     public DbSet<AuditRow> Audit => Set<AuditRow>();
     public DbSet<AdminJobRow> AdminJobs => Set<AdminJobRow>();
-    public DbSet<A2ATaskRow> A2ATasks => Set<A2ATaskRow>();
-    public DbSet<A2APushConfigRow> A2APushConfigs => Set<A2APushConfigRow>();
-    public DbSet<A2APushDeliveryRow> A2APushDeliveries => Set<A2APushDeliveryRow>();
     public DbSet<PendingWriteRow> PendingWrites => Set<PendingWriteRow>();
     public DbSet<CoverageSnapshotRow> CoverageSnapshots => Set<CoverageSnapshotRow>();
     public DbSet<CoverageFileRow> CoverageFiles => Set<CoverageFileRow>();
@@ -59,13 +56,6 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
         b.Entity<AdminJobRow>().HasKey(x => x.Id);
         // At most one running job per firm and kind, enforced by the database across replicas.
         b.Entity<AdminJobRow>().HasIndex(x => new { x.TenantId, x.Kind }).IsUnique().HasFilter("\"State\" = 'running'");
-        b.Entity<A2ATaskRow>().HasKey(x => x.Id);
-        b.Entity<A2ATaskRow>().HasIndex(x => new { x.ContextId, x.UpdatedAt });
-        b.Entity<A2ATaskRow>().HasIndex(x => new { x.PartnerId, x.UpdatedAt });
-        b.Entity<A2ATaskRow>().HasIndex(x => new { x.TenantId, x.UpdatedAt });
-        b.Entity<A2APushConfigRow>().HasKey(x => x.Id);
-        b.Entity<A2APushConfigRow>().HasIndex(x => x.TaskId);
-        b.Entity<A2APushDeliveryRow>().HasIndex(x => new { x.TaskId, x.At });
         b.Entity<PendingWriteRow>().HasKey(x => x.Id);
         b.Entity<PendingWriteRow>().HasIndex(x => new { x.TenantId, x.UserId, x.UpdatedAt });
         b.Entity<PendingWriteRow>().HasIndex(x => new { x.ConversationId, x.UpdatedAt });
@@ -250,46 +240,6 @@ public sealed class AdminJobRow
     public string? Summary { get; set; }
     public required string OwnerInstance { get; set; }
     public DateTime HeartbeatAt { get; set; }
-}
-
-/// <summary>Full behind-the-scenes trace of a turn (message content; retention: Tracing:RetentionDays).</summary>
-/// <summary>An A2A task, whole, so any replica can answer for it. The SDK's own store is per-process.</summary>
-public sealed class A2ATaskRow
-{
-    public required string Id { get; set; }
-    public required string ContextId { get; set; }
-    public string? PartnerId { get; set; }
-
-    /// <summary>The firm the partner was entitled to act for when the task was created.</summary>
-    public string? TenantId { get; set; }
-    public required string State { get; set; }
-    /// <summary>The task as the SDK serialises it, including its history and artifacts.</summary>
-    public required string Json { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-}
-
-/// <summary>A webhook a caller registered for one task. The token is the caller's own, echoed back to it.</summary>
-public sealed class A2APushConfigRow
-{
-    public required string Id { get; set; }
-    public required string TaskId { get; set; }
-    public required string Url { get; set; }
-    public string? Token { get; set; }
-    public DateTime CreatedAt { get; set; }
-}
-
-/// <summary>What happened when we tried to deliver one state change. A failure is visible, never silent.</summary>
-public sealed class A2APushDeliveryRow
-{
-    public long Id { get; set; }
-    public required string TaskId { get; set; }
-    public required string State { get; set; }
-    public required string Url { get; set; }
-    public DateTime At { get; set; }
-    public int Attempts { get; set; }
-    public bool Delivered { get; set; }
-    public string? Error { get; set; }
 }
 
 /// <summary>Keys EF's model cache by the set of plugins that contribute tables, as well as by the context type.</summary>
