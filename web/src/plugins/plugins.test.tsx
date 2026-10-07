@@ -120,7 +120,6 @@ describe('web plugins', () => {
       'Evals',
       'Topology',
       'Coverage',
-      'Index admin',
       'Feedback review',
       'Agent to agent',
       'Curriculum',

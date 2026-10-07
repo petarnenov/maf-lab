@@ -14,7 +14,6 @@ const LINKS = [
   { to: '/evals', label: 'Evals' },
   { to: '/topology', label: 'Topology' },
   { to: '/coverage', label: 'Coverage' },
-  { to: '/admin/index', label: 'Index admin' },
   { to: '/admin/feedback', label: 'Feedback review' },
   { to: '/admin/a2a', label: 'Agent to agent' },
   { to: '/curriculum', label: 'Curriculum' },

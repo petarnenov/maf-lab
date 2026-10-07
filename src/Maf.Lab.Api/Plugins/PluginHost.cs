@@ -72,7 +72,7 @@ public static class PluginHost
         }
         foreach (var plugin in loaded.OfType<IContributesOpenWork>())
         {
-            builder.Services.AddSingleton(new NamedOpenWork(((IMafPlugin)plugin).Name, plugin));
+            builder.Services.AddSingleton(sp => new NamedOpenWork(((IMafPlugin)plugin).Name, plugin.CreateOpenWork(sp)));
         }
         builder.Services.AddSingleton(new LoadedPlugins(loaded));
         return builder;
@@ -203,4 +203,4 @@ public static class PluginHost
 public sealed record PluginRouteMetadata(string Plugin);
 
 /// <summary>A plugin's open work, by its name, for `/api/plugins/{name}/open-work`.</summary>
-public sealed record NamedOpenWork(string Plugin, IContributesOpenWork Work);
+public sealed record NamedOpenWork(string Plugin, IOpenWork Work);

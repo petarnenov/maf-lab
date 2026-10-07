@@ -1,11 +1,14 @@
 import type { ComponentType, ReactNode } from 'react';
-import type { DataCard, SourceRef } from '../api/types';
+import type { AdminJob, AdminJobState, DataCard, SourceRef } from '../api/types';
 import type { ToolCallView } from '../chat/chatReducer';
 
 /** A source of an answer, as the chat holds it: what a plugin's source action and panes read. */
 export type { SourceRef };
 /** A data card and a tool call as the chat shows them: what a turn-view override carries. */
 export type { DataCard, ToolCallView };
+
+/** A job in the core's admin job store, as its routes report it: what a plugin's long work shows and stops. */
+export type { AdminJob, AdminJobState };
 
 /** The error the api client throws, with its HTTP status: how a plugin tells a 404 from a failure. */
 export { ApiError } from '../api/client';

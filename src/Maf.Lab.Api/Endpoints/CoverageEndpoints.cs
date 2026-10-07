@@ -252,7 +252,7 @@ public static class CoverageEndpoints
         });
 
         admin.MapPost("/refresh/{jobId}/cancel", async (string jobId, CoverageRefresher refresher, CancellationToken ct) =>
-            AdminIndexEndpoints.Canceled(await refresher.CancelAsync(jobId, ct)));
+            (await refresher.CancelAsync(jobId, ct)).ToResult());
 
         read.MapGet("/refresh", async (CoverageRefresher refresher, CancellationToken ct) =>
             await refresher.CurrentAsync(ct) is { } job ? Results.Ok(job) : Results.NoContent());

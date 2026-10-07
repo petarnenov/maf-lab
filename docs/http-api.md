@@ -239,14 +239,6 @@ summary a person was asked to approve, so the UI offers it only on a turn that a
 |---|---|---|---|
 | GET | `/api/admin/feedback/queue` | — | `ReviewQueueItem[]` |
 | POST | `/api/admin/feedback/{turnId}/label` | `LabelRequest` | `204` |
-| GET | `/api/admin/index/status` | — | `IndexStatus` |
-| GET | `/api/admin/index/drift` | — | `DriftReport` for the caller's readable tenants: the index against the source, plus `graph` (add-graph-drift) — `{ available, reason, outOfSync, outOfSyncPercent, missingFromGraph, behind, notInCorpus }`, the billing graph against the same source documents; `available: false, reason: "unreachable"` when Neo4j cannot be read |
-| POST | `/api/admin/index/run` | — | `202 AdminJob` |
-| POST | `/api/admin/index/migrate` | `{ targetModel? }` | `202 AdminJob` |
-| GET | `/api/admin/jobs/{jobId}` | — | `AdminJob` |
-| POST | `/api/admin/jobs/{jobId}/cancel` | — | `202` with the `AdminJob`, now `canceled`, while it stops; `409` when it had already ended; `404` for a job not of the admin's firm. Any replica takes it: the job's row is the stop, and the replica running the job watches it (stop-anything). Once the work has stopped, its `summary` says how far it got |
-
-`AdminJob.state`: `queued` \| `running` \| `succeeded` \| `failed`. `migrate` accepts `{}` or no body.
 
 `ReviewQueueItem.toolCalls[]`: `{ toolName, argumentSummary, outcome, sourceCount, docIds, chunkIds }` —
 `chunkIds` lets a reviewer pick the relevant chunks for a retrieval label.
@@ -350,6 +342,27 @@ Reopening one by its id is the core's (`GET /api/conversations/{id}`).
 | GET | `/api/conversations?search=&limit=&before=` | — | `{ conversations: [{ conversationId, title, createdAt, lastActivityAt, turnCount }], nextCursor }` — own, non-deleted, non-empty conversations, newest activity first; `search` matches title, questions and answers (case-insensitive); `limit` default 30, max 100; pass `nextCursor` as `before` for the next page |
 | PATCH | `/api/conversations/{id}` | `{ title }` (1–120 chars) | `204`; `400` invalid title; `404` |
 | DELETE | `/api/conversations/{id}` | — | `204` (soft delete: hidden, cannot be continued; turns stay for the review queue; recorded as `conversation.delete` in the audit); `404` |
+
+### index-admin
+
+Index administration (tenant admin, otherwise `403`) over the corpora the installed plugins declare in their
+manifests' `[corpus]` tables, for the caller's readable tenants. Only `tenants`-layout corpora are offered. `corpus`
+names one by its plugin; with it absent and exactly one offered, that one is used, with several offered it is `400`
+naming the choices, and a corpus no installed plugin offers is `404` and starts nothing.
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | `/api/admin/index/corpora` | — | `[{ name, hasGraph }]`, the corpora offered, by plugin name |
+| GET | `/api/admin/index/status?corpus=` | — | `IndexStatus` for that corpus's collection: `{ modelVersions, activeDenseVector, currentJob }` |
+| GET | `/api/admin/index/drift?corpus=` | — | `DriftReport` for that corpus: the index against the source, plus `graph` (add-graph-drift) — `{ available, reason, outOfSync, outOfSyncPercent, missingFromGraph, behind, notInCorpus }`, the corpus's graph against the same source documents; `available: false` with `reason: "unreachable"` when Neo4j cannot be read, `"not-built"` when the corpus has no graph |
+| POST | `/api/admin/index/run` | `{ corpus? }` | `202 AdminJob`; a corpus whose folder is absent runs, says so and removes nothing |
+| POST | `/api/admin/index/migrate` | `{ corpus?, targetModel? }` | `202 AdminJob` |
+| GET | `/api/admin/jobs/{jobId}` | — | `AdminJob` |
+| POST | `/api/admin/jobs/{jobId}/cancel` | — | `202` with the `AdminJob`, now `canceled`, while it stops; `409` when it had already ended; `404` for a job not of the admin's tenant. Any replica takes it: the job's row is the stop, and the replica running the job watches it (stop-anything). Once the work has stopped, its `summary` says how far it got |
+
+`AdminJob.state`: `queued` \| `running` \| `succeeded` \| `failed` \| `canceled`. One `index` and one `migrate` job run
+per tenant at a time, whichever corpus; a job's progress and summary name its corpus. `run` and `migrate` accept `{}`
+or no body.
 
 ### insights
 

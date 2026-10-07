@@ -56,7 +56,10 @@ public sealed class DriftService(
         }
 
         progress?.Report(new IndexProgress("reading the graph", listed, scope.Count));
-        var graphDrift = await GraphSectionAsync(token => graph.ListDocumentsAsync(GraphSources.Billing, token), corpus.Documents, scope, _logger, ct);
+        var graphSource = options.Value.GraphSource;
+        var graphDrift = string.IsNullOrWhiteSpace(graphSource)
+            ? GraphDrift.Unavailable(GraphDrift.NotBuilt)
+            : await GraphSectionAsync(token => graph.ListDocumentsAsync(graphSource, token), corpus.Documents, scope, _logger, ct);
 
         var total = corpus.Documents.Count;
         var staleCount = stale.Count + missing.Count;

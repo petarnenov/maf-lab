@@ -106,9 +106,6 @@ services:
       # Writable by any user; a uid with no passwd entry would otherwise get HOME=/.
       HOME: /tmp
       Storage__ConnectionString: Data Source=/app-data/maf-lab.db
-      # The admin index's corpus, under the plugins mount: passed through from make's environment (a plugin's plugin.mk
-      # exports it while its folder is present); unset = no corpus, and an index run says so and changes nothing.
-      Indexing__CorpusRoot: /plugins/${MAF_ADMIN_INDEX_CORPUS:-.no-corpus}
       Evals__Root: /evals
       # The drawn topology, served to the web app by the api (the web image is built from web/ only).
       Topology__DiagramPath: /docs/topology.drawio

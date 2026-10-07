@@ -1,5 +1,6 @@
 using Maf.Lab.Api.Admin;
 using Maf.Lab.Domain.Admin;
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.TestGen;
 using Maf.Lab.TestGen.Coverage;
 using Microsoft.Extensions.Options;
@@ -32,7 +33,7 @@ public sealed class CoverageRefresher(
     public Task<AdminJob?> GetAsync(string jobId, CancellationToken ct) => jobs.GetAsync(Scope, jobId, ct);
 
     /// <summary>Stops a running refresh (stop-anything); the runner job it waits on is cancelled with it.</summary>
-    public Task<(AdminJobCancel Outcome, AdminJob? Job)> CancelAsync(string jobId, CancellationToken ct) => jobs.CancelAsync(Scope, jobId, ct);
+    public Task<AdminJobCancelResult> CancelAsync(string jobId, CancellationToken ct) => jobs.CancelAsync(Scope, jobId, ct);
 
     public Task<AdminJob?> CurrentAsync(CancellationToken ct) => jobs.CurrentAsync(Scope, ct);
 

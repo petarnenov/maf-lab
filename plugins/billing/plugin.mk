@@ -11,10 +11,6 @@ export Billing__AccountsSeedPath ?= $(ROOT)/plugins/billing/files/seed/billing-a
 # Billing's corpus lives in this folder too; its collection is maf_chunks.
 BILLING_ENV = Indexing__CorpusRoot=$(ROOT)/plugins/billing/files/corpus Qdrant__Collection=maf_chunks Qdrant__MetaCollection=maf_meta
 
-# The api's admin index run reads this corpus through its /plugins mount (plugins-root-relative, like a manifest's paths);
-# passed to compose through make's environment, unset = no corpus. Transitional: index-admin takes it from the manifests.
-export MAF_ADMIN_INDEX_CORPUS ?= billing/files/corpus
-
 .PHONY: index-billing graph-billing reindex-billing drift-billing rebuild-index-billing migrate-billing index-billing-if-empty \
         neo4j-chunks eval-retrieval-backends
 

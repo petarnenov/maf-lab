@@ -2,6 +2,7 @@ using Maf.Lab.Api.Admin;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.Domain.Admin;
 using Maf.Lab.Domain.Tenancy;
+using Maf.Lab.Plugins.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Hosting.Internal;

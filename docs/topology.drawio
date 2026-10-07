@@ -110,7 +110,7 @@
         <mxCell id="e-api-chat" value="chat" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="api" target="chat-provider">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e-api-qdrant" value="index admin" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;" edge="1" parent="1" source="api" target="qdrant">
+        <mxCell id="e-api-qdrant" value="search" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;" edge="1" parent="1" source="api" target="qdrant">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e-api-otel" value="OTLP" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;" edge="1" parent="1" source="api" target="otel-collector">

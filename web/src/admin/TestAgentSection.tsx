@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { LimitBounds, TestAgentOverview, TestAgentRun } from '../api/types';
 import styles from '../shared/Page.module.css';
-import { Progress } from '../components/Progress';
+import { Progress } from '../shared/Progress';
 import { dollars } from '../coverage/budget';
 import { cost, duration, elapsed, pct, reasonLabel, RUN_LABELS } from '../coverage/format';
 import { formatDate } from '../shared/format';

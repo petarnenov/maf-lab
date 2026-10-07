@@ -77,6 +77,23 @@
         "url": { "type": "string" },
         "label": { "type": "string" }
       }
+    },
+    "corpus": {
+      "type": "object",
+      "description": "The corpus the plugin owns, as the index admin offers it (extract-index-admin-plugin).",
+      "required": ["path", "collection", "meta_collection"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$)).+$",
+          "description": "Relative to the plugin's folder, never leaving it."
+        },
+        "collection": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+        "meta_collection": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+        "layout": { "type": "string", "enum": ["tenants", "repository"] },
+        "graph": { "type": "string", "pattern": "^[a-z0-9-]+$" }
+      }
     }
   }
 }

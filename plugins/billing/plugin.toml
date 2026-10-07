@@ -40,3 +40,10 @@ bg = "с таксуването на Вашата фирма (такси, тар
 procedural = "what a named fee schedule, failure code or rule means or charges"
 mixed = "one specific billing run identified by its run number, e.g. why run 4417 failed"
 data = "billing runs: a status, which runs failed, a list of runs"
+
+# The corpus the index admin offers (extract-index-admin-plugin); make's BILLING_ENV still names it for the CLI.
+[corpus]
+path = "files/corpus"
+collection = "maf_chunks"
+meta_collection = "maf_meta"
+graph = "billing"

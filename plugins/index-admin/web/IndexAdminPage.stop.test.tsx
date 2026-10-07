@@ -1,9 +1,10 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { jsonResponse, renderWithProviders } from '../test/render';
+import { jsonResponse, renderWithProviders } from '@maf/testing';
 import { IndexAdminPage } from './IndexAdminPage';
 
+const corpora = [{ name: 'billing', hasGraph: true }];
 const status = { modelVersions: [], activeDenseVector: 'dense_v3', currentJob: null };
 const drift = {
   totalDocuments: 10,
@@ -30,8 +31,9 @@ function screenWithJob(kind: 'index' | 'migrate') {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
-      if (url === '/api/admin/index/status') return jsonResponse(status);
-      if (url === '/api/admin/index/drift') return jsonResponse(drift);
+      if (url === '/api/admin/index/corpora') return jsonResponse(corpora);
+      if (url === '/api/admin/index/status?corpus=billing') return jsonResponse(status);
+      if (url === '/api/admin/index/drift?corpus=billing') return jsonResponse(drift);
       if (
         url === `/api/admin/index/${kind === 'index' ? 'run' : 'migrate'}` &&
         init?.method === 'POST'
@@ -84,7 +86,9 @@ describe('IndexAdminPage: Esc stops what it started', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string, init?: RequestInit) => {
-        if (url === '/api/admin/index/status') return Promise.resolve(jsonResponse(status));
+        if (url === '/api/admin/index/corpora') return Promise.resolve(jsonResponse(corpora));
+        if (url === '/api/admin/index/status?corpus=billing')
+          return Promise.resolve(jsonResponse(status));
         if (init?.signal) signals.push(init.signal);
         return new Promise<Response>((_, reject) =>
           init?.signal?.addEventListener('abort', () =>

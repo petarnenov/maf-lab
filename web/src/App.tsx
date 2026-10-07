@@ -1,7 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router';
 import { A2AAdminPage } from './admin/A2AAdminPage';
 import { FeedbackAdminPage } from './admin/FeedbackAdminPage';
-import { IndexAdminPage } from './admin/IndexAdminPage';
 import { ChatPage } from './chat/ChatPage';
 import { CoveragePage } from './coverage/CoveragePage';
 import { CurriculumPage } from './curriculum/CurriculumPage';
@@ -25,14 +24,6 @@ export function App() {
         <Route path="topology" element={<TopologyPage />} />
         <Route path="coverage" element={<CoveragePage />} />
         <Route path="curriculum" element={<CurriculumPage />} />
-        <Route
-          path="admin/index"
-          element={
-            <RequireAdmin>
-              <IndexAdminPage />
-            </RequireAdmin>
-          }
-        />
         <Route
           path="admin/feedback"
           element={

@@ -78,8 +78,6 @@ public class FeedbackApiTests
 
     [Theory]
     [InlineData("/api/admin/feedback/queue")]
-    [InlineData("/api/admin/index/status")]
-    [InlineData("/api/admin/index/drift")]
     public async Task Admin_endpoints_are_firm_admin_only(string path)
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());

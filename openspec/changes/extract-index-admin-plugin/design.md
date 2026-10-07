@@ -191,7 +191,7 @@ which is what the rule protects.
 **Decision**
 
 - `plugins/index-admin/web/index.ts` registers `admin/index` with `PluginRoute.admin` (the core's admin guard, as insights
-  does) and an admin-only nav link. `App.tsx` and `Layout.tsx` lose them.
+  does) and its nav link, shown to everyone as the core's link was. `App.tsx` and `Layout.tsx` lose them.
 - Imports: the screen imports only `@maf/plugin-api`, `@maf/shared/…` and its own files. Of the core components it uses:
   - `StopHint`, `useEscToStop` and `format` are already in `@maf/shared`.
   - `Progress` moves from `web/src/components/` to `web/src/shared/`, and its core importers follow.

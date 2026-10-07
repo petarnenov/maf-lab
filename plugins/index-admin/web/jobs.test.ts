@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AdminJob, AdminJobState } from '../api/types';
+import type { AdminJob, AdminJobState } from '@maf/plugin-api';
 import { isJobActive } from './jobs';
 
 const job = (state: AdminJobState): AdminJob => ({

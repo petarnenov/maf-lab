@@ -154,42 +154,11 @@ export interface LabelRequest {
   expectedDocIds?: string[] | null;
 }
 
-// ---- Admin / index ----
-
-export interface StaleDocument {
-  docId: string;
-  sourcePath: string;
-  sourceUpdatedAt: string;
-  indexedUpdatedAt: string;
-}
-
-/** The billing graph against the source (add-graph-drift); reason is "unreachable" when it could not be read. */
-export interface GraphDrift {
-  available: boolean;
-  reason: string | null;
-  outOfSync: number;
-  outOfSyncPercent: number;
-  missingFromGraph: string[];
-  behind: string[];
-  notInCorpus: string[];
-}
-
-export interface DriftReport {
-  totalDocuments: number;
-  staleDocuments: number;
-  stalePercent: number;
-  stale: StaleDocument[];
-  missingFromIndex: string[];
-  graph?: GraphDrift | null;
-}
-
-export interface ModelVersionCount {
-  modelVersion: string;
-  chunks: number;
-}
+// ---- Admin jobs ----
 
 export type AdminJobState = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
 
+/** A job in the core's admin job store: a plugin's long work (index runs) and coverage's refresh. */
 export interface AdminJob {
   jobId: string;
   kind: string;
@@ -197,12 +166,6 @@ export interface AdminJob {
   startedAt: string;
   finishedAt?: string | null;
   summary?: string | null;
-}
-
-export interface IndexStatus {
-  modelVersions: ModelVersionCount[];
-  activeDenseVector: string;
-  currentJob?: AdminJob | null;
 }
 
 // ---- Evals ----

@@ -4,14 +4,15 @@ using System.Text;
 using System.Text.Json;
 using Maf.Lab.Domain.Admin;
 using Maf.Lab.Domain.Tenancy;
+using Maf.Lab.Plugins.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Maf.Lab.Tests;
 
 /// <summary>
-/// The admin index API over a real host and job runner (SQLite in a temp folder): what a FIRM_ADMIN's screen
-/// gets from /api/admin/index/* and /api/admin/jobs/{id}. The vector store is unreachable in these tests, so a
-/// started job ends failed; what each test asserts is the endpoint's own contract.
+/// The admin index API over a real host and job runner (SQLite in a temp folder), with the index-admin plugin installed:
+/// what a TENANT_ADMIN's screen gets from /api/admin/index/* and /api/admin/jobs/{id}. The vector store is unreachable in
+/// these tests, so a job that reaches it ends failed; what each test asserts is the endpoint's own contract.
 /// </summary>
 public sealed class AdminIndexApiTests
 {
@@ -25,11 +26,12 @@ public sealed class AdminIndexApiTests
         ["Models:Embeddings:dense_alt:Dimensions"] = "384",
     };
 
+    /// <summary>An api with one corpus offered, so a request that names none runs it (design D9).</summary>
     private static ApiFactory AdminApi(Dictionary<string, string?>? extra = null) =>
-        new(ApiFactory.ProceduralModel()) { ExtraSettings = extra ?? new Dictionary<string, string?>() };
+        IndexAdminPluginSupport.Api([IndexAdminPluginSupport.CorpusPlugin("alpha")], extra);
 
     [Fact]
-    public async Task The_admin_index_surface_is_for_firm_admins()
+    public async Task The_admin_index_surface_is_for_tenant_admins()
     {
         using var api = AdminApi();
 
@@ -152,10 +154,8 @@ public sealed class AdminIndexApiTests
     {
         // A corpus of one document, so the run reaches the store (unreachable here) and fails there: a run over a missing
         // corpus stops before it, and succeeds with nothing to do.
-        var corpus = Directory.CreateTempSubdirectory("maf-lab-admin-corpus-");
-        Directory.CreateDirectory(Path.Combine(corpus.FullName, "firm-a", "docs"));
-        File.WriteAllText(Path.Combine(corpus.FullName, "firm-a", "docs", "fees.md"), "# Fees\n\nA fee schedule is assigned per account.\n");
-        using var api = AdminApi(new Dictionary<string, string?> { ["Indexing:CorpusRoot"] = corpus.FullName });
+        using var api = AdminApi();
+        IndexAdminPluginSupport.WriteDocument(api, "alpha");
         var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
 
         var response = await admin.PostAsync("/api/admin/index/run", null, Ct);
@@ -167,7 +167,6 @@ public sealed class AdminIndexApiTests
         Assert.Equal($"/api/admin/jobs/{job.JobId}", response.Headers.Location?.ToString());
         var finished = await WaitAsync(admin, job.JobId);
         Assert.Equal(AdminJobStates.Failed, finished.State);
-        corpus.Delete(recursive: true);
     }
 
     [Fact]
@@ -180,7 +179,7 @@ public sealed class AdminIndexApiTests
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    private static async Task<AdminJob> WaitAsync(HttpClient client, string jobId)
+    internal static async Task<AdminJob> WaitAsync(HttpClient client, string jobId)
     {
         for (var i = 0; i < 400; i++)
         {

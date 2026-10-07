@@ -41,6 +41,7 @@ public sealed record PluginManifest
     [JsonPropertyName("domain")] public DomainTable? Domain { get; init; }
     [JsonPropertyName("agent")] public AgentTable? Agent { get; init; }
     [JsonPropertyName("topology")] public TopologyTable? Topology { get; init; }
+    [JsonPropertyName("corpus")] public CorpusTable? Corpus { get; init; }
 }
 
 /// <summary>How the core uses an MCP plugin's tools: data, operator-reviewed, never read from the server (decision 5a).</summary>
@@ -121,3 +122,30 @@ public sealed record TopologyTable
     [JsonPropertyName("url")] public string Url { get; init; } = "";
     [JsonPropertyName("label")] public string? Label { get; init; }
 }
+
+/// <summary>
+/// The corpus a plugin owns (extract-index-admin-plugin): where it is in the plugin's folder, the collections it is
+/// indexed into, how it is laid out and the graph it is built into, so the index admin can offer it.
+/// </summary>
+public sealed record CorpusTable
+{
+    /// <summary>Relative to the plugin's folder, never leaving it.</summary>
+    [JsonPropertyName("path")] public string Path { get; init; } = "";
+    [JsonPropertyName("collection")] public string Collection { get; init; } = "";
+    /// <summary>Where the corpus's BM25 model lives, beside its collection.</summary>
+    [JsonPropertyName("meta_collection")] public string MetaCollection { get; init; } = "";
+    /// <summary><c>tenants</c> ({tenant}/... folders) or <c>repository</c> (the repository itself, every file shared).</summary>
+    [JsonPropertyName("layout")] public string Layout { get; init; } = CorpusLayoutNames.Tenants;
+    /// <summary>The graph source its documents are built into; none when the corpus has no graph.</summary>
+    [JsonPropertyName("graph")] public string? Graph { get; init; }
+}
+
+/// <summary>The layouts a corpus can have, as the indexer reads them.</summary>
+public static class CorpusLayoutNames
+{
+    public const string Tenants = "tenants";
+    public const string Repository = "repository";
+}
+
+/// <summary>An installed plugin's corpus as the core resolved it: <see cref="Root"/> is absolute.</summary>
+public sealed record PluginCorpus(string Plugin, string Root, string Collection, string MetaCollection, string Layout, string? Graph);

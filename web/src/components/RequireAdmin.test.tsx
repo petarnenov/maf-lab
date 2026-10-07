@@ -4,14 +4,14 @@ import { App } from '../App';
 import { jsonResponse, makeSession, renderWithProviders } from '../test/render';
 
 describe('admin routes', () => {
-  it('denies a USER opening /admin/index', () => {
+  it('denies a USER opening /admin/feedback', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => jsonResponse([])),
     );
-    renderWithProviders(<App />, { session: makeSession('USER'), route: '/admin/index' });
+    renderWithProviders(<App />, { session: makeSession('USER'), route: '/admin/feedback' });
     expect(screen.getByRole('alert')).toHaveTextContent('Access denied');
-    expect(screen.queryByText('Index administration')).not.toBeInTheDocument();
+    expect(screen.queryByText('Feedback review queue')).not.toBeInTheDocument();
   });
 
   it('denies a READ_ONLY user opening /admin/feedback', () => {
@@ -23,29 +23,15 @@ describe('admin routes', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Access denied');
   });
 
-  it('lets a TENANT_ADMIN open /admin/index', async () => {
+  it('lets a TENANT_ADMIN open /admin/feedback', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string) => {
-        if (url === '/api/admin/index/status')
-          return jsonResponse({
-            modelVersions: [],
-            activeDenseVector: 'dense_v1',
-            currentJob: null,
-          });
-        if (url === '/api/admin/index/drift')
-          return jsonResponse({
-            totalDocuments: 10,
-            staleDocuments: 0,
-            stalePercent: 0,
-            stale: [],
-            missingFromIndex: [],
-          });
-        return jsonResponse([]);
-      }),
+      vi.fn(async () => jsonResponse([])),
     );
-    renderWithProviders(<App />, { session: makeSession('TENANT_ADMIN'), route: '/admin/index' });
-    expect(await screen.findByText('Index administration')).toBeInTheDocument();
-    expect(await screen.findByTestId('drift-percent')).toHaveTextContent('0.0%');
+    renderWithProviders(<App />, {
+      session: makeSession('TENANT_ADMIN'),
+      route: '/admin/feedback',
+    });
+    expect(await screen.findByText('Feedback review queue')).toBeInTheDocument();
   });
 });

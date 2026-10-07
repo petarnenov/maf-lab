@@ -10,7 +10,7 @@ namespace Maf.Lab.Tests.Plugins;
 /// A plugin compiled into the test assembly (introduce-plugins tasks 3.4 and 3.7): it contributes a service, one route
 /// and open work, so the composition root, the gate and the open-work routes are proved without a real plugin folder.
 /// </summary>
-public sealed class FixturePlugin : IMafPlugin, IContributesServices, IContributesEndpoints, IContributesOpenWork
+public sealed class FixturePlugin : IMafPlugin, IContributesServices, IContributesEndpoints, IContributesOpenWork, IOpenWork
 {
     public const string PluginName = "fixture";
 
@@ -24,6 +24,8 @@ public sealed class FixturePlugin : IMafPlugin, IContributesServices, IContribut
 
     public void MapEndpoints(IMafEndpoints endpoints) =>
         endpoints.Routes.MapGet("/api/fixture/ping", (FixtureMarker marker) => Results.Ok(new { pong = marker.Value }));
+
+    public IOpenWork CreateOpenWork(IServiceProvider services) => this;
 
     public Task<IReadOnlyList<OpenWorkItem>> ListOpenAsync(CancellationToken ct)
     {
