@@ -47,5 +47,7 @@ one commit (never the entry alone); B.5 switches `ConfirmationCard` and its cons
       - `docs/http-api.md`: the `/pending` shape, and the "state is deliberately absent" wording without fee terms;
       - `docs/plugins.md`;
       - DECISIONS: the next free section at landing, amending §17's rename sentence.
-- [ ] B.9 Proof: one full parallel `dotnet test` run and `make test-web`; `openspec validate --strict --all`;
+- [x] B.9 Proof: one full parallel `dotnet test` run and `make test-web`; `openspec validate --strict --all`;
       `make docs-check`; the warnings-as-errors build.
+      Done: with plugins/billing present, 1854 .NET + 700 web passed; moved aside, the core builds and passes but for
+      two load-flaky tests that pass alone and on the clean tip.
