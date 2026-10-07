@@ -123,7 +123,7 @@ jobs:
           retention-days: 7
 
   e2e-core:
-    # The core alone (introduce-plugins 7.1): `make core` — no plugin, no built-in domain — starts healthy, passes
+    # The core alone (introduce-plugins 7.1): `make core` — no plugin, so no domain — starts healthy, passes
     # verify with every plugin's checks skipping themselves, and declines a turn before any model, Jev or tool call.
     # In parallel with the all-plugins leg; the two share no stack.
     name: End-to-end core only (model-free)

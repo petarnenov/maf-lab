@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Indexes each domain's corpus only when its Qdrant collection is missing or empty, then builds its graph when the graph
 # store holds no node of that source.
-#   index_if_empty.sh                  the built-in domains: portfolio (data-portfolio/)
-#   index_if_empty.sh --source NAME    one plugin's corpus, as its plugin.mk describes it in the environment (Qdrant__Collection,
+#   index_if_empty.sh --source NAME [--no-graph]
+#                                      one plugin's corpus, as its plugin.mk describes it in the environment (Qdrant__Collection,
 #                                      Qdrant__MetaCollection, Indexing__CorpusRoot, Indexing__*), and its graph source NAME
+#                                      unless it has none (--no-graph). The core has no corpus of its own: each plugin's
+#                                      plugin.mk runs this for its part of the first `make`.
 # Env: QDRANT_URL (http://localhost:6333), DOTNET (dotnet),
 #      Models__OllamaEndpoint (http://localhost:11435 — the compose Ollama for queries), Models__BatchOllamaEndpoint
 #      (http://localhost:11436 — the one for documents), their thread counts, NEO4J_PASSWORD (the compose default).
@@ -16,8 +18,7 @@ export Models__OllamaNumThread="${Models__OllamaNumThread:-${OLLAMA_INTERACTIVE_
 export Models__BatchOllamaEndpoint="${Models__BatchOllamaEndpoint:-http://localhost:11436}"
 export Models__BatchOllamaNumThread="${Models__BatchOllamaNumThread:-${OLLAMA_BATCH_THREADS:-12}}"
 
-# One corpus and one collection per domain: portfolio (data-portfolio/ → maf_portfolio_chunks), and each plugin's (its
-# plugin.mk calls this with --source).
+# One corpus and one collection per domain plugin (its plugin.mk calls this with --source).
 index_domain() {
   local collection="$1" corpus="$2" meta="$3"
   local points
@@ -50,13 +51,9 @@ if [[ "${1:-}" == "--source" ]]; then
   # One plugin's part: its plugin.mk runs this only while the plugin's folder exists.
   [[ -n "${2:-}" ]] || { echo "usage: index_if_empty.sh [--source NAME]" >&2; exit 2; }
   index_domain "${Qdrant__Collection:?its plugin.mk names the collection}" "${Indexing__CorpusRoot:?its plugin.mk names the corpus}" "${Qdrant__MetaCollection:?its plugin.mk names the meta collection}"
-  graph_if_empty "$2"
+  [[ "${3:-}" == "--no-graph" ]] || graph_if_empty "$2"
   exit 0
 fi
 
-# A plugin's corpus is indexed only while it is installed (introduce-plugins task 2.4); a part still in the core (no
-# plugins/<name>/ folder yet) always is.
-installed() { [[ ! -f "$ROOT/plugins/$1/plugin.toml" ]] || python3 "$ROOT/scripts/plugins.py" resolve | grep -qx "$1"; }
-if installed portfolio; then
-  index_domain maf_portfolio_chunks "$ROOT/data-portfolio" maf_portfolio_meta
-fi
+echo "usage: index_if_empty.sh --source NAME [--no-graph]" >&2
+exit 2

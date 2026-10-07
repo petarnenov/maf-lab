@@ -132,7 +132,7 @@ allow and enable arrive with `enable-plugins-per-tenant`.
 | Command | What it does |
 |---|---|
 | `make` | Installs `MAF_PLUGINS` (unset: every bundled plugin `MAF_ENV` allows, except `_example`); a plugin's routes join the balancer once its services are healthy, as with `plugin-on` |
-| `make core` | The core alone: no plugin and no built-in domain (`MAF_PLUGINS=none`, `Agent__BuiltInDomains=`); every turn declines before any model, Jev or tool call. A mode you leave: a plain `make` or `make up` brings the built-ins back |
+| `make core` | The core alone: no plugin, so no domain (`MAF_PLUGINS=none`); every turn declines before any model, Jev or tool call. A mode you leave: a plain `make` or `make up` brings the built-ins back |
 | `make plugins` | Lists every plugin: kind, scope, environments, installed, dependencies |
 | `make plugin-new NAME=x KIND=mcp\|app` | Starts a new plugin (above) |
 | `make plugin-on NAME=x` | Starts its services, waits until healthy, adds its routes, records the set, tells the running services |

@@ -59,14 +59,14 @@ sent only as the bearer header; never put it in a prompt, state, trace or log.
 Embeddings: local Ollama, one multilingual model (`embeddinggemma`, vector `dense_v3`). Changing it = new profile + `make rebuild-index FORCE=1`.
 Two instances serve it: `ollama` (11435) for search queries only, `ollama-batch` (11436) for document embeddings (indexing, migrate, admin index runs), each pinned to its own CPUs; every request must send that instance's `num_thread` (one without it reloads the model on all CPUs).
 
-Entry point: everything runs behind the nginx load balancer on http://localhost:7171 (api, mcp-retrieval, mcp-portfolio and compliance x2; copilot-runtime x1; with the default plugins installed, the `code` plugin's mcp-code x1). With the inspector plugins installed (dev only, loopback): A2A http://localhost:7172, MCP http://localhost:7173, Redis Insight http://localhost:7174, Neo4j Browser http://localhost:7175.
+Entry point: everything runs behind the nginx load balancer on http://localhost:7171 (api and compliance x2; copilot-runtime x1; with the default plugins installed, billing's mcp-retrieval and portfolio's mcp-portfolio x2 and code's mcp-code x1). With the inspector plugins installed (dev only, loopback): A2A http://localhost:7172, MCP http://localhost:7173, Redis Insight http://localhost:7174, Neo4j Browser http://localhost:7175.
 Graph store: Neo4j (`neo4j:2026.09.0-community`), Bolt on 127.0.0.1:7687, password `NEO4J_PASSWORD` (dev default `maf-lab-dev-graph`).
 
 Plugins: `make plugins` lists them, `make plugin-on NAME=` / `make plugin-off NAME=` switch one, `MAF_PLUGINS` picks the
 set (unset: every bundled plugin allowed in `MAF_ENV` except `_example`; `none`: no plugin; otherwise a list,
-dependencies added; `CI_MODE=1` uses `CI_PLUGINS`). `make core` starts the core alone — no plugin and no built-in
-domain (`MAF_PLUGINS=none`, `Agent__BuiltInDomains=`): every turn declines before any model, Jev or tool call, and a
-plain `make` brings the built-ins back.
+dependencies added; `CI_MODE=1` uses `CI_PLUGINS`). `make core` starts the core alone — no plugin, so no
+domain (`MAF_PLUGINS=none`; every domain is a plugin): every turn declines before any model, Jev or tool call, and a
+plain `make` brings the plugins back.
 
 Commands: `make help`.
 

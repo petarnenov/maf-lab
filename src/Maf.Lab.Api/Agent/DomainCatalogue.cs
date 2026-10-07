@@ -6,16 +6,16 @@ namespace Maf.Lab.Api.Agent;
 
 /// <summary>
 /// The domains in use, as data (introduce-plugins decision 6): every domain the deployment has, read the same way, none
-/// first, default or special (decision 5g). Built from the built-in domains the configuration keeps
-/// (<c>Agent:BuiltInDomains</c>, until each becomes a plugin folder) and every installed plugin's <c>[domain]</c> table,
-/// which replaces a built-in of the same id. Rebuilt whenever the installed set the plugin catalogue last read changes,
-/// so a remote domain plugin applies from the next turn with no restart.
+/// first, default or special (decision 5g). Built from every installed plugin's <c>[domain]</c> table: since
+/// extract-portfolio no domain is built in, so outside any scope there is none. Rebuilt whenever the installed set the
+/// plugin catalogue last read changes, so a remote domain plugin applies from the next turn with no restart.
 /// </summary>
 public sealed class DomainCatalogue
 {
     private static readonly AsyncLocal<DomainCatalogue?> Ambient = new();
-    private static readonly Lazy<DomainCatalogue> Default =
-        new(() => new DomainCatalogue(BuiltIn.BuiltInDomains.Ids, BuiltIn.BuiltInDomains.Behaviours, null, null));
+
+    /// <summary>No domain: what <see cref="Current"/> answers outside any scope, since every domain is a plugin's.</summary>
+    public static DomainCatalogue Empty { get; } = Of([]);
 
     /// <summary>
     /// The catalogue of the request or turn being served, for the static facades only (<see cref="Domains"/>,
@@ -25,13 +25,7 @@ public sealed class DomainCatalogue
     /// built by DI takes the catalogue by its constructor instead. Ambient rather than global, so two hosts in one process
     /// (tests) never see each other's.
     /// </summary>
-    public static DomainCatalogue Current => Ambient.Value ?? Default.Value;
-
-    /// <summary>
-    /// Every built-in domain, ignoring <c>Agent:BuiltInDomains</c>: what <see cref="Current"/> answers outside any scope.
-    /// For tests of the static readers only; a host always puts its own catalogue in scope.
-    /// </summary>
-    public static DomainCatalogue AllBuiltIn => Default.Value;
+    public static DomainCatalogue Current => Ambient.Value ?? Empty;
 
     /// <summary>Puts a catalogue in scope for the current async flow, until the returned handle is disposed.</summary>
     public static IDisposable Use(DomainCatalogue catalogue)
@@ -46,26 +40,20 @@ public sealed class DomainCatalogue
         public void Dispose() => Ambient.Value = previous;
     }
 
-    private readonly IReadOnlyList<DomainDescriptor> _builtIn;
+    private readonly IReadOnlyList<DomainDescriptor> _fixed;
     private readonly IReadOnlyList<IDomainBehaviour> _behaviours;
     private readonly PluginCatalogue? _plugins;
     private readonly string? _pluginsRoot;
     private readonly object _gate = new();
     private (PluginSet? Set, Snapshot Snapshot)? _cached;
 
-    public DomainCatalogue(IOptions<AgentOptions> agent, IEnumerable<IDomainBehaviour> pluginBehaviours, PluginCatalogue? plugins = null,
-        IOptions<PluginOptions>? pluginOptions = null)
-        : this(agent.Value.BuiltInDomainIds(), BuiltIn.BuiltInDomains.Behaviours.Concat(pluginBehaviours), plugins, pluginOptions?.Value.Root)
+    /// <summary>The installed plugins' domains, with their behaviours, rebuilt when the installed set changes.</summary>
+    public DomainCatalogue(IEnumerable<IDomainBehaviour> pluginBehaviours, PluginCatalogue? plugins = null, IOptions<PluginOptions>? pluginOptions = null)
     {
-    }
-
-    /// <summary>A catalogue of the given built-in domains and behaviours, with or without installed plugins.</summary>
-    public DomainCatalogue(IEnumerable<string> builtInIds, IEnumerable<IDomainBehaviour> behaviours, PluginCatalogue? plugins, string? pluginsRoot)
-    {
-        _builtIn = BuiltIn.BuiltInDomains.Descriptors(builtInIds);
-        _behaviours = [.. behaviours];
+        _fixed = [];
+        _behaviours = [.. pluginBehaviours];
         _plugins = plugins;
-        _pluginsRoot = pluginsRoot;
+        _pluginsRoot = pluginOptions?.Value.Root;
     }
 
     /// <summary>A catalogue of exactly these descriptors and behaviours: for tests and for hosts with no plugins.</summary>
@@ -74,7 +62,7 @@ public sealed class DomainCatalogue
 
     private DomainCatalogue(IEnumerable<DomainDescriptor> descriptors, IEnumerable<IDomainBehaviour> behaviours)
     {
-        _builtIn = [.. descriptors];
+        _fixed = [.. descriptors];
         _behaviours = [.. behaviours];
     }
 
@@ -124,7 +112,7 @@ public sealed class DomainCatalogue
                 return c.Snapshot;
             }
             var byId = new Dictionary<string, DomainDescriptor>(StringComparer.Ordinal);
-            foreach (var d in _builtIn)
+            foreach (var d in _fixed)
             {
                 byId[d.Id] = d;
             }

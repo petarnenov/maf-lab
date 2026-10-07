@@ -1,0 +1,27 @@
+# The portfolio plugin's service (extract-portfolio), merged after the core's compose file by make. Paths resolve against
+# compose/, as in every merged compose file.
+#
+# Its environment: retrieval.env (Qdrant, the Ollama instances, the chat model, Jev), platform.env (token validation,
+# telemetry, the shared store) and graph.env, plus where its collection and seed are. The host project stays in src/ until
+# extract-evals (as billing's and code's do): the eval hosts it in process.
+services:
+  # Investment portfolios: documentation search and the read tools. Read-only, so no ledger and no volume of its own.
+  mcp-portfolio:
+    build:
+      context: ..
+      dockerfile: src/Maf.Lab.Portfolio/Dockerfile
+    deploy:
+      replicas: 2
+    env_file: [env/retrieval.env, env/platform.env, env/graph.env]
+    environment:
+      Urls: http://+:8080
+      Portfolio__Collection: maf_portfolio_chunks
+      Portfolio__MetaCollection: maf_portfolio_meta
+      Portfolio__SeedPath: /seed/portfolio-households.json
+    volumes:
+      - ../plugins/portfolio/files/seed:/seed:ro
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      ollama-warm:
+        condition: service_completed_successfully

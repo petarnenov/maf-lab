@@ -25,9 +25,12 @@ public class TopologyTests
         Progress = "None", Stopping = "None",
     };
 
+    /// <summary>The vector store's infra plugin, installed by default here: most of these tests probe it.</summary>
+    private static readonly Maf.Lab.Plugins.Abstractions.PluginManifest VectorStore = GraphStore with { Name = "qdrant", Description = "the vector store" };
+
     private static ApiFactory Api(StubHandler handler, IReadOnlyDictionary<string, string[]>? dns = null,
         string complianceUrl = "http://compliance", FakeToolSource? tools = null, string testAgentUrl = "",
-        IReadOnlyDictionary<string, string?>? settings = null, bool withCodeDomain = false, bool withGraphStore = false)
+        IReadOnlyDictionary<string, string?>? settings = null, bool withCodeDomain = false, bool withGraphStore = false, bool withVectorStore = true)
     {
         var extra = new Dictionary<string, string?>
         {
@@ -44,7 +47,8 @@ public class TopologyTests
         var api = new ApiFactory(ApiFactory.ProceduralModel(), tools)
         {
             ExtraSettings = extra,
-            InstalledPlugins = withGraphStore ? [.. StandInDomains.Installed, GraphStore] : StandInDomains.Installed,
+            InstalledPlugins = withGraphStore ? [.. StandInDomains.Installed, VectorStore, GraphStore]
+                : withVectorStore ? [.. StandInDomains.Installed, VectorStore] : StandInDomains.Installed,
         };
         api.ConfigureTestServices = s =>
         {
@@ -202,6 +206,18 @@ public class TopologyTests
         Assert.Contains(report.Edges, e => e is { From: "mcp", To: "neo4j" });
         Assert.Contains(report.Edges, e => e is { From: "mcp-code", To: "neo4j" });
         Assert.DoesNotContain("s3cret-graph", JsonSerializer.Serialize(report, Json));
+    }
+
+    [Fact]
+    public async Task A_vector_store_that_is_not_installed_is_reported_as_such_not_as_a_fault()
+    {
+        using var api = Api(StubHandler.AllHealthy(), withVectorStore: false);
+
+        var node = Assert.Single((await GetAsync(api)).Nodes, n => n.Id == "qdrant");
+
+        Assert.Equal(NodeHealth.NotProbed, node.Health);
+        Assert.Equal("not installed", node.Facts["endpoint"]);
+        Assert.Equal("the vector store is not installed", node.Reason);
     }
 
     [Fact]

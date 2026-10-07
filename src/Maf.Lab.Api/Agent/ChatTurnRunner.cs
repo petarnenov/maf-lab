@@ -11,7 +11,6 @@ using Maf.Lab.Domain.Tracing;
 using Maf.Lab.Hosting;
 using Maf.Lab.Domain.Chat;
 using Maf.Lab.Domain.Feedback;
-using Maf.Lab.Domain.Portfolio;
 using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Retrieval.Models;
@@ -834,9 +833,9 @@ public sealed partial class ChatTurnRunner(
         state.Sources.AddRange(sources);
         // A result the client may see whole becomes a data card: only an allow-listed tool's successful, structured
         // result the guard let through. It is sent right after this call's result event (see the run loop).
-        if (!isError && screened is not { WholeWithheld: true } && structured is { } data && DataCards.Tools.TryGetValue(name, out var carded))
+        if (!isError && screened is not { WholeWithheld: true } && structured is { } data && DataCards.Tools.TryGetValue(name, out var activityType))
         {
-            var card = new TurnCard(callId, DataCards.MessageId(callId), carded.ActivityType, data.Clone());
+            var card = new TurnCard(callId, DataCards.MessageId(callId), activityType, data.Clone());
             state.Cards.Add(card);
             state.PendingCards[callId] = card;
             // A read the focus owner says moves the focus (one account's portfolio or AUM) puts that entity in focus.
@@ -850,7 +849,7 @@ public sealed partial class ChatTurnRunner(
                 state.FocusMoved = true;
                 state.PendingFocus[callId] = readId;
             }
-            state.Trace.Add(TraceKinds.Card, $"Data card {carded.ActivityType}", new JsonObject
+            state.Trace.Add(TraceKinds.Card, $"Data card {activityType}", new JsonObject
             {
                 ["callId"] = callId, ["messageId"] = card.MessageId, ["activityType"] = card.ActivityType,
                 ["content"] = JsonNode.Parse(data.GetRawText()),

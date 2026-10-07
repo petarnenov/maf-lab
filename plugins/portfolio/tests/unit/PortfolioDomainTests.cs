@@ -3,6 +3,7 @@ using System.Text.Json;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Jev;
 using Maf.Lab.Api.BuiltIn;
+using Maf.Lab.Plugins.Portfolio;
 using Maf.Lab.Domain.Chat;
 using Maf.Lab.Domain.Configuration;
 using Maf.Lab.Domain.Feedback;
@@ -31,8 +32,8 @@ namespace Maf.Lab.Tests;
 /// </summary>
 public class PortfolioDomainTests : IDisposable
 {
-    // The stand-in billing domain the shared fakes speak, with portfolio built in, for the static readers.
-    private readonly IDisposable _domains = DomainCatalogue.Use(StandInDomains.WithBilling);
+    // The view these tests were written in: portfolio from this plugin, billing beside it (the core tests' stand-in).
+    private readonly IDisposable _domains = PortfolioPluginSupport.Use();
 
     public void Dispose() => _domains.Dispose();
 
@@ -42,7 +43,11 @@ public class PortfolioDomainTests : IDisposable
     private static readonly Principal FirmA = new("adam", TenantId.Firm("firm-a"), Role.USER);
     private static readonly Principal FirmB = new("bea", TenantId.Firm("firm-b"), Role.USER);
 
-    private static PortfolioStore Store() => new(new ConfigurationBuilder().Build());
+    /// <summary>This plugin's seed: the tests name it themselves, never from the environment.</summary>
+    private static string Seed => Path.Combine(PortfolioPluginSupport.Folder, "files", "seed", "portfolio-households.json");
+
+    private static PortfolioStore Store() => new(new ConfigurationBuilder()
+        .AddInMemoryCollection(new Dictionary<string, string?> { ["Portfolio:SeedPath"] = Seed }).Build());
 
     // ---- the portfolio store ------------------------------------------------------------------------------------------
 
@@ -304,6 +309,7 @@ public class PortfolioDomainTests : IDisposable
             b.UseEnvironment("Development");
             // No store is reachable on port 1: the bootstrap keeps retrying in the background and no test here searches.
             b.UseSetting("Qdrant:GrpcPort", "1");
+            b.UseSetting("Portfolio:SeedPath", Seed);
             b.UseSetting(JevCredential.EnvironmentVariable, FakeJev.TestKey);
             b.ConfigureLogging(l => l.SetMinimumLevel(LogLevel.Warning));
         });

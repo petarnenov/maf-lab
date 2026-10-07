@@ -1,3 +1,5 @@
+import { createElement } from 'react';
+import { definePlugin } from '@maf/plugin-api';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -12,6 +14,12 @@ import {
 import { fixtureTrace } from './fixtures';
 import monitorPlugin from './index';
 import type { TraceEvent } from './types';
+
+/** A stand-in for a domain plugin that draws the holdings card: what time travel hides and shows again. */
+const cardsPlugin = definePlugin({
+  name: 'cards',
+  cards: { 'maf-lab/holdings': () => createElement('div', { 'data-testid': 'data-card' }) },
+});
 
 const emptyHistory = { conversations: [], nextCursor: null };
 
@@ -389,7 +397,7 @@ describe('ChatPage with the monitor', () => {
         ),
       ),
     );
-    renderChat([monitorPlugin]);
+    renderChat([monitorPlugin, cardsPlugin]);
     await userEvent.type(screen.getByLabelText('Message'), 'Rebalance A-1043');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
     const turn = await screen.findByTestId('assistant-turn');

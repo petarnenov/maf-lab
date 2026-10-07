@@ -67,7 +67,7 @@ public sealed record DomainTable
     [JsonPropertyName("search_any_intent")] public bool SearchAnyIntent { get; init; }
     /// <summary>Tool → the plugin that must be in use for the tool to be offered.</summary>
     [JsonPropertyName("tool_requires")] public IReadOnlyDictionary<string, string> ToolRequires { get; init; } = new Dictionary<string, string>();
-    /// <summary>The prompt fragment's file, relative to the plugin folder (or the built-in domain's folder).</summary>
+    /// <summary>The prompt fragment's file, relative to the plugin folder.</summary>
     [JsonPropertyName("prompt")] public string? Prompt { get; init; }
     /// <summary>The domain named for a user, by language, as the out-of-scope reply lists it.</summary>
     [JsonPropertyName("scope_summary")] public IReadOnlyDictionary<string, string> ScopeSummary { get; init; } = new Dictionary<string, string>();

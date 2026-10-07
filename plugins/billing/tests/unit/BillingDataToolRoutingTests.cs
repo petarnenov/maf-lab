@@ -19,7 +19,7 @@ public class BillingDataToolRoutingTests : IDisposable
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly JevOptions Routing = new() { RouteDataTools = true };
 
-    // The view these tests were written in: billing from this plugin, portfolio built in.
+    // The view these tests were written in: billing from this plugin, portfolio beside it (the core tests' stand-in).
     private readonly IDisposable _domains = BillingPluginSupport.Use();
 
     public void Dispose() => _domains.Dispose();

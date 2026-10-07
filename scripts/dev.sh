@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Local development without the balancer: Qdrant, Neo4j + both Ollama instances in compose, mcp-retrieval (:5090), mcp-portfolio (:5091),
-# mcp-code (:5092), api (:5080) and the Vite dev server (:5174) as foreground processes with prefixed output. Ctrl-C stops all.
+# Local development without the balancer: both Ollama instances and the stores' plugins (Qdrant, Neo4j) in compose,
+# mcp-retrieval (:5090), mcp-portfolio (:5091) and mcp-code (:5092) while their plugins are installed, api (:5080) and the
+# Vite dev server (:5174) as foreground processes with prefixed output. Ctrl-C stops all.
 set -euo pipefail
 # compose mounts the repository at MAF_LAB_REPO (make exports it); outside make, it is this checkout.
 export MAF_LAB_REPO="${MAF_LAB_REPO:-$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel)}"
@@ -16,7 +17,8 @@ export Models__BatchOllamaNumThread="${Models__BatchOllamaNumThread:-${OLLAMA_BA
 export Neo4j__Uri="${Neo4j__Uri:-bolt://localhost:7687}"
 export Neo4j__Password="${Neo4j__Password:-${NEO4J_PASSWORD:-maf-lab-dev-graph}}"
 
-docker compose -f "$FILE" up -d qdrant neo4j ollama ollama-batch ollama-init ollama-warm
+# The indexer's infrastructure, as make infra starts it: the Ollamas, and each store plugin present joins it.
+"${MAKE:-make}" --no-print-directory -C "$ROOT" infra
 # Every plugin's services stop too, first among them those that share lb's network (the inspectors).
 plugin_files=(); plugin_services=()
 for dir in "$ROOT"/plugins/*/; do
@@ -60,7 +62,11 @@ if installed billing; then
   export Agent__Servers__billing__Endpoint=http://localhost:5090/mcp
   run mcp "$ROOT/src/Maf.Lab.Retrieval" "$DOTNET" run --no-build
 fi
-run portfolio "$ROOT/src/Maf.Lab.Portfolio" "$DOTNET" run --no-build
+# Portfolio's the same way (make exports its seed path).
+if installed portfolio; then
+  export Agent__Servers__portfolio__Endpoint=http://localhost:5091/mcp
+  run portfolio "$ROOT/src/Maf.Lab.Portfolio" "$DOTNET" run --no-build
+fi
 # The codebase's server runs only while the code plugin is installed. Its server.json names the balancer, which make dev
 # bypasses, so the api is pointed at the local one by the configured override of that plugin's server.
 if installed code; then

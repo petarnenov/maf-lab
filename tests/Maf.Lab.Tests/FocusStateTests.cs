@@ -50,6 +50,8 @@ public class FocusStateTests
     [Fact]
     public void A_focus_note_names_the_id_and_nothing_else()
     {
+        // The focus owner's notes, read outside a turn: the stand-in portfolio domain owns the focus.
+        using var domains = Maf.Lab.Api.Agent.DomainCatalogue.Use(StandInDomains.WithBilling);
         Assert.Equal("", Maf.Lab.Api.Agent.ChatTurnRunner.FocusNote(null));
         Assert.Contains("ask which account they mean", Maf.Lab.Api.Agent.ChatTurnRunner.ClearedFocusNote);
         Assert.Equal("\n\n## Conversation focus\nIf the question names no account, it is about account A-1043.",

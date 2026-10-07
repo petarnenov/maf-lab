@@ -1,5 +1,4 @@
 using System.Net.Http.Json;
-using System.Reflection;
 using System.Text.Json;
 using Maf.Lab.Api.Agent.Streaming;
 using Maf.Lab.Api.Storage;
@@ -19,41 +18,6 @@ namespace Maf.Lab.Tests;
 /// </summary>
 public class ActivityCardTests
 {
-    /// <summary>
-    /// Every string a card may carry, by type. A string property not named here fails the test: a new text field on a
-    /// carded result has to be looked at before its content can reach a browser.
-    /// </summary>
-    private static readonly Dictionary<Type, string[]> PermittedStrings = new()
-    {
-        [typeof(HouseholdPortfolio)] = ["AccountId", "AccountName", "HouseholdId", "ModelPortfolio", "Currency"],
-        [typeof(HoldingView)] = ["AssetClass", "TradeSide"],
-        [typeof(AumHistory)] = ["AccountId", "HouseholdId", "Currency"],
-        [typeof(AumPoint)] = [],
-        [typeof(AccountList)] = [],
-        [typeof(AccountSummary)] = ["AccountId", "Name", "HouseholdId", "ModelPortfolio", "Currency"],
-    };
-
-    [Fact]
-    public void The_allow_list_names_the_three_portfolio_reads()
-    {
-        Assert.Equal(
-            [(PortfolioTools.AumHistory, "maf-lab/aum-history"), (PortfolioTools.GetPortfolio, "maf-lab/holdings"), (PortfolioTools.ListAccounts, "maf-lab/accounts")],
-            Maf.Lab.Api.Agent.DataCards.Tools.OrderBy(c => c.Key, StringComparer.Ordinal).Select(c => (c.Key, c.Value.ActivityType)));
-    }
-
-    [Fact]
-    public void A_carded_result_type_carries_no_free_text()
-    {
-        foreach (var (_, (_, type)) in Maf.Lab.Api.Agent.DataCards.Tools)
-        {
-            foreach (var (owner, property) in StringProperties(type))
-            {
-                Assert.True(PermittedStrings.TryGetValue(owner, out var permitted), $"{owner.Name} is not reviewed for cards");
-                Assert.True(permitted.Contains(property), $"{owner.Name}.{property} is a string no card may carry until reviewed");
-            }
-        }
-    }
-
     // ---- the card on the wire --------------------------------------------------------------------------------------
 
     private const string Question = "Препоръчай ребалансиране за A-1043";
@@ -160,37 +124,5 @@ public class ActivityCardTests
         var detail = await client.GetFromJsonAsync<ConversationDetail>($"/api/conversations/{conversationId}", new JsonSerializerOptions(JsonSerializerDefaults.Web), TestContext.Current.CancellationToken);
 
         Assert.Empty(detail!.Turns.Single().Activities!);
-    }
-
-    /// <summary>Every string property reachable from a type, through nested records and lists of them.</summary>
-    private static IEnumerable<(Type Owner, string Property)> StringProperties(Type type, HashSet<Type>? seen = null)
-    {
-        seen ??= [];
-        if (!seen.Add(type))
-        {
-            yield break;
-        }
-        foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
-        {
-            var t = property.PropertyType;
-            if (t == typeof(string))
-            {
-                yield return (type, property.Name);
-            }
-            else if (t.IsGenericType && t.GetGenericArguments() is [var item] && item.Namespace == typeof(HoldingView).Namespace)
-            {
-                foreach (var nested in StringProperties(item, seen))
-                {
-                    yield return nested;
-                }
-            }
-            else if (t.Namespace == typeof(HoldingView).Namespace && t.IsClass)
-            {
-                foreach (var nested in StringProperties(t, seen))
-                {
-                    yield return nested;
-                }
-            }
-        }
     }
 }

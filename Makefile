@@ -67,7 +67,6 @@ COMPOSE       := docker compose -p $(COMPOSE_PROJECT)
 # ── configuration (override on the command line or in the environment) ─────────────────────────────────────────────
 BASE_URL      ?= http://localhost:7171
 API_REPLICAS  ?= 2
-PORTFOLIO_REPLICAS ?= 2
 COMPLIANCE_REPLICAS ?= 2
 CHAT_MODEL    ?= gpt-oss:120b
 SUITE         ?= all
@@ -107,8 +106,6 @@ export DOTNET_NOLOGO := 1
 HOST_ENV := Models__OllamaEndpoint=http://localhost:11435 Models__OllamaNumThread=$${OLLAMA_INTERACTIVE_THREADS:-4} \
 	Models__BatchOllamaEndpoint=http://localhost:11436 Models__BatchOllamaNumThread=$${OLLAMA_BATCH_THREADS:-12} \
 	Neo4j__Uri=bolt://localhost:7687 Neo4j__Password=$${NEO4J_PASSWORD:-maf-lab-dev-graph}
-# The portfolio domain is indexed by the same indexer into its own collection and BM25 vocabulary.
-PORTFOLIO_ENV := Indexing__CorpusRoot=$(ROOT)/data-portfolio Qdrant__Collection=maf_portfolio_chunks Qdrant__MetaCollection=maf_portfolio_meta
 # The indexer runs from its build output: `dotnet run` re-evaluates and checks the build on every call (3-20 s each,
 # three calls per `make index`), which made a repeat run over an unchanged corpus slow. The dll is rebuilt only when a
 # source, project or build file of it or of a project it references is newer than it, and touched so an up-to-date
@@ -118,7 +115,7 @@ INDEXER_SRC  := $(shell find src/Maf.Lab.Indexing src/Maf.Lab.Retrieval src/Maf.
                 Directory.Build.props Directory.Packages.props global.json
 INDEXER      := $(DOTNET) $(INDEXER_DLL)
 
-.PHONY: all help up core plugins plugin-new plugin-new-check plugin-switch-check plugin-on plugin-off product-check down restart ps logs print-compose-file clean infra index index-portfolio indexer graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
+.PHONY: all help up core plugins plugin-new plugin-new-check plugin-switch-check plugin-on plugin-off product-check down restart ps logs print-compose-file clean infra index indexer graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
         coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-answer-check eval-code-route eval-graph-depth eval-a2a dev doctor banner index-if-empty \
         specs docs docs-check lint-dotnet lint-web build-web ci ci-e2e ci-e2e-core core-turn-check setup \
         require-docker require-dotnet require-npm require-python
@@ -126,11 +123,11 @@ INDEXER      := $(DOTNET) $(INDEXER_DLL)
 all: require-docker up index-if-empty banner ## Start everything: build, run, wait for health, index if empty (default)
 
 help: ## List the targets
-	@echo "maf-lab — make targets (variables: API_REPLICAS PORTFOLIO_REPLICAS COMPLIANCE_REPLICAS CHAT_MODEL SUITE BASE_URL WAIT_TIMEOUT TO FORCE)"
+	@echo "maf-lab — make targets (variables: API_REPLICAS COMPLIANCE_REPLICAS CHAT_MODEL SUITE BASE_URL WAIT_TIMEOUT TO FORCE)"
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 # ── lifecycle ────────────────────────────────────────────────────────────────────────────────────────────────────
-up: require-docker ## Build and start the stack (replicas via API_REPLICAS/PORTFOLIO_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy
+up: require-docker ## Build and start the stack (replicas via API_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy
 	@if [ "$(CI_MODE)" != "1" ] && [ -z "$$OLLAMA_API_KEY" ]; then echo "⚠ OLLAMA_API_KEY is not set: the stack starts, but chat (Ollama Cloud) will fail. Run 'make setup'."; fi
 	@if [ "$(CI_MODE)" != "1" ] && [ -z "$$JEV_MAF_LAB" ]; then echo "⚠ JEV_MAF_LAB is not set: the stack starts, but no turn is classified (nothing forced to search)."; fi
 	@# Earlier versions ran the api as root; give back to you whatever it left owned by root in the checkout.
@@ -142,8 +139,7 @@ up: require-docker ## Build and start the stack (replicas via API_REPLICAS/PORTF
 	@$(PLUGINS_PY) install --installed-only
 	@MAF_PLUGINS=none $(PLUGINS_PY) install --conf-d-only
 	@# compose itself waits for the balancer's dependencies to be healthy; if that fails, show which service and why.
-	$(COMPOSE) up -d --build --remove-orphans --scale api=$(API_REPLICAS) \
-	  --scale mcp-portfolio=$(PORTFOLIO_REPLICAS) --scale compliance=$(COMPLIANCE_REPLICAS) \
+	$(COMPOSE) up -d --build --remove-orphans --scale api=$(API_REPLICAS) --scale compliance=$(COMPLIANCE_REPLICAS) \
 	  || { scripts/wait_healthy.sh 0; exit 1; }
 	@scripts/wait_healthy.sh $(WAIT_TIMEOUT)
 	@# The plugins' snippets, now that their services are healthy; the balancer resolves the replicas when it reloads, so
@@ -151,12 +147,12 @@ up: require-docker ## Build and start the stack (replicas via API_REPLICAS/PORTF
 	@$(PLUGINS_PY) install --conf-d-only
 	@$(COMPOSE) exec -T lb nginx -t -q -c /etc/nginx/lb/nginx.conf \
 	  && $(COMPOSE) exec -T lb nginx -c /etc/nginx/lb/nginx.conf -s reload >/dev/null 2>&1 \
-	  && echo "✓ load balancer reloaded ($(API_REPLICAS) api, $(PORTFOLIO_REPLICAS) portfolio, $(COMPLIANCE_REPLICAS) compliance replicas)"
+	  && echo "✓ load balancer reloaded ($(API_REPLICAS) api, $(COMPLIANCE_REPLICAS) compliance replicas)"
 	@# Every replica re-reads plugins/.installed now rather than at its next 30-second check.
 	@$(COMPOSE) exec -T redis redis-cli PUBLISH plugins-changed up >/dev/null 2>&1 || true
 
-core: ## Start the core with no plugin and no built-in domain (MAF_PLUGINS=none); declines every turn (decision 5h); a plain make brings them back
-	@Agent__BuiltInDomains= $(MAKE) --no-print-directory up MAF_PLUGINS=none
+core: ## Start the core with no plugin (MAF_PLUGINS=none), so no domain; declines every turn (decision 5h); a plain make brings them back
+	@$(MAKE) --no-print-directory up MAF_PLUGINS=none
 
 product-check: require-docker ## Build the product image variant (api, web) and check it holds no dev-or-qa-only plugin code
 	@MAF_IMAGE_VARIANT=product $(COMPOSE) build api web
@@ -210,14 +206,13 @@ banner:
 	@echo ""
 
 # ── data ─────────────────────────────────────────────────────────────────────────────────────────────────────────
-infra: require-docker ## Start only the indexer's infrastructure (Qdrant, both Ollama instances + the embedding model, and installed stores) and wait until healthy
-	@# Host-side indexer CLIs need Qdrant (6333/6334) and both compose Ollamas (11435 queries, 11436 documents); a store
-	@# plugin adds itself (the neo4j plugin's infra-neo4j). A no-op when the stack is already up.
-	@$(COMPOSE) up -d --wait qdrant ollama ollama-batch
+infra: require-docker ## Start only the indexer's infrastructure (both Ollama instances + the embedding model, and the store plugins) and wait until healthy
+	@# Host-side indexer CLIs need both compose Ollamas (11435 queries, 11436 documents) and the stores; each store plugin
+	@# adds itself (qdrant's infra-qdrant, neo4j's infra-neo4j). A no-op when the stack is already up.
+	@$(COMPOSE) up -d --wait ollama ollama-batch
 	@$(COMPOSE) up --no-log-prefix ollama-init ollama-warm
 
-index-if-empty: require-dotnet
-	@$(HOST_ENV) scripts/index_if_empty.sh
+index-if-empty: ## Index each plugin's corpus and graph that are still empty (each plugin present adds its own part)
 
 $(INDEXER_DLL): $(INDEXER_SRC) | require-dotnet
 	@echo "… building the indexer"
@@ -227,16 +222,11 @@ $(INDEXER_DLL): $(INDEXER_SRC) | require-dotnet
 # The indexer's build, by name: what a plugin's index targets depend on (a plugin.mk is read before $(INDEXER_DLL) is set).
 indexer: $(INDEXER_DLL)
 
-index: require-dotnet infra $(INDEXER_DLL) ## Index the built-in domains' corpora; each plugin present adds its corpus and graph (unchanged documents are skipped)
-	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) index
+index: ## Index every corpus: each plugin present adds its corpus and graph (unchanged documents are skipped)
 
 graph: ## Build the Neo4j graph: each plugin present adds its own (unchanged nodes are not rewritten)
 
-index-portfolio: require-dotnet infra $(INDEXER_DLL) ## Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only
-	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) index
-
-reindex: require-dotnet infra $(INDEXER_DLL) ## Re-embed every document of the built-in domains, and of each plugin present (--force)
-	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) index --force
+reindex: ## Re-embed every document of each plugin present (--force)
 
 drift: ## Report stale documents: each plugin present compares its index and graph against its source
 

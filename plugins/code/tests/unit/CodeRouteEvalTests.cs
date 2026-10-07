@@ -12,7 +12,7 @@ namespace Maf.Lab.Tests;
 /// <summary>The code-route suite (route-structural-code-questions): its dataset and what it counts.</summary>
 public class CodeRouteEvalTests : IDisposable
 {
-    // The three-domain view these tests were written in: billing and portfolio built in, codebase from this plugin.
+    // The three-domain view these tests were written in: billing and portfolio (the core tests' stand-ins), codebase from this plugin.
     private readonly IDisposable _domains = CodePluginSupport.Use();
 
     public void Dispose() => _domains.Dispose();

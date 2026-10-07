@@ -2,6 +2,7 @@ using Maf.Lab.Domain.Admin;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Retrieval.Configuration;
 using Maf.Lab.Retrieval.Sparse;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
@@ -18,6 +19,25 @@ public sealed record MigrationCandidate(Guid PointId, string Text, string? Conte
 /// Writes and administrative reads of chunk points. Every operation is scoped to exactly one tenant,
 /// which comes from the corpus layout (indexer) or from a TENANT_ADMIN principal — never from request input.
 /// </summary>
+/// <summary>The chunk store of a domain whose chunks are in a collection of their own, on the core's Qdrant connection.</summary>
+public static class DomainChunkStore
+{
+    /// <summary>
+    /// A store over the given collection with the core's Qdrant settings otherwise (a plugin's collection): a plugin
+    /// names its collection here and never reaches the Qdrant client itself (spec plugins).
+    /// </summary>
+    public static TenantScopedMaintenance For(IServiceProvider services, string collection, string metaCollection)
+    {
+        var qdrant = services.GetRequiredService<IOptions<QdrantOptions>>().Value;
+        return new TenantScopedMaintenance(services.GetRequiredService<QdrantClient>(), Options.Create(new QdrantOptions
+        {
+            Host = qdrant.Host, GrpcPort = qdrant.GrpcPort, Https = qdrant.Https, ApiKey = qdrant.ApiKey, PayloadM = qdrant.PayloadM,
+            Collection = collection,
+            MetaCollection = metaCollection,
+        }));
+    }
+}
+
 public sealed class TenantScopedMaintenance(QdrantClient client, IOptions<QdrantOptions> options)
 {
     private readonly string _collection = options.Value.Collection;

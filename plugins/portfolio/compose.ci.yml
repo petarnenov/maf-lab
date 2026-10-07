@@ -1,0 +1,5 @@
+# The portfolio plugin's CI override (CI_MODE=1), merged after its compose.yml: the chat model and Jev answer from the
+# stub, as for the core's services (compose/docker-compose.ci.yml). Paths resolve against compose/.
+services:
+  mcp-portfolio:
+    env_file: [env/ci-models.env]

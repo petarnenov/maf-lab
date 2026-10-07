@@ -134,6 +134,8 @@ export const run = {
 
   error: (message: string) => sse(EventType.RUN_ERROR, { message }),
 
+  /** The run's shared state (AG-UI `STATE_SNAPSHOT`), such as the account in focus. */
+  state: (snapshot: unknown) => sse(EventType.STATE_SNAPSHOT, { snapshot }),
   /** A data card (AG-UI `ACTIVITY_SNAPSHOT`). */
   card: (messageId: string, activityType: string, content: unknown) =>
     sse(EventType.ACTIVITY_SNAPSHOT, { messageId, activityType, content }),

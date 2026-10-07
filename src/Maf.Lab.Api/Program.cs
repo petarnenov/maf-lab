@@ -42,9 +42,9 @@ public partial class Program
         // The installed plugins: read at run time, composed here (introduce-plugins decision 5).
         builder.AddMafPlugins(plugins);
         builder.Services.AddHttpClient("plugins");
-        // The domains in use, as data (introduce-plugins decision 6): the built-in ones this deployment keeps and every
-        // installed plugin's, rebuilt when the installed set changes.
-        builder.Services.AddSingleton(sp => new DomainCatalogue(sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AgentOptions>>(),
+        // The domains in use, as data (introduce-plugins decision 6): every installed plugin's, rebuilt when the installed
+        // set changes.
+        builder.Services.AddSingleton(sp => new DomainCatalogue(
             sp.GetServices<Maf.Lab.Plugins.Abstractions.IDomainBehaviour>(), sp.GetService<Plugins.PluginCatalogue>(),
             sp.GetService<Microsoft.Extensions.Options.IOptions<Plugins.PluginOptions>>()));
 
@@ -64,8 +64,6 @@ public partial class Program
             // One model per set of plugin tables, so two hosts with different plugins in one process never share one.
             .ReplaceService<Microsoft.EntityFrameworkCore.Infrastructure.IModelCacheKeyFactory, Storage.PluginModelCacheKeyFactory>());
 
-        // Each built-in domain's chunks, keyed by domain, for the review queue to resolve a search's sources where they live.
-        Maf.Lab.Api.BuiltIn.BuiltInDomains.AddStores(builder.Services, builder.Configuration);
         builder.Services.AddSingleton<SystemPrompt>();
         builder.Services.AddSingleton<TokenCounter>();
         builder.Services.AddSingleton<ToolAudit>();

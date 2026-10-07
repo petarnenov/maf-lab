@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 using Maf.Lab.Domain.Portfolio;
 using Maf.Lab.Plugins.Abstractions;
 
-namespace Maf.Lab.Api.BuiltIn;
+namespace Maf.Lab.Plugins.Portfolio;
 
 /// <summary>
 /// The portfolio domain's behaviour: the account a routed portfolio read is for (named in the question, or the one in
@@ -12,7 +12,7 @@ namespace Maf.Lab.Api.BuiltIn;
 /// </summary>
 public sealed partial class PortfolioBehaviour : IDomainBehaviour
 {
-    public string Domain => BuiltInDomains.Portfolio;
+    public string Domain => PortfolioPlugin.DomainId;
 
     public (IReadOnlyDictionary<string, object?>? Arguments, string? Reason) BindRead(string tool, string question,
         IReadOnlyDictionary<string, DecisionAnswer> answers, string? focus, double minConfidence)

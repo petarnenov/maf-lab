@@ -11,13 +11,13 @@ namespace Maf.Lab.Tests;
 /// <summary>
 /// The billing domain's part of the routing pins (introduce-plugins task 1.1), moved verbatim with the domain into its
 /// plugin (extract-billing), as the codebase domain's were: run in the view the lab had when they were written —
-/// billing from this folder's manifest, portfolio built in — every assertion is the one the core pin made.
+/// billing from this folder's manifest, portfolio beside it (the core tests' stand-in since extract-portfolio) — every assertion is the one the core pin made.
 /// </summary>
 public class BillingDomainRoutingPinTests : IDisposable
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    // The view these pins were written in: billing (from this plugin's manifest) and portfolio built in.
+    // The view these pins were written in: billing (from this plugin's manifest) and portfolio (the stand-in).
     private readonly IDisposable _domains = BillingPluginSupport.Use();
 
     public void Dispose() => _domains.Dispose();
@@ -102,7 +102,7 @@ public class BillingDomainRoutingPinTests : IDisposable
             ["get_household_portfolio"] = "maf-lab/holdings",
             ["get_aum_history"] = "maf-lab/aum-history",
             ["list_my_accounts"] = "maf-lab/accounts",
-        }, DataCards.Tools.ToDictionary(t => t.Key, t => t.Value.ActivityType));
+        }, DataCards.Tools.ToDictionary(t => t.Key, t => t.Value));
     }
 
     [Fact]

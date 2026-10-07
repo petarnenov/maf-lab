@@ -16,7 +16,7 @@ public class JevDomainTextTests
 
     private static DomainCatalogue All => DomainCatalogue.Of([.. StandInDomains.WithBilling.All, Code]);
 
-    private static DomainCatalogue PortfolioOnly => DomainCatalogue.AllBuiltIn;
+    private static DomainCatalogue PortfolioOnly => StandInDomains.PortfolioOnly;
 
     private static DomainCatalogue None => DomainCatalogue.Of([]);
 

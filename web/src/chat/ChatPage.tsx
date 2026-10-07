@@ -16,7 +16,7 @@ import styles from './ChatPage.module.css';
 import { idle, step, type RecallState } from './promptHistory';
 import { SourcesPanel } from './SourcesPanel';
 import { CardView } from './cards/CardView';
-import { langOf, words, type Lang } from './cards/format';
+import { langOf, type Lang } from '../shared/format';
 import { ConfirmationCard } from './ConfirmationCard';
 import { Markdown } from './Markdown';
 import { ToolCallCard } from './ToolCallCard';
@@ -701,6 +701,12 @@ function lastQuestion(turns: ChatState['turns']): string {
   return '';
 }
 
+/** The focus chip's words, in each language. */
+const focusWords = {
+  bg: { focus: 'Фокус', clearFocus: 'Изчисти фокуса' },
+  en: { focus: 'Focus', clearFocus: 'Clear focus' },
+} as const;
+
 /** The account the conversation is about (add-focus-state), with a way to let go of it. */
 function FocusChip({
   accountId,
@@ -711,7 +717,7 @@ function FocusChip({
   lang: Lang;
   onClear: () => void;
 }) {
-  const w = words[lang];
+  const w = focusWords[lang];
   return (
     <div className={styles.focusChip} data-testid="focus-chip">
       <span>

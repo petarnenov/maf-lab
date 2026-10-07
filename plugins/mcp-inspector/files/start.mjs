@@ -16,9 +16,6 @@ const persona = {
 };
 const installed = process.env.MAF_INSTALLED_PATH ?? '/plugins/.installed';
 
-// The built-in domain's server, until it becomes a plugin whose server.json names its own (transitional: the portfolio
-// follow-up removes its line).
-const builtIn = { 'maf-lab portfolio': `${lab}/portfolio/mcp` };
 
 /** The installed MCP plugins' servers, by name: the first remote of each plugin's server.json. */
 function installedServers() {
@@ -31,14 +28,14 @@ function installedServers() {
       }),
     );
   } catch (error) {
-    // No installed set yet (or a half-written one): the built-in servers are still listed, and the next read retries.
+    // No installed set yet (or a half-written one): no server is listed until the next read retries.
     if (error.code !== 'ENOENT') console.error(`maf-lab: cannot read ${installed} (${error.message})`);
     return {};
   }
 }
 
 function servers() {
-  return { ...builtIn, ...installedServers() };
+  return installedServers();
 }
 
 async function devToken() {

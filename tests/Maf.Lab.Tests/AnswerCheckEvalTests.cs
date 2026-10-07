@@ -22,7 +22,7 @@ namespace Maf.Lab.Tests;
 /// </summary>
 public class AnswerCheckEvalTests : IDisposable
 {
-    // The stand-in billing domain the shared fakes speak, with portfolio built in, for the static readers.
+    // The stand-in billing and portfolio domains the shared fakes speak, for the static readers.
     private readonly IDisposable _domains = DomainCatalogue.Use(StandInDomains.WithBilling);
 
     public void Dispose() => _domains.Dispose();

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.maf-lab/portfolio",
+  "title": "maf-lab portfolio",
+  "description": "Investment portfolios as an MCP server: search_portfolio_documents over the firm's portfolio documentation, an account's holdings and quarter-end AUM history, and the accounts a user can access, tenant-scoped through the caller's bearer token.",
+  "version": "1.0.0",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "http://lb/portfolio/mcp"
+    }
+  ]
+}

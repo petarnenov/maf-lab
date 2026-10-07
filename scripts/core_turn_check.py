@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""make core-turn-check (introduce-plugins 7.1): on a core-only stack (`make core`: no plugin, no built-in domain), a
+"""make core-turn-check (introduce-plugins 7.1): on a core-only stack (`make core`: no plugin, so no domain), a
 turn declines with the fixed reply before any model, decision-engine or tool call.
 
 It asks /api/plugins first (no plugin and no domain must be in use, or the stack is not the core alone), checks that the

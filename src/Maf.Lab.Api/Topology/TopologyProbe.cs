@@ -70,6 +70,9 @@ public sealed class TopologyProbe(
     /// <summary>The infra plugin that runs the graph store, and the node that shows it.</summary>
     private const string GraphStorePlugin = "neo4j";
 
+    /// <summary>The infra plugin that runs the vector store, and the node that shows it.</summary>
+    private const string VectorStorePlugin = "qdrant";
+
     private static readonly TopologyEdge[] Edges =
     [
         new("lb", "web", "/"),
@@ -329,7 +332,7 @@ public sealed class TopologyProbe(
     {
         var endpoint = agent.Value.AllServers(plugins?.McpServers()).FirstOrDefault(s => s.Domain == domain)?.Endpoint;
         var node = await ReplicasAsync(id, name ?? id, addresses, timeout, ct);
-        if ((domains ?? DomainCatalogue.AllBuiltIn).Get(domain) is null)
+        if ((domains ?? DomainCatalogue.Empty).Get(domain) is null)
         {
             return node with
             {
@@ -377,6 +380,12 @@ public sealed class TopologyProbe(
     private async Task<TopologyNode> QdrantAsync(TimeSpan timeout, CancellationToken ct)
     {
         var facts = new Dictionary<string, string> { ["collection"] = qdrant.Value.Collection, ["host"] = $"{qdrant.Value.Host}:{qdrant.Value.GrpcPort}" };
+        // The vector store is a plugin (extract-portfolio): without it there is nothing to probe, and that is not a fault.
+        if (plugins is not null && !plugins.Current.Contains(VectorStorePlugin))
+        {
+            facts["endpoint"] = "not installed";
+            return new TopologyNode("qdrant", "qdrant", NodeHealth.NotProbed, [], facts, "the vector store is not installed");
+        }
         try
         {
             using var cts = Linked(timeout, ct);

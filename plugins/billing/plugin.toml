@@ -5,7 +5,7 @@ kind = "mcp"
 # per-tenant allow and enable arrive with enable-plugins-per-tenant.
 scope = "tenant"
 environments = ["dev", "qa", "stage", "prod"]
-depends = ["neo4j"]
+depends = ["neo4j", "qdrant"]
 description = "Fee billing as a domain: its MCP server (mcp-retrieval: documentation search, run status and history, the billing graph, fee adjustments), its corpus and seeds, and its domain descriptor and routing."
 progress = "Terminal: make index-billing and make graph-billing show the indexer's progress bar; Page: a billing turn shows its steps as it runs"
 stopping = "Key: Ctrl+C on make index-billing or make graph-billing, Esc on the chat page; Stop: the indexer stops at a safe point (exit 130), a turn stops through CopilotKit's stop; Recorded in: the indexer's run state and the run's state in the shared store; Shown: the bar ends with stopped, the turn says it was stopped"

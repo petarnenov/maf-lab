@@ -151,12 +151,12 @@ public sealed class CoreNamesNoDomainTests
 
 /// <summary>
 /// The static facades' contract (introduce-plugins design §6): inside a scope they read the catalogue put there — a
-/// request's or a turn's frozen view — and outside any scope every built-in domain.
+/// request's or a turn's frozen view — and outside any scope no domain, since every domain is a plugin's.
 /// </summary>
 public sealed class DomainCatalogueFacadeTests
 {
     [Fact]
-    public void A_static_reader_sees_the_catalogue_in_scope_and_all_built_ins_outside_it()
+    public void A_static_reader_sees_the_catalogue_in_scope_and_no_domain_outside_it()
     {
         using (Maf.Lab.Api.Agent.DomainCatalogue.Use(Maf.Lab.Api.Agent.DomainCatalogue.Of([StandInDomains.BillingDomain])))
         {
@@ -165,15 +165,20 @@ public sealed class DomainCatalogueFacadeTests
             Assert.Equal("", Maf.Lab.Api.Agent.ChatTurnRunner.ClearedFocusNote);
         }
 
-        Assert.Equal(["portfolio"], Maf.Lab.Api.Agent.Domains.All);
-        Assert.Equal("portfolio", Maf.Lab.Api.Agent.Domains.OfTool("search_portfolio_documents"));
-        Assert.NotEqual("", Maf.Lab.Api.Agent.ChatTurnRunner.ClearedFocusNote);
+        using (Maf.Lab.Api.Agent.DomainCatalogue.Use(StandInDomains.PortfolioOnly))
+        {
+            Assert.Equal("portfolio", Maf.Lab.Api.Agent.Domains.OfTool("search_portfolio_documents"));
+            Assert.NotEqual("", Maf.Lab.Api.Agent.ChatTurnRunner.ClearedFocusNote);
+        }
+
+        Assert.Empty(Maf.Lab.Api.Agent.Domains.All);
+        Assert.Null(Maf.Lab.Api.Agent.Domains.OfTool("search_portfolio_documents"));
     }
 
     [Fact]
     public void A_frozen_view_keeps_its_domains()
     {
-        var all = Maf.Lab.Api.Agent.DomainCatalogue.AllBuiltIn;
+        var all = StandInDomains.WithBilling;
 
         var frozen = all.Freeze();
 

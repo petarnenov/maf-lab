@@ -1,9 +1,22 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import type { DataCard } from '../../api/types';
-import { CardView } from './CardView';
-import { money, percent, toCsv } from './format';
+import type { PluginCardProps } from '@maf/plugin-api';
+import { money, percent, toCsv } from '@maf/shared/format';
+import portfolio from './index';
+
+/** A data card as the chat holds it. */
+interface DataCard {
+  messageId: string;
+  activityType: string;
+  content: unknown;
+}
+
+/** A card drawn by this plugin's renderer for its activity type, as the core's card view does it. */
+function CardView({ card, ...rest }: Omit<PluginCardProps, 'content'> & { card: DataCard }) {
+  const Renderer = portfolio.cards?.[card.activityType];
+  return Renderer ? <Renderer content={card.content} {...rest} /> : null;
+}
 
 const holdings = (overrides: Record<string, unknown> = {}): DataCard => ({
   messageId: 'card-c1',
@@ -85,7 +98,7 @@ describe('card formatting', () => {
   });
 });
 
-describe('CardView', () => {
+describe('portfolio cards', () => {
   it('draws a holdings card as a table with a caption, row headers and the plan in words', () => {
     render(<CardView card={holdings()} question="Препоръчай ребалансиране за A-1043" />);
 

@@ -135,12 +135,12 @@ public sealed class EvalAgentHost : IAsyncDisposable
         // Unpooled, as the api's store is (DECISIONS §84).
         services.AddDbContextFactory<MafDbContext>(o => o.UseSqlite(
             new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = Path.Combine(workDir, "eval.db"), Pooling = false }.ToString()));
-        // The domains the eval turns read, as the api builds them: the built-in ones Agent:BuiltInDomains keeps and every
-        // plugin the stack has installed (plugins/.installed, read once), with the behaviours of those whose code is here.
+        // The domains the eval turns read, as the api builds them: every plugin the stack has installed (plugins/.installed,
+        // read once), with the behaviours of those whose code is here.
         // Each turn takes a frozen view of it, as an api turn does.
         services.Configure<Maf.Lab.Api.Plugins.PluginOptions>(configuration.GetSection(Maf.Lab.Api.Plugins.PluginOptions.Section));
         services.AddSingleton<Maf.Lab.Api.Plugins.PluginCatalogue>();
-        services.AddSingleton(sp => new DomainCatalogue(sp.GetRequiredService<IOptions<AgentOptions>>(),
+        services.AddSingleton(sp => new DomainCatalogue(
             Maf.Lab.Api.Plugins.PluginHost.InstalledBehaviours(sp.GetRequiredService<Maf.Lab.Api.Plugins.PluginCatalogue>().Current),
             sp.GetRequiredService<Maf.Lab.Api.Plugins.PluginCatalogue>(), sp.GetRequiredService<IOptions<Maf.Lab.Api.Plugins.PluginOptions>>()));
         // Every eval turn traced in full, as before the monitor became a plugin: the eval's own observer wants it all.

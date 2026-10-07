@@ -27,8 +27,7 @@ public class CodeSystemPromptTests
         Assert.Contains("trace_code_symbol", prompt.Text);
         Assert.Contains("change_impact", prompt.Text);
         Assert.Contains("not from search_codebase", prompt.Text);
-        Assert.Contains("## Data cards", prompt.Text);
-        Assert.Contains("never calculate trades", prompt.Text);
+        // (The data cards and trades rules are portfolio's own fragment: PortfolioSystemPromptTests.)
         // add-codebase-domain: the codebase is a domain with its search, code is cited by place, general programming stays out.
         Assert.Contains("search_codebase", prompt.Text);
         Assert.Contains("path:start-end", prompt.Text);
@@ -51,7 +50,6 @@ public class CodeSystemPromptTests
         Assert.DoesNotContain("## Data cards", text);
         // One domain: nothing crosses into another.
         Assert.DoesNotContain("cross from one domain", text);
-        Assert.Contains("cross from one domain", prompt.Text);
         Assert.Contains("You answer only about this lab's own code, as covered", text);
     }
 }

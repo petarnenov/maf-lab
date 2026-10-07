@@ -9,7 +9,7 @@ namespace Maf.Lab.Tests;
 /// <summary>
 /// The billing plugin as its tests see it: its manifest as make reads it (`scripts/plugins.py manifest-json billing`),
 /// its descriptor with the prompt fragment, and the view the lab had before the plugin left the core — billing from this
-/// folder, portfolio built in (extract-billing).
+/// folder, portfolio beside it (the core tests' stand-in) (extract-billing).
 /// </summary>
 public static class BillingPluginSupport
 {
@@ -25,10 +25,9 @@ public static class BillingPluginSupport
     public static DomainDescriptor Descriptor =>
         Manifest.Domain!.ToDescriptor(File.ReadAllText(Path.Combine(Folder, Manifest.Domain.Prompt!)));
 
-    /// <summary>Billing from this folder and portfolio built in.</summary>
+    /// <summary>Billing from this folder, and the core tests' stand-in for portfolio.</summary>
     public static DomainCatalogue WithBilling() => DomainCatalogue.Of(
-        [.. DomainCatalogue.AllBuiltIn.All.Append(Descriptor).OrderBy(d => d.Order).ThenBy(d => d.Id, StringComparer.Ordinal)],
-        [.. DomainCatalogue.AllBuiltIn.Behaviours, new BillingBehaviour()]);
+        [Descriptor, StandInDomains.PortfolioDomain], [new BillingBehaviour(), new Plugins.StandInPortfolioBehaviour()]);
 
     /// <summary>Puts that view in scope for the static readers, until disposed.</summary>
     public static IDisposable Use() => DomainCatalogue.Use(WithBilling());

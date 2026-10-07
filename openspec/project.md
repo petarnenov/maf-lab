@@ -66,9 +66,8 @@ maf-lab/
   .claude/                         Agent tooling: the OpenSpec skills and commands this repository's agents use
   .github/                         GitHub Actions workflows (ci, evals) and the Copilot instructions
   .vscode/                         Compound api + web debugging, and tasks for compose up, index and eval
-  compose/                         docker-compose.yml, the nginx load balancer, the Ollama stub for CI, OpenTelemetry config, seed data
+  compose/                         docker-compose.yml, the nginx load balancer, the Ollama stub for CI, OpenTelemetry config
   copilot-runtime/                 CopilotKit's runtime (Node), wiring only: the web reaches the api's AG-UI agents through it; the AG-UI conformance check
-  data-portfolio/                  Portfolio domain corpus, same tenant layout, indexed into its own collection
   docs/                            HTTP API, trace events, telemetry and shared-state references; rules; screenshots; docs-sync.toml
   evals/                           JSONL datasets per suite, the accepted baseline, and the run reports
   openspec/                        Specs, active changes and the archive; project.md is the source for the OpenSpec context

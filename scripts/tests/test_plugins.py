@@ -147,21 +147,6 @@ class ManifestTests(PluginsTestCase):
         self.assertTrue(any("differs from the folder name" in p for p in plugins.discover()["x"].problems))
 
 
-class BuiltInDomainTests(unittest.TestCase):
-    """The built-in domains' descriptors are what a domain plugin's [domain] table will hold (introduce-plugins 5g):
-    each one passes the manifest schema today, so the follow-up that moves it into plugin.toml changes no key."""
-
-    def test_each_built_in_domain_is_a_valid_domain_table(self):
-        schema = plugins.load_schema()
-        folders = sorted((ROOT / "src" / "Maf.Lab.Api" / "BuiltIn").glob("*/domain.json"))
-        self.assertTrue(folders)
-        for path in folders:
-            table = json.loads(path.read_text())
-            document = {"schema": 1, "name": table["id"], "kind": "mcp", "scope": "tenant", "environments": ["dev"],
-                        "description": "built-in", "progress": "n/a", "stopping": "n/a", "domain": table}
-            self.assertEqual([], plugins.schema_errors(document, schema), path.parent.name)
-
-
 class InstallTests(PluginsTestCase):
     def test_install_writes_the_set_and_the_lb_snippets_by_rename(self):
         self.add("weather", **{"lb.http.conf": "upstream w { server weather:8080; }\n",

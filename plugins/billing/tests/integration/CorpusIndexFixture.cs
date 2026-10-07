@@ -21,7 +21,7 @@ public sealed class CorpusIndexFixture(QdrantFixture qdrant) : IAsyncLifetime
 
     /// <summary>
     /// The domains an agent's tool source contacts servers for: billing as its manifest describes it (the search, and the
-    /// fee adjustment that needs a reviewer), beside the built-in ones.
+    /// fee adjustment that needs a reviewer).
     /// </summary>
     public static Maf.Lab.Api.Agent.DomainCatalogue Domains { get; } = Maf.Lab.Api.Agent.DomainCatalogue.Of(
     [
@@ -30,7 +30,6 @@ public sealed class CorpusIndexFixture(QdrantFixture qdrant) : IAsyncLifetime
             Id = "billing", Order = 10, SearchTool = "search_documents",
             ToolRequires = new Dictionary<string, string> { ["propose_fee_adjustment"] = "compliance" },
         }.ToDescriptor(),
-        .. Maf.Lab.Api.Agent.DomainCatalogue.AllBuiltIn.All,
     ]);
 
     /// <summary>The billing server's settings over this collection, with the plugin's own seeds.</summary>

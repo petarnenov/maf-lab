@@ -15,7 +15,7 @@ namespace Maf.Lab.Tests;
 /// <summary>The graph-depth comparison (add-graph-depth-eval): its dataset, its metrics, and how the harness runs it.</summary>
 public class GraphDepthEvalTests : IDisposable
 {
-    // The three-domain view these tests were written in: billing and portfolio built in, codebase from this plugin.
+    // The three-domain view these tests were written in: billing and portfolio (the core tests' stand-ins), codebase from this plugin.
     private readonly IDisposable _domains = CodePluginSupport.Use();
 
     public void Dispose() => _domains.Dispose();

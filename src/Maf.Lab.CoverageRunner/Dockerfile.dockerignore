@@ -9,7 +9,6 @@
 .vscode/
 .cache/
 plugins/*/files/corpus/
-data-portfolio/
 evals/
 openspec/
 web/dist/

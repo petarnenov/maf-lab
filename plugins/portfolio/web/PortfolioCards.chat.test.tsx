@@ -1,12 +1,8 @@
-import { EventType } from '@ag-ui/core';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Route, Routes } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
-import type { ConversationDetail } from '../api/types';
-import { jsonResponse, renderWithProviders, run, sse } from '../test/render';
-import { agentFetch } from '../test/agentFetch';
-import { ChatPage } from './ChatPage';
+import { agentFetch, jsonResponse, renderChat, run, streamResponse } from '@maf/testing';
+import portfolio from './index';
 
 const content = {
   accountId: 'A-1043',
@@ -32,11 +28,7 @@ const content = {
   asOf: '2026-09-30',
 };
 
-const card = sse(EventType.ACTIVITY_SNAPSHOT, {
-  messageId: 'card-c1',
-  activityType: 'maf-lab/holdings',
-  content,
-});
+const card = run.card('card-c1', 'maf-lab/holdings', content);
 
 /** A response whose body the test releases in two parts, so it can look at the screen in between. */
 function pausedStream(first: string[], rest: string[]) {
@@ -56,7 +48,51 @@ function pausedStream(first: string[], rest: string[]) {
   };
 }
 
-describe('ChatPage data cards', () => {
+const state = (accountId: string | null) => run.state({ focus: accountId ? { accountId } : null });
+
+const accountsCard = run.card('card-c1', 'maf-lab/accounts', {
+  count: 2,
+  accounts: [
+    {
+      accountId: 'A-1043',
+      name: 'Calder',
+      householdId: 'HH-C',
+      modelPortfolio: 'M',
+      currency: 'USD',
+    },
+    {
+      accountId: 'A-1044',
+      name: 'Whitfield',
+      householdId: 'HH-W',
+      modelPortfolio: 'M',
+      currency: 'USD',
+    },
+  ],
+});
+
+/** Answers each run with the given frames, in turn, and keeps the request bodies. */
+function stubRuns(...runs: string[][]) {
+  const bodies: Record<string, unknown>[] = [];
+  let n = 0;
+  vi.stubGlobal(
+    'fetch',
+    agentFetch(
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url !== '/api/chat') return jsonResponse({}, 404);
+        bodies.push(JSON.parse(init!.body as string));
+        return streamResponse(runs[Math.min(n++, runs.length - 1)]);
+      }),
+    ),
+  );
+  return bodies;
+}
+
+async function ask(text: string) {
+  await userEvent.type(screen.getByLabelText('Message'), text);
+  await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+}
+
+describe('portfolio cards in the chat', () => {
   it('shows a card the moment it arrives, before any answer text', async () => {
     const stream = pausedStream(
       [
@@ -75,7 +111,7 @@ describe('ChatPage data cards', () => {
         ),
       ),
     );
-    renderWithProviders(<ChatPage />);
+    renderChat([portfolio]);
 
     await userEvent.type(screen.getByLabelText('Message'), 'Препоръчай ребалансиране за A-1043');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
@@ -91,7 +127,7 @@ describe('ChatPage data cards', () => {
   });
 
   it('shows a restored turn’s card', async () => {
-    const detail: ConversationDetail = {
+    const detail = {
       conversationId: 'conv-9',
       title: 'Rebalance',
       createdAt: '2026-09-29T09:00:00Z',
@@ -120,14 +156,45 @@ describe('ChatPage data cards', () => {
         }),
       ),
     );
-    renderWithProviders(
-      <Routes>
-        <Route path="chat/:conversationId?" element={<ChatPage />} />
-      </Routes>,
-      { route: '/chat/conv-9' },
-    );
+    renderChat([portfolio], { route: '/chat/conv-9' });
 
     const shown = await screen.findByTestId('data-card');
     expect(within(shown).getByText('Sell')).toBeInTheDocument();
+  });
+
+  it('puts an account from an accounts card in focus, to go with the next message', async () => {
+    const bodies = stubRuns(
+      [run.started(), state(null), accountsCard, run.delta('Two accounts.'), run.done()],
+      [run.started(), state('A-1044'), run.delta('It holds…'), run.done()],
+    );
+    renderChat([portfolio]);
+    await ask('Which accounts do I have?');
+    const shown = await screen.findByTestId('data-card');
+
+    await userEvent.click(within(shown).getByRole('button', { name: 'Focus A-1044' }));
+
+    expect(screen.getByTestId('focus-chip')).toHaveTextContent('A-1044');
+    // Choosing started nothing: still one run.
+    expect(bodies).toHaveLength(1);
+    await ask('What does it hold?');
+    await screen.findByText('It holds…');
+    expect(bodies[1].state).toEqual({ focus: { accountId: 'A-1044' } });
+  });
+
+  it('follows the server when it refuses the account the client sent', async () => {
+    stubRuns(
+      [run.started(), state(null), accountsCard, run.delta('Two accounts.'), run.done()],
+      [run.started(), state('A-1043'), run.delta('Refused.'), run.done()],
+    );
+    renderChat([portfolio]);
+    await ask('Which accounts do I have?');
+    await userEvent.click(
+      within(await screen.findByTestId('data-card')).getByRole('button', { name: 'Focus A-1044' }),
+    );
+
+    await ask('What does it hold?');
+    await screen.findByText('Refused.');
+
+    expect(screen.getByTestId('focus-chip')).toHaveTextContent('A-1043');
   });
 });

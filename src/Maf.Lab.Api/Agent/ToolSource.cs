@@ -87,7 +87,7 @@ public sealed class McpToolSource(IOptions<AgentOptions> options, ILoggerFactory
     public async Task<ToolSet> GetToolsAsync(string bearerToken, ConfirmationSink? confirmations, CancellationToken ct,
         IReadOnlySet<string>? domains = null)
     {
-        var catalogue = domainCatalogue ?? DomainCatalogue.AllBuiltIn;
+        var catalogue = domainCatalogue ?? DomainCatalogue.Empty;
         var servers = options.Value.AllServers(plugins?.McpServers())
             .Where(s => catalogue.Get(s.Domain) is not null && (domains is null || domains.Contains(s.Domain)))
             .OrderBy(s => catalogue.Order(s.Domain))

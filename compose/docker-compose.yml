@@ -9,19 +9,6 @@ name: maf-lab
 # Shared environment lives in env files (compose/env/*.env, by the library that reads it), which a plugin's compose file
 # can list too: YAML anchors do not cross merged files (introduce-plugins 5.2).
 services:
-  qdrant:
-    image: qdrant/qdrant:v1.19.1
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - qdrant-data:/qdrant/storage
-    healthcheck:
-      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
   # Interactive: search query embeddings only. Its CPUs are its own (default 0-3 of Docker Desktop's 16), so a batch on
   # ollama-batch cannot take CPU time from it. OLLAMA_INTERACTIVE_THREADS must match the size of this set.
   ollama:
@@ -92,28 +79,6 @@ services:
     entrypoint: ["/bin/sh", "/warm-models.sh"]
     restart: "no"
 
-  # The portfolio domain: its own MCP server, corpus collection and read tools. Read-only, so no ledger and no volume
-  # of its own; it reads the same seed folder for the household portfolios.
-  mcp-portfolio:
-    build:
-      context: ..
-      dockerfile: src/Maf.Lab.Portfolio/Dockerfile
-    deploy:
-      replicas: 2
-    env_file: [env/retrieval.env, env/platform.env, env/graph.env]
-    environment:
-      Urls: http://+:8080
-      Portfolio__Collection: maf_portfolio_chunks
-      Portfolio__MetaCollection: maf_portfolio_meta
-      Portfolio__SeedPath: /seed/portfolio-households.json
-    volumes:
-      - ./seed:/seed:ro
-    depends_on:
-      qdrant:
-        condition: service_healthy
-      ollama-warm:
-        condition: service_completed_successfully
-
   compliance:
     build:
       context: ..
@@ -160,13 +125,6 @@ services:
       Urls: http://+:8080
       # Writable by any user; a uid with no passwd entry would otherwise get HOME=/.
       HOME: /tmp
-      # Tool calls go through the balancer too, so they are spread over each domain server's replicas.
-      # The built-in domains' servers, keyed by name (introduce-plugins decision 3); a plugin's comes from its manifest.
-      Agent__Servers__portfolio__Domain: portfolio
-      Agent__Servers__portfolio__Endpoint: http://lb/portfolio/mcp
-      # The built-in domains in use (introduce-plugins 5h), passed through from make's environment only when set: unset
-      # keeps them all; `make core` sets it empty, so no domain is in use and every turn declines.
-      Agent__BuiltInDomains:
       Storage__ConnectionString: Data Source=/app-data/maf-lab.db
       # The admin index's corpus, under the plugins mount: passed through from make's environment (a plugin's plugin.mk
       # exports it while its folder is present); unset = no corpus, and an index run says so and changes nothing.
@@ -214,8 +172,6 @@ services:
     depends_on:
       api-data-init:
         condition: service_completed_successfully
-      mcp-portfolio:
-        condition: service_healthy
       redis:
         condition: service_healthy
 
@@ -384,8 +340,6 @@ services:
     depends_on:
       api:
         condition: service_healthy
-      mcp-portfolio:
-        condition: service_healthy
       compliance:
         condition: service_healthy
       test-agent:
@@ -414,7 +368,6 @@ networks:
 volumes:
   testagent-work:
   runner-work:
-  qdrant-data:
   ollama-models:
   api-data:
   prometheus-data:

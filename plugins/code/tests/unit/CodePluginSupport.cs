@@ -9,7 +9,7 @@ namespace Maf.Lab.Tests;
 /// <summary>
 /// The code plugin as its tests see it: its manifest as make reads it (`scripts/plugins.py manifest-json code`), its
 /// descriptor with the prompt fragment, and the three-domain view the lab had before the plugin left the core —
-/// billing (the core tests' stand-in for it), portfolio built in, codebase from this folder (introduce-plugins 5.2).
+/// billing and portfolio (the core tests' stand-ins for them), codebase from this folder (introduce-plugins 5.2).
 /// </summary>
 public static class CodePluginSupport
 {

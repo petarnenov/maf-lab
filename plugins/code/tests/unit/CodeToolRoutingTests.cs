@@ -23,7 +23,7 @@ namespace Maf.Lab.Tests;
 /// </summary>
 public class CodeToolRoutingTests : IDisposable
 {
-    // The three-domain view these tests were written in: billing and portfolio built in, codebase from this plugin.
+    // The three-domain view these tests were written in: billing and portfolio (the core tests' stand-ins), codebase from this plugin.
     private readonly IDisposable _domains = CodePluginSupport.Use();
 
     public void Dispose() => _domains.Dispose();

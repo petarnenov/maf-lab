@@ -60,7 +60,7 @@ public static class PluginHost
         }
         foreach (var plugin in loaded.OfType<IContributesDomainBehaviour>())
         {
-            // Read by the domain catalogue next to the built-in domains' behaviours (decision 6).
+            // Read by the domain catalogue with each domain's descriptor (decision 6).
             builder.Services.AddSingleton(plugin.Behaviour);
         }
         foreach (var plugin in loaded.OfType<IContributesTurnObserver>())

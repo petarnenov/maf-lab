@@ -10,37 +10,20 @@ public class SystemPromptTests
         .AddInMemoryCollection(new Dictionary<string, string?> { ["Agent:SystemPrompt"] = version }).Build());
 
     [Fact]
-    public void The_default_is_v6_assembled_from_the_built_in_domains()
+    public void The_default_is_v6_assembled_from_the_domains_in_use()
     {
-        // Portfolio built in and the stand-in billing domain (no fragment of its own: billing's is the plugin's).
+        // The stand-in billing and portfolio domains, with no fragments of their own: each domain's is its plugin's
+        // (BillingSystemPromptTests, PortfolioSystemPromptTests).
         using var domains = DomainCatalogue.Use(StandInDomains.WithBilling);
         var prompt = Load(null);
 
         Assert.Equal("core.v6", prompt.Version);
         Assert.DoesNotContain("{{", prompt.Text);
         Assert.DoesNotContain("<!--", prompt.Text);
-        Assert.Contains("## Data cards", prompt.Text);
-        Assert.Contains("never calculate trades", prompt.Text);
-        // (Crossing into billing needs billing's own fragment: BillingSystemPromptTests, in the billing plugin.)
         Assert.Contains("general programming that is not about these domains", prompt.Text);
         Assert.DoesNotContain("travel, coding,", prompt.Text);
         // A domain that is not in use is not in the prompt (introduce-plugins 5g): without the code plugin, no code.
         Assert.DoesNotContain("search_codebase", prompt.Text);
-    }
-
-    [Fact]
-    public void Only_the_domains_in_use_are_in_the_prompt()
-    {
-        var portfolio = DomainCatalogue.Current.Get(Maf.Lab.Api.BuiltIn.BuiltInDomains.Portfolio)!;
-
-        var text = SystemPrompt.Assemble(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Prompts", "core.v6.md")), [portfolio]);
-
-        Assert.Contains("get_household_portfolio", text);
-        Assert.DoesNotContain("get_billing_run_status", text);
-        Assert.DoesNotContain("search_codebase", text);
-        // One domain: nothing crosses into another.
-        Assert.DoesNotContain("cross from one domain", text);
-        Assert.Contains("You answer only about its portfolios, as covered", text);
     }
 
     [Fact]

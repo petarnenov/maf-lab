@@ -23,16 +23,12 @@ public class BillingCorpusTests
     [Fact]
     public void Retrieval_dataset_references_chunks_the_chunkers_actually_produce()
     {
-        // Each domain's rows against its own corpus: billing's from this folder, a portfolio row's from data-portfolio/.
-        HashSet<string> Ids(string corpus) => CorpusLoader.Load(Path.Combine(CorpusLoaderTests.RepoRoot(), corpus)).Documents
+        // Billing's rows against this folder's corpus (portfolio's plugin checks its own rows).
+        var ids = CorpusLoader.Load(Path.Combine(BillingPluginSupport.Folder, "files", "corpus")).Documents
             .SelectMany(d => ChunkBuilder.Build(d, 1500)).Select(c => c.ChunkId).ToHashSet();
-        var byDomain = new Dictionary<string, HashSet<string>>
-        {
-            ["billing"] = Ids(Path.Combine("plugins", BillingPlugin.PluginName, "files", "corpus")),
-            ["portfolio"] = Ids("data-portfolio"),
-        };
         var missing = DatasetLoader.Retrieval(Path.Combine(CorpusLoaderTests.RepoRoot(), "evals"))
-            .SelectMany(r => r.RelevantChunkIds.Where(id => !byDomain[r.Domain].Contains(id)).Select(id => $"{r.Domain}:{id}")).ToList();
+            .Where(r => r.Domain == BillingPlugin.DomainId)
+            .SelectMany(r => r.RelevantChunkIds.Where(id => !ids.Contains(id)).Select(id => $"{r.Domain}:{id}")).ToList();
         Assert.True(missing.Count == 0, "Dataset references unknown chunk ids (did chunking change?): " + string.Join(", ", missing));
     }
 }

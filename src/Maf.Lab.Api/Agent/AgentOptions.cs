@@ -13,17 +13,6 @@ public sealed class AgentOptions
     public Dictionary<string, McpServerOptions> Servers { get; set; } = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// The built-in domains in use, comma-separated (introduce-plugins 5g, until each becomes a plugin folder): unset is
-    /// all of them; empty is none — `make core`, which declines every turn (decision 5h).
-    /// </summary>
-    public string? BuiltInDomains { get; set; }
-
-    /// <summary>The built-in domains' ids this deployment keeps.</summary>
-    public IReadOnlyList<string> BuiltInDomainIds() => BuiltInDomains is null
-        ? Maf.Lab.Api.BuiltIn.BuiltInDomains.Ids
-        : [.. BuiltInDomains.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
-
-    /// <summary>
     /// Every server of the turn, in configuration order, then the installed MCP plugins' that no configured key already
     /// names. A configured key that names an installed plugin overrides only what it sets — typically just the endpoint
     /// (`make dev`'s local server) — and takes the domain and tools from the plugin's manifest. The first server to offer

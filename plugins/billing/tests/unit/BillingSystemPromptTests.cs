@@ -5,7 +5,7 @@ namespace Maf.Lab.Tests;
 
 /// <summary>
 /// The billing fragment of the system prompt (add-neo4j-graph, introduce-plugins 4.7), moved with the domain into its
-/// plugin (extract-billing) and run in the view the assertions were written for: billing from this folder, portfolio built in.
+/// plugin (extract-billing) and run in the view the assertions were written for: billing from this folder, portfolio beside it (the core tests' stand-in).
 /// </summary>
 public class BillingSystemPromptTests
 {
@@ -13,7 +13,7 @@ public class BillingSystemPromptTests
         .AddInMemoryCollection(new Dictionary<string, string?> { ["Agent:SystemPrompt"] = version }).Build());
 
     [Fact]
-    public void The_default_names_the_billing_graph_tool_and_crosses_between_the_two_domains()
+    public void The_default_names_the_billing_graph_tool()
     {
         using var domains = BillingPluginSupport.Use();
         var prompt = Load(null);
@@ -21,6 +21,6 @@ public class BillingSystemPromptTests
         Assert.Equal("core.v6", prompt.Version);
         Assert.DoesNotContain("{{", prompt.Text);
         Assert.Contains("trace_billing_relationships", prompt.Text);
-        Assert.Contains("cross from one domain", prompt.Text);
+        // (The crossing into portfolio is portfolio's own fragment: PortfolioSystemPromptTests.)
     }
 }

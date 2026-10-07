@@ -94,11 +94,12 @@ flowchart TB
   class app,mcp,backing group
 ```
 
-Everything user- and agent-facing goes through **one entry point on port 7171**. api, mcp-retrieval (the billing
-plugin's), mcp-portfolio and compliance run two replicas each, mcp-code and copilot-runtime one (`X-Instance` response header shows which one answered).
+Everything user- and agent-facing goes through **one entry point on port 7171**. api, compliance, and the billing and
+portfolio plugins' servers (mcp-retrieval, mcp-portfolio) run two replicas each, mcp-code and copilot-runtime one
+(`X-Instance` response header shows which one answered).
 test-agent and coverage-runner run one each and have no route of their own: the api reaches them inside the compose
 network. The balancer also serves Jaeger at `/jaeger` and takes the browser's OTLP traces at `/v1/traces`. Besides
-7171, only Qdrant and the two Ollamas are published, Neo4j's Bolt port on `127.0.0.1:7687` for the host-side indexer
+7171, only Qdrant (while the `qdrant` plugin is installed) and the two Ollamas are published, Neo4j's Bolt port on `127.0.0.1:7687` for the host-side indexer
 (while the `neo4j` plugin is installed),
 plus the [developer tools](#developer-tools) on `127.0.0.1` (7172–7175) while their plugins are installed.
 
@@ -128,7 +129,6 @@ The balancer's routes, as `compose/lb/nginx.conf`, the api upstream template and
 | `/dev/` | prefix | `api` |
 | `/.well-known/agent-card.json` | exact | `api` |
 | `/a2a` | prefix | `api` |
-| `/portfolio/mcp` | exact | `mcp-portfolio` at `/mcp` |
 | `/compliance` | prefix | `compliance` |
 | `/v1/traces` | prefix | `otel-collector` |
 | `/jaeger` | prefix | `jaeger` |
@@ -136,6 +136,7 @@ The balancer's routes, as `compose/lb/nginx.conf`, the api upstream template and
 | `/example/mcp` | exact | `mcp-example` at `/mcp` (plugin `_example`) |
 | `/mcp` | exact | `mcp-retrieval` (plugin `billing`) |
 | `/code/mcp` | exact | `mcp-code` at `/mcp` (plugin `code`) |
+| `/portfolio/mcp` | exact | `mcp-portfolio` at `/mcp` (plugin `portfolio`) |
 <!-- /generated:lb-routes -->
 
 <table>
@@ -177,7 +178,7 @@ make setup                 # install what's missing (.NET SDK at the version glo
 export OLLAMA_API_KEY=…    # chat runs on Ollama Cloud (gpt-oss:120b); the key is only read from the environment
 export JEV_MAF_LAB=…       # intent classification runs on TypeSafe Jev; same rule
 make                       # doctor-lite → build → start → wait until healthy → index if empty → http://localhost:7171
-make core                  # the core alone: no plugin, no built-in domain; every turn declines (plain make brings them back)
+make core                  # the core alone: no plugin, so no domain; every turn declines (plain make brings them back)
 make help                  # every target
 ```
 
@@ -186,8 +187,8 @@ make help                  # every target
 |---|---|
 | `make all` | Start everything: build, run, wait for health, index if empty (default) |
 | `make help` | List the targets |
-| `make up` | Build and start the stack (replicas via API_REPLICAS/PORTFOLIO_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy |
-| `make core` | Start the core with no plugin and no built-in domain (MAF_PLUGINS=none); declines every turn (decision 5h); a plain make brings them back |
+| `make up` | Build and start the stack (replicas via API_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy |
+| `make core` | Start the core with no plugin (MAF_PLUGINS=none), so no domain; declines every turn (decision 5h); a plain make brings them back |
 | `make product-check` | Build the product image variant (api, web) and check it holds no dev-or-qa-only plugin code |
 | `make plugins` | List every plugin: kind, scope, environments, whether installed, dependencies, description |
 | `make plugin-new` | Start a new plugin (NAME=…, KIND=mcp\|app): mcp copies _example, app renders the app template; prints the files written |
@@ -200,11 +201,11 @@ make help                  # every target
 | `make ps` | Show services, state and health |
 | `make logs` | Follow logs (SERVICE=api to narrow) |
 | `make clean` | Remove the stack WITH volumes (index, conversations) and build outputs; asks unless FORCE=1 |
-| `make infra` | Start only the indexer's infrastructure (Qdrant, both Ollama instances + the embedding model, and installed stores) and wait until healthy |
-| `make index` | Index the built-in domains' corpora; each plugin present adds its corpus and graph (unchanged documents are skipped) |
+| `make infra` | Start only the indexer's infrastructure (both Ollama instances + the embedding model, and the store plugins) and wait until healthy |
+| `make index-if-empty` | Index each plugin's corpus and graph that are still empty (each plugin present adds its own part) |
+| `make index` | Index every corpus: each plugin present adds its corpus and graph (unchanged documents are skipped) |
 | `make graph` | Build the Neo4j graph: each plugin present adds its own (unchanged nodes are not rewritten) |
-| `make index-portfolio` | Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only |
-| `make reindex` | Re-embed every document of the built-in domains, and of each plugin present (--force) |
+| `make reindex` | Re-embed every document of each plugin present (--force) |
 | `make drift` | Report stale documents: each plugin present compares its index and graph against its source |
 | `make rebuild-index` | Re-create each plugin's collection with every configured dense vector and re-index it (asks unless FORCE=1) |
 | `make migrate` | Fill a provisioned dense vector with its configured model in each plugin's collection (TO=dense_v3) |
@@ -246,10 +247,11 @@ make help                  # every target
 | `make setup` | Install what 'make doctor' reports missing (.NET SDK unattended; prints the rest) |
 | `make index-billing` | Index the billing corpus (→ maf_chunks, served by mcp-retrieval) only; unchanged documents are skipped |
 | `make graph-billing` | Build the billing graph only (accounts, runs, households) in Neo4j |
-| `make neo4j-chunks` | Spike: copy the billing and portfolio chunks from Qdrant into Neo4j for eval-retrieval-backends |
+| `make neo4j-chunks` | Spike: copy each domain's chunks from Qdrant into Neo4j for eval-retrieval-backends (billing's here; portfolio adds its own) |
 | `make eval-retrieval-backends` | Spike comparison: retrieval cases on Qdrant and on Neo4j side by side, never gated (run make neo4j-chunks first) |
 | `make index-code` | Index the repository itself (→ maf_code_chunks, served by mcp-code) only; unchanged files are skipped |
 | `make graph-code` | Build the code graph only (calls, types, tests) in Neo4j |
+| `make index-portfolio` | Index the portfolio corpus (→ maf_portfolio_chunks, served by mcp-portfolio) only |
 <!-- /generated:make-targets -->
 
 ## Plugins
@@ -272,6 +274,8 @@ allows, `none` means the core alone (`make core`), otherwise a comma-separated l
 | `monitor` | app | installation | dev, qa | Behind the scenes of every chat turn: the full trace (model calls, prompt, retrieval diagnostics, guard, answer check), live while it runs and kept for a while after, with the run's AG-UI frames and time travel. |
 | `neo4j` | infra | installation | dev, qa, stage, prod | The graph store (Neo4j Community): billing's relationships and the repository's code graph, read through the core's one tenant-scoped graph method. A store that domain plugins depend on. |
 | `neo4j-browser` | infra | installation | dev, qa | Neo4j Browser on the graph store, forwarded on loopback: a dev and qa tool. |
+| `portfolio` | mcp | tenant | dev, qa, stage, prod | Investment portfolios as a domain: its MCP server (mcp-portfolio: documentation search, an account's holdings, its quarter-end AUM history and the accounts a user can access), its corpus and seed, its data cards, and its domain descriptor and routing. |
+| `qdrant` | infra | installation | dev, qa, stage, prod | The vector store (Qdrant): each domain's chunks and their dense and sparse vectors, read through the core's one tenant-scoped query method. A store that domain plugins depend on. |
 | `redis-insight` | infra | installation | dev, qa | Redis Insight on the lab's Redis (run state, stops, shared stores), loopback only: a dev and qa tool. |
 <!-- /generated:plugins -->
 
@@ -551,7 +555,7 @@ ollama pull embeddinggemma                                    # (qwen3:4b only f
 
 dotnet run --project src/Maf.Lab.Indexing                     # index Indexing__CorpusRoot (index | drift | status | rebuild --yes | migrate --to <vector>)
 dotnet run --project src/Maf.Lab.Retrieval                    # billing MCP server on :5090 (Billing__SeedPath, Billing__AccountsSeedPath)
-dotnet run --project src/Maf.Lab.Portfolio                    # portfolio MCP server on :5091
+dotnet run --project src/Maf.Lab.Portfolio                    # portfolio MCP server on :5091 (Portfolio__SeedPath)
 dotnet run --project src/Maf.Lab.CodeSearch                   # codebase MCP server on :5092 (make index first)
 dotnet run --project src/Maf.Lab.Api                          # agent host on :5080
 cd web && npm install && npm run dev                          # UI on :5174

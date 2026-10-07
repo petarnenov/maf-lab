@@ -135,8 +135,19 @@ export type PluginToolLabels = Record<
   (call: { running: boolean; argumentSummary: string }) => string
 >;
 
+/** What a data card's renderer is given: the card's content, and the turn it answers (extract-portfolio). */
+export interface PluginCardProps {
+  content: unknown;
+  /** The question the card answers, so it can write in that question's language. */
+  question: string;
+  /** The entity in focus, so a card can say it is the one (add-focus-state). */
+  focus?: string | null;
+  /** Puts an entity in focus; absent where choosing makes no sense (time travel). */
+  onFocus?: (id: string) => void;
+}
+
 /** A data card's renderer, by its AG-UI activity type. */
-export type PluginCards = Record<string, ComponentType<{ content: unknown }>>;
+export type PluginCards = Record<string, ComponentType<PluginCardProps>>;
 
 /**
  * How a plugin shows the summary of a write waiting for a person, by the write tool's name. It overrides the card's

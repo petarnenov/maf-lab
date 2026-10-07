@@ -1,0 +1,18 @@
+# The vector store (extract-portfolio): every domain plugin's collection (billing's maf_chunks, portfolio's, code's). Its
+# HTTP and gRPC ports are published for the host-side indexer. Paths resolve against compose/, as in every merged file.
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.19.1
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  qdrant-data:

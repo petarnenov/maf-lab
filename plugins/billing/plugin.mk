@@ -40,10 +40,9 @@ migrate-billing: require-dotnet infra indexer
 index-billing-if-empty: require-dotnet
 	@$(HOST_ENV) $(BILLING_ENV) scripts/index_if_empty.sh --source billing
 
-neo4j-chunks: require-dotnet infra indexer ## Spike: copy the billing and portfolio chunks from Qdrant into Neo4j for eval-retrieval-backends
+neo4j-chunks: require-dotnet infra indexer ## Spike: copy each domain's chunks from Qdrant into Neo4j for eval-retrieval-backends (billing's here; portfolio adds its own)
 	$(HOST_ENV) $(BILLING_ENV) $(INDEXER) neo4j-chunks
-	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) neo4j-chunks
-	@printf 'store size: neo4j %s · qdrant %s\n' "$$($(COMPOSE) exec -T neo4j du -sh /data/databases/neo4j 2>/dev/null | cut -f1)" "$$($(COMPOSE) exec -T qdrant du -shc /qdrant/storage/collections/maf_chunks /qdrant/storage/collections/maf_portfolio_chunks 2>/dev/null | tail -1 | cut -f1)"
+	@printf 'store size: neo4j %s · qdrant %s\n' "$$($(COMPOSE) exec -T neo4j du -sh /data/databases/neo4j 2>/dev/null | cut -f1)" "$$($(COMPOSE) exec -T qdrant du -sh /qdrant/storage/collections 2>/dev/null | cut -f1)"
 
 eval-retrieval-backends: require-dotnet ## Spike comparison: retrieval cases on Qdrant and on Neo4j side by side, never gated (run make neo4j-chunks first)
 	$(EVAL) retrieval-backends

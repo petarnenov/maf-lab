@@ -10,7 +10,18 @@ code; it changes no behaviour, except where a line below says so.
 ## What Changes
 
 - `plugins/portfolio/` (mcp, tenant scope, every environment): manifest with `[domain]` from
-  `BuiltIn/portfolio/`, `prompt.md`, `server.json`, its compose service (`mcp-portfolio`), lb parts and corpus.
+  `BuiltIn/portfolio/`, `prompt.md`, `server.json`, its compose service (`mcp-portfolio`), lb parts, corpus
+  (`data-portfolio/` → `files/corpus/`) and seed (`files/seed/`), `plugin.mk`, its in-process part (`PortfolioBehaviour`
+  and its chunk store, through a library factory so it never reaches the Qdrant client), and its web part: the three
+  data cards and four tool labels, through the existing `cards` and `toolLabels` contributions. A card renderer is now
+  given the question, the focus and a way to set it (additive). The generic formatters move to `@maf/shared/format`.
+- `src/Maf.Lab.Portfolio` stays where it is until extract-evals-plugin, as billing's host does: the eval builds it in
+  process.
+- The billing graph reads each account's household from billing's own seed instead of portfolio's (each bounded
+  context owns its data, sharing identifiers only). The graph keeps the same nodes and edges.
+- `BuiltInDomains.CardResultTypes` is deleted: the core reads only a card's activity type, and the "a card holds no free
+  text" walk is the plugin's own test over its own DTOs.
+- No domain is built in any more: `DomainCatalogue.AllBuiltIn` is gone, and outside any scope the catalogue is empty.
 - `qdrant` becomes an infra plugin folder (installation, every environment), moved here from extract-billing-plugin,
   once no core service needs it: `billing`, `code` and `portfolio` gain `depends` on it, and `make core` stays green
   without it.

@@ -14,12 +14,18 @@ namespace Maf.Lab.Tests;
 /// domain questions and the data cards. A later change that builds these from plugin manifests must leave every pin as
 /// it is for billing, portfolio and codebase — but one: introduce-plugins task 4.6 removes the billing fallback on purpose,
 /// so an unknown tool belongs to no domain. The codebase domain's pins moved verbatim with it into its plugin (task 5.2,
-/// CodeDomainRoutingPinTests), and the billing domain's with it (extract-billing, BillingDomainRoutingPinTests); these
-/// keep the built-in domain's.
+/// CodeDomainRoutingPinTests), billing's with it (extract-billing, BillingDomainRoutingPinTests), and these, the portfolio
+/// domain's, verbatim with it into its plugin (extract-portfolio): run in the view they had, portfolio alone.
 /// </summary>
-public class DomainRoutingPinTests
+public class PortfolioDomainRoutingPinTests : IDisposable
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    // The view these pins were written in: portfolio (from this plugin's manifest) as the only domain.
+    private readonly IDisposable _domains =
+        DomainCatalogue.Use(DomainCatalogue.Of([PortfolioPluginSupport.Descriptor], [new Maf.Lab.Plugins.Portfolio.PortfolioBehaviour()]));
+
+    public void Dispose() => _domains.Dispose();
 
     [Fact]
     public void The_built_in_domain_in_trace_order()
@@ -87,7 +93,7 @@ public class DomainRoutingPinTests
             ["get_household_portfolio"] = "maf-lab/holdings",
             ["get_aum_history"] = "maf-lab/aum-history",
             ["list_my_accounts"] = "maf-lab/accounts",
-        }, DataCards.Tools.ToDictionary(t => t.Key, t => t.Value.ActivityType));
+        }, DataCards.Tools.ToDictionary(t => t.Key, t => t.Value));
     }
 
     [Fact]
@@ -115,11 +121,11 @@ public class DomainRoutingPinTests
         var credential = new JevCredential(configuration, loggers.CreateLogger<JevCredential>());
         var client = new HttpClient(new JevAuthHandler(credential) { InnerHandler = jev }) { BaseAddress = new Uri("https://jev.test/") };
         var o = Options.Create(new JevOptions());
-        return new JevIntentClassifier(new JevClient(new PinTestClients(client), credential, o), o, loggers);
+        return new JevIntentClassifier(new JevClient(new PortfolioPinTestClients(client), credential, o), o, loggers);
     }
 }
 
-file sealed class PinTestClients(HttpClient client) : IHttpClientFactory
+file sealed class PortfolioPinTestClients(HttpClient client) : IHttpClientFactory
 {
     public HttpClient CreateClient(string name) => client;
 }

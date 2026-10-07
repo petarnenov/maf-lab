@@ -24,7 +24,7 @@ public class DataToolRoutingTests : IDisposable
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static readonly JevOptions Routing = new() { RouteDataTools = true };
 
-    // The stand-in billing domain the shared fakes speak, with portfolio built in: the routing mechanism, not billing's
+    // The stand-in billing and portfolio domains the shared fakes speak: the routing mechanism, not billing's
     // own parsing (its cases are the billing plugin's, BillingDataToolRoutingTests).
     private readonly IDisposable _domains = DomainCatalogue.Use(StandInDomains.WithBilling);
 
