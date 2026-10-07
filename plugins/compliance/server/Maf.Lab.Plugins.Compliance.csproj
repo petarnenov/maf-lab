@@ -11,8 +11,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Maf.Lab.Plugins.Abstractions\Maf.Lab.Plugins.Abstractions.csproj" />
     <ProjectReference Include="..\..\..\src\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />
-    <!-- The A2A wire format and client the consultation speaks (the core's shared A2A library). -->
-    <ProjectReference Include="..\..\..\src\Maf.Lab.A2A\Maf.Lab.A2A.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Maf.Lab.Tests" />

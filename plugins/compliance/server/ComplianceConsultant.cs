@@ -4,7 +4,6 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using A2A;
-using Maf.Lab.A2A;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MessageRole = A2A.Role;
@@ -178,7 +177,7 @@ public sealed class ComplianceConsultant(
             // is when two agents share one entry point — must be asked for its card by full path, or the other
             // agent's card comes back.
             var address = new Uri(baseUrl);
-            var cardPath = $"{address.AbsolutePath.TrimEnd('/')}{AgentCardFactory.WellKnownPath}";
+            var cardPath = $"{address.AbsolutePath.TrimEnd('/')}{WellKnownCardPath}";
             var resolver = new A2ACardResolver(new Uri(address.GetLeftPart(UriPartial.Authority)), authenticated, cardPath);
             var card = await resolver.GetAgentCardAsync(ct);
 
@@ -211,9 +210,40 @@ public sealed class ComplianceConsultant(
     {
         var anonymous = http.CreateClient(HttpClientName);
         var response = await anonymous.PostAsJsonAsync($"{baseUrl}/a2a/token",
-            new A2AEndpoints.TokenRequest(options.Value.ClientId, options.Value.ClientSecret), ct);
+            new TokenRequest(options.Value.ClientId, options.Value.ClientSecret), ct);
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<A2AEndpoints.TokenResponse>(ct))!.AccessToken;
+        return (await response.Content.ReadFromJsonAsync<TokenResponse>(ct))!.AccessToken;
+    }
+
+    /// <summary>Where an agent serves its card: the A2A specification's well-known URI (RFC 8615).</summary>
+    internal const string WellKnownCardPath = "/.well-known/agent-card.json";
+
+    private static readonly JsonSerializerOptions Wire = new(JsonSerializerDefaults.Web);
+
+    /// <summary>
+    /// The token request and response of the reviewer's token endpoint, as they go over the wire. The plugin owns its
+    /// copy: the wire is the contract, and a test pins it to the reviewer's (DECISIONS §81 part H).
+    /// </summary>
+    /// <param name="GrantType">The lab issues only client credentials.</param>
+    internal sealed record TokenRequest(string ClientId, string ClientSecret, string? Scope = null, string GrantType = "client_credentials");
+
+    internal sealed record TokenResponse(string AccessToken, string TokenType, int ExpiresIn, string Scope);
+
+    /// <summary>
+    /// The review request's data part, as the reviewer reads it. The firm is the adjustment's, taken from the
+    /// principal-scoped flow: an outbound field, not an input (DECISIONS §81 part H).
+    /// </summary>
+    internal sealed class ReviewAsk
+    {
+        public required string AdjustmentId { get; init; }
+
+        public required string FirmId { get; init; }
+
+        public required string AccountId { get; init; }
+
+        public required decimal Amount { get; init; }
+
+        public required string Reason { get; init; }
     }
 
     private static Message Ask(ReviewRequest adjustment, string? taskId) => new()
@@ -225,14 +255,14 @@ public sealed class ComplianceConsultant(
         [
             new Part
             {
-                Data = JsonSerializer.SerializeToElement(new
+                Data = JsonSerializer.SerializeToElement(new ReviewAsk
                 {
-                    adjustmentId = adjustment.AdjustmentId,
-                    firmId = adjustment.FirmId,
-                    accountId = adjustment.AccountId,
-                    amount = adjustment.Amount,
-                    reason = adjustment.Reason,
-                }),
+                    AdjustmentId = adjustment.AdjustmentId,
+                    FirmId = adjustment.FirmId,
+                    AccountId = adjustment.AccountId,
+                    Amount = adjustment.Amount,
+                    Reason = adjustment.Reason,
+                }, Wire),
             },
         ],
     };
