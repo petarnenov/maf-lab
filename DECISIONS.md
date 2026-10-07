@@ -3427,3 +3427,17 @@ No package version moves in this change.
   says it).
 - **Not here.** `FeeAdjustmentLedgerTests.Two_replicas_confirming_at_once_apply_it_once` ("cannot start a transaction
   within a transaction") is billing's, moves with extract-billing, and looks like a concurrency bug, not timing.
+
+## 84. The SQLite stores open unpooled connections (extract-billing, 2026-10-07)
+
+- The api's store (`Storage:ConnectionString`, also the test hosts'), the eval host's and billing's fee ledger build
+  their connection strings with `SqliteConnectionStringBuilder { Pooling = false }`. A pooled native handle came back
+  holding a live statement or an open transaction: the api's `GET /api/coverage/runs/{id}` failed with "database is
+  locked" from EF's `create_function` on open, and the ledger's `BEGIN IMMEDIATE` with "cannot start a transaction
+  within a transaction". Both are Microsoft.Data.Sqlite pool bugs (dotnet/efcore#38574, fixed only in 11.0 previews,
+  and #38854), and turning pooling off is Microsoft's stated workaround.
+- The cost is an open plus the interceptor's two PRAGMAs, which already ran on every open. WAL is a property of the
+  file, and the two replicas that share one never shared a pool anyway (`busy_timeout` serialises them).
+- Rejected: hunting the code path that leaves a handle dirty (the bugs are upstream, and every context is already
+  disposed), and moving to EF Core 11 previews (an unstable package move). Revisit when Microsoft.EntityFrameworkCore.Sqlite
+  10.x ships the fix (the note on its line in Directory.Packages.props).

@@ -30,6 +30,7 @@
     <!-- ASP.NET Core / hosting / data -->
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
     <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.23.0" />
+    <!-- The stores run unpooled until a 10.x release fixes efcore#38574/#38854; revisit pooling then (DECISIONS.md §84) -->
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
     <!-- The MCP server's own small store: one table, no EF Core (see DECISIONS.md) -->
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.12" />

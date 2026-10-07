@@ -55,8 +55,11 @@ public partial class Program
         builder.Services.Configure<Microsoft.AspNetCore.Authorization.AuthorizationOptions>(AuthPolicies.Add);
         builder.Services.Configure<AgentOptions>(builder.Configuration.GetSection(AgentOptions.Section));
 
+        // Unpooled: a pooled handle can come back with a live statement or transaction (efcore#38574, #38854), and the
+        // next open fails with "database is locked". Microsoft's stated workaround; revisit when the fix ships in 10.x.
         builder.Services.AddDbContextFactory<MafDbContext>(o => o
-            .UseSqlite(builder.Configuration["Storage:ConnectionString"] ?? "Data Source=maf-lab.db")
+            .UseSqlite(new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(
+                builder.Configuration["Storage:ConnectionString"] ?? "Data Source=maf-lab.db") { Pooling = false }.ToString())
             .AddInterceptors(new SqlitePragmaInterceptor())
             // One model per set of plugin tables, so two hosts with different plugins in one process never share one.
             .ReplaceService<Microsoft.EntityFrameworkCore.Infrastructure.IModelCacheKeyFactory, Storage.PluginModelCacheKeyFactory>());

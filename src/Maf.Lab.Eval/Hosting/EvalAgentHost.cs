@@ -132,7 +132,9 @@ public sealed class EvalAgentHost : IAsyncDisposable
                 ["code"] = new McpServerOptions { Domain = "codebase", Endpoint = codeEndpoint, Tools = [Maf.Lab.Domain.Code.CodeTools.Search, Maf.Lab.Domain.Graph.GraphTools.TraceCodeSymbol, Maf.Lab.Domain.Graph.GraphTools.ChangeImpact] },
             };
         });
-        services.AddDbContextFactory<MafDbContext>(o => o.UseSqlite($"Data Source={Path.Combine(workDir, "eval.db")}"));
+        // Unpooled, as the api's store is (DECISIONS §84).
+        services.AddDbContextFactory<MafDbContext>(o => o.UseSqlite(
+            new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = Path.Combine(workDir, "eval.db"), Pooling = false }.ToString()));
         // The domains the eval turns read, as the api builds them: the built-in ones Agent:BuiltInDomains keeps and every
         // plugin the stack has installed (plugins/.installed, read once), with the behaviours of those whose code is here.
         // Each turn takes a frozen view of it, as an api turn does.
