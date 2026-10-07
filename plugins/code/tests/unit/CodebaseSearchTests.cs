@@ -563,10 +563,19 @@ public class CodebaseSearchTests : IDisposable
     [Theory]
     [InlineData("0")]
     [InlineData("5")]
-    public void A_depth_pin_outside_1_to_4_stops_the_code_server(string pin)
+    public async Task A_depth_pin_outside_1_to_4_stops_the_code_server(string pin)
     {
-        using var factory = CodeServer(depthPin: pin);
-        var error = Assert.Throws<Microsoft.Extensions.Options.OptionsValidationException>(() => factory.CreateClient());
+        // Built and started here rather than through WebApplicationFactory: the factory runs the server's Main on a
+        // thread of its own, whose Run() disposes the host as soon as the start fails, while the factory may still be
+        // reading that host's services — an ObjectDisposedException instead of the validation error, now and then.
+        await using var app = Maf.Lab.CodeSearch.Program.BuildApp(["--environment=Development", "--urls=http://127.0.0.1:0"], b =>
+        {
+            b.Configuration["Qdrant:GrpcPort"] = "1";
+            b.Configuration[JevCredential.EnvironmentVariable] = FakeJev.TestKey;
+            b.Configuration[CodeSearchOptions.Section + ":" + nameof(CodeSearchOptions.GraphDepthPin)] = pin;
+            b.Logging.SetMinimumLevel(LogLevel.Warning);
+        });
+        var error = await Assert.ThrowsAsync<OptionsValidationException>(() => app.StartAsync(Ct));
         Assert.Contains("CodeSearch:GraphDepthPin must be between 1 and 4", error.Message);
     }
 
