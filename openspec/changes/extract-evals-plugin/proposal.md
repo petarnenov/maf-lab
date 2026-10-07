@@ -15,6 +15,9 @@ code; it changes no behaviour, except where a line below says so.
 - The eval host reaches the code server through the catalogue's endpoint instead of `BuildApp`, which frees
   `src/Maf.Lab.CodeSearch`, the graph-tool tests (GraphBuildAndTool, GraphTraceEvent, GraphIntegration) and the code
   graph builder to move under the code plugin's folder.
+- `make eval-accept REPORT=<runId>` (`--accept-report`): accepts an existing report's metrics into the baseline
+  without running the suite again, in `BaselineStore.Accept`'s format and under its thresholds rule. Today accepting
+  means a second paid run; extract-billing wrote the guardrail baseline from its report by hand.
 
 ## Capabilities
 
