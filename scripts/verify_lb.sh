@@ -252,6 +252,15 @@ if partner:
           task.get("kind") == "task" and task.get("status", {}).get("state") == "completed",
           json.dumps(task.get("status", {}))[:90])
 
+    # Both api replicas back in the balancer's rotation first: the replica-stop section above leaves the restarted one out
+    # for nginx's fail_timeout after its first failed attempt, so wait on the effect (both answering), not on a clock.
+    answering, rotation_deadline = set(), time.time() + 30
+    while len(answering) < 2 and time.time() < rotation_deadline:
+        _, h, _ = req("/api/me", token=adam)
+        answering.add(h.get("X-Instance"))
+        time.sleep(0.2)
+    check("both api replicas answer through the balancer again", len(answering) >= 2, str(sorted(i for i in answering if i)))
+
     # The task lives in the shared store, so it can be read back through a different replica.
     instances = set()
     fetched = {}
