@@ -137,7 +137,8 @@ up: require-docker ## Build and start the stack (replicas via API_REPLICAS/COMPL
 	@# never names a service that is not up yet, and a stale snippet from another set is gone), then, once every service
 	@# is healthy, each plugin's snippets and a checked, graceful reload.
 	@$(PLUGINS_PY) install --installed-only
-	@MAF_PLUGINS=none $(PLUGINS_PY) install --conf-d-only
+	@# (PLUGINS_PY sets MAF_PLUGINS itself, after any prefix, so the core-only stage spells its environment out.)
+	@MAF_ENV='$(MAF_ENV)' MAF_PLUGINS=none CI_MODE='$(CI_MODE)' python3 $(ROOT)/scripts/plugins.py install --conf-d-only
 	@# compose itself waits for the balancer's dependencies to be healthy; if that fails, show which service and why.
 	$(COMPOSE) up -d --build --remove-orphans --scale api=$(API_REPLICAS) --scale compliance=$(COMPLIANCE_REPLICAS) \
 	  || { scripts/wait_healthy.sh 0; exit 1; }
