@@ -530,14 +530,33 @@ def check_make_references(repo: Repo) -> list[Finding]:
     return findings
 
 
+PROVIDER_MODEL = r'\bModel\s*\{\s*get;\s*set;\s*\}\s*=\s*"([^"]+)"'
+
+
 def configured_models(repo: Repo) -> tuple[dict[str, str], list[Finding]]:
     findings: list[Finding] = []
     anchors = {
         "chat": ("src/Maf.Lab.Retrieval/Configuration/Options.cs", r'\bChatModel\s*\{\s*get;\s*set;\s*\}\s*=\s*"([^"]+)"'),
-        "jev": ("src/Maf.Lab.Retrieval/Jev/JevOptions.cs", r'\bModel\s*\{\s*get;\s*set;\s*\}\s*=\s*"([^"]+)"'),
         "dense": ("src/Maf.Lab.Retrieval/Configuration/Options.cs", r'\bDenseVector\s*\{\s*get;\s*set;\s*\}\s*=\s*"([^"]+)"'),
     }
     values: dict[str, str] = {}
+    # A provider plugin's pinned model (introduce-provider-plugins): the default `Model` its lib/ declares, keyed by the
+    # plugin's name. Found by glob, as the build finds plugin code, so this script names no plugin.
+    for manifest in sorted((repo.root / "plugins").glob("*/plugin.toml")):
+        try:
+            data = tomllib.loads(manifest.read_text(encoding="utf-8"))
+        except tomllib.TOMLDecodeError:
+            continue
+        if data.get("kind") != "provider" or not data.get("name"):
+            continue
+        sources = sorted((manifest.parent / "lib").glob("*.cs"))
+        pins = [m[1] for f in sources if (m := re.search(PROVIDER_MODEL, f.read_text(encoding="utf-8")))]
+        if sources and not pins:
+            findings.append(Finding(str(manifest.parent.relative_to(repo.root)) + "/lib", None, "models",
+                                    f"cannot find the configured {data['name']} value",
+                                    "declare the pinned model as a `Model` property default in the provider's lib/"))
+        elif pins:
+            values[data["name"]] = pins[0]
     for kind, (rel, pattern) in anchors.items():
         m = re.search(pattern, repo.read(rel)) if repo.exists(rel) else None
         if not m:

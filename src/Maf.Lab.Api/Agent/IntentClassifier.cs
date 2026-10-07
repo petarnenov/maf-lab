@@ -38,13 +38,13 @@ public readonly record struct IntentDecision(
     string? Reason = null,
     double? InDomain = null,
     IReadOnlyDictionary<string, double>? Screen = null,
-    Jev.RoutingAnswer? Routing = null,
-    Jev.ToolRoute? Route = null,
+    Decisions.RoutingAnswer? Routing = null,
+    Decisions.ToolRoute? Route = null,
     string? RouteReason = null,
     DomainVerdict? Domains = null,
     bool OutsideDomains = false,
     Maf.Lab.Plugins.Abstractions.DecisionAnswer? CodeRouting = null,
-    Jev.ToolRoute? CodeRoute = null,
+    Decisions.ToolRoute? CodeRoute = null,
     string? CodeRouteReason = null);
 
 /// <summary>

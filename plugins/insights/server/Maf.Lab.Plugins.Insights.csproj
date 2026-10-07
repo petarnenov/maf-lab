@@ -8,8 +8,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Maf.Lab.Plugins.Abstractions\Maf.Lab.Plugins.Abstractions.csproj" />
     <ProjectReference Include="..\..\..\src\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />
-    <!-- JevOptions and the Jev client's circuit-open reason only. -->
-    <ProjectReference Include="..\..\..\src\Maf.Lab.Retrieval\Maf.Lab.Retrieval.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Maf.Lab.Tests" />

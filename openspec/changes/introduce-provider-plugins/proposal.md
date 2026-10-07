@@ -45,7 +45,7 @@ This change was split out of `introduce-plugins` to keep that one reviewable.
 - Standards: `Microsoft.Extensions.AI` (`IChatClient`, `IEmbeddingGenerator`), the project's existing abstraction; the
   provider pattern through the plugin contract.
 - Own: `IDecisionEngine`. No established abstraction exists for typed, closed-set decisions with confidence. Its
-  contract is `docs/rules/jev-usage.md`. DECISIONS §82 (new, written when this change is applied).
+  contract is `docs/rules/jev-usage.md`; DECISIONS §86 (renumbered at landing if that number is taken).
 
 ## Progress
 
@@ -64,4 +64,4 @@ run's `CancellationToken`, passed into the provider.
   - the chat model and embeddings lines become "the installed `chat-model` / `embeddings` provider; today
     `ollama-cloud` with `gpt-oss:120b` and local `embeddinggemma`".
 - `docs/plugins.md`: the provider kinds.
-- DECISIONS §82 (new).
+- DECISIONS §86 (new).

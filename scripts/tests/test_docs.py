@@ -41,7 +41,19 @@ public sealed class RetrievalOptions
 }
 """
 
-JEV = 'public sealed class JevOptions { public string Model { get; set; } = "jev-1.13.0"; }\n'
+# A provider plugin's pinned model (introduce-provider-plugins), under a neutral name.
+DECIDER_MANIFEST = """\
+schema = 1
+name = "decider"
+kind = "provider"
+provides = "decision-engine"
+scope = "installation"
+environments = ["dev", "qa", "stage", "prod"]
+description = "A decision engine."
+progress = "None — a provider has no work of its own"
+stopping = "None — every request takes its caller's cancellation"
+"""
+DECIDER = 'public sealed class DeciderOptions { public string Model { get; set; } = "decider-1.13.0"; }\n'
 
 NGINX = """\
 http {
@@ -144,6 +156,7 @@ TOML = """\
 "compose" = "Compose files"
 "docs" = "References"
 "openspec" = "Specs"
+"plugins" = "Plugins"
 "src" = ".NET projects"
 "tools" = "Tools"
 "tools/screens" = "Screenshot script"
@@ -156,7 +169,7 @@ TOML = """\
 [models.patterns]
 chat = 'gpt-oss:\\d+b|qwen3:\\d+b'
 embedding = 'nomic-embed-text|embeddinggemma'
-jev = 'jev-\\d+\\.\\d+\\.\\d+'
+decider = 'decider-\\d+\\.\\d+\\.\\d+'
 
 [models.allowed]
 """
@@ -208,7 +221,8 @@ class Fixture:
             "src/Maf.Lab.Retrieval/Maf.Lab.Retrieval.csproj": "<Project><PropertyGroup><Description>MCP server\n"
                                                               "  over Qdrant</Description></PropertyGroup></Project>\n",
             "src/Maf.Lab.Retrieval/Configuration/Options.cs": OPTIONS,
-            "src/Maf.Lab.Retrieval/Jev/JevOptions.cs": JEV,
+            "plugins/decider/plugin.toml": DECIDER_MANIFEST,
+            "plugins/decider/lib/DeciderOptions.cs": DECIDER,
             "tools/screens/capture.mjs": "// capture\n",
         }
         for rel, text in files.items():
@@ -438,9 +452,9 @@ class ModelTests(DocsTestCase):
         self.assertCheckFails("docs/guide.md:1: models: names embedding model `nomic-embed-text`, "
                               "but the code configures `embeddinggemma`")
 
-    def test_stale_jev_version_fails(self):
-        self.fx.write("CLAUDE.md", "Jev `jev-1.12.0`.\n")
-        self.assertCheckFails("CLAUDE.md:1: models: names jev model `jev-1.12.0`")
+    def test_stale_provider_model_fails(self):
+        self.fx.write("CLAUDE.md", "Decider `decider-1.12.0`.\n")
+        self.assertCheckFails("CLAUDE.md:1: models: names decider model `decider-1.12.0`")
 
     def test_allowed_model_passes_and_unused_allowance_fails(self):
         self.fx.write("docs/guide.md", "Fallback qwen3:4b.\n")
@@ -450,7 +464,7 @@ class ModelTests(DocsTestCase):
         self.assertCheckFails("[models.allowed] names `qwen3:4b`")
 
     def test_history_is_not_checked(self):
-        self.fx.write("DECISIONS.md", "We used nomic-embed-text and jev-1.0.0.\n")
+        self.fx.write("DECISIONS.md", "We used nomic-embed-text and decider-1.0.0.\n")
         self.fx.write("openspec/changes/archive/2026-01-01-old/design.md", "nomic-embed-text\n")
         self.assertCheckPasses()
 
@@ -459,8 +473,14 @@ class ModelTests(DocsTestCase):
         self.assertCheckFails("CHAT_MODEL is `gpt-oss:20b` but the code default is `gpt-oss:120b`")
 
     def test_moved_default_fails_loudly(self):
-        self.fx.write("src/Maf.Lab.Retrieval/Jev/JevOptions.cs", "public sealed class JevOptions { }\n")
-        self.assertCheckFails("cannot find the configured jev value")
+        self.fx.write("plugins/decider/lib/DeciderOptions.cs", "public sealed class DeciderOptions { }\n")
+        self.assertCheckFails("cannot find the configured decider value")
+
+    def test_a_provider_folder_deleted_leaves_no_pin_to_check(self):
+        (self.fx.root / "plugins/decider/plugin.toml").unlink()
+        self.generated()
+        self.fx.write("CLAUDE.md", "Decider `decider-1.12.0`.\n")
+        self.assertCheckPasses()
 
 
 class LinkTests(DocsTestCase):
@@ -792,7 +812,6 @@ class PluginTests(DocsTestCase):
 
     def setUp(self):
         super().setUp()
-        self.fx.edit("docs/docs-sync.toml", '"openspec" = "Specs"', '"openspec" = "Specs"\n"plugins" = "One folder per plugin"')
         self.fx.write("plugins/plugin.schema.json", (Path(__file__).resolve().parents[2] / "plugins" / "plugin.schema.json").read_text())
 
     def test_a_valid_manifest_is_listed_and_passes(self):

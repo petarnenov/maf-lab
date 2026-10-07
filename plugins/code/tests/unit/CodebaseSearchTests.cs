@@ -11,7 +11,7 @@ using Maf.Lab.Indexing.Chunking;
 using Maf.Lab.Indexing.Corpus;
 using Maf.Lab.Retrieval.Auth;
 using Maf.Lab.Retrieval.Configuration;
-using Maf.Lab.Retrieval.Jev;
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Retrieval.Models;
 using Maf.Lab.Retrieval.Sparse;
 using Maf.Lab.Retrieval.Store;
@@ -499,9 +499,10 @@ public class CodebaseSearchTests : IDisposable
     private static WebApplicationFactory<Maf.Lab.CodeSearch.Program> CodeServer(string? depthPin = null) =>
         new WebApplicationFactory<Maf.Lab.CodeSearch.Program>().WithWebHostBuilder(b =>
         {
+            b.UseFixtureEngine();
             b.UseEnvironment("Development");
             b.UseSetting("Qdrant:GrpcPort", "1");
-            b.UseSetting(JevCredential.EnvironmentVariable, FakeJev.TestKey);
+            b.UseFixtureEngine();
             if (depthPin is not null)
             {
                 b.UseSetting(CodeSearchOptions.Section + ":" + nameof(CodeSearchOptions.GraphDepthPin), depthPin);

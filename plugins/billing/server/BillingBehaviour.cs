@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Maf.Lab.Plugins.Abstractions;
-using Maf.Lab.Retrieval.Jev;
 using Maf.Lab.Retrieval.Tools;
 
 namespace Maf.Lab.Plugins.Billing;
@@ -29,9 +28,9 @@ public sealed partial class BillingBehaviour : IDomainBehaviour
 
     public string Domain => BillingPlugin.DomainId;
 
-    public IReadOnlyDictionary<string, object> DataQuestions { get; } = new Dictionary<string, object>
+    public IReadOnlyDictionary<string, DecisionQuestion> DataQuestions { get; } = new Dictionary<string, DecisionQuestion>
     {
-        [StatusQuestionId] = new JevChoiceQuestion(StatusInstructions, StatusCriteria),
+        [StatusQuestionId] = new ChoiceQuestion(StatusInstructions, StatusCriteria),
     };
 
     public (IReadOnlyDictionary<string, object?>? Arguments, string? Reason) BindRead(string tool, string question,

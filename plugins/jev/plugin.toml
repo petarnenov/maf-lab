@@ -1,0 +1,9 @@
+schema = 1
+name = "jev"
+kind = "provider"
+provides = "decision-engine"
+scope = "installation"
+environments = ["dev", "qa", "stage", "prod"]
+description = "TypeSafe Jev (System One) as the decision engine: every routing, screening, relevance and answer-check question goes to it through IDecisionEngine, with the pinned jev-1.13.0 model. Needs JEV_MAF_LAB, sent only as the bearer header."
+progress = "None — a decision request is part of the work that asks it, and shows the progress that work already shows"
+stopping = "None — every request takes the caller's cancellation token (the run's, the search's or the index run's), so it stops with the work that asked it"

@@ -98,7 +98,7 @@ public static class IntentStatistics
 
     /// <summary>
     /// Which outcome a reason means, and the label it is counted under. The reasons are the ones
-    /// the api's <c>JevIntentClassifier</c> writes; anything unrecognised is a failure under its own label, so a new
+    /// the api's <c>DecisionIntentClassifier</c> writes; anything unrecognised is a failure under its own label, so a new
     /// reason shows up rather than disappearing.
     /// </summary>
     public static (string Outcome, string Label) Classify(string? reason)
@@ -180,7 +180,7 @@ public static class IntentStatistics
             probabilities,
             model,
             // A classification the circuit breaker skipped sent nothing: it has no latency (add-jev-circuit-breaker).
-            reason == Maf.Lab.Retrieval.Jev.JevClient.CircuitOpen ? null : Number(data, "durationMs"),
+            reason == Maf.Lab.Plugins.Abstractions.DecisionFailures.CircuitOpen ? null : Number(data, "durationMs"),
             label == "timed out");
     }
 

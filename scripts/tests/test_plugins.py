@@ -32,11 +32,12 @@ class PluginsTestCase(unittest.TestCase):
         self.root.mkdir()
         self.lb.mkdir()
         (self.lb / "api.upstream.conf").write_text("upstream api_pool { server api:8080; }\n")
-        self.env = {k: os.environ.get(k) for k in ("MAF_PLUGINS_ROOT", "MAF_LB_ROOT", "MAF_PLUGINS", "MAF_ENV")}
+        self.env = {k: os.environ.get(k) for k in ("MAF_PLUGINS_ROOT", "MAF_LB_ROOT", "MAF_PLUGINS", "MAF_ENV", "MAF_CORE_PROVIDERS")}
         os.environ["MAF_PLUGINS_ROOT"] = str(self.root)
         os.environ["MAF_LB_ROOT"] = str(self.lb)
         os.environ.pop("MAF_PLUGINS", None)
         os.environ.pop("MAF_ENV", None)
+        os.environ.pop("MAF_CORE_PROVIDERS", None)
         self.addCleanup(self.restore)
 
     def restore(self):
@@ -197,6 +198,47 @@ class InstallTests(PluginsTestCase):
         out = subprocess.run([sys.executable, str(ROOT / "scripts/plugins.py"), "product-servers"], capture_output=True, text=True,
                              env=os.environ.copy(), check=True).stdout.strip()
         self.assertEqual("|Maf.Lab.Plugins.Ledger|", out)
+
+    def test_the_product_variant_keeps_a_providers_lib(self):
+        self.add("decider", manifest("decider", kind="provider", environments=["dev", "prod"], extra='provides = "decision-engine"\n'),
+                 **{"lib__Maf.Lab.Plugins.Decider.csproj": "<Project/>"})
+        out = subprocess.run([sys.executable, str(ROOT / "scripts/plugins.py"), "product-servers"], capture_output=True, text=True,
+                             env=os.environ.copy(), check=True).stdout.strip()
+        self.assertEqual("|Maf.Lab.Plugins.Decider|", out)
+
+
+class ProviderTests(PluginsTestCase):
+    """The core's minimum providers (introduce-provider-plugins 5x): always installed, and exactly one decision engine."""
+
+    def engine(self, name: str) -> None:
+        self.add(name, manifest(name, kind="provider", extra='provides = "decision-engine"\n'))
+
+    def check(self, **env: str) -> subprocess.CompletedProcess:
+        return subprocess.run([sys.executable, str(ROOT / "scripts/plugins.py"), "check-providers"], capture_output=True, text=True,
+                              env=dict(os.environ, **env))
+
+    def test_the_core_providers_come_first_even_with_none(self):
+        self.engine("decider")
+        self.add("app")
+        self.assertEqual(["decider"], self.resolved(MAF_PLUGINS="none", MAF_CORE_PROVIDERS="decider"))
+        self.assertEqual(["decider", "app"], self.resolved(MAF_PLUGINS="app,decider", MAF_CORE_PROVIDERS="decider"))
+
+    def test_no_decision_engine_fails_before_anything_starts(self):
+        self.add("app")
+        out = self.check(MAF_PLUGINS="app")
+        self.assertEqual(2, out.returncode)
+        self.assertIn("no decision engine is installed", out.stderr)
+
+    def test_two_decision_engines_are_named(self):
+        self.engine("decider")
+        self.engine("other")
+        out = self.check(MAF_PLUGINS="none", MAF_CORE_PROVIDERS="decider other")
+        self.assertEqual(2, out.returncode)
+        self.assertIn("decider, other", out.stderr)
+
+    def test_exactly_one_passes(self):
+        self.engine("decider")
+        self.assertEqual(0, self.check(MAF_PLUGINS="none", MAF_CORE_PROVIDERS="decider").returncode)
 
 
 @unittest.skipUnless(shutil.which("docker"), "docker is not installed")

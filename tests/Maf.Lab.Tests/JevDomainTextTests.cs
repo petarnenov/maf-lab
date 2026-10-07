@@ -1,5 +1,5 @@
 using Maf.Lab.Api.Agent;
-using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.Agent.Decisions;
 using Maf.Lab.Plugins.Abstractions;
 
 namespace Maf.Lab.Tests;
@@ -25,15 +25,15 @@ public class JevDomainTextTests
     {
         using (DomainCatalogue.Use(All))
         {
-            Assert.Equal("fee billing, investment portfolios and this lab's own source code", JevSubjects.Current);
+            Assert.Equal("fee billing, investment portfolios and this lab's own source code", Subjects.Current);
         }
         using (DomainCatalogue.Use(PortfolioOnly))
         {
-            Assert.Equal("investment portfolios", JevSubjects.Current);
+            Assert.Equal("investment portfolios", Subjects.Current);
         }
         using (DomainCatalogue.Use(None))
         {
-            Assert.Null(JevSubjects.Current);
+            Assert.Null(Subjects.Current);
         }
     }
 
@@ -44,18 +44,18 @@ public class JevDomainTextTests
             "`user_question` is a message a user typed to an AI assistant that answers questions about fee billing and investment "
             + "portfolios for the user's own organisation, from that organisation's documents and data. Ordinary users ask about "
             + "procedures, policies and their own data, and may ask the assistant to propose a change, which they then confirm.",
-            JevGuardQuestions.PromptContext("fee billing and investment portfolios"));
+            GuardQuestions.PromptContext("fee billing and investment portfolios"));
         Assert.Equal(
             "`user_question` is a message a user typed to an AI assistant that answers questions for the user's own organisation, "
             + "from that organisation's documents and data. Ordinary users ask about procedures, policies and their own data, and "
             + "may ask the assistant to propose a change, which they then confirm.",
-            JevGuardQuestions.PromptContext(null));
+            GuardQuestions.PromptContext(null));
         Assert.StartsWith(
             "`user_question` is what a user asked an AI assistant that answers questions about investment portfolios for the user's own organisation. ",
-            JevAnswerCheck.Context("investment portfolios"));
+            DecisionAnswerCheck.Context("investment portfolios"));
         Assert.StartsWith(
             "`user_question` is what a user asked an AI assistant that answers questions for the user's own organisation. ",
-            JevAnswerCheck.Context(null));
+            DecisionAnswerCheck.Context(null));
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public class JevDomainTextTests
                 + "portfolio: what an account holds, its allocation, drift or AUM",
             ["chitchat"] = "A greeting, thanks, closing or small talk",
             ["other"] = "Anything else, including requests to change data",
-        }, JevIntentClassifier.Criteria);
+        }, DecisionIntentClassifier.Criteria);
     }
 
     [Fact]
@@ -80,15 +80,15 @@ public class JevDomainTextTests
     {
         using (DomainCatalogue.Use(PortfolioOnly))
         {
-            var criteria = JevIntentClassifier.Criteria;
+            var criteria = DecisionIntentClassifier.Criteria;
             Assert.Equal(["procedural", "data", "chitchat", "other"], criteria.Keys);
-            Assert.Equal(JevIntentClassifier.ProceduralStem, criteria["procedural"]);
+            Assert.Equal(DecisionIntentClassifier.ProceduralStem, criteria["procedural"]);
             Assert.Equal("Asks for the current state of an account's portfolio: what an account holds, its allocation, drift or AUM",
                 criteria["data"]);
         }
         using (DomainCatalogue.Use(None))
         {
-            var criteria = JevIntentClassifier.Criteria;
+            var criteria = DecisionIntentClassifier.Criteria;
             Assert.Equal(["procedural", "data", "chitchat", "other"], criteria.Keys);
             Assert.Equal("Asks for the current state of the organisation's data: a status or a list", criteria["data"]);
         }
@@ -99,10 +99,10 @@ public class JevDomainTextTests
     {
         using var domains = DomainCatalogue.Use(None);
         var text = string.Join("\n",
-            System.Text.Json.JsonSerializer.Serialize(JevGuardQuestions.Prompt),
-            System.Text.Json.JsonSerializer.Serialize(JevGuardQuestions.Content),
-            System.Text.Json.JsonSerializer.Serialize(JevAnswerCheck.Questions),
-            string.Join("\n", JevIntentClassifier.Criteria.Values));
+            System.Text.Json.JsonSerializer.Serialize(GuardQuestions.Prompt),
+            System.Text.Json.JsonSerializer.Serialize(GuardQuestions.Content),
+            System.Text.Json.JsonSerializer.Serialize(DecisionAnswerCheck.Questions),
+            string.Join("\n", DecisionIntentClassifier.Criteria.Values));
 
         Assert.DoesNotMatch(@"(?i)billing|\bfees?\b|adjustment|portfolio", text);
     }

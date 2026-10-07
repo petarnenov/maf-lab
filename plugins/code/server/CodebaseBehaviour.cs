@@ -10,7 +10,7 @@ public sealed class CodebaseBehaviour : IDomainBehaviour
 {
     public string Domain => CodePlugin.DomainId;
 
-    public KeyValuePair<string, object>? PrimaryRouteQuestion => CodeToolRouter.Question();
+    public KeyValuePair<string, DecisionQuestion>? PrimaryRouteQuestion => CodeToolRouter.Question();
 
     public (DomainRoute? Route, string? Reason) PrimaryRoute(string question, string intent, DecisionAnswer? answer, double minConfidence) =>
         CodeToolRouter.Route(question, answer, intent, minConfidence);

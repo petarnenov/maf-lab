@@ -1,6 +1,6 @@
 using Maf.Lab.Api.Agent;
-using Maf.Lab.Api.Agent.Jev;
-using Maf.Lab.Retrieval.Jev;
+using Maf.Lab.Api.Agent.Decisions;
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Domain.Evals;
 using Maf.Lab.Eval.Datasets;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,10 +18,10 @@ public sealed class GuardrailSuite(IServiceProvider services)
 {
     public async Task<IReadOnlyList<EvalVariantResult>> RunAsync(SuiteContext ctx, CancellationToken ct)
     {
-        if (!services.GetRequiredService<JevCredential>().IsConfigured)
+        if (!services.GetRequiredService<IDecisionEngine>().IsConfigured)
         {
             // Without the key nothing is flagged; a 0% detection would read as a guard that got worse.
-            throw new InvalidOperationException($"The guardrail suite needs {JevCredential.EnvironmentVariable} in the environment.");
+            throw new InvalidOperationException("The guardrail suite needs a configured decision engine (the installed engine's credential in the environment).");
         }
         var guardrail = services.GetRequiredService<Guardrail>();
         var cases = ctx.Take(DatasetLoader.Guardrail(ctx.DatasetRoot)).ToList();

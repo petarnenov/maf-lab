@@ -17,8 +17,8 @@ namespace Maf.Lab.Api.Agent;
 /// </summary>
 /// <paramref name="alongside"/> are read calls issued with those searches, arguments taken from the question — the run a
 /// mixed question names, whose state the answer needs as much as the documentation.
-public sealed class RequiredToolModeChatClient(IChatClient inner, Action<FunctionCallContent>? onForced = null, Jev.ToolRoute? route = null,
-    IReadOnlyList<string>? forcedSearches = null, IReadOnlyList<Jev.ToolRoute>? alongside = null)
+public sealed class RequiredToolModeChatClient(IChatClient inner, Action<FunctionCallContent>? onForced = null, Decisions.ToolRoute? route = null,
+    IReadOnlyList<string>? forcedSearches = null, IReadOnlyList<Decisions.ToolRoute>? alongside = null)
     : DelegatingChatClient(inner)
 {
     public override async Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)

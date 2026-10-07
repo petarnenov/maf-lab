@@ -14,7 +14,8 @@ public sealed class InstalledPluginsTests
 
         var installed = api.Services.GetRequiredService<IInstalledPlugins>().Installed();
 
-        Assert.Equal(StandInDomains.Installed.Select(m => m.Name), installed.Select(m => m.Name));
+        // Beside them, the core's minimum providers (introduce-provider-plugins 5x): its decision engine, last.
+        Assert.Equal(StandInDomains.Installed.Select(m => m.Name), installed.Where(m => m.Kind != PluginKinds.Provider).Select(m => m.Name));
         Assert.Equal(StandInDomains.BillingManifest.Domain!.Id, installed.Single(m => m.Name == StandInDomains.BillingManifest.Name).Domain!.Id);
     }
 
@@ -24,6 +25,7 @@ public sealed class InstalledPluginsTests
         using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = [] };
         _ = api.CreateClient();
 
-        Assert.Empty(api.Services.GetRequiredService<IInstalledPlugins>().Installed());
+        // None but the core's minimum providers (introduce-provider-plugins 5x).
+        Assert.All(api.Services.GetRequiredService<IInstalledPlugins>().Installed(), m => Assert.Equal(PluginKinds.Provider, m.Kind));
     }
 }

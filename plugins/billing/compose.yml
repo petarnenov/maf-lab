@@ -10,14 +10,21 @@ services:
     build:
       context: ..
       dockerfile: src/Maf.Lab.Retrieval/Dockerfile
+      # full or product, as the api's (introduce-plugins 5e): the provider plugins' code it keeps (introduce-provider-plugins).
+      args:
+        MAF_IMAGE_VARIANT: ${MAF_IMAGE_VARIANT:-full}
+        MAF_PRODUCT_PLUGINS: ${MAF_PRODUCT_PLUGINS:-||}
     deploy:
       replicas: 2
     env_file: [env/retrieval.env, env/platform.env, env/graph.env, ../plugins/billing/files/billing.env]
     environment:
+      # The installed providers (the decision engine the relevance judge asks), read from plugins/.installed.
+      Plugins__Root: /plugins
       Urls: http://+:8080
       # Only this server writes, so only this server is told where the ledger lives.
       Billing__AdjustmentsConnectionString: Data Source=/app-data/maf-lab-adjustments.db
     volumes:
+      - ../plugins:/plugins:ro
       - ../plugins/billing/files/seed:/seed:ro
       # The applied-adjustments ledger: the only thing this server writes. Shared by its replicas, like the api's store.
       - retrieval-data:/app-data

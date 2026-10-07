@@ -243,8 +243,8 @@ export const CURRICULUM: CurriculumSection[] = [
       {
         concept: 'One assistant with a router',
         summary:
-          "The plan's first-phase answer: one assistant, and a classifier that picks the domain before the first model call. Jev decides the intent and which domains are in scope, and only the searches of those domains are forced.",
-        paths: ['src/Maf.Lab.Api/Agent/Jev/JevIntentClassifier.cs'],
+          "The plan's first-phase answer: one assistant, and a classifier that picks the domain before the first model call. The installed decision engine (Jev today) decides the intent and which domains are in scope, and only the searches of those domains are forced.",
+        paths: ['src/Maf.Lab.Api/Agent/Decisions/DecisionIntentClassifier.cs'],
         spec: 'intent-classification',
       },
       {
@@ -309,8 +309,8 @@ export const CURRICULUM: CurriculumSection[] = [
       {
         concept: 'A token never sits in a prompt, result, state or log',
         summary:
-          'The Jev key is read in one place and sent only as a bearer header; the chat key is read when the client is created. Neither appears in a prompt, a trace or a log line.',
-        paths: ['src/Maf.Lab.Retrieval/Jev/JevCredential.cs'],
+          "The decision engine's key is read in one place, by its provider plugin, and sent only as a bearer header; the chat key is read when the client is created. Neither appears in a prompt, a trace or a log line.",
+        paths: ['src/Maf.Lab.Retrieval/Models/ModelProviders.cs'],
         spec: 'intent-classification',
       },
       {

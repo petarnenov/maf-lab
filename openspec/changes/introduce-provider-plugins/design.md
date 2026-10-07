@@ -16,8 +16,8 @@ stays exactly as it is.
 ### 5t. Typed decisions behind an abstraction; Jev is the first engine (decided with the user, 2026-10-05)
 
 The core no longer depends on TypeSafe Jev directly. It depends on `IDecisionEngine`, which answers closed, typed
-questions over one state with a confidence for each answer. The core puts every routing, guard and answer-check
-question of a turn to it in one request.
+questions over one state with a confidence for each answer. The core puts all the questions over one state to it in
+one request (jev-usage §0.4): a turn asks once per state, as before (its question, each tool result, its answer).
 
 **Engines are provider plugins.** A plugin of the new kind `provider` declares `provides = "decision-engine"`. Exactly
 one engine must be installed, or make and the api refuse to start, naming the problem. Two engines are planned:

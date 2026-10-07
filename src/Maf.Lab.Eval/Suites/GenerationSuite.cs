@@ -1,11 +1,11 @@
 using Maf.Lab.Api.Agent;
-using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.Agent.Decisions;
 using Maf.Lab.Domain.Evals;
 using Maf.Lab.Domain.Feedback;
 using Maf.Lab.Eval.Datasets;
 using Maf.Lab.Eval.Hosting;
 using Maf.Lab.Eval.Judging;
-using Maf.Lab.Retrieval.Jev;
+using Maf.Lab.Plugins.Abstractions;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.AI.Evaluation.Reporting;
 
@@ -24,7 +24,7 @@ public sealed record JudgeScore(double Faithfulness, double Relevance, string Re
 public sealed class GenerationSuite(EvalAgentHost host, ReportingConfiguration reporting)
 {
     /// <summary>A case passes at this faithfulness, with relevance 1.</summary>
-    public const double PassMark = JevGenerationEvaluator.PassMark;
+    public const double PassMark = DecisionGenerationEvaluator.PassMark;
 
     public const string ScenarioPrefix = "generation.";
 
@@ -39,7 +39,7 @@ public sealed class GenerationSuite(EvalAgentHost host, ReportingConfiguration r
         foreach (var (c, i) in cases.Select((c, i) => (c, i)))
         {
             var turn = await host.AskAsync(c.TenantId, c.Question, ct);
-            var context = new JevGradeContext(turn.Read, c.ReferencePoints);
+            var context = new DecisionGradeContext(turn.Read, c.ReferencePoints);
             await using (var run = await reporting.CreateScenarioRunAsync(ScenarioPrefix + c.Id, cancellationToken: ct))
             {
                 await run.EvaluateAsync([new ChatMessage(ChatRole.User, c.Question)], new ChatResponse(new ChatMessage(ChatRole.Assistant, turn.Answer)),
@@ -81,12 +81,12 @@ public sealed class GenerationSuite(EvalAgentHost host, ReportingConfiguration r
         var ok = graded.Where(x => x.Outcome.Grade is not null).ToList();
         var metrics = new Dictionary<string, double>
         {
-            [JevGenerationEvaluator.Faithfulness] = Mean(x => x.Outcome.Grade?.Faithfulness ?? 0),
-            [JevGenerationEvaluator.Relevance] = Mean(x => x.Outcome.Grade?.Relevance ?? 0),
-            [JevGenerationEvaluator.Completeness] = Mean(x => x.Outcome.Grade?.Completeness ?? 0),
-            [JevGenerationEvaluator.ReferenceAgreement] = Mean(x => x.Outcome.Grade?.ReferenceAgreement ?? 0),
-            [JevGenerationEvaluator.RetrievalJudged] = Mean(x => x.Outcome.Grade?.RetrievalJudged ?? 0),
-            [JevGenerationEvaluator.JudgeUncertain] = ok.Count == 0 ? 0 : ok.Average(x => x.Outcome.Grade!.Uncertain),
+            [DecisionGenerationEvaluator.Faithfulness] = Mean(x => x.Outcome.Grade?.Faithfulness ?? 0),
+            [DecisionGenerationEvaluator.Relevance] = Mean(x => x.Outcome.Grade?.Relevance ?? 0),
+            [DecisionGenerationEvaluator.Completeness] = Mean(x => x.Outcome.Grade?.Completeness ?? 0),
+            [DecisionGenerationEvaluator.ReferenceAgreement] = Mean(x => x.Outcome.Grade?.ReferenceAgreement ?? 0),
+            [DecisionGenerationEvaluator.RetrievalJudged] = Mean(x => x.Outcome.Grade?.RetrievalJudged ?? 0),
+            [DecisionGenerationEvaluator.JudgeUncertain] = ok.Count == 0 ? 0 : ok.Average(x => x.Outcome.Grade!.Uncertain),
             ["sourceRecall"] = Mean(x => x.SourceRecall),
         };
         foreach (var (key, value) in JevMetrics([.. graded.Select(x => (x.Turn, x.Score))], total))
@@ -97,11 +97,12 @@ public sealed class GenerationSuite(EvalAgentHost host, ReportingConfiguration r
     }
 
     /// <summary>The suite refuses to run without the key rather than report a judge that graded nothing.</summary>
-    public static void RequireKey(JevGrader grader)
+    public static void RequireKey(DecisionGrader grader)
     {
         if (!grader.IsConfigured)
         {
-            throw new InvalidOperationException($"The generation suite is graded by Jev and needs {JevCredential.EnvironmentVariable} in the environment.");
+            throw new InvalidOperationException(
+                "The generation suite is graded by the decision engine and needs a configured decision engine (the installed engine's credential in the environment).");
         }
     }
 

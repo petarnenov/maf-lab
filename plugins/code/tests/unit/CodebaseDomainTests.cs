@@ -1,13 +1,13 @@
 using System.Text.Json;
 using Maf.Lab.Api.Agent;
-using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.Agent.Decisions;
 using Maf.Lab.Api.BuiltIn;
 using Maf.Lab.Plugins.Code;
 using Maf.Lab.Domain.Chat;
 using Maf.Lab.Domain.Code;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Domain.Tracing;
-using Maf.Lab.Retrieval.Jev;
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.TestSupport;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -32,15 +32,11 @@ public class CodebaseDomainTests : IDisposable
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    private static JevIntentClassifier Classifier(FakeJev jev)
+    private static DecisionIntentClassifier Classifier(FakeJev jev)
     {
         var loggers = LoggerFactory.Create(_ => { });
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { [JevCredential.EnvironmentVariable] = FakeJev.TestKey }).Build();
-        var credential = new JevCredential(configuration, loggers.CreateLogger<JevCredential>());
-        var client = new HttpClient(new JevAuthHandler(credential) { InnerHandler = jev }) { BaseAddress = new Uri("https://jev.test/") };
-        var o = Options.Create(new JevOptions());
-        return new JevIntentClassifier(new JevClient(new CodeTestClients(client), credential, o), o, loggers);
+        var o = Options.Create(new IntentOptions());
+        return new DecisionIntentClassifier(new FakeDecisionEngine(jev), o, loggers);
     }
 
     // ---- Jev's codebase question -------------------------------------------------------------------------------------
@@ -247,9 +243,10 @@ public class CodebaseDomainTests : IDisposable
     {
         await using var code = new WebApplicationFactory<Maf.Lab.CodeSearch.Program>().WithWebHostBuilder(b =>
         {
+            b.UseFixtureEngine();
             b.UseEnvironment("Development");
             b.UseSetting("Qdrant:GrpcPort", "1");
-            b.UseSetting(JevCredential.EnvironmentVariable, FakeJev.TestKey);
+            b.UseFixtureEngine();
             b.ConfigureLogging(l => l.SetMinimumLevel(LogLevel.Warning));
         });
         var router = new HostRouter(code.Server.CreateHandler());
@@ -283,9 +280,10 @@ public class CodebaseDomainTests : IDisposable
     {
         await using var code = new WebApplicationFactory<Maf.Lab.CodeSearch.Program>().WithWebHostBuilder(b =>
         {
+            b.UseFixtureEngine();
             b.UseEnvironment("Development");
             b.UseSetting("Qdrant:GrpcPort", "1");
-            b.UseSetting(JevCredential.EnvironmentVariable, FakeJev.TestKey);
+            b.UseFixtureEngine();
             b.ConfigureLogging(l => l.SetMinimumLevel(LogLevel.Warning));
         });
         var router = new HostRouter(code.Server.CreateHandler());

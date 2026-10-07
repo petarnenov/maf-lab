@@ -26,6 +26,12 @@ done
 
 [[ "$ACTION" == on || "$ACTION" == off ]] || { echo "usage: plugin_switch.sh on|off NAME" >&2; exit 2; }
 [[ -n "$NAME" ]] || { echo "✗ say which plugin: make plugin-$ACTION NAME=<plugin> (make plugins lists them)" >&2; exit 2; }
+# A provider lives in every process that asks a model, an embedder or the decision engine, and no rolling restart covers
+# them all (introduce-provider-plugins): it changes only with the whole stack.
+if [[ "$("${PLUGINS[@]}" kind "$NAME" 2>/dev/null)" == provider ]]; then
+  echo "✗ $NAME is a provider: set MAF_CORE_PROVIDERS (or MAF_PLUGINS) and run make up" >&2
+  exit 2
+fi
 
 # ── progress and stopping ────────────────────────────────────────────────────────────────────────────────────────
 STOP=0

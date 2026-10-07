@@ -31,7 +31,7 @@
 {"id": "cr-impact-bg-02", "question": "Какво ще засегне промяна в src/Maf.Lab.Retrieval/Graph/GraphReadLog.cs?", "expected": "impact", "hasArgument": true, "language": "bg", "split": "design"}
 {"id": "cr-impact-bg-03", "question": "Кои тестове минават през src/Maf.Lab.Api/Agent/Guardrail.cs?", "expected": "impact", "hasArgument": true, "language": "bg", "split": "holdout"}
 {"id": "cr-impact-latn-01", "question": "koi testove pokrivat src/Maf.Lab.Retrieval/Tools/ToolErrors.cs", "expected": "impact", "hasArgument": true, "language": "bg-latn", "split": "design"}
-{"id": "cr-impact-latn-02", "question": "kakvo shte zasegne promyana v src/Maf.Lab.Api/Agent/Jev/DataToolRouter.cs?", "expected": "impact", "hasArgument": true, "language": "bg-latn", "split": "design"}
+{"id": "cr-impact-latn-02", "question": "kakvo shte zasegne promyana v src/Maf.Lab.Api/Agent/Decisions/DataToolRouter.cs?", "expected": "impact", "hasArgument": true, "language": "bg-latn", "split": "design"}
 {"id": "cr-impact-latn-03", "question": "koi testove tryabva da pusna ako promenya src/Maf.Lab.Indexing/Chunking/ChunkBuilder.cs", "expected": "impact", "hasArgument": true, "language": "bg-latn", "split": "holdout"}
 {"id": "cr-impact-latn-04", "question": "koi testove pokrivat chunkera?", "expected": "impact", "hasArgument": false, "language": "bg-latn", "split": "design"}
 {"id": "cr-text-en-01", "question": "How does the code make a tool call idempotent?", "expected": "text", "hasArgument": false, "language": "en", "split": "design"}

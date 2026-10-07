@@ -1,12 +1,12 @@
 using System.Text.Json;
 using Maf.Lab.Api.Agent;
-using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.Agent.Decisions;
 using Maf.Lab.Domain.Chat;
 using Maf.Lab.Eval;
 using Maf.Lab.Eval.Datasets;
 using Maf.Lab.Eval.Judging;
 using Maf.Lab.Eval.Suites;
-using Maf.Lab.Retrieval.Jev;
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Retrieval.Models;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
@@ -148,21 +148,16 @@ public class AnswerCheckEvalTests : IDisposable
         Assert.All(code, c => Assert.All(c.ExpectedDocIds, d => Assert.True(File.Exists(Path.Combine(CorpusLoaderTests.RepoRoot(), d)), d)));
     }
 
-    // ── the suites, on the fake Jev ──────────────────────────────────────────────────────────────────────────────────
+    // ── the suites, on the fake engine ───────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The Jev services an eval host registers, answered by <paramref name="jev"/>; no chat client anywhere.</summary>
+    /// <summary>The decision services an eval host registers, answered by <paramref name="jev"/>; no chat client anywhere.</summary>
     private static ServiceProvider JevServices(FakeJev jev, Dictionary<string, string?>? settings = null)
     {
-        var values = new Dictionary<string, string?> { [JevCredential.EnvironmentVariable] = FakeJev.TestKey, ["Jev:Breaker:FailureThreshold"] = "0" };
-        foreach (var (k, v) in settings ?? [])
-        {
-            values[k] = v;
-        }
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings ?? []).Build();
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddJevIntentClassifier(configuration);
-        services.AddHttpClient(JevClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => jev);
+        services.AddSingleton<IDecisionEngine>(new FakeDecisionEngine(jev));
+        services.AddDecisionCallers(configuration);
         return services.BuildServiceProvider();
     }
 
@@ -250,9 +245,9 @@ public class AnswerCheckEvalTests : IDisposable
                 : id == "stated_1" ? 0.9 : null,
         };
         await using var services = JevServices(jev);
-        var grader = new JevGrader(services.GetRequiredService<JevClient>(), new JudgeOptions(), NullLogger<JevGrader>.Instance);
-        var suite = new GenerationJudgeSuite(services.GetRequiredService<JevAnswerCheck>(),
-            GradeReport.Configure(dir, "test-run", new JevGenerationEvaluator(grader)));
+        var grader = new DecisionGrader(services.GetRequiredService<IDecisionEngine>(), new JudgeOptions(), NullLogger<DecisionGrader>.Instance);
+        var suite = new GenerationJudgeSuite(services.GetRequiredService<DecisionAnswerCheck>(),
+            GradeReport.Configure(dir, "test-run", new DecisionGenerationEvaluator(grader)));
         var progress = new List<string>();
 
         var variants = await suite.RunAsync(Context(dir, progress), Ct);
@@ -336,7 +331,7 @@ public class AnswerCheckEvalTests : IDisposable
                 {
                     Thread.Sleep(400);
                 }
-                return id == JevAnswerCheck.RelevantId ? 0.95 : answer.StartsWith("LOW", StringComparison.Ordinal) ? 0.1 : 0.35;
+                return id == DecisionAnswerCheck.RelevantId ? 0.95 : answer.StartsWith("LOW", StringComparison.Ordinal) ? 0.1 : 0.35;
             },
         };
         await using var services = JevServices(jev, new() { ["Jev:AnswerCheck:TimeoutSeconds"] = "0.1" });
@@ -364,14 +359,14 @@ public class AnswerCheckEvalTests : IDisposable
     [Fact]
     public async Task The_answer_check_suite_refuses_to_run_without_the_key()
     {
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { [JevCredential.EnvironmentVariable] = "" }).Build();
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddJevIntentClassifier(configuration);
+        services.AddSingleton<IDecisionEngine>(new FakeDecisionEngine(new FakeJev()) { IsConfigured = false });
+        services.AddDecisionCallers(new ConfigurationBuilder().Build());
         await using var sp = services.BuildServiceProvider();
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new AnswerCheckSuite(sp).RunAsync(Context(EvalsRoot, []), Ct));
-        Assert.Contains(JevCredential.EnvironmentVariable, error.Message);
+        Assert.Contains("configured decision engine", error.Message);
     }
 
     [Fact]

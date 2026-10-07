@@ -8,7 +8,7 @@ using Maf.Lab.Domain.Graph;
 using Maf.Lab.Eval.Datasets;
 using Maf.Lab.Eval.Hosting;
 using Maf.Lab.Eval.Judging;
-using Maf.Lab.Retrieval.Jev;
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Hosting.Cli;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -33,7 +33,7 @@ public sealed record GraphDepthProbe(IReadOnlyList<string> Items, int Nodes, boo
 /// claims against what the turn read, its relevance to the question. Whether it names the labelled items is
 /// <c>mentionRecall</c>, a match in code. A comparison: it reports, it does not gate.
 /// </summary>
-public sealed class GraphDepthSuite(IConfiguration configuration, JevGrader? grader)
+public sealed class GraphDepthSuite(IConfiguration configuration, DecisionGrader? grader)
 {
     public const string Name = "graph-depth";
     public static readonly IReadOnlyList<GraphDepthVariant> Variants = [new("depth-2", 2), new("depth-3", 3), new("depth-4", 4)];
@@ -47,8 +47,8 @@ public sealed class GraphDepthSuite(IConfiguration configuration, JevGrader? gra
         var cases = ctx.Take(DatasetLoader.GraphDepth(ctx.DatasetRoot)).ToList();
         if (!structuralOnly && grader is not { IsConfigured: true })
         {
-            throw new InvalidOperationException($"graph-depth: the end-to-end layer is graded by Jev and needs {JevCredential.EnvironmentVariable} "
-                + "in the environment; pass --structural-only to run without it.");
+            throw new InvalidOperationException(
+                "graph-depth: the end-to-end layer is graded by the decision engine and needs it configured; pass --structural-only to run without it.");
         }
         using var console = new ConsoleProgress(Name);
         var bar = new GraphDepthProgress(console, cases.Count, Variants.Count, structuralOnly ? 1 : 2);

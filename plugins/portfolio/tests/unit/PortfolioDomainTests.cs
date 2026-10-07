@@ -1,7 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
 using Maf.Lab.Api.Agent;
-using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.Agent.Decisions;
 using Maf.Lab.Api.BuiltIn;
 using Maf.Lab.Plugins.Portfolio;
 using Maf.Lab.Domain.Chat;
@@ -12,7 +12,7 @@ using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Domain.Tracing;
 using Maf.Lab.Portfolio.Store;
 using Maf.Lab.Retrieval.Auth;
-using Maf.Lab.Retrieval.Jev;
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.TestSupport;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -306,11 +306,12 @@ public class PortfolioDomainTests : IDisposable
     private static WebApplicationFactory<Maf.Lab.Portfolio.Program> PortfolioServer() =>
         new WebApplicationFactory<Maf.Lab.Portfolio.Program>().WithWebHostBuilder(b =>
         {
+            b.UseFixtureEngine();
             b.UseEnvironment("Development");
             // No store is reachable on port 1: the bootstrap keeps retrying in the background and no test here searches.
             b.UseSetting("Qdrant:GrpcPort", "1");
             b.UseSetting("Portfolio:SeedPath", Seed);
-            b.UseSetting(JevCredential.EnvironmentVariable, FakeJev.TestKey);
+            b.UseFixtureEngine();
             b.ConfigureLogging(l => l.SetMinimumLevel(LogLevel.Warning));
         });
 
@@ -345,15 +346,11 @@ public class PortfolioDomainTests : IDisposable
         Assert.Equal(Math.Max(billing, portfolio), verdict.Highest);
     }
 
-    private static JevIntentClassifier Classifier(FakeJev jev)
+    private static DecisionIntentClassifier Classifier(FakeJev jev)
     {
         var loggers = LoggerFactory.Create(_ => { });
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { [JevCredential.EnvironmentVariable] = FakeJev.TestKey }).Build();
-        var credential = new JevCredential(configuration, loggers.CreateLogger<JevCredential>());
-        var client = new HttpClient(new JevAuthHandler(credential) { InnerHandler = jev }) { BaseAddress = new Uri("https://jev.test/") };
-        var o = Options.Create(new JevOptions());
-        return new JevIntentClassifier(new JevClient(new SingleClientFactory(client), credential, o), o, loggers);
+        var o = Options.Create(new IntentOptions());
+        return new DecisionIntentClassifier(new FakeDecisionEngine(jev), o, loggers);
     }
 
     [Fact]
@@ -610,9 +607,4 @@ public class PortfolioDomainTests : IDisposable
         Assert.Equal(["search_documents"], tools.Invocations);
         Assert.Null(trace.Single(t => t.Kind == TraceKinds.TurnEnd).Data.GetProperty("error").GetString());
     }
-}
-
-file sealed class SingleClientFactory(HttpClient client) : IHttpClientFactory
-{
-    public HttpClient CreateClient(string name) => client;
 }

@@ -38,6 +38,8 @@ public partial class Program
 
         // The retrieval core, pointed by portfolio.json at this domain's collection and vocabulary.
         builder.Services.AddMafRetrievalCore(builder.Configuration);
+        // The installed providers: the decision engine the relevance judge asks.
+        Maf.Lab.Plugins.Abstractions.ProviderHost.AddInstalledProviders(builder.Services, builder.Configuration);
         builder.Services.AddDevJwtAuthentication(builder.Configuration);
         builder.Services.AddSingleton<PortfolioStore>();
         builder.Services.AddHostedService<BootstrapService>();
@@ -49,7 +51,6 @@ public partial class Program
 
         builder.Services.AddInstanceHealth();
         var app = builder.Build();
-        app.Services.GetRequiredService<Retrieval.Jev.JevCredential>();
         app.UseInstanceHeader();
         app.UseAuthentication();
         app.UseAuthorization();

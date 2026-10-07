@@ -1,9 +1,8 @@
 using System.Text.Json;
 using Maf.Lab.Api.Agent;
-using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.Agent.Decisions;
 using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Plugins.Billing;
-using Maf.Lab.Retrieval.Jev;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -17,7 +16,7 @@ namespace Maf.Lab.Tests;
 public class BillingDataToolRoutingTests : IDisposable
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
-    private static readonly JevOptions Routing = new() { RouteDataTools = true };
+    private static readonly IntentOptions Routing = new() { RouteDataTools = true };
 
     // The view these tests were written in: billing from this plugin, portfolio beside it (the core tests' stand-in).
     private readonly IDisposable _domains = BillingPluginSupport.Use();
@@ -36,18 +35,13 @@ public class BillingDataToolRoutingTests : IDisposable
         new(tools, runStatus is null ? new Dictionary<string, DecisionAnswer>()
             : new Dictionary<string, DecisionAnswer> { [BillingBehaviour.StatusQuestionId] = new(runStatus, confidence, null, null) });
 
-    private static (JevIntentClassifier Classifier, FakeJev Jev) Classifier(FakeJev? jev = null, JevOptions? options = null)
+    private static (DecisionIntentClassifier Classifier, FakeJev Jev) Classifier(FakeJev? jev = null, IntentOptions? options = null)
     {
         jev ??= new FakeJev();
         var loggers = LoggerFactory.Create(_ => { });
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { [JevCredential.EnvironmentVariable] = FakeJev.TestKey }).Build();
-        var credential = new JevCredential(configuration, loggers.CreateLogger<JevCredential>());
-        var client = new HttpClient(new JevAuthHandler(credential) { InnerHandler = jev }) { BaseAddress = new Uri("https://jev.test/") };
         var o = Options.Create(options ?? Routing);
-        return (new JevIntentClassifier(new JevClient(new BillingRoutingClientFactory(client), credential, o), o, loggers), jev);
+        return (new DecisionIntentClassifier(new FakeDecisionEngine(jev), o, loggers), jev);
     }
-
 
     [Theory]
     [InlineData("Какъв е статусът на рън 4417?", "4417")]
@@ -130,7 +124,7 @@ public class BillingDataToolRoutingTests : IDisposable
         // The prompt-screening battery (injection-defense) also rides in the intent request, between the domain and the
         // routing questions; the routing questions still travel here and the state stays the user's question alone.
         // The codebase domain's questions ride here too while the code plugin is in use (its own tests pin them).
-        string[] expected = ["intent", "in_domain", "in_portfolio", .. JevGuardQuestions.PromptIds,
+        string[] expected = ["intent", "in_domain", "in_portfolio", .. GuardQuestions.PromptIds,
             "tool_get_billing_run_status", "tool_search_billing_runs", "tool_propose_fee_adjustment",
             "tool_get_household_portfolio", "tool_get_aum_history", "tool_list_my_accounts", "run_status"];
         Assert.Equal(expected, questions.EnumerateObject().Select(q => q.Name));
@@ -144,9 +138,4 @@ public class BillingDataToolRoutingTests : IDisposable
         Assert.Equal("9981", decision.Route.Arguments["runId"]);
         Assert.Equal(0.93, decision.Routing!.Tools["get_billing_run_status"]);
     }
-}
-
-file sealed class BillingRoutingClientFactory(HttpClient client) : IHttpClientFactory
-{
-    public HttpClient CreateClient(string name) => client;
 }

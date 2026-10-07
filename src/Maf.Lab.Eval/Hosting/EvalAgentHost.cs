@@ -1,11 +1,12 @@
 using System.Threading.Channels;
 using Maf.Lab.Api.Agent;
-using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.Agent.Decisions;
 using Maf.Lab.Api.BuiltIn;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.Domain.Chat;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Indexing;
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Retrieval.Auth;
 using Maf.Lab.Domain.Configuration;
 using Maf.Lab.Retrieval.Configuration;
@@ -152,13 +153,14 @@ public sealed class EvalAgentHost : IAsyncDisposable
         services.AddSingleton<TokenCounter>();
         services.AddSingleton<ToolAudit>();
         services.AddHttpClient("mcp");
-        // Jev's input tokens, read off each response for the suites that call it through the production classes.
-        services.AddSingleton<JevUsageMeter>();
-        services.AddTransient<JevUsageHandler>();
-        services.AddHttpClient(Maf.Lab.Retrieval.Jev.JevClient.HttpClientName).AddHttpMessageHandler<JevUsageHandler>();
+        // The decision engine the installed provider registers, metered for the suites that ask it through the
+        // production classes (its input tokens per suite).
+        services.AddInstalledProviders(configuration);
+        services.AddSingleton<DecisionUsageMeter>();
+        MeteredDecisionEngine.DecorateEngine(services);
         services.AddSingleton<IToolSource, McpToolSource>();
         services.AddSingleton<ConversationService>();
-        services.AddJevIntentClassifier(configuration);
+        services.AddDecisionCallers(configuration);
         // The installed plugins' own services, as the api composes them: with compliance installed, its reviewer (make eval
         // passes the stack's Compliance:*), so a case over the review threshold consults the stack's reviewer, and a stop
         // reaches it too (the eval exits 130; the consultant sends A2A tasks/cancel within 5 s). Without it, no reviewer.

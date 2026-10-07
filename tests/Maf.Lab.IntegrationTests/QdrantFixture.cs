@@ -57,6 +57,9 @@ public sealed class QdrantFixture : IAsyncLifetime
             }
         });
         collectionServices.AddSingleton<IDenseEncoder>(FakeDenseEncoder.Default());
+        // The decision engine a host's provider registers: one without a credential, as the empty key above has always
+        // left these tests (nothing is ever asked; a test that scripts the judge registers its own).
+        collectionServices.AddSingleton<Maf.Lab.Plugins.Abstractions.IDecisionEngine, Maf.Lab.TestSupport.UnconfiguredDecisionEngine>();
         if (chat is not null)
         {
             collectionServices.AddSingleton<IChatClientFactory>(new FixedChatClientFactory(chat));

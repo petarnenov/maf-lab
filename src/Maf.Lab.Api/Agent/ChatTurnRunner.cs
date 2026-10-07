@@ -30,13 +30,13 @@ public sealed record TurnResult(string ConversationId, string TurnId, Intent Int
     public string? ProposalQuestion { get; init; }
 
     /// <summary>Jev's check of the answer; null for a turn that ran none (refused, waiting for a person, failed, empty).</summary>
-    public Jev.AnswerCheck? AnswerCheck { get; init; }
+    public Decisions.AnswerCheck? AnswerCheck { get; init; }
 
     /// <summary>
     /// What the model read this turn, after the content guard — the items the answer check chooses its sources from. The
     /// eval grades an answer against the same items (adopt-meai-evaluation).
     /// </summary>
-    public IReadOnlyList<Jev.ReadItem> Read { get; init; } = [];
+    public IReadOnlyList<Decisions.ReadItem> Read { get; init; } = [];
 
     /// <summary>The data cards the turn showed, in the order they were sent (add-activity-cards).</summary>
     public IReadOnlyList<TurnCard> Cards { get; init; } = [];
@@ -60,7 +60,7 @@ public sealed partial class ChatTurnRunner(
     TokenCounter tokens,
     Writes.WriteConfirmations writes,
     Guardrail guardrail,
-    Jev.JevAnswerCheck answerCheck,
+    Decisions.DecisionAnswerCheck answerCheck,
     IDbContextFactory<MafDbContext> db,
     IOptions<AgentOptions> options,
     ITraceLink traceLink,
@@ -173,9 +173,9 @@ public sealed partial class ChatTurnRunner(
                     await SaveDomainsAsync(conversationId, inScope.InScope, domains, ct);
                 }
                 await using var tools = screen.Blocked || outOfScope ? null : await toolSource.GetToolsAsync(bearerToken, state.Confirmations, ct, loadDomains);
-                Jev.ToolRoute? route = null;
+                Decisions.ToolRoute? route = null;
                 IReadOnlyList<string> forcedSearches = [];
-                IReadOnlyList<Jev.ToolRoute> alongside = [];
+                IReadOnlyList<Decisions.ToolRoute> alongside = [];
                 var (codeRoute, codeRouteReason) = (decision.CodeRoute, decision.CodeRouteReason);
                 if (tools is not null)
                 {
@@ -377,7 +377,7 @@ public sealed partial class ChatTurnRunner(
         var text = answer.ToString().Trim();
         // The answer has streamed, so the check cannot block it; it runs before the trace is stored and the run ends, so
         // both carry it. A refused prompt, a pause for a person and a failure have no answer of the model's to check.
-        Jev.AnswerCheck? check = null;
+        Decisions.AnswerCheck? check = null;
         if (reachedModel && error is null && !state.AwaitingConfirmation && text.Length > 0)
         {
             await state.WriteAsync(TurnContents.StepStarted(Steps.AnswerCheck), ct);
@@ -385,7 +385,7 @@ public sealed partial class ChatTurnRunner(
             {
                 check = await answerCheck.CheckAsync(message, text, state.Read, ct, state.PreviousQuestion,
                     await PreviousReadAsync(state.PreviousTurnId, ct));
-                Jev.JevAnswerCheck.Trace(trace, check);
+                Decisions.DecisionAnswerCheck.Trace(trace, check);
             }
             finally
             {
@@ -497,7 +497,7 @@ public sealed partial class ChatTurnRunner(
             : verdict is not null && stored.Count > 0
                 ? (stored.ToHashSet(StringComparer.Ordinal), LoadConversation)
                 : ((HashSet<string>?)null, LoadAll);
-        if (domains is not null && routedTool is not null && Jev.DataToolRouter.ToolDomain.TryGetValue(routedTool, out var routed))
+        if (domains is not null && routedTool is not null && Decisions.DataToolRouter.ToolDomain.TryGetValue(routedTool, out var routed))
         {
             domains.Add(routed);
         }
@@ -533,7 +533,7 @@ public sealed partial class ChatTurnRunner(
     /// The intent event's code-route payload: Jev's answer on what a codebase question needs, the graph call the turn
     /// started with (or null) and why there is none; null when code routing asked nothing.
     /// </summary>
-    internal static JsonObject? CodeRouting(IntentDecision decision, Jev.ToolRoute? routed, string? reason) =>
+    internal static JsonObject? CodeRouting(IntentDecision decision, Decisions.ToolRoute? routed, string? reason) =>
         decision.CodeRouting is null && routed is null && reason is null ? null : new JsonObject
         {
             ["choice"] = decision.CodeRouting?.Choice,
@@ -550,7 +550,7 @@ public sealed partial class ChatTurnRunner(
     /// The primary domain's route the turn can issue (the code graph): the classifier's, when this turn offers its tool;
     /// otherwise none, with the reason. A data route takes precedence should both ever be set.
     /// </summary>
-    internal static (Jev.ToolRoute? Route, string? Reason) OfferedCodeRoute(IntentDecision decision, ToolSet tools) =>
+    internal static (Decisions.ToolRoute? Route, string? Reason) OfferedCodeRoute(IntentDecision decision, ToolSet tools) =>
         decision.CodeRoute is not { } r ? (null, decision.CodeRouteReason)
         : decision.Route is not null ? (null, "a data route was chosen")
         : !tools.Names.Contains(r.Tool) ? (null, $"{r.Tool} is not offered")
@@ -561,7 +561,7 @@ public sealed partial class ChatTurnRunner(
     /// named billing run reads its status): only tools the server offers. The arguments come from the question through
     /// the domain's fixed patterns, never from the model.
     /// </summary>
-    internal static IReadOnlyList<Jev.ToolRoute> Alongside(IntentDecision decision, string question, ToolSet tools,
+    internal static IReadOnlyList<Decisions.ToolRoute> Alongside(IntentDecision decision, string question, ToolSet tools,
         DomainCatalogue? domainCatalogue = null)
     {
         var catalogue = domainCatalogue ?? DomainCatalogue.Current;
@@ -569,7 +569,7 @@ public sealed partial class ChatTurnRunner(
         return [.. domains.Select(catalogue.Behaviour).OfType<IDomainBehaviour>()
             .SelectMany(b => b.Alongside(decision.Intent.ToString(), question, decision.Confidence ?? 0))
             .Where(r => tools.Names.Contains(r.Tool))
-            .Select(Jev.ToolRoute.From)];
+            .Select(Decisions.ToolRoute.From)];
     }
 
     /// <summary>
@@ -609,7 +609,7 @@ public sealed partial class ChatTurnRunner(
     /// Jev's routing answer as the trace shows it: each tool's probability, the status asked about, and the call issued
     /// or why none was. Null when routing is off or Jev gave no routing answer at all.
     /// </summary>
-    private static JsonObject? Routing(IntentDecision decision, Jev.ToolRoute? route)
+    private static JsonObject? Routing(IntentDecision decision, Decisions.ToolRoute? route)
     {
         if (decision.Routing is null && decision.RouteReason is null)
         {
@@ -802,7 +802,7 @@ public sealed partial class ChatTurnRunner(
             state.ToolCalls.Add(new ToolCallRecord(name, args, "error", 0, [], [], callId, "failed"));
             state.Summaries[callId] = Result(name, "failed", [], isError: true);
             const string unavailable = "The tool is temporarily unavailable.";
-            state.Read.Add(Jev.ReadItem.Whole(name, unavailable, domain));
+            state.Read.Add(Decisions.ReadItem.Whole(name, unavailable, domain));
             return ToolDataEnvelope.Wrap(name, unavailable);
         }
 
@@ -810,7 +810,7 @@ public sealed partial class ChatTurnRunner(
 
         // A proposal is not a result: the server asked for a person, and the client took the question down
         // rather than answering it. What happens next is the flow's business, not the model's.
-        if (state.Confirmations.Captured is { } captured && Jev.DataToolRouter.WriteTools.Contains(name))
+        if (state.Confirmations.Captured is { } captured && Decisions.DataToolRouter.WriteTools.Contains(name))
         {
             return await ProposedAsync(state, captured, callId, name, latency, ct);
         }
@@ -874,7 +874,7 @@ public sealed partial class ChatTurnRunner(
         });
         state.ToolCalls.Add(new ToolCallRecord(name, args, outcome, sources.Count, sources.Select(s => s.DocId).Distinct().ToList(), [], callId, summary));
         state.Summaries[callId] = Result(name, summary, sources, isError);
-        state.Read.AddRange(Jev.ReadItem.FromResult(name, domain, payload, structured, isError));
+        state.Read.AddRange(Decisions.ReadItem.FromResult(name, domain, payload, structured, isError));
         var envelope = ToolDataEnvelope.Wrap(name, payload);
         state.Trace.Add(TraceKinds.Envelope, $"Data envelope handed to the model ({envelope.Length} chars)", new JsonObject
         {
@@ -1052,7 +1052,7 @@ public sealed partial class ChatTurnRunner(
         }
 
         var told = ((Writes.WriteStep.Tell)outcome).Message;
-        state.Read.Add(Jev.ReadItem.Whole(name, told, state.Tools?.DomainOf(name) ?? Domains.OfTool(name) ?? Domains.None));
+        state.Read.Add(Decisions.ReadItem.Whole(name, told, state.Tools?.DomainOf(name) ?? Domains.OfTool(name) ?? Domains.None));
         var envelope = ToolDataEnvelope.Wrap(name, told);
         state.Trace.Add(TraceKinds.Envelope, $"Data envelope handed to the model ({envelope.Length} chars)", new JsonObject
         {
@@ -1140,7 +1140,7 @@ public sealed partial class ChatTurnRunner(
     /// as its conversation (conversation retention). Empty on a first turn and when the record is unreadable — the check
     /// then judges against this turn's sources alone.
     /// </summary>
-    private async Task<IReadOnlyList<Jev.ReadItem>> PreviousReadAsync(string? turnId, CancellationToken ct)
+    private async Task<IReadOnlyList<Decisions.ReadItem>> PreviousReadAsync(string? turnId, CancellationToken ct)
     {
         if (turnId is null)
         {
@@ -1155,14 +1155,14 @@ public sealed partial class ChatTurnRunner(
     /// A stored trace's data envelopes as the answer check reads them: one item per envelope, keyed by its text, with
     /// its domain from <c>tool="…"</c> and — for a codebase search — the paths it carried (fit-answer-checks-to-code-questions).
     /// </summary>
-    internal static IReadOnlyList<Jev.ReadItem> PreviousRead(string traceJson)
+    internal static IReadOnlyList<Decisions.ReadItem> PreviousRead(string traceJson)
     {
         try
         {
             return JsonSerializer.Deserialize<List<TraceEvent>>(traceJson, TurnTrace.Json)?
                 .Where(e => e.Kind == TraceKinds.Envelope && e.Data.ValueKind == JsonValueKind.Object
                     && e.Data.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String)
-                .Select(e => Jev.ReadItem.FromEnvelope(e.Data.GetProperty("text").GetString()!))
+                .Select(e => Decisions.ReadItem.FromEnvelope(e.Data.GetProperty("text").GetString()!))
                 .ToList() ?? [];
         }
         catch (JsonException)
@@ -1347,7 +1347,7 @@ public sealed partial class ChatTurnRunner(
         /// The data the model was handed this turn, after the guard — what the answer check calls its sources: a search's
         /// items one by one (a withheld one as its place, marked withheld), any other result whole, the fixed texts as sent.
         /// </summary>
-        public List<Jev.ReadItem> Read { get; } = [];
+        public List<Decisions.ReadItem> Read { get; } = [];
         public bool Searched { get; set; }
 
         /// <summary>Inline citation markers taken out of the model's answer (strip-citation-markers).</summary>

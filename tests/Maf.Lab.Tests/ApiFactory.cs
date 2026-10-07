@@ -1,8 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Maf.Lab.Api.Agent;
-using Maf.Lab.Api.Agent.Jev;
-using Maf.Lab.Retrieval.Jev;
+using Maf.Lab.Api.Agent.Decisions;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Retrieval.Auth;
 using Maf.Lab.Domain.Configuration;
@@ -29,13 +28,24 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
         EmulateForcing = emulateForcing;
         Chat = chat;
         Jev = jev ?? new FakeJev();
+        Engine = new FakeDecisionEngine(Jev);
         Tools = tools ?? new FakeToolSource();
         DataDir = dataDir ?? Directory.CreateTempSubdirectory("maf-api-").FullName;
     }
 
     public ScriptedChatClient Chat { get; }
     /// <summary>The intent classifier's endpoint: every classification request lands here, never in <see cref="Chat"/>.</summary>
+    /// <summary>The rules the decision engine answers by, and every request it was sent (as the documented JSON).</summary>
     public FakeJev Jev { get; }
+
+    /// <summary>
+    /// The decision engine this host asks (introduce-provider-plugins, T2): the core is tested against its port. Off
+    /// (<see cref="UseFakeEngine"/> false), the installed engine provider's own code answers, which a provider's tests use.
+    /// </summary>
+    public FakeDecisionEngine Engine { get; }
+
+    /// <summary>Whether the host asks <see cref="Engine"/> (the default) or the installed engine provider.</summary>
+    public bool UseFakeEngine { get; init; } = true;
     public FakeToolSource Tools { get; }
     public string DataDir { get; }
     public CapturingLoggerProvider Logs { get; } = new();
@@ -43,8 +53,9 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
     /// <summary>How long each stage of a simulated A2A billing run takes; instant unless a test needs to interrupt one.</summary>
     public int SimulatedStepMs { get; init; } = 1;
     /// <summary>
-    /// A circuit breaker that opens on the first transient Jev failure and stays open for the test: what a turn does
-    /// when Jev is skipped (add-jev-circuit-breaker).
+    /// An engine that is skipped after its first transient failure and stays skipped for the test: what a turn does when
+    /// the decision engine is skipped (add-jev-circuit-breaker). Read by the fake engine; the jev provider's breaker binds
+    /// the same keys.
     /// </summary>
     public static readonly IReadOnlyDictionary<string, string?> OpensOnFirstFailure = new Dictionary<string, string?>
     {
@@ -84,10 +95,20 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
             schema = 1,
             env = Environment,
             // A plugin "has a server part" exactly when this test assembly holds code for it, as make sees a server/ folder.
-            plugins = plugins.Select(m => new { manifest = m, serverJson = (object?)null, hasServer = FixtureNames.Contains(m.Name) || ServerWithoutCode.Contains(m.Name) }),
+            plugins = WithEngine(plugins).Select(m => new { manifest = m, serverJson = (object?)null, hasServer = FixtureNames.Contains(m.Name) || ServerWithoutCode.Contains(m.Name) }),
         };
         File.WriteAllText(Path.Combine(PluginsRoot, ".installed"),
             System.Text.Json.JsonSerializer.Serialize(document, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));
+    }
+
+    /// <summary>
+    /// The installed set with a decision engine in it: the core's fixture engine when the set names none, as every
+    /// deployment installs exactly one (MAF_CORE_PROVIDERS).
+    /// </summary>
+    private static IEnumerable<Maf.Lab.Plugins.Abstractions.PluginManifest> WithEngine(IEnumerable<Maf.Lab.Plugins.Abstractions.PluginManifest> plugins)
+    {
+        var list = plugins.ToList();
+        return list.Any(m => m.Provides == Maf.Lab.Plugins.Abstractions.ProviderKinds.DecisionEngine) ? list : [.. list, FixtureEnginePlugin.Manifest];
     }
 
     /// <summary>Extra configuration for one test, applied over the standard settings.</summary>
@@ -119,7 +140,6 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
             ["Evals:Root"] = Path.Combine(DataDir, "evals"),
             ["Qdrant:GrpcPort"] = "1",
             ["Agent:EmulateRequiredToolMode"] = EmulateForcing.ToString(),
-            [JevCredential.EnvironmentVariable] = FakeJev.TestKey,
             // No warm-up request: these tests count what each turn sends to Jev (the warm-up has tests of its own).
             ["Jev:WarmUp"] = "false",
             // No circuit breaker: these tests script Jev failures turn after turn and count the requests each one sends
@@ -138,7 +158,13 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
             s.AddSingleton<IToolSource>(Tools);
             s.RemoveAll<IChatClientFactory>();
             s.AddSingleton<IChatClientFactory>(new FixedChatClientFactory(Chat));
-            s.AddHttpClient(JevIntentClassifier.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => Jev);
+            if (UseFakeEngine)
+            {
+                Engine.OpenAfterFailures = ExtraSettings.TryGetValue("Jev:Breaker:FailureThreshold", out var threshold)
+                    && int.TryParse(threshold, out var n) ? n : 0;
+                s.RemoveAll<Maf.Lab.Plugins.Abstractions.IDecisionEngine>();
+                s.AddSingleton<Maf.Lab.Plugins.Abstractions.IDecisionEngine>(Engine);
+            }
             // A store, not a particular one: the service requires that there is one, and these tests are not
             // about Redis. The store's own behaviour is proved against a real Redis in the integration tests.
             s.RemoveAll<Maf.Lab.Domain.SharedState.IRunStateStore>();

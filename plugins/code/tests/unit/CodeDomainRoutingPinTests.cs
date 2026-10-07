@@ -1,8 +1,8 @@
 using System.Text.Json.Nodes;
 using Maf.Lab.Api.Agent;
-using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.Agent.Decisions;
 using Maf.Lab.Plugins.Code;
-using Maf.Lab.Retrieval.Jev;
+using Maf.Lab.Plugins.Abstractions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -88,7 +88,7 @@ public class CodeDomainRoutingPinTests
             ["billing"] = "in_domain",
             ["portfolio"] = "in_portfolio",
             ["codebase"] = "in_codebase",
-        }, JevIntentClassifier.DomainQuestionIds.ToDictionary());
+        }, DecisionIntentClassifier.DomainQuestionIds.ToDictionary());
     }
 
     [Fact]
@@ -109,22 +109,13 @@ public class CodeDomainRoutingPinTests
         ];
         Assert.Superset(routing.ToHashSet(StringComparer.Ordinal), asked);
         // Besides routing, only the prompt-screening battery rides in the same request.
-        Assert.Equal(asked.Except(routing).Order(StringComparer.Ordinal), JevGuardQuestions.PromptIds.Order(StringComparer.Ordinal));
+        Assert.Equal(asked.Except(routing).Order(StringComparer.Ordinal), GuardQuestions.PromptIds.Order(StringComparer.Ordinal));
     }
 
-    private static JevIntentClassifier Classifier(FakeJev jev)
+    private static DecisionIntentClassifier Classifier(FakeJev jev)
     {
         var loggers = LoggerFactory.Create(_ => { });
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { [JevCredential.EnvironmentVariable] = FakeJev.TestKey }).Build();
-        var credential = new JevCredential(configuration, loggers.CreateLogger<JevCredential>());
-        var client = new HttpClient(new JevAuthHandler(credential) { InnerHandler = jev }) { BaseAddress = new Uri("https://jev.test/") };
-        var o = Options.Create(new JevOptions());
-        return new JevIntentClassifier(new JevClient(new CodePinTestClients(client), credential, o), o, loggers);
+        var o = Options.Create(new IntentOptions());
+        return new DecisionIntentClassifier(new FakeDecisionEngine(jev), o, loggers);
     }
-}
-
-file sealed class CodePinTestClients(HttpClient client) : IHttpClientFactory
-{
-    public HttpClient CreateClient(string name) => client;
 }

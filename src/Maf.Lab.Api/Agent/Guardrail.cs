@@ -1,8 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Maf.Lab.Api.A2A;
-using Maf.Lab.Api.Agent.Jev;
-using Maf.Lab.Retrieval.Jev;
+using Maf.Lab.Api.Agent.Decisions;
 using Maf.Lab.Api.Agent.Tracing;
 using Maf.Lab.Domain.Feedback;
 using Maf.Lab.Domain.Tracing;
@@ -13,7 +12,7 @@ namespace Maf.Lab.Api.Agent;
 
 /// <summary>
 /// Where the content guard draws its lines. Thresholds are measured, not guessed (DECISIONS.md §34); the model and the
-/// endpoint are the classifier's (<see cref="JevOptions"/>), and the key is never here.
+/// endpoint are the installed decision engine's, and the key is never here.
 /// </summary>
 public sealed class GuardOptions
 {
@@ -51,7 +50,7 @@ public sealed class GuardOptions
     /// </summary>
     public List<string>? CodebaseRecordOnly { get; set; }
 
-    public static readonly IReadOnlyList<string> DefaultCodebaseRecordOnly = [JevGuardQuestions.Prefix + "to_ai"];
+    public static readonly IReadOnlyList<string> DefaultCodebaseRecordOnly = [GuardQuestions.Prefix + "to_ai"];
 
     /// <summary>The record-only question ids in force: the configured ones, empty entries dropped, or the default.</summary>
     public IReadOnlyList<string> RecordOnlyQuestions =>
@@ -66,7 +65,7 @@ public sealed record GuardScores(IReadOnlyDictionary<string, double>? Scores, st
     public static GuardScores Failed(string reason, string? model, double durationMs) => new(null, model, durationMs, reason);
 
     /// <summary>An open circuit skipped Jev: nothing was sent, so no request is counted (add-jev-circuit-breaker).</summary>
-    public bool Skipped => Failure == JevClient.CircuitOpen;
+    public bool Skipped => Failure == Maf.Lab.Plugins.Abstractions.DecisionFailures.CircuitOpen;
 
     public (double Top, string Question)? Highest =>
         Scores is { Count: > 0 } s ? s.OrderByDescending(kv => kv.Value).Select(kv => (kv.Value, kv.Key)).First() : null;
@@ -103,7 +102,7 @@ public sealed record ScreenedToolResult(string Payload, JsonElement? Structured,
 /// decisions — refuse a prompt, withhold a tool-result item, disbelieve a reviewer — and the fail-open / fail-closed
 /// choice per path (injection-defense spec). It never logs the text it judged, and never puts it anywhere a second time.
 /// </summary>
-public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILogger<Guardrail> logger)
+public sealed class Guardrail(DecisionGuard jev, IOptions<GuardOptions> options, ILogger<Guardrail> logger)
 {
     public const string CheckPrompt = "prompt";
     public const string CheckPartner = "partner_prompt";
@@ -187,7 +186,7 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
         var recordOnly = RecordOnlyFor(tool);
         var context = ContextOf(tool);
         var clock = System.Diagnostics.Stopwatch.StartNew();
-        var items = await ScreenAllAsync(texts, JevGuardQuestions.ContentFor(tool), recordOnly, ct);
+        var items = await ScreenAllAsync(texts, GuardQuestions.ContentFor(tool), recordOnly, ct);
         var elapsedMs = clock.Elapsed.TotalMilliseconds;
         // One request per item that had text, less the ones an open circuit skipped: those sent nothing.
         var requests = texts.Count(t => !string.IsNullOrWhiteSpace(t)) - items.Count(i => i.Scores.Skipped);
@@ -232,7 +231,7 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
         {
             return new ScreenedItem(0, GuardDecision.Unscreened, GuardScores.Failed("disabled", null, 0));
         }
-        var items = await ScreenAllAsync([text], JevGuardQuestions.ContentFor(tool), RecordOnlyFor(tool), ct);
+        var items = await ScreenAllAsync([text], GuardQuestions.ContentFor(tool), RecordOnlyFor(tool), ct);
         return items.Single();
     }
 
@@ -395,7 +394,7 @@ public sealed class Guardrail(JevGuard jev, IOptions<GuardOptions> options, ILog
         _ => "pass",
     };
 
-    private async Task<List<ScreenedItem>> ScreenAllAsync(IReadOnlyList<string> texts, IReadOnlyDictionary<string, object> battery,
+    private async Task<List<ScreenedItem>> ScreenAllAsync(IReadOnlyList<string> texts, IReadOnlyDictionary<string, Maf.Lab.Plugins.Abstractions.DecisionQuestion> battery,
         IReadOnlyList<string> recordOnly, CancellationToken ct)
     {
         var threshold = options.Value.ContentWithholdAt;

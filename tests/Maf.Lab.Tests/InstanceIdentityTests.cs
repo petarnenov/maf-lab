@@ -33,7 +33,7 @@ public class InstanceIdentityTests
     public async Task Mcp_server_responses_carry_the_instance_header()
     {
         await using var server = new WebApplicationFactory<Maf.Lab.Retrieval.Program>()
-            .WithWebHostBuilder(b => b.WithFakeSharedState());
+            .WithWebHostBuilder(b => b.UseFixtureEngine().WithFakeSharedState());
         var response = await server.CreateClient().GetAsync("/health", Ct);
 
         Assert.Equal(Environment.MachineName, response.Headers.GetValues(InstanceIdentity.Header).Single());

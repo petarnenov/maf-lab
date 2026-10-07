@@ -30,6 +30,7 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
         var values = corpus.Config();
         await using var server = new WebApplicationFactory<Maf.Lab.Retrieval.Program>().WithWebHostBuilder(b =>
         {
+            b.UseFixtureEngine();
             b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(values));
             b.WithFakeSharedState();
             b.ConfigureTestServices(s =>
@@ -84,6 +85,7 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
         var values = corpus.Config();
         await using var server = new WebApplicationFactory<Maf.Lab.Retrieval.Program>().WithWebHostBuilder(b =>
         {
+            b.UseFixtureEngine();
             b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(values));
             b.WithFakeSharedState();
             b.ConfigureTestServices(s =>
@@ -131,6 +133,7 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
         var values = corpus.Config();
         await using var server = new WebApplicationFactory<Maf.Lab.Retrieval.Program>().WithWebHostBuilder(b =>
         {
+            b.UseFixtureEngine();
             b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(values));
             b.WithFakeSharedState();
             b.ConfigureTestServices(s =>

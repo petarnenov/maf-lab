@@ -21,7 +21,7 @@ public static class JevStatistics
     // The answer check budgets 3 s (Jev:AnswerCheck:TimeoutSeconds).
     private const double AnswerBudgetMs = 3000;
     // The reason every call site records for a call the circuit breaker skipped.
-    private const string CircuitOpen = Maf.Lab.Retrieval.Jev.JevClient.CircuitOpen;
+    private const string CircuitOpen = Maf.Lab.Plugins.Abstractions.DecisionFailures.CircuitOpen;
 
     // A call an open circuit skipped (add-jev-circuit-breaker) sent nothing: it is counted as skipped, never as a
     // request, an unavailable request or a latency. Its own section still counts it where it counts unavailability.

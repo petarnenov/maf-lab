@@ -11,12 +11,15 @@ the files the core services read at run time.
   plugins.py validate       check every manifest against plugins/plugin.schema.json (exit 1, naming each problem)
   plugins.py services NAME  print the compose services a plugin's compose.yml defines
   plugins.py has-server NAME  exit 0 when the plugin has an in-process server part (an api restart is needed)
-  plugins.py product-servers  the server projects the product image keeps, as |A|B| for MafProductPlugins
+  plugins.py product-servers  the server and provider lib projects the product image keeps, as |A|B| for MafProductPlugins
+  plugins.py check-providers  exit 2, naming the problem, unless the resolved set holds exactly one decision engine
+  plugins.py kind NAME        print a plugin's kind
   plugins.py new NAME KIND  start a plugin: KIND=mcp copies _example, KIND=app renders scripts/plugin-templates/app
 
 Inputs: MAF_PLUGINS (unset or empty: every bundled plugin allowed in MAF_ENV except _example; "none": no plugin;
-otherwise a comma-separated list) and MAF_ENV (dev | qa | stage | prod; default dev). MAF_PLUGINS_ROOT overrides the
-plugins directory (tests).
+otherwise a comma-separated list), MAF_CORE_PROVIDERS (the core's minimum providers, installed first whatever
+MAF_PLUGINS says) and MAF_ENV (dev | qa | stage | prod; default dev). MAF_PLUGINS_ROOT overrides the plugins directory
+(tests).
 
 Only the standard library is used, so make, docs.py and CI run it with any Python 3.11+.
 """
@@ -216,6 +219,10 @@ def resolve(available: dict[str, Plugin] | None = None) -> list[Plugin]:
         requested = [n.strip() for n in raw.split(",") if n.strip()]
     else:
         requested = [n for n, p in available.items() if not n.startswith(OPT_IN_PREFIX) and env in p.environments]
+    # The core's minimum providers come first, whatever else is asked for (introduce-provider-plugins 5x): "none" still
+    # means no domain, app or dev plugin, never no decision engine.
+    core = [n for n in re.split(r"[\s,]+", os.environ.get("MAF_CORE_PROVIDERS") or "") if n]
+    requested = core + [n for n in requested if n not in core]
 
     order: list[str] = []
     visiting: list[str] = []
@@ -243,6 +250,16 @@ def resolve(available: dict[str, Plugin] | None = None) -> list[Plugin]:
     for name in requested:
         visit(name, None)
     return [available[n] for n in order]
+
+
+def provider_problems(plugins: list[Plugin]) -> list[str]:
+    """What is wrong with the installed providers for the core (introduce-provider-plugins 5t): exactly one decision engine."""
+    engines = [p.name for p in plugins if p.manifest.get("kind") == "provider" and p.manifest.get("provides") == "decision-engine"]
+    if not engines:
+        return ["no decision engine is installed: name exactly one provider with provides = \"decision-engine\" in MAF_CORE_PROVIDERS"]
+    if len(engines) > 1:
+        return [f"more than one decision engine is installed ({', '.join(engines)}): install exactly one"]
+    return []
 
 
 def server_json(plugin: Plugin) -> dict | None:
@@ -475,8 +492,9 @@ def main(argv: list[str]) -> int:
             print(json.dumps({"manifest": plugin.manifest, "serverJson": server_json(plugin), "hasServer": plugin.has_server}))
         elif command == "product-servers":
             # The server projects the product image variant keeps (decision 5e): plugins that allow stage or prod.
+            # A provider's lib/ projects too: they are compiled into every provider host (introduce-provider-plugins).
             names = [csproj.stem for p in discover().values() if {"stage", "prod"} & set(p.environments)
-                     for csproj in (p.folder / "server").glob("*.csproj")]
+                     for part in ("server", "lib") for csproj in sorted((p.folder / part).glob("*.csproj"))]
             print("|" + "|".join(names) + "|")
         elif command == "product-plugins":
             # The plugins the product image variant keeps (decision 5e), as |a|b|: those whose manifest allows stage or prod.
@@ -488,6 +506,17 @@ def main(argv: list[str]) -> int:
             for rel in new_plugin(name, kind):
                 print(f"  wrote plugins/{name}/{rel}")
             print(f"✓ plugins/{name} ({kind}) — run `make docs`, then `make plugin-on NAME={name}`")
+        elif command == "check-providers":
+            # make up runs this before it starts anything: the installed set must give the core exactly one decision engine.
+            problems = provider_problems(resolve())
+            for line in problems:
+                print(f"✗ {line}", file=sys.stderr)
+            return 2 if problems else 0
+        elif command == "kind":
+            plugin = discover().get(argv[2])
+            if plugin is None:
+                raise PluginError(f"plugin '{argv[2]}' does not exist")
+            print(plugin.manifest.get("kind", ""))
         elif command == "has-server":
             plugin = discover().get(argv[2])
             return 0 if plugin is not None and plugin.has_server else 1

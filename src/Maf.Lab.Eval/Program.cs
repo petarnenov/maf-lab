@@ -1,4 +1,4 @@
-using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.Agent.Decisions;
 using Maf.Lab.Api.Feedback;
 using Maf.Lab.Domain.Evals;
 using Maf.Lab.Eval.Hosting;
@@ -7,7 +7,7 @@ using Maf.Lab.Eval.Reports;
 using Maf.Lab.Eval.Suites;
 using Maf.Lab.Indexing;
 using Maf.Lab.Retrieval.Configuration;
-using Maf.Lab.Retrieval.Jev;
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Retrieval.Models;
 using Maf.Lab.Retrieval.Search;
 using Microsoft.Extensions.Configuration;
@@ -69,6 +69,12 @@ public static class Program
         {
             Console.Error.WriteLine(AfterCancel);
             return 130;
+        }
+        catch (Microsoft.Extensions.Options.OptionsValidationException e)
+        {
+            // The installed providers are not what the core needs (no decision engine, or two): say so, as make does.
+            Console.Error.WriteLine($"eval: {e.Message}");
+            return 2;
         }
     }
 
@@ -193,7 +199,7 @@ public static class Program
             // The Jev input tokens a suite that calls the production classes was charged for (extract-billing).
             async Task<IReadOnlyList<EvalVariantResult>> Metered(Func<Task<IReadOnlyList<EvalVariantResult>>> suite)
             {
-                var meter = host.Services.GetRequiredService<JevUsageMeter>();
+                var meter = host.Services.GetRequiredService<DecisionUsageMeter>();
                 meter.Reset();
                 var result = await suite();
                 AddTokens(settings, meter.InputTokens);
@@ -250,9 +256,9 @@ public static class Program
         string runId, SuiteContext ctx, Dictionary<string, string> settings, CancellationToken ct)
     {
         var sp = host.Services;
-        var grader = new JevGrader(sp.GetRequiredService<JevClient>(), options.Judge, sp.GetRequiredService<ILogger<JevGrader>>());
+        var grader = new DecisionGrader(sp.GetRequiredService<IDecisionEngine>(), options.Judge, sp.GetRequiredService<ILogger<DecisionGrader>>());
         GenerationSuite.RequireKey(grader);
-        var suite = new GenerationSuite(host, GradeReport.Configure(root, runId, new JevGenerationEvaluator(grader)));
+        var suite = new GenerationSuite(host, GradeReport.Configure(root, runId, new DecisionGenerationEvaluator(grader)));
         var variants = await suite.RunAsync(ctx, ct);
         settings["judgeModel"] = grader.Model;
         AddTokens(settings, suite.InputTokens);
@@ -270,10 +276,10 @@ public static class Program
         string runId, SuiteContext ctx, Dictionary<string, string> settings, CancellationToken ct)
     {
         var sp = host.Services;
-        var grader = new JevGrader(sp.GetRequiredService<JevClient>(), options.Judge, sp.GetRequiredService<ILogger<JevGrader>>());
+        var grader = new DecisionGrader(sp.GetRequiredService<IDecisionEngine>(), options.Judge, sp.GetRequiredService<ILogger<DecisionGrader>>());
         GenerationSuite.RequireKey(grader);
-        var suite = new GenerationJudgeSuite(sp.GetRequiredService<JevAnswerCheck>(),
-            GradeReport.Configure(root, runId, new JevGenerationEvaluator(grader)));
+        var suite = new GenerationJudgeSuite(sp.GetRequiredService<DecisionAnswerCheck>(),
+            GradeReport.Configure(root, runId, new DecisionGenerationEvaluator(grader)));
         var variants = await suite.RunAsync(ctx, ct);
         settings["judgeModel"] = grader.Model;
         AddTokens(settings, suite.InputTokens);
@@ -306,7 +312,7 @@ public static class Program
         settings["depths"] = string.Join(",", GraphDepthSuite.Variants.Select(v => v.Depth));
         settings["layers"] = structuralOnly ? "structural" : "structural,end-to-end";
         var grader = structuralOnly ? null
-            : new JevGrader(host.Services.GetRequiredService<JevClient>(), options.Judge, host.Services.GetRequiredService<ILogger<JevGrader>>());
+            : new DecisionGrader(host.Services.GetRequiredService<IDecisionEngine>(), options.Judge, host.Services.GetRequiredService<ILogger<DecisionGrader>>());
         if (grader is not null)
         {
             settings["judgeModel"] = grader.Model;
