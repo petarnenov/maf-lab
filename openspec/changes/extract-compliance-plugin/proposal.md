@@ -55,8 +55,9 @@ code; it changes no behaviour, except where a line below says so.
   - `--scale compliance` and `COMPLIANCE_REPLICAS` leave the core Makefile (the plugin's compose reads the replicas);
   - the eval's `Compliance__*` come from the plugin's `plugin.mk` through a general `EVAL_ENV`;
   - `a2a-inspector` declares `depends = ["compliance"]`.
-- Removed: `BuiltInDomains.LegacyCapabilities`, and with it `BuiltIn/` and the scanner's `BuiltIn/` exemption (after
-  extract-portfolio lands).
+- Removed: `BuiltInDomains.LegacyCapabilities`. `BuiltIn/` (two name constants) and the scanner's exemption stay: `BuiltIn/`
+  is deleted by the extraction that moves its last reader. The readers are JevStatistics (insights), FeedbackEndpoints
+  (feedback-review), TopologyProbe (topology), and EvalAgentHost and DomainSuite (evals).
 - `TopologyProbe` reads the raw `Compliance:BaseUrl` until extract-topology. `PartnerIdentity`'s `compliance` store
   keyspace (live Redis data) and `A2AAdminEndpoints`' fallback stay as they are until extract-a2a.
 
@@ -104,4 +105,8 @@ None.
   - the service/ glob under extern alias `service`, amending part F's rejection. Rejected: a csproj-name glob,
     namespacing the template's `Program`, qualifying call sites;
   - the consultation audit's actor;
-  - `IAuditTrail`.
+  - `IAuditTrail`;
+  - the api's outbound client registration staying core;
+  - the client's own wire records, pinned by a test;
+  - why an outbound DTO's tenant field passes the scanner;
+  - `BuiltIn/` deleted by the extraction that moves its last reader.

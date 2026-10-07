@@ -18,6 +18,9 @@ code; it changes no behaviour, except where a line below says so.
 - `make eval-accept REPORT=<runId>` (`--accept-report`): accepts an existing report's metrics into the baseline
   without running the suite again, in `BaselineStore.Accept`'s format and under its thresholds rule. Today accepting
   means a second paid run; extract-billing wrote the guardrail baseline from its report by hand.
+- `BuiltIn/` is deleted by the extraction that moves its last reader (DECISIONS §81 part H). The eval's readers,
+  `EvalAgentHost` and `DomainSuite`, move here. If they are the last, this change deletes `BuiltIn/` and the scanner's
+  `BuiltIn/` exemption; the scanner's stale-entry check forces it.
 
 ## Capabilities
 
