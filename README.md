@@ -741,7 +741,8 @@ Datasets are JSONL under `evals/`; reports land in `evals/reports/` (JSON for th
 Three of them are not run by the harness: `a2a-conformance.jsonl` is run by the probe (`make eval-a2a`), and
 `injection-a2a.jsonl` and `ui-events.jsonl` are fixture sets driven by tests — the first through the verdict check
 and the write flow, the second replayed through the browser's reducer. `ui-events.jsonl` holds runs captured from
-a running stack by `scripts/capture_ui_events.sh`; re-capture it when what the server emits changes.
+a running stack by `scripts/capture_ui_events.sh`; re-capture it when what the server emits changes. The current
+recording predates the generic interrupt shape (DECISIONS §85): re-record it on a stack with billing and monitor installed.
 Thresholds are configuration (`src/Maf.Lab.Eval/eval.json` → `Evals:Thresholds`); the command exits non-zero when a
 suite falls below them. Labeled production feedback (UI → `/admin/feedback`) is appended to the datasets, so the next
 run includes it. The contextual-retrieval variant needs a second index:

@@ -3534,3 +3534,5 @@ No package version moves in this change.
   billing's web part renders the fee with its currency and period. `evals/ui-events.jsonl` was captured before this
   change and still carries the old interrupt metadata. The reducer reads only the interrupt's id and message from it,
   so it replays unchanged; re-capture it against the live stack.
+- **Tracked:** `evals/ui-events.jsonl` predates the generic interrupt shape; re-record with
+  `scripts/capture_ui_events.sh` on a stack with billing and monitor installed.
