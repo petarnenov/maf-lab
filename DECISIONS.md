@@ -3739,3 +3739,16 @@ No package version moves in this change.
   so it replays unchanged; re-capture it against the live stack.
 - **Tracked:** `evals/ui-events.jsonl` predates the generic interrupt shape; re-record with
   `scripts/capture_ui_events.sh` on a stack with billing and monitor installed.
+
+## 86. The tenant-isolation spec claims only what the code does (correct-tenant-isolation-domain-roles, 2026-10-07)
+
+- **Why.** The scenario "Valid token yields principal" said the billing server scopes its results to the token's advisor
+  ids. No server reads `domain_roles` or `advisor_ids`: they are defined in `PrincipalClaims` and issued by the dev
+  issuer's personas, and only tests read them (found by the adopt-company-idp survey).
+- **Now.** The scenario says the core's principal holds no domain role or advisor id, that those claims travel in the
+  token for the domain's own server to read, and that none reads them today. The requirement says the domain's server
+  may read them. The user chose to correct the spec rather than leave it until the feature exists.
+- **Follow-up.** Billing advisor scoping (`domain_roles`, `advisor_ids`) is not implemented: a future billing-plugin
+  change, which reads them in its own server and restores a scenario that proves it.
+- Rejected: implementing advisor scoping in this change (a billing feature, not a spec fix), and leaving the spec as it
+  was (a requirement the code does not meet).
