@@ -106,6 +106,13 @@ switch() { # $1 = off|on, $2 = expected "absent"|"present", $3 = mcp-code expect
   check "each api replica was restarted" "$(comm -12 <(echo "$api_before") <(echo "$api_after") | grep -q . && echo 0 || echo 1)"
 }
 
+# The switches read compose/.env, as a person's own `make plugin-…` does, and plugin-on/off rewrite it. A set there
+# without the plugin would make the check rewrite a person's file to a set they never chose: refuse instead.
+configured="$(sed -n 's/^MAF_PLUGINS=//p' compose/.env 2>/dev/null)"
+if ! MAF_PLUGINS="$configured" python3 scripts/plugins.py resolve 2>/dev/null | grep -qx "$NAME"; then
+  echo "✗ compose/.env's MAF_PLUGINS (${configured:-unset}) does not install $NAME: add it there and run make, then this check" >&2
+  exit 2
+fi
 step "the stack is up with $NAME in use"
 [[ "$(py domains)" == present ]] || { echo "✗ $NAME is not in use on $BASE_URL: start the dev stack with it first (make)" >&2; exit 2; }
 switch off absent none
