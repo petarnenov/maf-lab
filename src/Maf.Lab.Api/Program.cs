@@ -15,7 +15,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using Maf.Lab.Hosting;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Maf.Lab.Api;
 
