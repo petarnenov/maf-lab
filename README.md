@@ -243,10 +243,10 @@ make help                  # every target
 | `make eval-answer-check` | Eval: Jev's answer check alone — are labelled unsupported answers flagged and supported ones not? (needs JEV_MAF_LAB) |
 | `make eval-code-route` | Eval: Jev's code-route answer alone — would each code question start with the right graph call or the search? (needs JEV_MAF_LAB) |
 | `make eval-graph-depth` | Comparison: code graph traces at depth 2, 3 and 4, side by side, never gated (STRUCTURAL=1 for no model) |
-| `make eval-a2a` | Conformance: an outside client drives the agents through evals/a2a-conformance.jsonl |
 | `make dev` | Run mcp/api/web locally without Docker (infra stays in compose); Ctrl-C stops |
 | `make doctor` | Check prerequisites (Docker, .NET SDK, Node/npm, make, OLLAMA_API_KEY, JEV_MAF_LAB, MAF_LAB_REPO, GITHUB_ISSUES_TOKEN) |
 | `make setup` | Install what 'make doctor' reports missing (.NET SDK unattended; prints the rest) |
+| `make eval-a2a` | Conformance: an outside client drives the agents through evals/a2a-conformance.jsonl |
 | `make index-billing` | Index the billing corpus (→ maf_chunks, served by mcp-retrieval) only; unchanged documents are skipped |
 | `make graph-billing` | Build the billing graph only (accounts, runs, households) in Neo4j |
 | `make neo4j-chunks` | Spike: copy each domain's chunks from Qdrant into Neo4j for eval-retrieval-backends (billing's here; portfolio adds its own) |
@@ -268,6 +268,7 @@ allows, `none` means the core alone (`make core`), otherwise a comma-separated l
 | Plugin | Kind | Scope | Environments | What it is |
 |---|---|---|---|---|
 | `_example` | mcp | tenant | dev, qa | The authoring template: a small MCP server in its own container with one tool, get_example_fact, and a domain descriptor that routes questions about the sample fact to it. Off unless asked for. |
+| `a2a` | app | tenant | dev, qa, stage, prod | The assistant's A2A surface: its agent card, partner tokens, and the protocol over which a partner system asks questions and follows long-running tasks (the simulated billing run while billing is installed). |
 | `a2a-inspector` | infra | installation | dev, qa | The A2A Inspector (a2aproject), opened on the lab's agent cards with a fresh partner token: a dev and qa tool. |
 | `billing` | mcp | tenant | dev, qa, stage, prod | Fee billing as a domain: its MCP server (mcp-retrieval: documentation search, run status and history, the billing graph, fee adjustments), its corpus and seeds, and its domain descriptor and routing. |
 | `code` | mcp | installation | dev, qa | The lab's own source code as a domain: the codebase MCP server (search_codebase and the code-graph tools), its domain descriptor and routing, and the chat's Code snippets pane. |

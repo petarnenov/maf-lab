@@ -6,6 +6,7 @@ import { App } from '../App';
 import { jsonResponse, makeSession, renderWithProviders } from '../test/render';
 import { agentFetch } from '../test/agentFetch';
 import { CoveragePage } from './CoveragePage';
+import { reachableAgent } from './testAgentFixtures';
 import { sampleTree } from './treeModel.test';
 
 export function detail(overrides: Partial<CoverageFileDetail> = {}): CoverageFileDetail {
@@ -37,8 +38,15 @@ export function detail(overrides: Partial<CoverageFileDetail> = {}): CoverageFil
   };
 }
 
-/** Answers the coverage API by path; anything else is a 404. */
-export function stubCoverageApi(routes: Record<string, (method: string) => Response>) {
+/**
+ * Answers the coverage API by path; anything else is a 404. An admin's page also shows the test agent, which answers
+ * reachable unless a test says otherwise.
+ */
+export function stubCoverageApi(given: Record<string, (method: string) => Response>) {
+  const routes: Record<string, (method: string) => Response> = {
+    '/api/admin/coverage/test-agent': () => jsonResponse(reachableAgent),
+    ...given,
+  };
   const calls: { url: string; method: string; body?: string; signal?: AbortSignal | null }[] = [];
   vi.stubGlobal(
     'fetch',

@@ -45,13 +45,13 @@ public sealed class PluginArchitectureTests
 
     /// <summary>
     /// The other direction: a plugin reaches the core only through the abstractions and the shared libraries (Domain,
-    /// Retrieval, Indexing — the indexing pipeline, extract-index-admin-plugin) — never the api or the other services'
-    /// assemblies, whose types are the core's to change.
+    /// Retrieval, Indexing — the indexing pipeline, extract-index-admin-plugin — and the A2A protocol library, extract-a2a)
+    /// — never the api or the other services' assemblies, whose types are the core's to change.
     /// </summary>
     [Fact]
     public void No_plugin_references_the_core()
     {
-        string[] core = ["Maf.Lab.Api", "Maf.Lab.Hosting", "Maf.Lab.A2A", "Maf.Lab.TestGen"];
+        string[] core = ["Maf.Lab.Api", "Maf.Lab.Hosting", "Maf.Lab.TestGen"];
         var plugins = PluginAssemblies().ToList();
         Assert.NotEmpty(plugins);
         AssertNone(plugins.SelectMany(path =>

@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using A2A;
 using Maf.Lab.Api.A2A;
+using Maf.Lab.Plugins.A2A;
 using Maf.Lab.Api.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -57,7 +58,7 @@ public class A2AProtocolTests
     [Fact]
     public async Task Both_transports_need_a_partner_token()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = A2APluginSupport.Installed };
         var anonymous = api.CreateClient();
 
         var rpc = await anonymous.PostAsJsonAsync("/a2a", new { jsonrpc = "2.0", id = 1, method = "message/send" }, Ct);
@@ -75,7 +76,7 @@ public class A2AProtocolTests
     [Fact]
     public async Task A_question_comes_back_as_a_message_in_the_specified_shape()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = A2APluginSupport.Installed };
         var client = await PartnerClientAsync(api);
 
         var message = Result(await RpcAsync(client, "message/send", Message("status of run 4417")));
@@ -90,7 +91,7 @@ public class A2AProtocolTests
     [Fact]
     public async Task A_question_that_is_not_about_a_run_is_answered_by_the_assistant_itself()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = A2APluginSupport.Installed };
         var client = await PartnerClientAsync(api);
 
         var message = Result(await RpcAsync(client, "message/send",
@@ -104,7 +105,7 @@ public class A2AProtocolTests
     [Fact]
     public async Task The_same_question_over_the_http_json_transport_answers_the_same()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = A2APluginSupport.Installed };
         var client = await PartnerClientAsync(api);
 
         var response = await client.PostAsJsonAsync("/a2a/message:send", Message("status of run 4417"), Ct);
@@ -125,7 +126,7 @@ public class A2AProtocolTests
     [Fact]
     public async Task The_extended_card_needs_the_token_and_carries_the_private_skill()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = [Billing] };
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = [A2APluginSupport.Manifest, Billing] };
         var anonymous = api.CreateClient();
         var partner = await PartnerClientAsync(api);
 
@@ -134,39 +135,39 @@ public class A2AProtocolTests
         Assert.Equal(HttpStatusCode.Unauthorized, refused.StatusCode);
 
         var allowed = await RpcAsync(partner, "agent/getAuthenticatedExtendedCard", new { });
-        Assert.Contains(BillingAgentCard.PrivateSkillId, allowed.GetRawText());
+        Assert.Contains(AssistantAgentCard.PrivateSkillId, allowed.GetRawText());
 
         // …and the public card still does not mention it.
         var publicCard = await anonymous.GetStringAsync(AgentCardFactory.WellKnownPath, Ct);
-        Assert.DoesNotContain(BillingAgentCard.PrivateSkillId, publicCard);
+        Assert.DoesNotContain(AssistantAgentCard.PrivateSkillId, publicCard);
     }
 
     [Fact]
     public async Task Without_billing_the_cards_offer_none_of_its_skills_and_a_switch_shows_without_a_restart()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = [Billing] };
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = [A2APluginSupport.Manifest, Billing] };
         var anonymous = api.CreateClient();
         var partner = await PartnerClientAsync(api);
         Assert.Contains("billing_run_status", await anonymous.GetStringAsync(AgentCardFactory.WellKnownPath, Ct));
 
-        // The plugin leaves; the next fetch of either card says so, in the same host.
-        api.SetInstalled([]);
+        // Billing leaves (the surface stays); the next fetch of either card says so, in the same host.
+        api.SetInstalled([A2APluginSupport.Manifest]);
         var publicCard = await anonymous.GetStringAsync(AgentCardFactory.WellKnownPath, Ct);
         var extended = (await RpcAsync(partner, "agent/getAuthenticatedExtendedCard", new { })).GetRawText();
-        foreach (var skill in BillingAgentCard.Descriptor.PublicSkills.Concat(BillingAgentCard.Descriptor.PrivateSkills))
+        foreach (var skill in AssistantAgentCard.Descriptor.PublicSkills.Concat(AssistantAgentCard.Descriptor.PrivateSkills))
         {
             Assert.DoesNotContain($"\"{skill.Id}\"", publicCard);
             Assert.DoesNotContain($"\"{skill.Id}\"", extended);
         }
 
-        api.SetInstalled([Billing]);
-        Assert.Contains(BillingAgentCard.PrivateSkillId, (await RpcAsync(partner, "agent/getAuthenticatedExtendedCard", new { })).GetRawText());
+        api.SetInstalled([A2APluginSupport.Manifest, Billing]);
+        Assert.Contains(AssistantAgentCard.PrivateSkillId, (await RpcAsync(partner, "agent/getAuthenticatedExtendedCard", new { })).GetRawText());
     }
 
     [Fact]
     public async Task Push_configuration_can_be_created_read_listed_and_deleted()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = A2APluginSupport.Installed };
         var client = await PartnerClientAsync(api);
         var store = api.Services.GetRequiredService<ITaskStore>();
         await store.SaveTaskAsync("task-push", new AgentTask
@@ -219,7 +220,7 @@ public class A2AProtocolTests
     [Fact]
     public async Task A_configuration_is_scoped_to_its_task()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = A2APluginSupport.Installed };
         var client = await PartnerClientAsync(api);
 
         var refused = await RpcAsync(client, "tasks/pushNotificationConfig/set", new
@@ -234,7 +235,7 @@ public class A2AProtocolTests
     [Fact]
     public async Task A_task_is_fetchable_afterwards_and_carries_its_artifact()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = A2APluginSupport.Installed };
         var client = await PartnerClientAsync(api);
 
         var started = Result(await RpcAsync(client, "message/send", Message("start a billing run for firm-a 2026-06")));
@@ -256,7 +257,7 @@ public class A2AProtocolTests
     [Fact]
     public async Task A_run_for_another_firm_is_rejected_in_the_specified_state()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = A2APluginSupport.Installed };
         var client = await PartnerClientAsync(api);
 
         var task = Result(await RpcAsync(client, "message/send", Message("start a billing run for firm-b 2026-06")));

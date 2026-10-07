@@ -1,6 +1,7 @@
 using Maf.Lab.A2A;
 using A2A;
 using Maf.Lab.Api.A2A;
+using Maf.Lab.Plugins.A2A;
 // Both libraries have a Role; the message role is the one this file means.
 using MessageRole = A2A.Role;
 using Maf.Lab.Api.Agent;
@@ -32,25 +33,25 @@ public class A2AHandlerTests
           "accountCount":88,"failureReason":null,"updatedAt":"2026-07-01T00:00:00Z"}]
         """;
 
-    private static (BillingAgentHandler Handler, ApiFactory Api) Build(params string[] firms) =>
+    private static (AssistantAgentHandler Handler, ApiFactory Api) Build(params string[] firms) =>
         Build(new A2AOptions { SimulatedStepMs = 1 }, null, firms);
 
-    private static (BillingAgentHandler Handler, ApiFactory Api) Build(A2AOptions a2a, string? dataDir, params string[] firms)
+    private static (AssistantAgentHandler Handler, ApiFactory Api) Build(A2AOptions a2a, string? dataDir, params string[] firms)
     {
         var api = new ApiFactory(ApiFactory.ProceduralModel(), dataDir: dataDir);
         var partner = new PartnerPrincipal("acme-portal", firms.Select(TenantId.Firm).ToHashSet(),
             new HashSet<string> { A2AScopes.BillingRead });
-        var handler = new BillingAgentHandler(
+        var handler = new AssistantAgentHandler(
             new FixedPartner(partner),
-            new SeededBillingServer(Seed),
-            api.Services.GetRequiredService<IOptions<Maf.Lab.Domain.Configuration.AuthOptions>>(),
+            new DomainToolCall(new SeededBillingServer(Seed),
+                api.Services.GetRequiredService<IOptions<Maf.Lab.Domain.Configuration.AuthOptions>>(), NullLogger<DomainToolCall>.Instance),
             Options.Create(a2a),
-            api.Services.GetRequiredService<ToolAudit>(),
-            api.Services.GetRequiredService<AssistantBridge>(),
+            api.Services.GetRequiredService<Maf.Lab.Plugins.Abstractions.IActivityAudit>(),
+            api.Services.GetRequiredService<Maf.Lab.Plugins.Abstractions.IAssistantAnswer>(),
             api.Services.GetRequiredService<ITaskStore>(),
             api.Services.GetRequiredService<Microsoft.Extensions.Hosting.IHostApplicationLifetime>(),
             TimeProvider.System,
-            NullLogger<BillingAgentHandler>.Instance);
+            NullLogger<AssistantAgentHandler>.Instance);
         return (handler, api);
     }
 
@@ -109,7 +110,7 @@ public class A2AHandlerTests
         var events = await DrainAsync(q => handler.ExecuteAsync(Context("status of run 5001"), q, Ct), Ct);
 
         var text = string.Join("", events.Single(e => e.Message is not null).Message!.Parts!.Select(p => p.Text));
-        Assert.Equal(BillingAgentHandler.OutOfScope, text);
+        Assert.Equal(AssistantAgentHandler.OutOfScope, text);
         Assert.DoesNotContain("firm-b", text);
         Assert.DoesNotContain("5001", text);
         Assert.DoesNotContain("completed", text, StringComparison.OrdinalIgnoreCase);
@@ -168,7 +169,7 @@ public class A2AHandlerTests
 
         Assert.Equal(TaskState.Rejected, States(events).Last());
         var message = events.Last(e => e.StatusUpdate is not null).StatusUpdate!.Status!.Message!;
-        Assert.Equal(BillingAgentHandler.OutOfScope, string.Join("", message.Parts!.Select(p => p.Text)));
+        Assert.Equal(AssistantAgentHandler.OutOfScope, string.Join("", message.Parts!.Select(p => p.Text)));
     }
 
     [Fact]

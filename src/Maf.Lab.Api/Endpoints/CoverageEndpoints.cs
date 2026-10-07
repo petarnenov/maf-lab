@@ -61,6 +61,18 @@ public static class CoverageEndpoints
         var read = app.MapGroup("/api/coverage").RequireAuthorization();
         var admin = app.MapGroup("/api/coverage").RequireAuthorization(AuthPolicies.TenantAdmin);
 
+        // The test agent's overview is a coverage admin's (extract-a2a moved it from the A2A page).
+        var agentAdmin = app.MapGroup("/api/admin/coverage").RequireAuthorization(AuthPolicies.TenantAdmin);
+        // The test-generation agent, as far as the api knows it: its card (asked on the internal network, anonymously and
+        // briefly), how the api reaches it, what a run gets by default, and its runs. Read-only; the browser never reaches
+        // the agent. Runs describe the repository, not a firm, so there is nothing to scope and no parameter to take.
+        agentAdmin.MapGet("/test-agent", async (Coverage.TestAgentProbe probe, Microsoft.Extensions.Options.IOptions<Coverage.TestAgentOptions> options,
+            IDbContextFactory<MafDbContext> db, TimeProvider time, CancellationToken ct) =>
+        {
+            await using var context = await db.CreateDbContextAsync(ct);
+            return Results.Ok(await Coverage.TestAgentOverview.BuildAsync(probe, options.Value, context, time, ct));
+        });
+
         read.MapGet("/tree", async (CoverageStore store, IDbContextFactory<MafDbContext> db, IOptions<CoverageOptions> options,
             CancellationToken ct) => Results.Ok(await TreeAsync(store, db, options.Value, ct)));
 

@@ -2,19 +2,19 @@ using Maf.Lab.A2A;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using A2A;
-using Maf.Lab.Api.Agent;
-using Maf.Lab.Domain.Billing;
-using Maf.Lab.Domain.Configuration;
 using Maf.Lab.Domain.Tenancy;
-using Maf.Lab.Retrieval.Auth;
+using Maf.Lab.Plugins.Abstractions;
 using Microsoft.Extensions.Options;
-using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 // Both libraries have a Role; naming them apart is clearer than hoping the right one wins.
 using MessageRole = A2A.Role;
 using UserRole = Maf.Lab.Domain.Tenancy.Role;
 
-namespace Maf.Lab.Api.A2A;
+namespace Maf.Lab.Plugins.A2A;
 
+// names a domain until generalize-a2a-skills moves billing's skills into billing (extract-a2a): run status and the
+// simulated run read billing's own server, while billing is installed.
 /// <summary>
 /// What a partner system actually gets when it talks to us. Two shapes of work, as the protocol expects: a
 /// question is answered with a message, and work that takes time becomes a task the caller can follow, cancel,
@@ -23,23 +23,25 @@ namespace Maf.Lab.Api.A2A;
 /// Starting a billing run is **simulated**: it walks the real lifecycle over seeded data and bills nobody. The
 /// skill description says so, the artifact says so, and the README says so.
 /// </summary>
-public sealed partial class BillingAgentHandler(
+public sealed partial class AssistantAgentHandler(
     IPartnerAccessor partners,
-    IToolSource tools,
-    IOptions<AuthOptions> auth,
+    IDomainToolCall tools,
     IOptions<A2AOptions> options,
-    ToolAudit audit,
-    AssistantBridge assistant,
+    IActivityAudit audit,
+    IAssistantAnswer assistant,
     ITaskStore tasks,
     IHostApplicationLifetime lifetime,
     TimeProvider time,
-    ILogger<BillingAgentHandler> logger) : IAgentHandler
+    ILogger<AssistantAgentHandler> logger) : IAgentHandler
 {
     /// <summary>What a caller is told when it asks about a firm it is not entitled to — the same sentence, always.</summary>
     public const string OutOfScope = "This request concerns data outside your entitlement.";
 
-    // names a domain until the a2a follow-up moves it (introduce-plugins 8.1): run status comes from billing's own server.
-    private static readonly IReadOnlySet<string> BillingDomain = new HashSet<string>(StringComparer.Ordinal) { "billing" };
+    // Run status comes from billing's own server: the literal names the domain until generalize-a2a-skills.
+    private const string BillingDomain = "billing";
+
+    /// <summary>The A2A request kind the audit files each partner request under.</summary>
+    public const string RequestKind = "a2a.request";
 
     public async Task ExecuteAsync(RequestContext context, AgentEventQueue queue, CancellationToken cancellationToken)
     {
@@ -121,20 +123,31 @@ public sealed partial class BillingAgentHandler(
             return;
         }
 
-        await assistant.AnswerAsync(partner.AllowedFirms.First(), text, queue, ct);
+        // The assistant answers as a read-only principal for the first firm this partner may see; this plugin frames it.
+        var answer = await assistant.AnswerAsync(Readers(partner).First(), text, ct);
+        await queue.EnqueueMessageAsync(Say(answer), ct);
+        queue.Complete();
     }
+
+    /// <summary>
+    /// Not a user's token and not a user's entitlements: a read-only principal for each firm the partner may see, in its
+    /// registration's order. The tenant comes from the partner's entitlement only, so no principal exists for a firm the
+    /// partner was not registered for.
+    /// </summary>
+    private static IEnumerable<Principal> Readers(PartnerPrincipal partner) =>
+        partner.AllowedFirms.Select(allowed => new Principal($"a2a:{allowed.Value}", allowed, UserRole.READ_ONLY));
 
     private async Task<string> StatusForAsync(PartnerPrincipal partner, string runId, CancellationToken ct)
     {
         // The entitlement decides, and it decides the same way whether or not the run exists: a partner learns
         // nothing about another firm, not even that one of its runs exists.
-        foreach (var firm in partner.AllowedFirms)
+        foreach (var reader in Readers(partner))
         {
-            var status = await CallBillingAsync<BillingRunStatus>(firm, "get_billing_run_status",
+            var status = await CallBillingAsync<BillingRunStatus>(reader, "get_billing_run_status",
                 new Dictionary<string, object?> { ["runId"] = runId }, ct);
             if (status is not null)
             {
-                return $"Run {status.RunId} for {firm.Value} is {status.Status} "
+                return $"Run {status.RunId} for {reader.TenantId.Value} is {status.Status} "
                     + $"({status.AccountCount} accounts, period {status.PeriodStart:yyyy-MM-dd} to {status.PeriodEnd:yyyy-MM-dd})"
                     + (status.FailureReason is null ? "." : $". Reason: {status.FailureReason}");
             }
@@ -158,8 +171,10 @@ public sealed partial class BillingAgentHandler(
             await queue.EnqueueTaskAsync(current, ct);
         }
 
-        TenantId? firm = FirmReference(text) ?? (partner.AllowedFirms.Count > 0 ? partner.AllowedFirms.First() : null);
-        if (firm is not { } scope || !partner.MaySee(scope))
+        // The firm the text names, or the partner's first; the run reads as that firm's reader, which exists only when the
+        // partner may see it.
+        var named = FirmReference(text);
+        if (Readers(partner).FirstOrDefault(r => named is null || r.TenantId == named) is not { } reader)
         {
             await updater.RejectAsync(Say(OutOfScope), ct);
             return;
@@ -181,7 +196,7 @@ public sealed partial class BillingAgentHandler(
         await using var watch = TaskCancelWatch.Start(tasks, context.TaskId, TimeSpan.FromMilliseconds(options.Value.CancelPollMs), time);
         using var run = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopping, watch.Token);
         var work = run.Token;
-        await updater.StartWorkAsync(Say($"Starting the billing run for {scope.Value}, period {period}."), work);
+        await updater.StartWorkAsync(Say($"Starting the billing run for {reader.TenantId.Value}, period {period}."), work);
         foreach (var step in new[] { "Loading accounts", "Applying fee schedules", "Producing invoices" })
         {
             work.ThrowIfCancellationRequested();
@@ -190,26 +205,26 @@ public sealed partial class BillingAgentHandler(
         }
 
         // The artifact reports the firm's most recent seeded run: the lifecycle is what is being built here, not billing.
-        var latest = (await CallBillingAsync<SearchBillingRunsResult>(scope, "search_billing_runs",
+        var latest = (await CallBillingAsync<SearchBillingRunsResult>(reader, "search_billing_runs",
             new Dictionary<string, object?> { ["maxResults"] = 1 }, work))?.Runs.FirstOrDefault();
         await updater.AddArtifactAsync(
             [
                 new Part
                 {
                     // A DataPart: structured for the caller's code, not prose for a human to parse.
-                    Data = System.Text.Json.JsonSerializer.SerializeToElement(new
+                    Data = System.Text.Json.JsonSerializer.SerializeToElement(new BillingRunArtifact
                     {
-                        firmId = scope.Value,
-                        period,
-                        runId = latest?.RunId,
-                        status = latest?.Status ?? "unknown",
-                        accountCount = latest?.AccountCount,
-                        simulated = true,
-                    }),
+                        FirmId = reader.TenantId.Value,
+                        Period = period,
+                        RunId = latest?.RunId,
+                        Status = latest?.Status ?? "unknown",
+                        AccountCount = latest?.AccountCount,
+                        Simulated = true,
+                    }, Web),
                 },
             ],
             name: "billing-run-result", cancellationToken: work);
-        await updater.CompleteAsync(Say($"The simulated run for {scope.Value} ({period}) is complete."), work);
+        await updater.CompleteAsync(Say($"The simulated run for {reader.TenantId.Value} ({period}) is complete."), work);
     }
 
     private static string HistoryText(RequestContext context) =>
@@ -223,47 +238,40 @@ public sealed partial class BillingAgentHandler(
     };
 
     /// <summary>
-    /// One of billing's tools, called on billing's own server as the firm, the way every other partner question reaches
-    /// a domain (<see cref="AssistantBridge"/>). Null when billing is not installed, its server cannot answer, or the
+    /// One of billing's tools, called on billing's own server as the firm through the core's tool source, the way every
+    /// other partner question reaches a domain. Null when billing is not installed, its server cannot answer, or the
     /// tool says it found nothing.
     /// </summary>
-    private async Task<T?> CallBillingAsync<T>(TenantId firm, string tool, Dictionary<string, object?> arguments,
+    private async Task<T?> CallBillingAsync<T>(Principal reader, string tool, Dictionary<string, object?> arguments,
         CancellationToken ct) where T : class
     {
-        // A read-only token for the firm, minted as AssistantBridge mints it: a partner reads one firm at a time, with no
-        // advisor scope. Not the partner's own token, whose A2A audience the MCP server refuses by construction
+        // A read-only principal for one of the partner's firms: a partner reads one firm at a time, with no advisor
+        // scope. Not the partner's own token, whose A2A audience the MCP server refuses by construction
         // (PartnerIdentity).
-        var (token, _) = DevJwt.Issue(auth.Value, $"a2a:{firm.Value}", firm, UserRole.READ_ONLY);
+        var result = await tools.CallAsync(reader, BillingDomain, tool, arguments, ct);
         try
         {
-            await using var toolSet = await tools.GetToolsAsync(token, null, ct, BillingDomain);
-            if (toolSet.Tools.OfType<AIFunction>().FirstOrDefault(t => t.Name == tool) is not { } found)
-            {
-                return null;
-            }
-            // An MCP tool's result, read as every tool result is read: its structured content, unless it is an error.
-            var (_, structured, isError) = ToolDataEnvelope.Unpack(await found.InvokeAsync(new AIFunctionArguments(arguments), ct));
-            return isError || structured is not { } content
-                ? null
-                : content.Deserialize<T>(new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            return result is { } content ? content.Deserialize<T>(Web) : null;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (JsonException ex)
         {
-            logger.LogWarning("a2a: billing's server could not answer {Tool} ({Error})", tool, ex.GetType().Name);
+            logger.LogWarning("a2a: billing's {Tool} answered in a shape this handler does not read ({Error})", tool, ex.GetType().Name);
             return null;
         }
     }
+
+    private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
     private async Task RecordAsync(PartnerPrincipal partner, string operation, string taskId, DateTimeOffset started, CancellationToken ct)
     {
         try
         {
-            await audit.RecordAsync(new AuditEntry(
+            await audit.RecordAsync(
                 new Principal(partner.PartnerId,
                     partner.AllowedFirms.Count > 0 ? partner.AllowedFirms.First() : TenantId.Firm("unknown"),
                     UserRole.READ_ONLY),
-                null, null, $"a2a.{operation}", $"taskId={taskId}", "ok",
-                (long)(time.GetUtcNow() - started).TotalMilliseconds, Compliance.AuditKinds.A2ARequest), ct);
+                RequestKind, $"a2a.{operation}", $"taskId={taskId}", "ok",
+                (long)(time.GetUtcNow() - started).TotalMilliseconds, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -288,4 +296,25 @@ public sealed partial class BillingAgentHandler(
 
     [GeneratedRegex(@"\b20\d{2}-(0[1-9]|1[0-2])\b")]
     private static partial Regex PeriodPattern();
+}
+
+/// <summary>Billing's run status as this handler reads it from billing's tool (its own wire record, not billing's type).</summary>
+internal sealed record BillingRunStatus(string RunId, string Status, DateOnly PeriodStart, DateOnly PeriodEnd, int AccountCount,
+    string? FailureReason);
+
+/// <summary>One of billing's runs as this handler reads it from billing's run search.</summary>
+internal sealed record BillingRunSummary(string RunId, string Status, int AccountCount);
+
+/// <summary>Billing's run search as this handler reads it.</summary>
+internal sealed record SearchBillingRunsResult(IReadOnlyList<BillingRunSummary> Runs);
+
+/// <summary>The simulated run's result as the partner's code reads it (a DataPart).</summary>
+internal sealed class BillingRunArtifact
+{
+    public required string FirmId { get; init; }
+    public required string Period { get; init; }
+    public string? RunId { get; init; }
+    public required string Status { get; init; }
+    public int? AccountCount { get; init; }
+    public bool Simulated { get; init; }
 }

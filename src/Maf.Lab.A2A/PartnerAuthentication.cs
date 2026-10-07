@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Maf.Lab.Domain.Configuration;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -35,7 +36,7 @@ public static class PartnerAuthentication
                             : partner.Scopes.Count > 0))));
 
         // Singleton: it reads the current HttpContext on every call, so it is safe outside a scope.
-        services.AddSingleton<IPartnerAccessor, HttpPartnerAccessor>();
+        services.TryAddSingleton<IPartnerAccessor, HttpPartnerAccessor>();
         return services;
     }
 }

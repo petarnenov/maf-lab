@@ -12,8 +12,6 @@ import { Progress } from '../shared/Progress';
 import { StopHint } from '../shared/StopHint';
 import { useEscToStop } from '../shared/useEscToStop';
 import { formatDate } from '../shared/format';
-import { TestAgentSection } from './TestAgentSection';
-import { useTestAgentOverview } from './testAgentOverview';
 
 /**
  * What the agents have been doing: what partners asked of this system, what it asked of the reviewer, and
@@ -38,9 +36,7 @@ export function A2AAdminPage() {
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['admin', 'a2a'] }),
   });
 
-  const overview = useTestAgentOverview();
-
-  // Both sections share the ['admin', 'a2a'] prefix: one Refresh asks for both, and cannot be pressed twice.
+  // The activity's reads share the ['admin', 'a2a'] prefix: one Refresh asks for them, and cannot be pressed twice.
   const fetching = useIsFetching({ queryKey: ['admin', 'a2a'] }) > 0;
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['admin', 'a2a'] });
   // A read still loading stops on Esc (stop-anything); the screen keeps what it last showed.
@@ -54,7 +50,7 @@ export function A2AAdminPage() {
           Refresh
         </button>
       </header>
-      {fetching && !activity.isPending && !overview.isPending && <Progress label="Refreshing…" />}
+      {fetching && !activity.isPending && <Progress label="Refreshing…" />}
       {fetching && <StopHint stopping={false} />}
 
       <Activity
@@ -62,8 +58,6 @@ export function A2AAdminPage() {
         cancelling={cancel.isPending}
         onCancel={(taskId) => cancel.mutate(taskId)}
       />
-
-      <TestAgentSection />
     </section>
   );
 }

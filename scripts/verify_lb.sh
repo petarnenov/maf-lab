@@ -222,58 +222,63 @@ if corpora:
     check("job status was served by >= 2 replicas", len(seen) >= 2, str(dict(seen)))
 
 # 4.5 the A2A surface through the balancer ------------------------------------------------------------
-status, _, card = req("/.well-known/agent-card.json")
-check("agent card is served anonymously through the balancer",
-      status == 200 and "skills" in card and "start_billing_run" not in card)
-status, _, _ = req("/a2a", "POST", {"jsonrpc": "2.0", "id": 1, "method": "message/send"})
-check("the protocol endpoint refuses an anonymous caller", status == 401, f"HTTP {status}")
+if plugin_in_use("a2a"):
+    status, _, card = req("/.well-known/agent-card.json")
+    check("agent card is served anonymously through the balancer",
+          status == 200 and "skills" in card and "start_billing_run" not in card)
+    status, _, _ = req("/a2a", "POST", {"jsonrpc": "2.0", "id": 1, "method": "message/send"})
+    check("the protocol endpoint refuses an anonymous caller", status == 401, f"HTTP {status}")
 
-status, _, body = req("/a2a/token", "POST", {"clientId": "acme-portal", "clientSecret": A2A_SECRET})
-partner = json.loads(body)["accessToken"] if status == 200 else ""
-check("a partner token is issued through the balancer", status == 200 and bool(partner), f"HTTP {status}")
+    status, _, body = req("/a2a/token", "POST", {"clientId": "acme-portal", "clientSecret": A2A_SECRET})
+    partner = json.loads(body)["accessToken"] if status == 200 else ""
+    check("a partner token is issued through the balancer", status == 200 and bool(partner), f"HTTP {status}")
 
-def a2a(method, params, timeout=90):
-    _, headers, raw = req("/a2a", "POST", {"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
-                          token=partner, timeout=timeout)
-    return json.loads(raw), headers.get("X-Instance")
+    def a2a(method, params, timeout=90):
+        _, headers, raw = req("/a2a", "POST", {"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
+                              token=partner, timeout=timeout)
+        return json.loads(raw), headers.get("X-Instance")
 
-def user_message(text, task=None):
-    message = {"kind": "message", "messageId": uuid.uuid4().hex, "role": "user",
-               "parts": [{"kind": "text", "text": text}]}
-    if task:
-        message["taskId"] = task
-    return {"message": message}
+    def user_message(text, task=None):
+        message = {"kind": "message", "messageId": uuid.uuid4().hex, "role": "user",
+                   "parts": [{"kind": "text", "text": text}]}
+        if task:
+            message["taskId"] = task
+        return {"message": message}
 
-if partner:
-    answer, _ = a2a("message/send", user_message("status of run 4417"))
-    check("a partner question is answered in the 1.0 shape",
-          answer.get("result", {}).get("kind") == "message" and answer["result"].get("role") == "agent",
-          json.dumps(answer)[:90])
+    if partner and plugin_in_use("billing"):
+        # The billing run is the one long task the assistant offers a partner while billing is installed.
+        answer, _ = a2a("message/send", user_message("status of run 4417"))
+        check("a partner question is answered in the 1.0 shape",
+              answer.get("result", {}).get("kind") == "message" and answer["result"].get("role") == "agent",
+              json.dumps(answer)[:90])
 
-    started, first_instance = a2a("message/send", user_message("start a billing run for firm-a 2026-06"))
-    task = started.get("result", {})
-    check("a run through the balancer completes as a task",
-          task.get("kind") == "task" and task.get("status", {}).get("state") == "completed",
-          json.dumps(task.get("status", {}))[:90])
+        started, first_instance = a2a("message/send", user_message("start a billing run for firm-a 2026-06"))
+        task = started.get("result", {})
+        check("a run through the balancer completes as a task",
+              task.get("kind") == "task" and task.get("status", {}).get("state") == "completed",
+              json.dumps(task.get("status", {}))[:90])
 
-    # Both api replicas back in the balancer's rotation first: the replica-stop section above leaves the restarted one out
-    # for nginx's fail_timeout after its first failed attempt, so wait on the effect (both answering), not on a clock.
-    answering, rotation_deadline = set(), time.time() + 30
-    while len(answering) < 2 and time.time() < rotation_deadline:
-        _, h, _ = req("/api/me", token=adam)
-        answering.add(h.get("X-Instance"))
-        time.sleep(0.2)
-    check("both api replicas answer through the balancer again", len(answering) >= 2, str(sorted(i for i in answering if i)))
+        # Both api replicas back in the balancer's rotation first: the replica-stop section above leaves the restarted one out
+        # for nginx's fail_timeout after its first failed attempt, so wait on the effect (both answering), not on a clock.
+        answering, rotation_deadline = set(), time.time() + 30
+        while len(answering) < 2 and time.time() < rotation_deadline:
+            _, h, _ = req("/api/me", token=adam)
+            answering.add(h.get("X-Instance"))
+            time.sleep(0.2)
+        check("both api replicas answer through the balancer again", len(answering) >= 2, str(sorted(i for i in answering if i)))
 
-    # The task lives in the shared store, so it can be read back through a different replica.
-    instances = set()
-    fetched = {}
-    for _ in range(8):
-        fetched, instance = a2a("tasks/get", {"id": task.get("id", "")})
-        instances.add(instance)
-    check("the task reads the same through every replica",
-          fetched.get("result", {}).get("id") == task.get("id"), str(sorted(i for i in instances if i)))
-    check("more than one replica answered for the task", len(instances) >= 2, str(sorted(i for i in instances if i)))
+        # The task lives in the shared store, so it can be read back through a different replica.
+        instances = set()
+        fetched = {}
+        for _ in range(8):
+            fetched, instance = a2a("tasks/get", {"id": task.get("id", "")})
+            instances.add(instance)
+        check("the task reads the same through every replica",
+              fetched.get("result", {}).get("id") == task.get("id"), str(sorted(i for i in instances if i)))
+        check("more than one replica answered for the task", len(instances) >= 2, str(sorted(i for i in instances if i)))
+else:
+    status, _, _ = req("/.well-known/agent-card.json")
+    check("without the a2a plugin there is no agent card", status == 404, f"HTTP {status}")
 
 # 4.6 the second agent, through the same entry point --------------------------------------------------
 if plugin_in_use("compliance"):

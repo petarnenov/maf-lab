@@ -5,6 +5,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Maf.Lab.Api.A2A;
+using Maf.Lab.Plugins.A2A;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -104,7 +105,7 @@ public class A2APushTests
     [Fact]
     public async Task Every_transition_is_delivered_once_with_the_registered_token()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = A2APluginSupport.Installed };
         var client = await PartnerClientAsync(api);
         var (receiver, url, received) = await ReceiverAsync();
         await using var _ = receiver;
@@ -134,7 +135,7 @@ public class A2APushTests
     [Fact]
     public async Task A_task_completes_even_when_the_receiver_is_unreachable_and_the_failure_is_recorded()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = A2APluginSupport.Installed };
         var client = await PartnerClientAsync(api);
 
         // Port 9 is the discard service: nothing answers there, so every attempt fails.
@@ -158,7 +159,7 @@ public class A2APushTests
     [Fact]
     public async Task A_receiver_that_answers_with_an_error_is_retried_and_then_recorded()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = A2APluginSupport.Installed };
         var client = await PartnerClientAsync(api);
         var (receiver, url, received) = await ReceiverAsync(HttpStatusCode.InternalServerError);
         await using var _ = receiver;

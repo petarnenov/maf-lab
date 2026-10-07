@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Maf.Lab.Api.A2A;
+using Maf.Lab.Plugins.A2A;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 
@@ -71,7 +72,7 @@ public class A2AStreamingTests
     [Fact]
     public async Task A_streamed_run_reports_every_stage_in_the_specified_shape()
     {
-        using var api = new ApiFactory(ApiFactory.ProceduralModel());
+        using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = A2APluginSupport.Installed };
         var client = await PartnerClientAsync(api);
 
         var events = await EventsAsync(client, new
@@ -107,6 +108,7 @@ public class A2AStreamingTests
         var step = TimeSpan.FromMilliseconds(120);
         using var api = new ApiFactory(ApiFactory.ProceduralModel())
         {
+            InstalledPlugins = A2APluginSupport.Installed,
             SimulatedStepMs = (int)step.TotalMilliseconds,
             ConfigureTestServices = s => s.AddSingleton<TimeProvider>(time),
         };

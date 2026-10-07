@@ -1,5 +1,3 @@
-using A2A;
-using Maf.Lab.Api.A2A;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Domain.Tracing;
@@ -115,21 +113,11 @@ public class CitationMarkerTests
     public async Task An_A2A_reply_carries_no_markers()
     {
         using var api = new ApiFactory(new ScriptedChatClient((_, _, _) => ScriptedChatClient.Text("Fees are billed quarterly 【sourcePath: docs/fees.md】.")));
-        var queue = new AgentEventQueue();
-        var collected = new List<StreamResponse>();
-        var reader = Task.Run(async () =>
-        {
-            await foreach (var item in queue.WithCancellation(Ct))
-            {
-                collected.Add(item);
-            }
-        }, Ct);
 
-        await api.Services.GetRequiredService<AssistantBridge>().AnswerAsync(TenantId.Firm("firm-a"), "how often are fees billed", queue, Ct);
-        queue.Complete();
-        await reader;
+        // The answer a relaying protocol (the a2a plugin) frames: the markers are the chat's, not the partner's.
+        var answer = await api.Services.GetRequiredService<Maf.Lab.Plugins.Abstractions.IAssistantAnswer>()
+            .AnswerAsync(new Principal("a2a:firm-a", TenantId.Firm("firm-a"), Role.READ_ONLY), "how often are fees billed", Ct);
 
-        var message = Assert.Single(collected, e => e.Message is not null).Message!;
-        Assert.Equal("Fees are billed quarterly.", string.Join("", message.Parts!.Select(p => p.Text)));
+        Assert.Equal("Fees are billed quarterly.", answer);
     }
 }

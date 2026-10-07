@@ -228,10 +228,7 @@ export const CURRICULUM: CurriculumSection[] = [
         concept: 'A2A hosting',
         summary:
           'The lab publishes an Agent Card and hosts a billing agent whose tasks move from submitted through working to completed or input-required. Tasks are stored so a run continues after the stream drops, with push notifications for long tasks.',
-        paths: [
-          'src/Maf.Lab.A2A/AgentCardFactory.cs',
-          'src/Maf.Lab.Api/A2A/BillingAgentHandler.cs',
-        ],
+        paths: ['src/Maf.Lab.A2A/AgentCardFactory.cs', 'src/Maf.Lab.A2A/A2AEndpoints.cs'],
         spec: 'a2a-hosting',
         screen: { to: '/admin/a2a', label: 'Agent to agent' },
       },

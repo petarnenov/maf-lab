@@ -34,7 +34,7 @@ ifeq ($(CI_MODE),1)
 # CI's plugin set, a positive list kept here only (introduce-plugins 5.1): CI_MODE means no downloads and no secrets,
 # so the developer tools stay out (a2a-inspector even builds from a git context). Each plugin extracted from the core
 # adds itself here in the same commit.
-CI_PLUGINS    ?= billing,code,compliance,portfolio,monitor,conversation-history,insights,index-admin,observability,_example
+CI_PLUGINS    ?= billing,code,compliance,portfolio,monitor,conversation-history,insights,index-admin,observability,a2a,_example
 MAF_PLUGINS   := $(CI_PLUGINS)
 endif
 export MAF_ENV MAF_PLUGINS
@@ -115,7 +115,7 @@ INDEXER_SRC  := $(shell find src/Maf.Lab.Indexing src/Maf.Lab.Retrieval src/Maf.
 INDEXER      := $(DOTNET) $(INDEXER_DLL)
 
 .PHONY: all help up core plugins plugin-new plugin-new-check plugin-switch-check plugin-on plugin-off product-check down restart ps logs print-compose-file clean infra index indexer graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
-        coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-answer-check eval-code-route eval-graph-depth eval-a2a dev doctor banner index-if-empty \
+        coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-answer-check eval-code-route eval-graph-depth dev doctor banner index-if-empty \
         specs docs docs-check lint-dotnet lint-web build-web ci ci-e2e ci-e2e-core core-turn-check setup \
         require-docker require-dotnet require-npm require-python
 
@@ -344,10 +344,6 @@ eval-code-route: require-dotnet ## Eval: Jev's code-route answer alone — would
 
 eval-graph-depth: require-dotnet ## Comparison: code graph traces at depth 2, 3 and 4, side by side, never gated (STRUCTURAL=1 for no model)
 	$(EVAL) graph-depth $(if $(STRUCTURAL),--structural-only)
-
-eval-a2a: require-dotnet ## Conformance: an outside client drives the agents through evals/a2a-conformance.jsonl
-	@# Not $(EVAL): this one is deliberately not run by the harness, which links against the service. See DECISIONS.md.
-	$(DOTNET) run --project tools/Maf.Lab.A2AProbe -- $(BASE_URL)
 
 # ── local development ────────────────────────────────────────────────────────────────────────────────────────────
 dev: require-docker require-dotnet require-npm ## Run mcp/api/web locally without Docker (infra stays in compose); Ctrl-C stops

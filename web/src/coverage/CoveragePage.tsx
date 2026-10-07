@@ -18,6 +18,7 @@ import { agentHas } from './treeRuns';
 import { useRunEvents } from './useRunEvents';
 import { ThresholdControl } from './ThresholdControl';
 import styles from './CoveragePage.module.css';
+import { TestAgentSection } from './TestAgentSection';
 
 /** How well the repository's own source is covered by its tests, file by file and line by line. */
 export function CoveragePage() {
@@ -97,6 +98,8 @@ export function CoveragePage() {
           </div>
         </div>
       )}
+      {/* The test-generation agent, as the api knows it (moved here from the A2A page with extract-a2a). */}
+      {isAdmin && <TestAgentSection />}
     </div>
   );
 }

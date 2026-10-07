@@ -52,7 +52,6 @@ public partial class Program
         // Qdrant, models and Jev for chat, A2A, topology and feedback; indexing is a plugin's to register.
         builder.Services.AddMafRetrievalCore(builder.Configuration);
         builder.Services.AddDevJwtAuthentication(builder.Configuration);
-        builder.Services.AddA2APartnerAuthentication(builder.Configuration);
         builder.Services.AddAuthorizationBuilder();
         builder.Services.Configure<Microsoft.AspNetCore.Authorization.AuthorizationOptions>(AuthPolicies.Add);
         builder.Services.Configure<AgentOptions>(builder.Configuration.GetSection(AgentOptions.Section));
@@ -110,10 +109,10 @@ public partial class Program
         builder.Services.AddSingleton<Topology.TopologyProbe>();
         // A turn's link to its trace: none until a plugin that keeps the traces registers its own (Null Object).
         builder.Services.TryAddSingleton<Maf.Lab.Plugins.Abstractions.ITraceLink, Maf.Lab.Plugins.Abstractions.NoTraceLink>();
-        // The card follows the installed set, per request (extract-billing): resolved for each well-known fetch, and read
-        // per call by the extended-card handler.
-        builder.Services.AddTransient(sp => A2A.BillingAgentCard.Installed(sp.GetRequiredService<Maf.Lab.Plugins.Abstractions.IInstalledPlugins>()));
-        builder.Services.AddSingleton<Func<Maf.Lab.A2A.AgentCardDescriptor>>(sp => () => sp.GetRequiredService<Maf.Lab.A2A.AgentCardDescriptor>());
+        // The assistant's agent card and handler are the a2a plugin's (extract-a2a); it reaches the core through these.
+        builder.Services.AddSingleton<Maf.Lab.Plugins.Abstractions.IAssistantAnswer, Agent.AssistantAnswer>();
+        builder.Services.AddSingleton<Maf.Lab.Plugins.Abstractions.IDomainToolCall, Agent.DomainToolCall>();
+        builder.Services.AddSingleton<Maf.Lab.Plugins.Abstractions.IActivityAudit, Agent.ActivityAudit>();
         // The reviewer is the compliance plugin's (extract-compliance-plugin); without it, a flow that asks is told none
         // can be reached (a Null Object), and the tool that requires one is not offered at all.
         builder.Services.TryAddSingleton<Maf.Lab.Plugins.Abstractions.IReviewerConsultation, Agent.Writes.NoReviewer>();
@@ -121,16 +120,13 @@ public partial class Program
         builder.Services.AddScoped<Maf.Lab.Plugins.Abstractions.IAuditTrail, Compliance.CoreAuditTrail>();
         builder.Services.AddHttpClient("a2a-push");
         builder.Services.AddSingleton<A2A.PushNotificationDispatcher>();
+        // The store reads the partner behind the request it serves. Transitional (extract-a2a batch 1): the a2a plugin
+        // registers the same accessor with its partner authentication; batch 2 moves the store, and this line, into it.
+        builder.Services.TryAddSingleton<Maf.Lab.A2A.IPartnerAccessor, Maf.Lab.A2A.HttpPartnerAccessor>();
         builder.Services.AddSingleton<global::A2A.ITaskStore, A2A.SqliteTaskStore>();
-        // Singletons: the protocol endpoints are mapped once, and the partner is read from the current request
-        // through IHttpContextAccessor rather than captured per instance.
-        builder.Services.AddSingleton<A2A.AssistantBridge>();
-        builder.Services.AddSingleton<global::A2A.IAgentHandler, A2A.BillingAgentHandler>();
-        builder.Services.AddSingleton<global::A2A.ChannelEventNotifier>();
-        builder.Services.AddSingleton<global::A2A.A2AServer>();
-        // The SDK's server does the protocol; five operations it leaves throwing are implemented around it.
+        // The protocol server, its partner authentication and its routes are the a2a plugin's (extract-a2a); the stores they
+        // read stay here until batch 2 moves them with their tables.
         builder.Services.AddSingleton<IPushConfigStore, A2A.SqlitePushConfigStore>();
-        builder.Services.AddSingleton<global::A2A.IA2ARequestHandler, A2ARequestHandlerWithExtras>();
         builder.Services.Configure<Storage.MessageRetentionOptions>(
             builder.Configuration.GetSection(Storage.MessageRetentionOptions.Section));
         builder.Services.AddSingleton<Storage.MessageRetentionService>();
@@ -198,8 +194,6 @@ public partial class Program
         app.MapTopology();
         app.MapA2AAdmin();
         app.MapCoverage();
-        app.MapA2ASurface();
-        app.MapA2AProtocol();
         app.MapPlugins();
         app.MapMafPlugins();
         return app;

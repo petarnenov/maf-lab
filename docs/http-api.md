@@ -440,7 +440,6 @@ secret — the chat provider reports only *whether* its key is configured. The r
 |---|---|---|---|
 | GET | `/api/admin/a2a` | — | `{ inbound, outbound, deliveries }` |
 | POST | `/api/admin/a2a/tasks/{id}/cancel` | — | `{ taskId, state }`, `404` unknown, `409` already finished |
-| GET | `/api/admin/a2a/test-agent` | — | `{ status, card, connection, defaultModel, modelsAllowed, limits, defaultBudget, runs, recent }` |
 
 `inbound` is one row per task a partner started — partner, operation, state, when it started and last changed,
 how long it took, and whether it can still be cancelled. `outbound` is one row per consultation this system asked
@@ -452,28 +451,6 @@ entitled to act for, stamped when the task was created; a task belonging to anot
 `403`, because its existence is not the caller's business. Cancelling goes through the same `CancelTask` a
 partner's cancel does, and is itself audited as `a2a.cancel`.
 
-`test-agent` is the test-generation agent as the api knows it; the browser never reaches the agent, which is on the
-internal network only. `status` is `{ configured, reachable, reason, latencyMs, checkedAt }`: the api fetches the
-agent's public card from `TestAgent:BaseUrl` anonymously, within `TestAgent:ProbeTimeout` (2 s), and reuses the answer
-for `TestAgent:ProbeCacheFor` (10 s). Reachable means the card answered, not that a run would succeed; `reason` is a
-short sentence, never an exception. `card` (null when it could not be read) is
-`{ name, description, version, skills: [{ id, name, description, tags }], endpoint, protocolVersion, requiredScopes,
-streaming, pushNotifications }`, as the card states it. `connection` is `{ baseUrl, clientId }` — where the api
-reaches the agent and the partner id it signs in as; the secret is never included. `defaultModel` is the allowlist's
-default, and `limits` is the same `{ maxAttempts, toolRoundsPerAttempt, testRunsPerAttempt, deadlineMinutes,
-maxSuspectedBugs }` of `{ min, max, default }` that `/api/coverage/models` returns; `defaultBudget` has null caps,
-because a run started without a budget has none. `runs` is `{ running, candidates, accepted, failed, other, total }`
-(running is submitted, working or verifying; failed includes verification failed), and `recent` is the ten runs that
-changed last, `[{ id, path, state, reason, attempt, maxAttempts, lastPct, targetPct, model, updatedAt, startedAt,
-finishedAt, durationMs, tokens, costUsd, costIsEstimate, budget }]`. `finishedAt` is when the run's work ended — the first time it left submitted, working
-and verifying, into a candidate or a final state — so accepting or discarding a candidate later does not move it; it
-is null while the run is running. `durationMs` is the work time: `finishedAt − startedAt`, or, while running, the time
-from `startedAt` to this answer (the page counts on from there); null when a stopped run's end is not known. Runs
-stored before ends were recorded get one at api start, from their first update in a non-running state (or their last
-change when they have no updates). `tokens` and `costUsd` are what the run recorded for the agent's model calls
-(so far, while it runs): the tokens priced, in USD, at the model's rates as the api sent them to the agent when the run
-started — the amount the run's cost cap is checked against, not a recomputation at today's prices; 0 when no model
-call was made or the model is priced at zero. The coverage runner's build and test time is not in it.
 `costIsEstimate` is true when the run's model is priced at the lab's estimated rates in `TestAgent:Models`
 (`PriceIsEstimate`), or is no longer on that allowlist. `budget` is `{ maxTokens, maxCostUsd }` as chosen at start;
 null caps are unlimited. Runs describe the repository, not a firm, so nothing here is scoped by tenant and
@@ -502,6 +479,30 @@ lifecycle is `submitted → working → verifying → candidate → accepted | d
 | POST | `/api/coverage/refresh` | — | `202` admin job (one at a time: a second answers with the first). Admin |
 | POST | `/api/coverage/refresh/{jobId}/cancel` | — | `202` with the refresh job, now `canceled`; the coverage runner job it waits on is cancelled with it; `409` when it had already ended. Admin |
 | GET | `/api/coverage/refresh` · `/api/coverage/refresh/{jobId}` | — | the current or named refresh job, `204` when there is none. A `canceled` job was stopped by an administrator; a failed job's `summary` names why: interrupted (the service stopped), the coverage runner could not be reached, neither toolchain produced a report, or the main branch has no commit |
+| GET | `/api/admin/coverage/test-agent` | — | `{ status, card, connection, defaultModel, modelsAllowed, limits, defaultBudget, runs, recent }` (moved from `/api/admin/a2a/test-agent` with extract-a2a). Admin |
+
+`/api/admin/coverage/test-agent` is the test-generation agent as the api knows it; the browser never reaches the
+agent, which is on the internal network only. `status` is `{ configured, reachable, reason, latencyMs, checkedAt }`: the api fetches the
+agent's public card from `TestAgent:BaseUrl` anonymously, within `TestAgent:ProbeTimeout` (2 s), and reuses the answer
+for `TestAgent:ProbeCacheFor` (10 s). Reachable means the card answered, not that a run would succeed; `reason` is a
+short sentence, never an exception. `card` (null when it could not be read) is
+`{ name, description, version, skills: [{ id, name, description, tags }], endpoint, protocolVersion, requiredScopes,
+streaming, pushNotifications }`, as the card states it. `connection` is `{ baseUrl, clientId }` — where the api
+reaches the agent and the partner id it signs in as; the secret is never included. `defaultModel` is the allowlist's
+default, and `limits` is the same `{ maxAttempts, toolRoundsPerAttempt, testRunsPerAttempt, deadlineMinutes,
+maxSuspectedBugs }` of `{ min, max, default }` that `/api/coverage/models` returns; `defaultBudget` has null caps,
+because a run started without a budget has none. `runs` is `{ running, candidates, accepted, failed, other, total }`
+(running is submitted, working or verifying; failed includes verification failed), and `recent` is the ten runs that
+changed last, `[{ id, path, state, reason, attempt, maxAttempts, lastPct, targetPct, model, updatedAt, startedAt,
+finishedAt, durationMs, tokens, costUsd, costIsEstimate, budget }]`. `finishedAt` is when the run's work ended — the first time it left submitted, working
+and verifying, into a candidate or a final state — so accepting or discarding a candidate later does not move it; it
+is null while the run is running. `durationMs` is the work time: `finishedAt − startedAt`, or, while running, the time
+from `startedAt` to this answer (the page counts on from there); null when a stopped run's end is not known. Runs
+stored before ends were recorded get one at api start, from their first update in a non-running state (or their last
+change when they have no updates). `tokens` and `costUsd` are what the run recorded for the agent's model calls
+(so far, while it runs): the tokens priced, in USD, at the model's rates as the api sent them to the agent when the run
+started — the amount the run's cost cap is checked against, not a recomputation at today's prices; 0 when no model
+call was made or the model is priced at zero. The coverage runner's build and test time is not in it.
 | POST | `/api/coverage/reports` | multipart `commit`, `toolchain`, `report`, `root?`, `dirty?` | `200 { snapshotId, files, dropped }`; `400` for a report that is not Cobertura. Admin |
 
 ## Evals (any authenticated role)

@@ -2,14 +2,14 @@ using A2A;
 using Maf.Lab.A2A;
 using Maf.Lab.Plugins.Abstractions;
 
-namespace Maf.Lab.Api.A2A;
+namespace Maf.Lab.Plugins.A2A;
 
-// names a domain until the a2a follow-up moves it (introduce-plugins 8.1)
+// names a domain until generalize-a2a-skills moves billing's skills into billing (extract-a2a)
 /// <summary>
 /// Who this agent says it is. Each skill states what it is for *and* what it is not for, because a caller choosing
 /// a skill from a one-line description is how the wrong agent gets asked the wrong question.
 /// </summary>
-public static class BillingAgentCard
+public static class AssistantAgentCard
 {
     public const string PrivateSkillId = "start_billing_run";
 
@@ -22,7 +22,7 @@ public static class BillingAgentCard
         plugins.IsInstalled("billing") ? Descriptor : Descriptor with { PublicSkills = [], PrivateSkills = [] };
 
     public static AgentCardDescriptor Descriptor { get; } = new(
-        Name: "maf-lab billing assistant",
+        Name: "maf-lab assistant",
         Description:
             "Answers questions about a TAMP billing domain from firm-scoped documentation and billing run data. "
             + "Every answer is grounded in retrieved documents; the agent never invents billing figures.",

@@ -19,8 +19,6 @@ public sealed class CoreNamesNoDomainTests
     {
         ["Endpoints/FeedbackEndpoints.cs"] = "feedback-review",
         ["Topology/TopologyProbe.cs"] = "topology",
-        ["A2A/BillingAgentCard.cs"] = "a2a",
-        ["A2A/BillingAgentHandler.cs"] = "a2a",
     };
 
     /// <summary>

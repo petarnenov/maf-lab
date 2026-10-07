@@ -17,7 +17,7 @@ describe('TestAgentSection', () => {
     expect(await screen.findByTestId('test-agent-status')).toHaveTextContent(/Reachable.*12 ms/);
     // Everything comes through the api; the browser never asks the agent.
     expect(fetch).toHaveBeenCalledTimes(1);
-    expect(fetch.mock.calls[0][0]).toBe('/api/admin/a2a/test-agent');
+    expect(fetch.mock.calls[0][0]).toBe('/api/admin/coverage/test-agent');
 
     const card = screen.getByTestId('test-agent-card');
     expect(card).toHaveTextContent('maf-lab test agent');

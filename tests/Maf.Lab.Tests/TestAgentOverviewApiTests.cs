@@ -20,7 +20,7 @@ public sealed class TestAgentOverviewApiTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private const string Secret = "assistant-secret";
-    private const string Route = "/api/admin/a2a/test-agent";
+    private const string Route = "/api/admin/coverage/test-agent";
 
     private static ApiFactory Api(string baseUrl, Dictionary<string, string?>? extra = null)
     {

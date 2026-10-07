@@ -23,6 +23,7 @@ public class A2AAdminApiTests
     private static ApiFactory Api(int stepMs = 1) =>
         new(ApiFactory.ProceduralModel())
         {
+            InstalledPlugins = A2APluginSupport.Installed,
             SimulatedStepMs = stepMs,
             ExtraSettings = new Dictionary<string, string?>(),
         };
