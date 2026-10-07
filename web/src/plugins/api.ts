@@ -16,6 +16,9 @@ export { useApi } from '../auth/useAuth';
 /** The signed-in persona as a query key's part: a plugin's cached reads never show one user's data to another. */
 export { useUserKey } from '../history/historyApi';
 
+/** A link to another page of the app, followed by the core's router without a reload. */
+export { PageLink } from './PageLink';
+
 /**
  * The web plugin API (introduce-plugins decision 8): what a plugin's `web/index.ts` may contribute, through
  * `definePlugin`. The core never imports a plugin; a plugin imports only this file and `web/src/shared/` (ESLint

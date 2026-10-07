@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { ReactNode } from 'react';
-import { MemoryRouter } from 'react-router';
+import { Link, MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
 import { AgentsProvider } from '../agents/AgentsProvider';
@@ -13,7 +13,7 @@ import type { Session } from '../auth/session';
 import { CardView } from '../chat/cards/CardView';
 import { agentFetch } from '../test/agentFetch';
 import { jsonResponse, makeSession } from '../test/render';
-import { definePlugin, type MafWebPlugin } from './api';
+import { definePlugin, PageLink, type MafWebPlugin } from './api';
 import { PluginsContext, usePlugins } from './context';
 import { PluginBoundary } from './PluginBoundary';
 import { PluginsProvider, type PluginModuleLoader } from './PluginsProvider';
@@ -26,7 +26,10 @@ import { PluginsProvider, type PluginModuleLoader } from './PluginsProvider';
 
 const fixture = definePlugin({
   name: 'fixture',
-  routes: [{ path: 'fixture', element: <p>fixture page</p> }],
+  routes: [
+    { path: 'fixture', element: <p>fixture page</p> },
+    { path: 'fixture/links', element: <PageLink to="/fixture">to the fixture page</PageLink> },
+  ],
   nav: [{ to: '/fixture', label: 'Fixture' }],
   chatPanes: [
     { id: 'fixture-pane', label: 'Fixture pane', render: () => <p>fixture pane body</p> },
@@ -107,7 +110,6 @@ describe('web plugins', () => {
       'Compliance',
       'Jev',
       'Agent to agent',
-      'Curriculum',
     ]);
   });
 
@@ -197,6 +199,26 @@ describe('web plugins', () => {
     const nav = screen.getByRole('navigation', { name: 'Main' });
     await userEvent.click(await within(nav).findByRole('link', { name: 'Fixture' }));
     expect(await screen.findByText('fixture page')).toBeInTheDocument();
+  });
+
+  it("follows a plugin's PageLink in the core's router, without a reload", async () => {
+    stubApi(['fixture']);
+    // A deep link to a plugin's page lands on the chat until the plugins are known; enter once they are.
+    renderApp('/chat', makeSession('USER'), modules, <Link to="/fixture/links">enter</Link>);
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    await within(nav).findByRole('link', { name: 'Fixture' });
+    await userEvent.click(screen.getByRole('link', { name: 'enter' }));
+    const link = await screen.findByRole('link', { name: 'to the fixture page' });
+    expect(link).toHaveAttribute('href', '/fixture');
+
+    // false: the router took the click (preventDefault), so the browser never loads the page again.
+    expect(fireEvent.click(link)).toBe(false);
+    expect(await screen.findByText('fixture page')).toBeInTheDocument();
+    // The core sees the route change: its own navigation marks the target as the current page.
+    expect(within(nav).getByRole('link', { name: 'Fixture' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
   });
 
   it("adds a plugin's pane to the chat's side pane", async () => {

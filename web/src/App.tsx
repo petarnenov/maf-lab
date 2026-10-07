@@ -4,7 +4,6 @@ import { FeedbackAdminPage } from './admin/FeedbackAdminPage';
 import { IndexAdminPage } from './admin/IndexAdminPage';
 import { ChatPage } from './chat/ChatPage';
 import { CoveragePage } from './coverage/CoveragePage';
-import { CurriculumPage } from './curriculum/CurriculumPage';
 import { Layout } from './components/Layout';
 import { RequireAdmin } from './components/RequireAdmin';
 import { EvalsPage } from './evals/EvalsPage';
@@ -28,7 +27,6 @@ export function App() {
         <Route path="topology" element={<TopologyPage />} />
         <Route path="telemetry" element={<TelemetryPage />} />
         <Route path="coverage" element={<CoveragePage />} />
-        <Route path="curriculum" element={<CurriculumPage />} />
         <Route
           path="admin/index"
           element={
