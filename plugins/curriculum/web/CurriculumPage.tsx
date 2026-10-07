@@ -1,6 +1,6 @@
 import { Fragment } from 'react';
-import { Link } from 'react-router';
-import page from '../shared/Page.module.css';
+import { PageLink } from '@maf/plugin-api';
+import page from '@maf/shared/Page.module.css';
 import { CURRICULUM, NOT_COVERED, type CurriculumEntry } from './curriculum';
 import styles from './Curriculum.module.css';
 
@@ -82,7 +82,7 @@ function Entry({ entry }: { entry: CurriculumEntry }) {
         <span className={page.tag} title="OpenSpec capability">
           spec: {entry.spec}
         </span>
-        {entry.screen && <Link to={entry.screen.to}>See it on {entry.screen.label} →</Link>}
+        {entry.screen && <PageLink to={entry.screen.to}>See it on {entry.screen.label} →</PageLink>}
       </div>
     </article>
   );

@@ -1,6 +1,6 @@
 import { screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { renderWithProviders } from '../test/render';
+import { renderWithProviders } from '@maf/testing';
 import { CURRICULUM } from './curriculum';
 import { CurriculumPage } from './CurriculumPage';
 

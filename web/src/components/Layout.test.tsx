@@ -27,7 +27,7 @@ function render(installed: string[]) {
     <PluginsProvider modules={modules}>
       <App />
     </PluginsProvider>,
-    { session: makeSession('USER'), route: '/curriculum' },
+    { session: makeSession('USER'), route: '/chat' },
   );
 }
 
@@ -40,7 +40,7 @@ describe('main navigation', () => {
   it('links to no developer tool of its own: each one is a plugin (introduce-plugins 5o)', async () => {
     render([]);
 
-    await waitFor(() => expect(links()).toContain('Curriculum'));
+    await waitFor(() => expect(links()).toContain('Chat'));
     expect(links().filter((l) => l?.includes('(opens in a new tab)'))).toEqual([]);
   });
 

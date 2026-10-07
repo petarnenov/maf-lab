@@ -23,7 +23,7 @@ connect: billing relationships (`trace_billing_relationships`) and the code grap
 - HTTP contract between API and web: [`docs/http-api.md`](docs/http-api.md); the trace event format:
   [`docs/trace-events.md`](docs/trace-events.md); telemetry: [`docs/telemetry.md`](docs/telemetry.md); shared state:
   [`docs/shared-state.md`](docs/shared-state.md)
-- Screens: `/chat`, `/evals`, `/topology`, `/coverage`, `/curriculum`, and for admins `/admin/index` (plugin `index-admin`), `/admin/feedback`,
+- Screens: `/chat`, `/evals`, `/topology`, `/coverage`, `/curriculum` (plugin `curriculum`), and for admins `/admin/index` (plugin `index-admin`), `/admin/feedback`,
   `/admin/compliance`, `/admin/jev`, `/admin/a2a`; `/telemetry` while the `observability` plugin is installed
 
 ```mermaid
@@ -274,6 +274,7 @@ allows, `none` means the core alone (`make core`), otherwise a comma-separated l
 | `code` | mcp | installation | dev, qa | The lab's own source code as a domain: the codebase MCP server (search_codebase and the code-graph tools), its domain descriptor and routing, and the chat's Code snippets pane. |
 | `compliance` | a2a | tenant | dev, qa, stage, prod | The compliance reviewer: an A2A agent (two replicas behind /compliance) that reviews a large fee adjustment before a person is asked to confirm it, the client that consults it, and the audit screen (verify, browse and export the tenant's audit record). |
 | `conversation-history` | app | installation | dev, qa, stage, prod | The chat's conversation list: the caller's own conversations, searched and paged, renamed and deleted, beside the chat. Without it, a conversation is still reopened by its URL and a new one started from the chat's header. |
+| `curriculum` | app | installation | dev, qa | The curriculum map: where the concepts and rules of the 5-day Fullstack AI Engineer study plan are applied in this lab, each with the core files that implement it, the spec that states it and the screen that shows it. A web page only, with no server and no request. |
 | `index-admin` | app | installation | dev, qa, stage, prod | The index administration screen and its routes: a tenant admin indexes, checks the drift of and migrates the corpora the installed plugins declare, as admin jobs in the core's job store. Brings the indexing pipeline into the api. |
 | `insights` | app | installation | dev, qa | The Jev and intent statistics: how every Jev call site — intent, guardrail, relevance, routing and the answer check — behaved on the firm's chat turns over a window, read from the turns' core records. Numbers only. |
 | `mcp-inspector` | infra | installation | dev, qa | The MCP Inspector, listing the lab's MCP servers with a dev user's token: a dev and qa tool. |

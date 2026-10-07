@@ -16,7 +16,6 @@ const LINKS = [
   { to: '/coverage', label: 'Coverage' },
   { to: '/admin/feedback', label: 'Feedback review' },
   { to: '/admin/a2a', label: 'Agent to agent' },
-  { to: '/curriculum', label: 'Curriculum' },
 ];
 
 export function Layout() {

@@ -1,0 +1,8 @@
+schema = 1
+name = "curriculum"
+kind = "app"
+scope = "installation"
+environments = ["dev", "qa"]
+description = "The curriculum map: where the concepts and rules of the 5-day Fullstack AI Engineer study plan are applied in this lab, each with the core files that implement it, the spec that states it and the screen that shows it. A web page only, with no server and no request."
+progress = "None — a static screen; it loads at once"
+stopping = "None — a static screen with no request; nothing runs to stop"

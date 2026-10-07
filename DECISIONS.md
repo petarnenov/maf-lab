@@ -3614,6 +3614,31 @@ No package version moves in this change.
     probe reads the `[topology]` tables and the installed checks through it. Rejected: a narrower `TopologyNodes()`, a
     topology-shaped hole in a generic port.
 
+- **Part — (extract-curriculum; its letter, the next free one, is fixed at landing).**
+  - The curriculum map is the `curriculum` plugin (app, installation, dev and qa), the first with a web part only: no
+    `server/`, no `compose.yml`, no lb snippets. The tooling already treats each as optional (`plugins.py services`
+    returns none, `plugin_switch.sh` starts nothing). It contributes the `curriculum` route and the **Curriculum** link,
+    after the core's links, in the plugins' glob order (no `order` field).
+  - Its entries name core paths only (`src/`, `tests/`, `openspec/`), never `plugins/<x>/`, and its test asserts it, so
+    deleting any other plugin's folder cannot turn it red. The test still reads `web/src/App.tsx` as text (not an
+    import) for the routes a `screen` link may name, and checks each path and spec exists.
+  - No lesson-contribution mechanism in this change (a capability change, not a move; the reasoning of part F's
+    write confirmation). Each extraction removes the `screen` link to the page it takes out of the core, as insights
+    and observability did; one that lands after this change edits the curriculum plugin's content module
+    (`web/curriculum.ts` in its folder) for it.
+    Candidate for a later change: a VS Code-style opaque contribution (`extends`, keyed by the receiving plugin's
+    point name) through which each plugin adds its own lessons from its own folder, the core never naming curriculum.
+    Rejected now: that mechanism (new capability inside a move); links shown only while a matching route is live
+    (the test could no longer prove a link resolves, and it would bring back links the extractions removed).
+  - A plugin links another page of the app through `PageLink({to, children})` from `@maf/plugin-api`, a thin core
+    wrapper over react-router's `Link`, re-exported as `useApi` and `useUserKey` are. The core keeps owning routing;
+    navigation stays in the page, without a reload; a plugin still imports no react-router, and the boundary test is
+    unchanged. A plugins test proves that the navigation goes through the core's router and that the core sees the
+    route change: the click's default is prevented and the core's nav marks the target as the current page. A plain
+    `<a href>` in its place turns it red. Rejected: a plain `<a href>` (a full reload of the app, a behaviour change),
+    and letting plugins import react-router (reverses part C).
+  - The core's tests no longer use `/curriculum` as their neutral page: the layout test renders at `/chat`.
+
 ## 82. The stop-anything tests run on a fake clock (deterministic-stop-anything-tests, 2026-10-06)
 
 - **Why.** Three tests (`TaskCancelWatchTests.Disposed_it_stops_reading`,
