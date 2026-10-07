@@ -58,9 +58,9 @@ public sealed class RunRejoin(IRunStateStore runs, IDbContextFactory<MafDbContex
     private async Task<PersonQuestion?> QuestionAsync(Principal principal, string adjustmentId, RunState state, CancellationToken ct)
     {
         await using var context = await db.CreateDbContextAsync(ct);
-        var row = await context.PendingAdjustments.FirstOrDefaultAsync(p => p.Id == adjustmentId
+        var row = await context.PendingWrites.FirstOrDefaultAsync(p => p.Id == adjustmentId
             && p.UserId == principal.UserId && p.TenantId == principal.TenantId.Value
-            && p.Status == PendingAdjustmentStatus.AwaitingConfirmation, ct);
+            && p.Status == PendingWriteStatus.AwaitingConfirmation, ct);
         if (row is null)
         {
             return null;

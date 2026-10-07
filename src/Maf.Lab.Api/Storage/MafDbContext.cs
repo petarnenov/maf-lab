@@ -20,7 +20,7 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
     public DbSet<A2ATaskRow> A2ATasks => Set<A2ATaskRow>();
     public DbSet<A2APushConfigRow> A2APushConfigs => Set<A2APushConfigRow>();
     public DbSet<A2APushDeliveryRow> A2APushDeliveries => Set<A2APushDeliveryRow>();
-    public DbSet<PendingAdjustmentRow> PendingAdjustments => Set<PendingAdjustmentRow>();
+    public DbSet<PendingWriteRow> PendingWrites => Set<PendingWriteRow>();
     public DbSet<CoverageSnapshotRow> CoverageSnapshots => Set<CoverageSnapshotRow>();
     public DbSet<CoverageFileRow> CoverageFiles => Set<CoverageFileRow>();
     public DbSet<CoverageThresholdRow> CoverageThresholds => Set<CoverageThresholdRow>();
@@ -66,9 +66,9 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
         b.Entity<A2APushConfigRow>().HasKey(x => x.Id);
         b.Entity<A2APushConfigRow>().HasIndex(x => x.TaskId);
         b.Entity<A2APushDeliveryRow>().HasIndex(x => new { x.TaskId, x.At });
-        b.Entity<PendingAdjustmentRow>().HasKey(x => x.Id);
-        b.Entity<PendingAdjustmentRow>().HasIndex(x => new { x.TenantId, x.UserId, x.UpdatedAt });
-        b.Entity<PendingAdjustmentRow>().HasIndex(x => new { x.ConversationId, x.UpdatedAt });
+        b.Entity<PendingWriteRow>().HasKey(x => x.Id);
+        b.Entity<PendingWriteRow>().HasIndex(x => new { x.TenantId, x.UserId, x.UpdatedAt });
+        b.Entity<PendingWriteRow>().HasIndex(x => new { x.ConversationId, x.UpdatedAt });
         b.Entity<CoverageSnapshotRow>().HasKey(x => x.Id);
         b.Entity<CoverageSnapshotRow>().HasIndex(x => new { x.Kind, x.CreatedAt });
         b.Entity<CoverageSnapshotRow>().HasIndex(x => x.RunId);
@@ -196,11 +196,12 @@ public sealed class AuditRow
 
 /// <summary>An admin job (index, migrate). Shared by all api replicas; the owner keeps HeartbeatAt fresh while it runs.</summary>
 /// <summary>
-/// A proposal that has been made but not yet resolved. It lives here rather than in a replica's memory
-/// because the person who answers it may reach a different replica — or come back tomorrow.
-/// The signed state is what actually executes; this row is how the flow finds it again.
+/// A write proposed by any tool and not yet resolved (generalize-write-confirmation). It lives here rather than in a
+/// replica's memory because the person who answers it may reach a different replica — or come back tomorrow. The
+/// signed state is what actually executes; this row is how the core finds it again. The summary is the tool's own
+/// and the flow's data is the flow's own: the core reads neither.
 /// </summary>
-public sealed class PendingAdjustmentRow
+public sealed class PendingWriteRow
 {
     public required string Id { get; set; }
     public required string TenantId { get; set; }
@@ -218,23 +219,24 @@ public sealed class PendingAdjustmentRow
     /// <summary>When it stops being answerable. Only the signer knows it, so it is kept here too.</summary>
     public DateTime? ExpiresAt { get; set; }
     public required string Status { get; set; }
-    /// <summary>The compliance review this proposal is under, when there is one.</summary>
-    public string? ReviewTaskId { get; set; }
-    /// <summary>How many times the reviewer has asked for a justification. Never more than twice.</summary>
-    public int Questions { get; set; }
+    /// <summary>What the tool's flow keeps about the proposal (JSON), e.g. the review it is under. Never free text.</summary>
+    public string? FlowJson { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
 
 /// <summary>What has become of a proposal.</summary>
-public static class PendingAdjustmentStatus
+public static class PendingWriteStatus
 {
     public const string AwaitingConfirmation = "awaiting_confirmation";
-    public const string AwaitingJustification = "awaiting_justification";
+    /// <summary>The model was told to ask the person something first; their answer comes back as the tool's next call.</summary>
+    public const string AwaitingInput = "awaiting_input";
     public const string Applied = "applied";
     public const string Declined = "declined";
     public const string Refused = "refused";
     public const string Failed = "failed";
+    /// <summary>Past its expiry when an answer or a rejoin found it.</summary>
+    public const string Expired = "expired";
 }
 
 public sealed class AdminJobRow

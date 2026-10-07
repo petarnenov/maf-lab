@@ -78,7 +78,7 @@ public static partial class DatabaseInitializer
     /// lands in the same change as the model's new mapping, or the create pass would add an empty table under the old name
     /// while the rows sit under the new one (generalize-write-confirmation).
     /// </summary>
-    internal static readonly IReadOnlyList<(string From, string To)> RenamedTables = [];
+    internal static readonly IReadOnlyList<(string From, string To)> RenamedTables = [("PendingAdjustments", "PendingWrites")];
 
     /// <summary>
     /// Renames each table of <paramref name="renames"/> that still has its old name and not yet its new one, and drops the
@@ -323,8 +323,56 @@ public static partial class DatabaseInitializer
     };
 
     /// <summary>Idempotent data backfills for columns added later.</summary>
+    /// <summary>
+    /// The pending writes kept from before generalize-write-confirmation: a proposal waiting for a reviewer's question is
+    /// waiting for input, and the review's task id and question count move into the flow's own data, in the shape the fee
+    /// flow reads (<c>{reviewTaskId, questions}</c>). Idempotent, and a no-op on a database that never had the old columns.
+    /// </summary>
+    internal static async Task BackfillPendingWritesAsync(MafDbContext db, CancellationToken ct)
+    {
+        var columns = await TableColumnsAsync(db, "PendingWrites", ct);
+        if (!columns.Contains("Status"))
+        {
+            return;
+        }
+        await db.Database.ExecuteSqlRawAsync(
+            """UPDATE "PendingWrites" SET "Status" = 'awaiting_input' WHERE "Status" = 'awaiting_justification'""", ct);
+        if (columns.Contains("FlowJson") && columns.Contains("ReviewTaskId") && columns.Contains("Questions"))
+        {
+            await db.Database.ExecuteSqlRawAsync("""
+                UPDATE "PendingWrites"
+                SET "FlowJson" = json_object('reviewTaskId', "ReviewTaskId", 'questions', "Questions")
+                WHERE "FlowJson" IS NULL AND ("ReviewTaskId" IS NOT NULL OR "Questions" > 0)
+                """, ct);
+        }
+    }
+
+    private static async Task<HashSet<string>> TableColumnsAsync(MafDbContext db, string table, CancellationToken ct)
+    {
+        var connection = db.Database.GetDbConnection();
+        await db.Database.OpenConnectionAsync(ct);
+        try
+        {
+            var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            await using var command = connection.CreateCommand();
+            // The table name is a constant of this class, never a request's.
+            command.CommandText = $"PRAGMA table_info(\"{table}\")";
+            await using var reader = await command.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                columns.Add(reader.GetString(1));
+            }
+            return columns;
+        }
+        finally
+        {
+            await db.Database.CloseConnectionAsync();
+        }
+    }
+
     private static async Task BackfillAsync(MafDbContext db, CancellationToken ct)
     {
+        await BackfillPendingWritesAsync(db, ct);
         await db.Database.ExecuteSqlRawAsync("""
             UPDATE "Conversations"
             SET "LastActivityAt" = COALESCE((SELECT MAX(t."CreatedAt") FROM "Turns" t WHERE t."ConversationId" = "Conversations"."Id"), "CreatedAt")

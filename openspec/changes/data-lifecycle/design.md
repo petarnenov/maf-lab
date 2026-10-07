@@ -42,7 +42,7 @@ for any store registered without a lifecycle implementation, in the core as well
 | api SQLite: admin jobs | job metadata, no content | pseudonymise the user | delete | Art. 17 |
 | api SQLite: A2A tasks, push configs | task state, partner calls | delete the user's | delete | Art. 17 |
 | mcp-retrieval SQLite `/app-data/maf-lab-adjustments.db`: the applied-adjustments ledger (billing writes, `docker-compose.yml:169`) | confirmed fee adjustments | **kept**, user pseudonymised | **kept** under legal hold, then per schedule | Art. 17(3)(b): legal obligation for financial records |
-| api SQLite: `PendingAdjustments` | adjustments awaiting confirmation, with `UserId` | delete | delete | Art. 17 |
+| api SQLite: `PendingWrites` | adjustments awaiting confirmation, with `UserId` | delete | delete | Art. 17 |
 | api SQLite: `TestGenRuns`, coverage snapshots, files and thresholds | repository test-generation and coverage data, with the requesting user | pseudonymise the user | not tenant data (installation-scoped, dev and qa only) | Art. 17 |
 | api SQLite: break-glass grants (`adopt-company-idp`) | operator ids, reasons, times | keep: they are audit records | keep for the audit period | Art. 17(3)(b), (e) |
 | api SQLite: audit | who did what, no content | pseudonymise | kept for its legal period | Art. 17(3)(b), (e) |

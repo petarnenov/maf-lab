@@ -42,7 +42,7 @@ public sealed class MessageRetentionService(
         // follow its own, shorter retention.
         await ctx.Turns.Where(t => stale.Contains(t.ConversationId)).ExecuteDeleteAsync(ct);
         await ctx.Messages.Where(m => stale.Contains(m.ConversationId)).ExecuteDeleteAsync(ct);
-        await ctx.PendingAdjustments.Where(p => stale.Contains(p.ConversationId)).ExecuteDeleteAsync(ct);
+        await ctx.PendingWrites.Where(p => stale.Contains(p.ConversationId)).ExecuteDeleteAsync(ct);
         return await ctx.Conversations.Where(c => stale.Contains(c.Id)).ExecuteDeleteAsync(ct);
     }
 

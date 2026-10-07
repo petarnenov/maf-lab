@@ -44,14 +44,14 @@ public sealed class ConfirmationService(
         string? idempotencyKey, CancellationToken ct)
     {
         await using var context = await db.CreateDbContextAsync(ct);
-        var row = await context.PendingAdjustments.FirstOrDefaultAsync(p => p.Id == adjustmentId, ct);
+        var row = await context.PendingWrites.FirstOrDefaultAsync(p => p.Id == adjustmentId, ct);
 
         // A proposal belongs to the person it was put to. Anyone else is told only that there is nothing here.
         if (row is null
             || row.TenantId != principal.TenantId.Value
             || row.UserId != principal.UserId
             || row.ConversationId != conversationId
-            || row.Status != PendingAdjustmentStatus.AwaitingConfirmation)
+            || row.Status != PendingWriteStatus.AwaitingConfirmation)
         {
             return new ConfirmationOutcome.NotFound();
         }
@@ -68,7 +68,7 @@ public sealed class ConfirmationService(
 
         if (!approve)
         {
-            await ResolveAsync(row.Id, PendingAdjustmentStatus.Declined, ct);
+            await ResolveAsync(row.Id, PendingWriteStatus.Declined, ct);
             return new ConfirmationOutcome.Rejected(row.Id);
         }
 
@@ -105,14 +105,14 @@ public sealed class ConfirmationService(
         if (result.IsError == true || result.StructuredContent is not { } structured)
         {
             await flow.RecordAsync(principal, conversationId, row.TurnId, FeeAdjustmentFlow.Applied, summary, "error", 0, ct);
-            await ResolveAsync(row.Id, PendingAdjustmentStatus.Failed, ct);
+            await ResolveAsync(row.Id, PendingWriteStatus.Failed, ct);
             return new ConfirmationOutcome.Failed(Text(result));
         }
 
         var outcome = JsonSerializer.Deserialize<FeeAdjustmentOutcomeDto>(structured.GetRawText(), Json)
             ?? new FeeAdjustmentOutcomeDto("applied", null, "Applied.");
         await flow.RecordAsync(principal, conversationId, row.TurnId, FeeAdjustmentFlow.Applied, summary, outcome.Status, 0, ct);
-        await ResolveAsync(row.Id, PendingAdjustmentStatus.Applied, ct);
+        await ResolveAsync(row.Id, PendingWriteStatus.Applied, ct);
         return new ConfirmationOutcome.Applied(outcome);
     }
 
@@ -156,7 +156,7 @@ public sealed class ConfirmationService(
     private async Task ResolveAsync(string id, string status, CancellationToken ct)
     {
         await using var context = await db.CreateDbContextAsync(ct);
-        var row = await context.PendingAdjustments.FirstOrDefaultAsync(p => p.Id == id, ct);
+        var row = await context.PendingWrites.FirstOrDefaultAsync(p => p.Id == id, ct);
         if (row is null)
         {
             return;

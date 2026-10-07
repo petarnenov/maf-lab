@@ -37,6 +37,8 @@ one commit (never the entry alone); B.5 switches `ConfirmationCard` and its cons
 - [ ] B.4 Billing: `FeeAdjustmentFlow` on the seam through the ports. It owns `SummarySchema` and implements
       `IStatesConfirmationFacts`. Its server sends the `WriteConfirmationKeys`. Its web renderer for
       `propose_fee_adjustment`. The fee rules' tests pass unchanged.
+      One assertion in the flow's test pins the `FlowJson` shape it reads (`{reviewTaskId, questions}`) to the shape
+      B.1's backfill writes, so the migration and the reader cannot drift.
 - [ ] B.5 Web consumers: `useChatStream.ts`, `chatReducer.ts` (`interruptToConfirmation`), `ConfirmationCard.test.tsx`
       and `curriculum.ts` move to `PendingWrite`.
 - [ ] B.6 Eval: `EvalAgentHost` and `ConfirmationSuite` through the seam and `IStatesConfirmationFacts`.

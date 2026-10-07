@@ -107,7 +107,7 @@ public class PendingProposalApiTests
         await using (var scope = api.Services.CreateAsyncScope())
         {
             var db = await scope.ServiceProvider.GetRequiredService<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(Ct);
-            var row = await db.PendingAdjustments.SingleAsync(Ct);
+            var row = await db.PendingWrites.SingleAsync(Ct);
             row.ExpiresAt = DateTime.UtcNow.AddMinutes(-1);
             await db.SaveChangesAsync(Ct);
         }

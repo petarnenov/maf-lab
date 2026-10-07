@@ -107,7 +107,7 @@ public class InjectionA2ATests
         // Nothing is written by a review, whatever it said: an approval only asks the advisor.
         await using var scope = api.Services.CreateAsyncScope();
         var db = await scope.ServiceProvider.GetRequiredService<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(Ct);
-        var pending = await db.PendingAdjustments.ToListAsync(Ct);
+        var pending = await db.PendingWrites.ToListAsync(Ct);
 
         // Every proposal on record is the one this system made, about the account the advisor named — the
         // summary is what a person would be shown, so it is where an account the verdict invented would surface.
@@ -148,9 +148,9 @@ public class InjectionA2ATests
 
         await using var scope = api.Services.CreateAsyncScope();
         var db = await scope.ServiceProvider.GetRequiredService<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(Ct);
-        var pending = await db.PendingAdjustments.ToListAsync(Ct);
+        var pending = await db.PendingWrites.ToListAsync(Ct);
         Assert.DoesNotContain(pending, p => p.Summary.Contains("9999", StringComparison.Ordinal));
-        Assert.All(pending, p => Assert.Equal(PendingAdjustmentStatus.Failed, p.Status));
+        Assert.All(pending, p => Assert.Equal(PendingWriteStatus.Failed, p.Status));
     }
 
     [Fact]
@@ -173,8 +173,8 @@ public class InjectionA2ATests
         Assert.Contains(await AuditAsync(api), a => a.ToolName == "fee.adjustment.reviewed" && a.Outcome == "failed");
         await using var scope = api.Services.CreateAsyncScope();
         var db = await scope.ServiceProvider.GetRequiredService<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(Ct);
-        var pending = await db.PendingAdjustments.ToListAsync(Ct);
-        Assert.All(pending, p => Assert.Equal(PendingAdjustmentStatus.Failed, p.Status));
+        var pending = await db.PendingWrites.ToListAsync(Ct);
+        Assert.All(pending, p => Assert.Equal(PendingWriteStatus.Failed, p.Status));
         Assert.DoesNotContain(pending, p => p.Summary.Contains("9999", StringComparison.Ordinal));
 
         var trace = ApiFactory.TracesOf(events).ToList();

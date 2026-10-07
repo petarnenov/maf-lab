@@ -68,11 +68,11 @@ public static class HistoryEndpoints
                 return Results.NotFound();
             }
 
-            var row = await context.PendingAdjustments
+            var row = await context.PendingWrites
                 .Where(p => p.ConversationId == id
                     && p.UserId == principal.UserId
                     && p.TenantId == principal.TenantId.Value
-                    && p.Status == PendingAdjustmentStatus.AwaitingConfirmation)
+                    && p.Status == PendingWriteStatus.AwaitingConfirmation)
                 .OrderByDescending(p => p.UpdatedAt)
                 .FirstOrDefaultAsync(ct);
 

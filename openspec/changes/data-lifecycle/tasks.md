@@ -12,7 +12,7 @@ No decision-engine call is added or changed, so the Jev review checklist does no
   - Redis keys;
   - `acl` user ids;
   - the mcp-retrieval adjustments ledger (pseudonymised and kept);
-  - `PendingAdjustments`, test-generation and coverage rows;
+  - `PendingWrites`, test-generation and coverage rows;
   - break-glass grants;
   - Keycloak on a direct erasure;
   - the 14-day log rotation.

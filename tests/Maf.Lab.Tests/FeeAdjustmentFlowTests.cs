@@ -119,7 +119,7 @@ public class FeeAdjustmentFlowTests
 
         Assert.Null(ApiFactory.InterruptOf(events));
         Assert.Contains(await AuditAsync(api), a => a.ToolName == "fee.adjustment.reviewed" && a.Outcome == "refused");
-        await AssertNothingPendingAsync(api, PendingAdjustmentStatus.Refused);
+        await AssertNothingPendingAsync(api, PendingWriteStatus.Refused);
     }
 
     [Fact]
@@ -166,10 +166,13 @@ public class FeeAdjustmentFlowTests
 
         await using var scope = api.Services.CreateAsyncScope();
         var db = await scope.ServiceProvider.GetRequiredService<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(Ct);
-        var pending = await db.PendingAdjustments.SingleAsync(Ct);
-        Assert.Equal(PendingAdjustmentStatus.AwaitingJustification, pending.Status);
-        Assert.NotNull(pending.ReviewTaskId);
-        Assert.Equal(1, pending.Questions);
+        var pending = await db.PendingWrites.SingleAsync(Ct);
+        Assert.Equal(PendingWriteStatus.AwaitingInput, pending.Status);
+        // The shape the store's backfill writes for proposals kept from before the seam: the two must not drift.
+        var review = System.Text.Json.Nodes.JsonNode.Parse(pending.FlowJson!)!.AsObject();
+        Assert.Equal(["reviewTaskId", "questions"], review.Select(p => p.Key));
+        Assert.False(string.IsNullOrEmpty(review["reviewTaskId"]!.GetValue<string>()));
+        Assert.Equal(1, review["questions"]!.GetValue<int>());
     }
 
     [Fact]
@@ -247,7 +250,7 @@ public class FeeAdjustmentFlowTests
         // Whatever the verdict's words say, only the tool makes proposals — and it was called once.
         await using var scope = api.Services.CreateAsyncScope();
         var db = await scope.ServiceProvider.GetRequiredService<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(Ct);
-        var pending = await db.PendingAdjustments.ToListAsync(Ct);
+        var pending = await db.PendingWrites.ToListAsync(Ct);
         Assert.Single(pending);
         Assert.Contains("A-1042", pending[0].Summary);
         Assert.DoesNotContain("B-200", pending[0].Summary);
@@ -286,6 +289,6 @@ public class FeeAdjustmentFlowTests
     {
         await using var scope = api.Services.CreateAsyncScope();
         var db = await scope.ServiceProvider.GetRequiredService<IDbContextFactory<MafDbContext>>().CreateDbContextAsync(Ct);
-        Assert.All(await db.PendingAdjustments.ToListAsync(Ct), p => Assert.Equal(expected, p.Status));
+        Assert.All(await db.PendingWrites.ToListAsync(Ct), p => Assert.Equal(expected, p.Status));
     }
 }
