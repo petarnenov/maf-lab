@@ -152,5 +152,5 @@
 }
 
 .visuallyHidden {
-  composes: visuallyHidden from '../../shared/VisuallyHidden.module.css';
+  composes: visuallyHidden from '@maf/shared/VisuallyHidden.module.css';
 }
