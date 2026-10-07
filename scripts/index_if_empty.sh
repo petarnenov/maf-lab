@@ -48,8 +48,13 @@ graph_if_empty() {
 }
 
 if [[ "${1:-}" == "--source" ]]; then
-  # One plugin's part: its plugin.mk runs this only while the plugin's folder exists.
+  # One plugin's part: its plugin.mk runs this while the plugin's folder exists, and it indexes only while the plugin is
+  # installed (MAF_PLUGINS, as make resolved it), since its stores and server are started only then.
   [[ -n "${2:-}" ]] || { echo "usage: index_if_empty.sh [--source NAME]" >&2; exit 2; }
+  if ! python3 "$ROOT/scripts/plugins.py" resolve 2>/dev/null | grep -qx "$2"; then
+    echo "✓ $2 is not installed — skipping its corpus"
+    exit 0
+  fi
   index_domain "${Qdrant__Collection:?its plugin.mk names the collection}" "${Indexing__CorpusRoot:?its plugin.mk names the corpus}" "${Qdrant__MetaCollection:?its plugin.mk names the meta collection}"
   [[ "${3:-}" == "--no-graph" ]] || graph_if_empty "$2"
   exit 0
