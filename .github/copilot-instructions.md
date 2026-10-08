@@ -61,6 +61,7 @@ MCP note: workspace MCP server config lives in `.mcp.json` (Playwright server vi
 | `/a2a` | prefix | `api` |
 | `/mcp` | exact | `mcp-retrieval` |
 | `/portfolio/mcp` | exact | `mcp-portfolio` at `/mcp` |
+| `/bulgarian-history/mcp` | exact | `mcp-bulgarian-history` at `/mcp` |
 | `/code/mcp` | exact | `mcp-code` at `/mcp` |
 | `/compliance` | prefix | `compliance` |
 | `/v1/traces` | prefix | `otel-collector` |

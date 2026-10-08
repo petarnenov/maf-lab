@@ -2,8 +2,8 @@
 
 [![CI](https://github.com/petarnenov/maf-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/petarnenov/maf-lab/actions/workflows/ci.yml)
 
-A learning lab: a RAG-backed assistant for a TAMP, over three domains — **billing**, **portfolio** and the lab's own
-**codebase** — each served by its own **MCP server** with its own retrieval **tool** (`search_documents`,
+A learning lab: a RAG-backed assistant for a TAMP, over four domains — **billing**, **portfolio**, the lab's own
+**codebase** and the **history of Bulgaria** — each served by its own **MCP server** with its own retrieval **tool** (`search_documents`,
 `search_portfolio_documents`, `search_codebase`) over its own **multi-tenant Qdrant** collection, consumed by a **Microsoft Agent Framework** agent, with a React chat UI, an eval
 harness and tested prompt-injection defences. TypeSafe's Jev decides which domains a question belongs to, and the
 monitor shows where a turn crosses from one into the other. Beside the vector store, a **Neo4j** graph answers how things
@@ -46,6 +46,7 @@ flowchart TB
     billing["💳 mcp-retrieval ×2<br/>billing<br/>search_documents · trace_billing_relationships"]
     portfolio["📈 mcp-portfolio ×2<br/>portfolio<br/>search_portfolio_documents"]
     code["🧩 mcp-code<br/>codebase<br/>search_codebase · ask_codebase<br/>trace_code_symbol · change_impact"]
+    history["📜 mcp-bulgarian-history ×2<br/>bulgarian-history<br/>search_bulgarian_history"]
   end
 
   subgraph backing["State and models"]
@@ -68,7 +69,7 @@ flowchart TB
   copilot -- "AG-UI · the caller's token" --> lb
   lb -- "/api · /dev · /a2a" --> api
   lb -- "/compliance" --> compliance
-  lb -- "/mcp · /portfolio/mcp · /code/mcp" --> mcp
+  lb -- "/mcp · /portfolio/mcp · /code/mcp · /bulgarian-history/mcp" --> mcp
   api -- "A2A" --> compliance & testagent
   testagent -- "run tests" --> runner
   api -- "coverage · verify" --> runner
@@ -86,7 +87,7 @@ flowchart TB
   classDef model fill:#f3e8ff,stroke:#a855f7,color:#3b0764
   classDef ext fill:#f1f5f9,stroke:#64748b,color:#0f172a
   class lb entry
-  class web,copilot,api,compliance,testagent,runner,billing,portfolio,code svc
+  class web,copilot,api,compliance,testagent,runner,billing,portfolio,code,history svc
   class qdrant,neo4j,sqlite,redis store
   class ollama,ollamabatch,cloud,jev model
   class clients,obs ext
@@ -94,7 +95,7 @@ flowchart TB
   class app,mcp,backing group
 ```
 
-Everything user- and agent-facing goes through **one entry point on port 7171**. api, mcp-retrieval, mcp-portfolio and
+Everything user- and agent-facing goes through **one entry point on port 7171**. api, mcp-retrieval, mcp-portfolio, mcp-bulgarian-history and
 compliance run two replicas each, mcp-code and copilot-runtime one (`X-Instance` response header shows which one answered).
 test-agent and coverage-runner run one each and have no route of their own: the api reaches them inside the compose
 network. The balancer also serves Jaeger at `/jaeger` and takes the browser's OTLP traces at `/v1/traces`. Besides
@@ -127,6 +128,7 @@ The balancer's routes, as `compose/lb/nginx.conf` declares them:
 | `/a2a` | prefix | `api` |
 | `/mcp` | exact | `mcp-retrieval` |
 | `/portfolio/mcp` | exact | `mcp-portfolio` at `/mcp` |
+| `/bulgarian-history/mcp` | exact | `mcp-bulgarian-history` at `/mcp` |
 | `/code/mcp` | exact | `mcp-code` at `/mcp` |
 | `/compliance` | prefix | `compliance` |
 | `/v1/traces` | prefix | `otel-collector` |
@@ -181,19 +183,20 @@ make help                  # every target
 |---|---|
 | `make all` | Start everything: build, run, wait for health, index if empty (default) |
 | `make help` | List the targets |
-| `make up` | Build and start the stack (replicas via API_REPLICAS/MCP_REPLICAS/PORTFOLIO_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy |
+| `make up` | Build and start the stack (replicas via API_REPLICAS/MCP_REPLICAS/PORTFOLIO_REPLICAS/BULGARIAN_HISTORY_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy |
 | `make down` | Stop the stack (data volumes are kept) |
 | `make restart` | Stop and start the stack |
 | `make ps` | Show services, state and health |
 | `make logs` | Follow logs (SERVICE=api to narrow) |
 | `make clean` | Remove the stack WITH volumes (index, conversations) and build outputs; asks unless FORCE=1 |
 | `make infra` | Start only the indexer's infrastructure (Qdrant, Neo4j, both Ollama instances + the embedding model) and wait until healthy |
-| `make index` | Index both domains' corpora and the codebase, then build the graph (unchanged documents are skipped) |
+| `make index` | Index all three domains' corpora and the codebase, then build the graph (unchanged documents are skipped) |
 | `make graph` | Build the Neo4j graph: billing relationships and the code graph (unchanged nodes are not rewritten) |
 | `make neo4j-chunks` | Spike: copy the billing and portfolio chunks from Qdrant into Neo4j for eval-retrieval-backends |
 | `make index-portfolio` | Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only |
+| `make index-bulgarian-history` | Index the Bulgarian history corpus (data-bulgarian-history/ → maf_bulgarian_history_chunks) only |
 | `make index-code` | Index the repository itself (→ maf_code_chunks, served by mcp-code) only; unchanged files are skipped |
-| `make reindex` | Re-embed every document of both domains (--force) |
+| `make reindex` | Re-embed every document of the three domains and the codebase (--force) |
 | `make drift` | Report stale documents: the index and the billing graph against the source |
 | `make rebuild-index` | Re-create the collection with every configured dense vector and re-index (asks unless FORCE=1) |
 | `make migrate` | Fill a provisioned dense vector with its configured model (TO=dense_v3) |
@@ -439,7 +442,7 @@ question inside the domain (`Jev:MinInDomain`, 0.2), so "how do I cook carbonara
 The intent event shows all of it, e.g. "Intent Other (jev 0.99, outside the domain 0.00, 282 ms)".
 
 **Domains:** the same Jev request asks, per domain, whether the question belongs to it: billing (`in_domain`),
-portfolio (`in_portfolio`) and the codebase (`in_codebase`). A turn loads only the tools of its domains in scope. A
+portfolio (`in_portfolio`), the codebase (`in_codebase`) and the history of Bulgaria (`in_bulgarian_history`). Its corpus is shared only, so every firm reads it whole. A turn loads only the tools of its domains in scope. A
 follow-up that Jev puts in no domain keeps its conversation's domains, and with no verdict every server is loaded. A domain at or above `Jev:MinDomainScope` (0.5) is in scope, and two in scope means the
 question **crosses** the boundary: a procedural question then searches both domains' documentation, each on its own
 server, before the model's first call. The trace records a `domain` event (the verdict), `domain`/`server` on every tool
@@ -455,7 +458,7 @@ judge and the answer check. The client keeps its connection alive between reques
 `Jev:PooledConnectionLifetimeMinutes` (10), so a DNS change is still picked up.
 - **Warm-up:** once a service has started, it sends one fixed-text request (`Jev:WarmUp`, on; `Jev:WarmUpTimeoutSeconds`, 5).
   This way the first turn does not pay for TLS set-up.
-  - Every api, mcp-retrieval, mcp-portfolio and mcp-code replica does this.
+  - Every api, mcp-retrieval, mcp-portfolio, mcp-code and mcp-bulgarian-history replica does this.
   - It runs in the background, is skipped without a key, and is not counted in the Jev statistics.
 - **Retries:** a transient failure is retried `Jev:MaxRetries` (1) times, after `Jev:RetryDelayMs` (100, doubled per
   retry) or the server's `Retry-After`. A transient failure is no response, 408, 429 or a 5xx.
@@ -494,7 +497,7 @@ Each opens ready to use — nothing to type:
 | Inspector | URL | What is already there |
 |---|---|---|
 | [A2A Inspector](https://github.com/a2aproject/a2a-inspector) | http://localhost:7172 | the assistant's card URL and a fresh partner token (`acme-portal`); press **Connect**. Change the URL to `http://localhost:7171/compliance/.well-known/agent-card.json` and the token switches to one for the compliance agent |
-| [MCP Inspector](https://github.com/modelcontextprotocol/inspector) | http://localhost:7173 | "maf-lab billing", "maf-lab portfolio" and "maf-lab code", each with a dev token for `adam` (ADVISOR, firm-a, set by `LAB_USER_ID`/`LAB_FIRM_ID`/`LAB_ROLE`); switch one on |
+| [MCP Inspector](https://github.com/modelcontextprotocol/inspector) | http://localhost:7173 | "maf-lab billing", "maf-lab portfolio", "maf-lab code" and "maf-lab bulgarian history", each with a dev token for `adam` (ADVISOR, firm-a, set by `LAB_USER_ID`/`LAB_FIRM_ID`/`LAB_ROLE`); switch one on |
 | [Redis Insight](https://redis.io/insight/) | http://localhost:7174 | the `maf-lab` database |
 | [Neo4j Browser](https://neo4j.com/docs/browser/) | http://localhost:7175 | the graph store; connect to `bolt://localhost:7687` as `neo4j` with `NEO4J_PASSWORD` (dev default `maf-lab-dev-graph`) |
 
@@ -512,7 +515,7 @@ servers you add only until its container restarts.
 
 ## Local development (without the balancer)
 
-`make dev` bypasses the balancer: web on :5174 (Vite proxies `/api` and `/dev` to :5080), api on :5080, MCP servers on :5090 (billing), :5091 (portfolio) and :5092 (codebase),
+`make dev` bypasses the balancer: web on :5174 (Vite proxies `/api` and `/dev` to :5080), api on :5080, MCP servers on :5090 (billing), :5091 (portfolio), :5092 (codebase) and :5093 (Bulgarian history),
 with Qdrant, Neo4j and both Ollama instances from compose (the compose app services are stopped first); query
 embeddings go to :11435 and document embeddings to :11436 (`Models__BatchOllamaEndpoint`). The manual equivalent:
 
@@ -528,11 +531,12 @@ dotnet run --project src/Maf.Lab.Indexing                     # index data/ (ind
 dotnet run --project src/Maf.Lab.Retrieval                    # billing MCP server on :5090
 dotnet run --project src/Maf.Lab.Portfolio                    # portfolio MCP server on :5091
 dotnet run --project src/Maf.Lab.CodeSearch                   # codebase MCP server on :5092 (make index-code first)
+dotnet run --project src/Maf.Lab.BulgarianHistory             # Bulgarian history MCP server on :5093 (make index-bulgarian-history first)
 dotnet run --project src/Maf.Lab.Api                          # agent host on :5080
 cd web && npm install && npm run dev                          # UI on :5174
 ```
 
-VS Code: the compound launch **"api + web (with mcp-retrieval and mcp-portfolio)"** starts all four (not the codebase server: run `src/Maf.Lab.CodeSearch` by hand); tasks cover `compose up`, `index`,
+VS Code: the compound launch **"api + web (with mcp-retrieval, mcp-portfolio and mcp-bulgarian-history)"** starts all five (not the codebase server: run `src/Maf.Lab.CodeSearch` by hand); tasks cover `compose up`, `index`,
 `eval` and tests.
 
 Switch the model provider by configuration only, e.g. `Models__Provider=openai Models__OpenAIApiKey=… Models__ChatModel=gpt-4.1-mini`
@@ -620,7 +624,7 @@ dotnet run --project src/Maf.Lab.Eval -- --import-feedback --suite retrieval
 Evals run **on demand**, not on every commit. They are **required** before merging any change to:
 
 - the **system prompt** (`src/Maf.Lab.Api/Prompts/*`) → `selection`, `generation`, `injection`
-- a **tool description or schema** (`src/Maf.Lab.{Retrieval,Portfolio,CodeSearch}/Tools/*`) → `selection`
+- a **tool description or schema** (`src/Maf.Lab.{Retrieval,Portfolio,CodeSearch,BulgarianHistory}/Tools/*`) → `selection`
 - the **model** (chat or embedding, `Models:*`) → `all`
 - the **tool set** (adding/removing a tool) → `selection`, `injection`
 - the **chunking or retrieval configuration** (chunkers, `Indexing:*`, `Retrieval:*`, BM25) → `retrieval`, `generation`

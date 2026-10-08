@@ -57,6 +57,14 @@ public class OutOfScopeTests
     }
 
     [Fact]
+    public void Both_replies_name_the_history_of_Bulgaria()
+    {
+        // add-bulgarian-history-domain: the refusal says what is answered, and that now includes Bulgaria's past.
+        Assert.Contains("history of Bulgaria", OutOfScope.ReplyEnglish);
+        Assert.Contains("историята на България", OutOfScope.ReplyBulgarian);
+    }
+
+    [Fact]
     public async Task A_follow_up_outside_every_domain_is_left_to_the_model()
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel());

@@ -20,6 +20,7 @@
     <ProjectReference Include="..\..\src\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />
     <ProjectReference Include="..\..\src\Maf.Lab.Retrieval\Maf.Lab.Retrieval.csproj" />
     <ProjectReference Include="..\..\src\Maf.Lab.Portfolio\Maf.Lab.Portfolio.csproj" />
+    <ProjectReference Include="..\..\src\Maf.Lab.BulgarianHistory\Maf.Lab.BulgarianHistory.csproj" />
     <ProjectReference Include="..\..\src\Maf.Lab.CodeSearch\Maf.Lab.CodeSearch.csproj" />
     <ProjectReference Include="..\..\src\Maf.Lab.Api\Maf.Lab.Api.csproj" />
     <ProjectReference Include="..\..\src\Maf.Lab.TestGen\Maf.Lab.TestGen.csproj" />

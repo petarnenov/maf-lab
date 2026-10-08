@@ -30,7 +30,18 @@ describe('category colours', () => {
     expect(defined).toContain(token(kindColor(kind)));
   });
 
-  it.each(['billing', 'portfolio', undefined])('domain %s resolves to a theme token', (domain) => {
-    expect(defined).toContain(token(domainColor(domain)));
+  it.each(['billing', 'portfolio', 'codebase', 'bulgarian-history', undefined])(
+    'domain %s resolves to a theme token',
+    (domain) => {
+      expect(defined).toContain(token(domainColor(domain)));
+    },
+  );
+
+  it('gives the Bulgarian history domain a colour of its own', () => {
+    const own = domainColor('bulgarian-history');
+    expect(own).not.toBe(domainColor(undefined));
+    for (const other of ['billing', 'portfolio', 'codebase']) {
+      expect(own).not.toBe(domainColor(other));
+    }
   });
 });

@@ -67,6 +67,25 @@ public sealed partial class FakeJev : HttpMessageHandler
             System.Text.RegularExpressions.RegexOptions.IgnoreCase) ? 0.9 : 0.0;
 
     /// <summary>
+    /// The Bulgarian history domain question's answer (<c>in_bulgarian_history</c>). Default:
+    /// <see cref="BulgarianHistoryWords"/> — high for questions naming Bulgaria's past, zero otherwise — so no earlier test
+    /// becomes a history crossing by accident.
+    /// </summary>
+    public Func<string, double>? BulgarianHistory { get; set; }
+
+    /// <summary>
+    /// Questions naming Bulgaria's past — its history, an uprising, a ruler, the Christianisation, the unification, the
+    /// liberation, the revival, the Ottoman or Byzantine rule — in English, Bulgarian or Latin-script Bulgarian count as
+    /// the Bulgarian history domain's. Deliberately narrow: "history" alone is not one of them.
+    /// </summary>
+    public static double BulgarianHistoryWords(string question) =>
+        BulgarianHistoryVocabulary().IsMatch(question) ? 0.9 : 0.0;
+
+    [GeneratedRegex(@"\b(history of bulgaria|bulgarian history|uprising|simeon|saedinenie\w*|osmansk\w*|khan|byzantium)\b|(?<!\p{L})(въстани\p{L}*|покръстван\p{L}*|симеон\p{L}*|съединение\p{L}*|освобождение\p{L}*|възраждане\p{L}*|османск\p{L}*|цар|царя|царят|хан|византи\p{L}*)(?!\p{L})",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex BulgarianHistoryVocabulary();
+
+    /// <summary>
     /// What every screening Noul (<c>guard_*</c>) is answered with, given the screened text and the question id. Null —
     /// the default — answers 0, so a test that is not about the content guard never trips it.
     /// </summary>
@@ -233,6 +252,13 @@ public sealed partial class FakeJev : HttpMessageHandler
                 if ((Codebase ?? (InDomain is null ? null : CodebaseWords)) is { } codebase)
                 {
                     answers[id] = new { type = "noul", noul = codebase(question) };
+                }
+            }
+            else if (id == "in_bulgarian_history")
+            {
+                if ((BulgarianHistory ?? (InDomain is null ? null : BulgarianHistoryWords)) is { } history)
+                {
+                    answers[id] = new { type = "noul", noul = history(question) };
                 }
             }
             else if (id.StartsWith("answer_", StringComparison.Ordinal))

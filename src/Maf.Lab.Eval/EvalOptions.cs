@@ -14,6 +14,8 @@ public sealed class EvalOptions
     public string PortfolioMcpEndpoint { get; set; } = "";
     /// <summary>The codebase MCP server (add-codebase-domain); empty = host it in-process on a loopback port.</summary>
     public string CodeMcpEndpoint { get; set; } = "";
+    /// <summary>The Bulgarian history MCP server (add-bulgarian-history-domain); empty = host it in-process on a loopback port.</summary>
+    public string BulgarianHistoryMcpEndpoint { get; set; } = "";
     /// <summary>Collection indexed with contextual retrieval on, for the contextual variant.</summary>
     public string ContextualCollection { get; set; } = "maf_chunks_ctx";
     /// <summary>suite → metric → minimum value. Thresholds are configuration, not code.</summary>

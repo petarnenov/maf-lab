@@ -288,7 +288,7 @@ public class GraphStoreTests
     }
 
     private static IEnumerable<string> ProductAssemblies() =>
-        new[] { "Maf.Lab.Domain", "Maf.Lab.Retrieval", "Maf.Lab.Api", "Maf.Lab.Indexing", "Maf.Lab.Eval", "Maf.Lab.CodeSearch", "Maf.Lab.Portfolio" }
+        new[] { "Maf.Lab.Domain", "Maf.Lab.Retrieval", "Maf.Lab.Api", "Maf.Lab.Indexing", "Maf.Lab.Eval", "Maf.Lab.CodeSearch", "Maf.Lab.Portfolio", "Maf.Lab.BulgarianHistory" }
             .Select(n => Path.Combine(AppContext.BaseDirectory, n + ".dll"));
 
     /// <summary>Calls that run Cypher: the driver's query and session entry points, and anything on a session or transaction.</summary>

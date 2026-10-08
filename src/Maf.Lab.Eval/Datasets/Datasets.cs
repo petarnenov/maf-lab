@@ -30,7 +30,7 @@ public sealed record ConfirmationCase(string Id, string Question, string Account
 
 /// <param name="Forces">Whether the classifier should force search_documents for this question.</param>
 /// <param name="Split">"design" when the case informed the classifier's thresholds, "holdout" when it did not.</param>
-/// <param name="Expected">billing, portfolio, both (the question crosses the boundary) or none.</param>
+/// <param name="Expected">billing, portfolio, codebase, bulgarian-history, both (the question crosses the boundary), a "+"-joined crossing, or none.</param>
 public sealed record DomainCase(string Id, string Question, string Expected, string Language, string Split);
 
 public sealed record IntentCase(string Id, string Question, bool Forces, string Category, string Language, string Split);
@@ -117,9 +117,9 @@ public static class DatasetLoader
             Maf.Lab.Domain.Portfolio.PortfolioTools.Search, Maf.Lab.Domain.Portfolio.PortfolioTools.GetPortfolio,
             Maf.Lab.Domain.Portfolio.PortfolioTools.AumHistory, Maf.Lab.Domain.Portfolio.PortfolioTools.ListAccounts,
             Maf.Lab.Domain.Code.CodeTools.Search, Maf.Lab.Domain.Graph.GraphTools.TraceBilling, Maf.Lab.Domain.Graph.GraphTools.TraceCodeSymbol,
-            Maf.Lab.Domain.Graph.GraphTools.ChangeImpact];
+            Maf.Lab.Domain.Graph.GraphTools.ChangeImpact, Maf.Lab.Domain.BulgarianHistory.BulgarianHistoryTools.Search];
     public static readonly string[] SelectionCategories =
-        ["obvious-docs", "obvious-data", "boundary", "negative", "feedback", "portfolio", "cross-domain", "codebase", "graph"];
+        ["obvious-docs", "obvious-data", "boundary", "negative", "feedback", "portfolio", "cross-domain", "codebase", "graph", "bulgarian-history"];
 
     public static IReadOnlyList<SelectionCase> Selection(string root) => Load(root, "selection.jsonl", (e, where) =>
     {
@@ -205,14 +205,14 @@ public static class DatasetLoader
     });
 
     /// <summary>
-    /// One domain, <c>none</c>, <c>both</c> (billing and portfolio, as the dataset has always said it), or several domains
-    /// joined with "+" in the trace's order, e.g. <c>billing+codebase</c> (add-codebase-domain).
+    /// One domain (billing, portfolio, codebase or bulgarian-history), <c>none</c>, <c>both</c> (billing and portfolio, as the dataset has always said it), or several domains
+    /// joined with "+" in the trace's order, e.g. <c>billing+codebase</c> (add-codebase-domain) or <c>billing+bulgarian-history</c> (add-bulgarian-history-domain).
     /// </summary>
-    public static readonly string[] DomainExpectations = ["billing", "portfolio", "codebase", "both", "none"];
+    public static readonly string[] DomainExpectations = ["billing", "portfolio", "codebase", "bulgarian-history", "both", "none"];
 
     public static bool IsDomainExpectation(string expected) =>
         DomainExpectations.Contains(expected)
-        || expected.Split('+') is { Length: > 1 } parts && parts.All(p => p is "billing" or "portfolio" or "codebase") && parts.Distinct().Count() == parts.Length;
+        || expected.Split('+') is { Length: > 1 } parts && parts.All(p => p is "billing" or "portfolio" or "codebase" or "bulgarian-history") && parts.Distinct().Count() == parts.Length;
 
     /// <summary>Questions for Jev's domain verdict alone, each labelled with the domains it belongs to.</summary>
     public static IReadOnlyList<DomainCase> Domain(string root) => Load(root, "domain.jsonl", (e, where) =>

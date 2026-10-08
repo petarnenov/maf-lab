@@ -38,6 +38,7 @@ BASE_URL      ?= http://localhost:7171
 API_REPLICAS  ?= 2
 MCP_REPLICAS  ?= 2
 PORTFOLIO_REPLICAS ?= 2
+BULGARIAN_HISTORY_REPLICAS ?= 2
 COMPLIANCE_REPLICAS ?= 2
 CHAT_MODEL    ?= gpt-oss:120b
 SUITE         ?= all
@@ -79,6 +80,8 @@ HOST_ENV := Models__OllamaEndpoint=http://localhost:11435 Models__OllamaNumThrea
 	Neo4j__Uri=bolt://localhost:7687 Neo4j__Password=$${NEO4J_PASSWORD:-maf-lab-dev-graph}
 # The portfolio domain is indexed by the same indexer into its own collection and BM25 vocabulary.
 PORTFOLIO_ENV := Indexing__CorpusRoot=$(ROOT)/data-portfolio Qdrant__Collection=maf_portfolio_chunks Qdrant__MetaCollection=maf_portfolio_meta
+# The Bulgarian history domain: a shared-only corpus, indexed into its own collection and BM25 vocabulary.
+BULGARIAN_HISTORY_ENV := Indexing__CorpusRoot=$(ROOT)/data-bulgarian-history Qdrant__Collection=maf_bulgarian_history_chunks Qdrant__MetaCollection=maf_bulgarian_history_meta
 # The codebase is indexed from the repository itself, by structure, into its own collection: chunks sized in embedding
 # tokens (well under embeddinggemma's 2048), BM25 over identifiers split into their words (add-codebase-search).
 CODE_ENV := Indexing__Layout=repository Indexing__CorpusRoot=$(ROOT) Indexing__MaxChunkTokens=1024 Indexing__Bm25Tokenizer=code \
@@ -92,7 +95,7 @@ INDEXER_SRC  := $(shell find src/Maf.Lab.Indexing src/Maf.Lab.Retrieval src/Maf.
                 Directory.Build.props Directory.Packages.props global.json
 INDEXER      := $(DOTNET) $(INDEXER_DLL)
 
-.PHONY: all help up down restart ps logs clean infra index index-portfolio index-code graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
+.PHONY: all help up down restart ps logs clean infra index index-portfolio index-bulgarian-history index-code graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
         coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-answer-check eval-code-route eval-graph-depth eval-retrieval-backends eval-a2a neo4j-chunks dev doctor banner index-if-empty \
         specs docs docs-check lint-dotnet lint-web build-web ci ci-e2e setup \
         require-docker require-dotnet require-npm require-python
@@ -100,22 +103,23 @@ INDEXER      := $(DOTNET) $(INDEXER_DLL)
 all: require-docker up index-if-empty banner ## Start everything: build, run, wait for health, index if empty (default)
 
 help: ## List the targets
-	@echo "maf-lab — make targets (variables: API_REPLICAS MCP_REPLICAS PORTFOLIO_REPLICAS COMPLIANCE_REPLICAS CHAT_MODEL SUITE BASE_URL WAIT_TIMEOUT TO FORCE)"
+	@echo "maf-lab — make targets (variables: API_REPLICAS MCP_REPLICAS PORTFOLIO_REPLICAS BULGARIAN_HISTORY_REPLICAS COMPLIANCE_REPLICAS CHAT_MODEL SUITE BASE_URL WAIT_TIMEOUT TO FORCE)"
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 # ── lifecycle ────────────────────────────────────────────────────────────────────────────────────────────────────
-up: require-docker ## Build and start the stack (replicas via API_REPLICAS/MCP_REPLICAS/PORTFOLIO_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy
+up: require-docker ## Build and start the stack (replicas via API_REPLICAS/MCP_REPLICAS/PORTFOLIO_REPLICAS/BULGARIAN_HISTORY_REPLICAS/COMPLIANCE_REPLICAS), wait until healthy
 	@if [ "$(CI_MODE)" != "1" ] && [ -z "$$OLLAMA_API_KEY" ]; then echo "⚠ OLLAMA_API_KEY is not set: the stack starts, but chat (Ollama Cloud) will fail. Run 'make setup'."; fi
 	@if [ "$(CI_MODE)" != "1" ] && [ -z "$$JEV_MAF_LAB" ]; then echo "⚠ JEV_MAF_LAB is not set: the stack starts, but no turn is classified (nothing forced to search)."; fi
 	@# Earlier versions ran the api as root; give back to you whatever it left owned by root in the checkout.
 	@scripts/repair_ownership.sh "$(ROOT)" "$(MAF_LAB_REPO)"
 	@# compose itself waits for the balancer's dependencies to be healthy; if that fails, show which service and why.
 	$(COMPOSE) up -d --build --remove-orphans --scale api=$(API_REPLICAS) --scale mcp-retrieval=$(MCP_REPLICAS) \
-	  --scale mcp-portfolio=$(PORTFOLIO_REPLICAS) --scale compliance=$(COMPLIANCE_REPLICAS) \
+	  --scale mcp-portfolio=$(PORTFOLIO_REPLICAS) --scale mcp-bulgarian-history=$(BULGARIAN_HISTORY_REPLICAS) \
+	  --scale compliance=$(COMPLIANCE_REPLICAS) \
 	  || { scripts/wait_healthy.sh 0; exit 1; }
 	@scripts/wait_healthy.sh $(WAIT_TIMEOUT)
 	@# The balancer resolves the replicas when it (re)loads; reload so it sees the current set after scaling/recreation.
-	@$(COMPOSE) exec -T lb nginx -c /etc/nginx/lb/nginx.conf -s reload >/dev/null 2>&1 && echo "✓ load balancer reloaded ($(API_REPLICAS) api, $(MCP_REPLICAS) mcp, $(PORTFOLIO_REPLICAS) portfolio, $(COMPLIANCE_REPLICAS) compliance replicas)"
+	@$(COMPOSE) exec -T lb nginx -c /etc/nginx/lb/nginx.conf -s reload >/dev/null 2>&1 && echo "✓ load balancer reloaded ($(API_REPLICAS) api, $(MCP_REPLICAS) mcp, $(PORTFOLIO_REPLICAS) portfolio, $(BULGARIAN_HISTORY_REPLICAS) bulgarian history, $(COMPLIANCE_REPLICAS) compliance replicas)"
 
 down: require-docker ## Stop the stack (data volumes are kept)
 	$(COMPOSE) down --remove-orphans
@@ -157,9 +161,10 @@ $(INDEXER_DLL): $(INDEXER_SRC) | require-dotnet
 	@$(DOTNET) build src/Maf.Lab.Indexing -v quiet -nologo
 	@touch $@
 
-index: require-dotnet infra $(INDEXER_DLL) ## Index both domains' corpora and the codebase, then build the graph (unchanged documents are skipped)
+index: require-dotnet infra $(INDEXER_DLL) ## Index all three domains' corpora and the codebase, then build the graph (unchanged documents are skipped)
 	$(HOST_ENV) $(INDEXER) index
 	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) index
+	$(HOST_ENV) $(BULGARIAN_HISTORY_ENV) $(INDEXER) index
 	$(HOST_ENV) $(CODE_ENV) $(INDEXER) index
 	$(HOST_ENV) $(INDEXER) graph
 
@@ -174,12 +179,16 @@ neo4j-chunks: require-dotnet infra $(INDEXER_DLL) ## Spike: copy the billing and
 index-portfolio: require-dotnet infra $(INDEXER_DLL) ## Index the portfolio corpus (data-portfolio/ → maf_portfolio_chunks) only
 	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) index
 
+index-bulgarian-history: require-dotnet infra $(INDEXER_DLL) ## Index the Bulgarian history corpus (data-bulgarian-history/ → maf_bulgarian_history_chunks) only
+	$(HOST_ENV) $(BULGARIAN_HISTORY_ENV) $(INDEXER) index
+
 index-code: require-dotnet infra $(INDEXER_DLL) ## Index the repository itself (→ maf_code_chunks, served by mcp-code) only; unchanged files are skipped
 	$(HOST_ENV) $(CODE_ENV) $(INDEXER) index
 
-reindex: require-dotnet infra $(INDEXER_DLL) ## Re-embed every document of both domains (--force)
+reindex: require-dotnet infra $(INDEXER_DLL) ## Re-embed every document of the three domains and the codebase (--force)
 	$(HOST_ENV) $(INDEXER) index --force
 	$(HOST_ENV) $(PORTFOLIO_ENV) $(INDEXER) index --force
+	$(HOST_ENV) $(BULGARIAN_HISTORY_ENV) $(INDEXER) index --force
 	$(HOST_ENV) $(CODE_ENV) $(INDEXER) index --force
 
 drift: require-dotnet infra $(INDEXER_DLL) ## Report stale documents: the index and the billing graph against the source
@@ -243,9 +252,9 @@ verify: ## Verify the running stack through the load balancer (37 checks), then 
 	MODEL_FREE=$(CI_MODE) node copilot-runtime/conformance.mjs $(BASE_URL)
 
 eval: require-dotnet ## Run evals (SUITE=all|selection|retrieval|generation|injection|confirmation|intent|domain|presentation|guardrail|answer-check|code-route|graph-depth|generation-judge) against the stack's MCP servers
-	Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval -- --suite $(SUITE)$(if $(REPEAT), --repeat $(REPEAT))
+	Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp Evals__BulgarianHistoryMcpEndpoint=$(BASE_URL)/bulgarian-history/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval -- --suite $(SUITE)$(if $(REPEAT), --repeat $(REPEAT))
 
-EVAL_HOST = Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval --
+EVAL_HOST = Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp Evals__BulgarianHistoryMcpEndpoint=$(BASE_URL)/bulgarian-history/mcp $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval --
 EVAL = $(EVAL_HOST) --suite
 
 ask: require-dotnet ## Ask one question through the agent and print its trace (Q="…" FIRM=firm-a), e.g. a cross-domain one

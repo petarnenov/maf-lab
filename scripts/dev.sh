@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Local development without the balancer: Qdrant, Neo4j + both Ollama instances in compose, mcp-retrieval (:5090), mcp-portfolio (:5091),
-# mcp-code (:5092), api (:5080) and the Vite dev server (:5174) as foreground processes with prefixed output. Ctrl-C stops all.
+# mcp-code (:5092), mcp-bulgarian-history (:5093), api (:5080) and the Vite dev server (:5174) as foreground processes with prefixed output. Ctrl-C stops all.
 set -euo pipefail
 # compose mounts the repository at MAF_LAB_REPO (make exports it); outside make, it is this checkout.
 export MAF_LAB_REPO="${MAF_LAB_REPO:-$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel)}"
@@ -17,7 +17,7 @@ export Neo4j__Uri="${Neo4j__Uri:-bolt://localhost:7687}"
 export Neo4j__Password="${Neo4j__Password:-${NEO4J_PASSWORD:-maf-lab-dev-graph}}"
 
 docker compose -f "$FILE" up -d qdrant neo4j ollama ollama-batch ollama-init ollama-warm
-docker compose -f "$FILE" stop a2a-inspector mcp-inspector lb api mcp-retrieval mcp-portfolio mcp-code web >/dev/null 2>&1 || true
+docker compose -f "$FILE" stop a2a-inspector mcp-inspector lb api mcp-retrieval mcp-portfolio mcp-code mcp-bulgarian-history web >/dev/null 2>&1 || true
 
 pids=()
 kill_tree() { # dotnet run and npm start child processes: stop the whole tree
@@ -44,7 +44,8 @@ run() { # name dir command...
 run mcp "$ROOT/src/Maf.Lab.Retrieval" "$DOTNET" run --no-build
 run portfolio "$ROOT/src/Maf.Lab.Portfolio" "$DOTNET" run --no-build
 run code "$ROOT/src/Maf.Lab.CodeSearch" "$DOTNET" run --no-build
+run bulgarian-history "$ROOT/src/Maf.Lab.BulgarianHistory" "$DOTNET" run --no-build
 run api "$ROOT/src/Maf.Lab.Api" "$DOTNET" run --no-build
 run web "$ROOT/web" "$NPM" run dev
-echo "dev: web http://localhost:5174 · api http://localhost:5080 · mcp http://localhost:5090/mcp · portfolio http://localhost:5091/mcp · code http://localhost:5092/mcp (Ctrl-C to stop)"
+echo "dev: web http://localhost:5174 · api http://localhost:5080 · mcp http://localhost:5090/mcp · portfolio http://localhost:5091/mcp · code http://localhost:5092/mcp · bulgarian history http://localhost:5093/mcp (Ctrl-C to stop)"
 wait

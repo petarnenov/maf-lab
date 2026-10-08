@@ -86,6 +86,11 @@ public sealed class TopologyProbe(
         new("mcp-code", "ollama-embeddings", "embed"),
         new("mcp-code", "chat-provider", "ask_codebase"),
         new("mcp-code", "otel-collector", "OTLP"),
+        // The fourth domain's server (add-bulgarian-history-domain): a shared-only corpus, no graph store, no chat.
+        new("api", "mcp-bulgarian-history", "/bulgarian-history/mcp via lb"),
+        new("mcp-bulgarian-history", "qdrant", "gRPC"),
+        new("mcp-bulgarian-history", "ollama-embeddings", "embed"),
+        new("mcp-bulgarian-history", "otel-collector", "OTLP"),
         // The graph store (add-neo4j-graph): billing relationships for the billing server, the code graph for mcp-code.
         new("mcp", "neo4j", "Bolt"),
         new("mcp-code", "neo4j", "Bolt"),
@@ -117,7 +122,7 @@ public sealed class TopologyProbe(
     /// <summary>Node ids the report always contains; the drawn diagram must hold exactly these.</summary>
     public static IReadOnlyList<string> NodeIds { get; } =
     [
-        "lb", "web", "api", "mcp", "mcp-portfolio", "mcp-code", "compliance", "test-agent", "coverage-runner", "qdrant", "neo4j",
+        "lb", "web", "api", "mcp", "mcp-portfolio", "mcp-code", "mcp-bulgarian-history", "compliance", "test-agent", "coverage-runner", "qdrant", "neo4j",
         "ollama-embeddings", "chat-provider", "otel-collector", "prometheus", "jaeger", "redis",
     ];
 
@@ -143,10 +148,12 @@ public sealed class TopologyProbe(
         var mcpAddresses = await resolver.ResolveAsync(o.McpService, ct);
         var portfolioAddresses = await resolver.ResolveAsync(o.PortfolioService, ct);
         var codeAddresses = await resolver.ResolveAsync(o.CodeService, ct);
+        var bulgarianHistoryAddresses = await resolver.ResolveAsync(o.BulgarianHistoryService, ct);
         var complianceAddresses = await resolver.ResolveAsync(o.ComplianceService, ct);
         var testAgentAddresses = await resolver.ResolveAsync(o.TestAgentService, ct);
         var runnerAddresses = await resolver.ResolveAsync(o.CoverageRunnerService, ct);
-        var discovery = apiAddresses.Count > 0 || mcpAddresses.Count > 0 || portfolioAddresses.Count > 0 || codeAddresses.Count > 0;
+        var discovery = apiAddresses.Count > 0 || mcpAddresses.Count > 0 || portfolioAddresses.Count > 0 || codeAddresses.Count > 0
+            || bulgarianHistoryAddresses.Count > 0;
 
         var lb = Http("lb", "lb", o.LoadBalancerHealthUrl, timeout, ct);
         var web = Http("web", "web", o.WebHealthUrl, timeout, ct);
@@ -156,6 +163,7 @@ public sealed class TopologyProbe(
         var mcp = McpAsync(mcpAddresses, offered, timeout, ct);
         var portfolio = DomainServerAsync("mcp-portfolio", Domains.Portfolio, portfolioAddresses, offered, timeout, ct);
         var code = DomainServerAsync("mcp-code", Domains.Codebase, codeAddresses, offered, timeout, ct);
+        var bulgarianHistory = DomainServerAsync("mcp-bulgarian-history", Domains.BulgarianHistory, bulgarianHistoryAddresses, offered, timeout, ct);
         var compliance = ComplianceAsync(complianceAddresses, timeout, ct);
         var agentNode = TestAgentAsync(testAgentAddresses, timeout, ct);
         var runnerNode = ReplicasAsync("coverage-runner", "coverage runner", runnerAddresses, timeout, ct);
@@ -167,7 +175,7 @@ public sealed class TopologyProbe(
         var traces = Http("jaeger", "jaeger", o.JaegerHealthUrl, timeout, ct);
         var shared = SharedStateAsync(ct);
 
-        var probed = await Task.WhenAll(lb, web, api, mcp, portfolio, code, compliance, agentNode, runnerNode, store, graph, embeddings, collector,
+        var probed = await Task.WhenAll(lb, web, api, mcp, portfolio, code, bulgarianHistory, compliance, agentNode, runnerNode, store, graph, embeddings, collector,
             metrics, traces, shared);
         var byId = probed.Append(ChatProvider()).ToDictionary(n => n.Id);
         var ordered = NodeIds.Select(id => byId[id]).ToList();

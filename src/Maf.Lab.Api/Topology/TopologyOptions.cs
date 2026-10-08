@@ -13,6 +13,8 @@ public sealed class TopologyOptions
     public string PortfolioService { get; set; } = "mcp-portfolio";
     /// <summary>Compose service name of the codebase domain's MCP server. Empty disables discovery.</summary>
     public string CodeService { get; set; } = "mcp-code";
+    /// <summary>Compose service name of the Bulgarian history domain's MCP server. Empty disables discovery.</summary>
+    public string BulgarianHistoryService { get; set; } = "mcp-bulgarian-history";
     /// <summary>The second agent's container name, resolved the same way the others are.</summary>
     public string ComplianceService { get; set; } = "compliance";
     /// <summary>The test-generation agent and the coverage runner (add-coverage-dashboard-and-test-agent).</summary>

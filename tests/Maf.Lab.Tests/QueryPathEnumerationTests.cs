@@ -58,7 +58,7 @@ public class QueryPathEnumerationTests
     }
 
     private static IEnumerable<string> ProductAssemblies() =>
-        new[] { "Maf.Lab.Domain", "Maf.Lab.Retrieval", "Maf.Lab.Api", "Maf.Lab.Indexing", "Maf.Lab.Eval" }
+        new[] { "Maf.Lab.Domain", "Maf.Lab.Retrieval", "Maf.Lab.Api", "Maf.Lab.Indexing", "Maf.Lab.Eval", "Maf.Lab.CodeSearch", "Maf.Lab.Portfolio", "Maf.Lab.BulgarianHistory" }
             .Select(n => Path.Combine(AppContext.BaseDirectory, n + ".dll"));
 
     private static List<(string Type, string Caller, string Method)> FindQdrantDataPlaneCalls(IEnumerable<string> assemblies)

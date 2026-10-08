@@ -12,6 +12,12 @@ describe('toolCallLabel', () => {
     ).toBe('Checking run 4417');
   });
 
+  it('names the Bulgarian history search, running and done', () => {
+    const call = { toolName: 'search_bulgarian_history', argumentSummary: '' };
+    expect(toolCallLabel({ ...call, status: 'running' })).toBe('Searching Bulgarian history…');
+    expect(toolCallLabel({ ...call, status: 'finished' })).toBe('Searched Bulgarian history');
+  });
+
   it('says a compliance review is under way and roughly how long it takes', () => {
     const label = toolCallLabel({
       toolName: 'propose_fee_adjustment',

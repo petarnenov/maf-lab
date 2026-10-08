@@ -47,3 +47,8 @@
 {"id": "s-82", "question": "Кои тестове покриват src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs?", "expectedTools": ["change_impact"], "category": "graph", "firmId": "firm-a"}
 {"id": "s-83", "question": "How is a household's fee schedule applied when an account joins it?", "expectedTools": ["search_documents"], "category": "graph", "firmId": "firm-b"}
 {"id": "s-84", "question": "Как се прилага тарифата на домакинство, когато към него се добави сметка?", "expectedTools": ["search_documents"], "category": "graph", "firmId": "firm-b"}
+{"id": "s-85", "question": "When was the April Uprising and why did it fail?", "expectedTools": ["search_bulgarian_history"], "category": "bulgarian-history", "firmId": "firm-a"}
+{"id": "s-86", "question": "Кога е покръстването на българите?", "expectedTools": ["search_bulgarian_history"], "category": "bulgarian-history", "firmId": "firm-b"}
+{"id": "s-87", "question": "What did the Treaty of San Stefano decide for Bulgaria?", "expectedTools": ["search_bulgarian_history"], "category": "bulgarian-history", "firmId": "firm-a"}
+{"id": "s-88", "question": "Kakvo e Balgarskoto vazrazhdane?", "expectedTools": ["search_bulgarian_history"], "category": "bulgarian-history", "firmId": "firm-b"}
+{"id": "s-89", "question": "Как се стига до Съединението през 1885 г.?", "expectedTools": ["search_bulgarian_history"], "category": "bulgarian-history", "firmId": "firm-a"}

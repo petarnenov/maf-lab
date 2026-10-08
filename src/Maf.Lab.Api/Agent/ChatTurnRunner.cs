@@ -161,7 +161,7 @@ public sealed partial class ChatTurnRunner(
                 (codeRoute, codeRouteReason) = OfferedCodeRoute(decision, tools);
                 // A forcing intent searches every domain Jev put the question in, each through its own server's search.
                 forcedSearches = IntentClassifier.ForcesRetrieval(decision.Intent) ? ForcedSearches(decision.Domains, tools)
-                    : CodebaseSearch(decision, tools);
+                    : SearchOnlyDomainSearch(decision, tools);
                 if (codeRoute is not null)
                 {
                     // A structural code question starts with its graph call instead of the codebase search
@@ -484,18 +484,18 @@ public sealed partial class ChatTurnRunner(
     }
 
     /// <summary>
-    /// A question whose primary domain is the codebase searches it whatever its intent but small talk
-    /// (add-codebase-domain): "show me the definition of X" — data, or no intent at all — has nothing to answer from
-    /// without its search. A structural question routed to the code graph starts with that call instead
-    /// (route-structural-code-questions); the turn drops this search for it.
+    /// A question whose primary domain has a search and no read tools (<see cref="Domains.SearchOnly"/>: the codebase,
+    /// Bulgarian history) searches it whatever its intent but small talk (add-codebase-domain,
+    /// add-bulgarian-history-domain): "show me the definition of X" or "when was the April Uprising?" — data, or no intent
+    /// at all — has nothing to answer from without its search, and no read tool a router could pick. One rule for every
+    /// such domain. A structural question routed to the code graph starts with that call instead
+    /// (route-structural-code-questions); the turn drops the codebase search for it.
     /// </summary>
-    internal static IReadOnlyList<string> CodebaseSearch(IntentDecision decision, ToolSet tools)
-    {
-        var search = Domains.SearchTool[Domains.Codebase];
-        return decision.Domains?.Primary == Domains.Codebase && decision.Intent != Intent.ChitChat && tools.Names.Contains(search)
+    internal static IReadOnlyList<string> SearchOnlyDomainSearch(IntentDecision decision, ToolSet tools) =>
+        decision.Domains?.Primary is { } primary && Domains.SearchOnly.Contains(primary) && decision.Intent != Intent.ChitChat
+        && Domains.SearchTool.GetValueOrDefault(primary) is { } search && tools.Names.Contains(search)
             ? [search]
             : [];
-    }
 
     /// <summary>
     /// The intent event's code-route payload: Jev's answer on what a codebase question needs, the graph call the turn

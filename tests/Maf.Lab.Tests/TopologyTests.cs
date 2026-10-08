@@ -148,6 +148,27 @@ public class TopologyTests
     }
 
     [Fact]
+    public async Task The_bulgarian_history_server_is_reported_with_its_replicas_and_tools_and_no_graph_or_chat_edge()
+    {
+        using var api = Api(StubHandler.AllHealthy(), new Dictionary<string, string[]> { ["mcp-bulgarian-history"] = ["10.0.0.31", "10.0.0.32"] },
+            tools: new FakeToolSource { WithBulgarianHistory = true });
+
+        var report = await GetAsync(api);
+
+        var node = Assert.Single(report.Nodes, n => n.Id == "mcp-bulgarian-history");
+        Assert.Equal(NodeHealth.Healthy, node.Health);
+        Assert.Equal(2, node.Instances.Count);
+        Assert.Equal("bulgarian-history", node.Facts["domain"]);
+        Assert.Contains("search_bulgarian_history", node.Facts["tools"]);
+        Assert.Contains(report.Edges, e => e is { From: "api", To: "mcp-bulgarian-history" });
+        Assert.Contains(report.Edges, e => e is { From: "mcp-bulgarian-history", To: "qdrant" });
+        Assert.Contains(report.Edges, e => e is { From: "mcp-bulgarian-history", To: "ollama-embeddings" });
+        Assert.Contains(report.Edges, e => e is { From: "mcp-bulgarian-history", To: "otel-collector" });
+        Assert.DoesNotContain(report.Edges, e => e is { From: "mcp-bulgarian-history", To: "neo4j" });
+        Assert.DoesNotContain(report.Edges, e => e is { From: "mcp-bulgarian-history", To: "chat-provider" });
+    }
+
+    [Fact]
     public async Task The_graph_store_is_reported_with_its_edges_and_without_its_password()
     {
         using var api = Api(StubHandler.AllHealthy(), settings: new Dictionary<string, string?>

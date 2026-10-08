@@ -63,6 +63,8 @@ export function domainColor(domain: string | undefined): string {
       return 'var(--kind-domain)';
     case 'codebase':
       return 'var(--kind-tool)';
+    case 'bulgarian-history':
+      return 'var(--kind-context)';
     default:
       return 'var(--kind-neutral)';
   }

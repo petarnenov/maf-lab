@@ -5,6 +5,7 @@ export const TOOL_NAMES = [
   'search_billing_runs',
   'propose_fee_adjustment',
   'search_portfolio_documents',
+  'search_bulgarian_history',
   'get_household_portfolio',
   'get_aum_history',
   'list_my_accounts',

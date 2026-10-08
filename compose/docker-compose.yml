@@ -203,6 +203,25 @@ services:
       ollama-warm:
         condition: service_completed_successfully
 
+  # The Bulgarian history domain: the fourth domain, a shared-only corpus (data-bulgarian-history, indexed by make
+  # index-bulgarian-history into its own collection). Read-only, so no ledger and no volume of its own.
+  mcp-bulgarian-history:
+    build:
+      context: ..
+      dockerfile: src/Maf.Lab.BulgarianHistory/Dockerfile
+    deploy:
+      replicas: 2
+    environment:
+      <<: *app-env
+      Urls: http://+:8080
+      BulgarianHistory__Collection: maf_bulgarian_history_chunks
+      BulgarianHistory__MetaCollection: maf_bulgarian_history_meta
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      ollama-warm:
+        condition: service_completed_successfully
+
   # The codebase: the repository indexed by structure into its own collection (make index-code), searched and asked
   # about through its own MCP server. Read-only; the chunks carry their text, so the repository is not mounted.
   mcp-code:
@@ -278,6 +297,9 @@ services:
       Agent__Servers__1__Tools__0: search_codebase
       Agent__Servers__1__Tools__1: trace_code_symbol
       Agent__Servers__1__Tools__2: change_impact
+      # The Bulgarian history domain as the agent's fourth domain, its server also through the balancer.
+      Agent__Servers__2__Domain: bulgarian-history
+      Agent__Servers__2__Endpoint: http://lb/bulgarian-history/mcp
       # The Code snippets tab asks the codebase server, as the user, through the balancer.
       CodeSearch__Endpoint: http://lb/code/mcp
       Storage__ConnectionString: Data Source=/app-data/maf-lab.db
@@ -322,6 +344,8 @@ services:
       mcp-retrieval:
         condition: service_healthy
       mcp-portfolio:
+        condition: service_healthy
+      mcp-bulgarian-history:
         condition: service_healthy
       mcp-code:
         condition: service_healthy
@@ -487,6 +511,8 @@ services:
       mcp-retrieval:
         condition: service_healthy
       mcp-portfolio:
+        condition: service_healthy
+      mcp-bulgarian-history:
         condition: service_healthy
       mcp-code:
         condition: service_healthy

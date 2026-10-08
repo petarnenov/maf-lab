@@ -221,10 +221,12 @@ public static class Metrics
             ["crossingPrecision"] = Share(all.Where(c => Crossing(c.Actual)).Select(c => c.Expected == c.Actual)),
             ["noneAccuracy"] = Share(all.Where(c => c.Expected == "none").Select(c => c.Actual == "none")),
             // A single-domain question put in the other domain alone is the costly error: the wrong server is searched.
-            ["notConfused"] = Share(all.Where(c => c.Expected is "billing" or "portfolio" or "codebase")
-                .Select(c => !(c.Actual is "billing" or "portfolio" or "codebase" && c.Actual != c.Expected))),
+            ["notConfused"] = Share(all.Where(c => c.Expected is "billing" or "portfolio" or "codebase" or "bulgarian-history")
+                .Select(c => !(c.Actual is "billing" or "portfolio" or "codebase" or "bulgarian-history" && c.Actual != c.Expected))),
             // add-codebase-domain: how often a question about the lab's own code puts the codebase in scope at all.
             ["codebaseRecall"] = Share(all.Where(c => c.Expected.Split('+').Contains("codebase")).Select(c => c.Actual.Split('+').Contains("codebase"))),
+            // add-bulgarian-history-domain: how often a question about Bulgarian history puts that domain in scope at all.
+            ["bulgarianHistoryRecall"] = Share(all.Where(c => c.Expected.Split('+').Contains("bulgarian-history")).Select(c => c.Actual.Split('+').Contains("bulgarian-history"))),
         };
         foreach (var group in all.GroupBy(c => c.Language).OrderBy(g => g.Key, StringComparer.Ordinal))
         {

@@ -1,4 +1,4 @@
-// Opens the MCP Inspector on the lab: a catalog naming the lab's three MCP servers, each with a dev user's bearer
+// Opens the MCP Inspector on the lab: a catalog naming the lab's four MCP servers, each with a dev user's bearer
 // token, written before the Inspector starts, then rewritten with a fresh token every hour so it never goes stale
 // (dev tokens last eight hours). The catalog lives in the container only; nothing is kept on disk across restarts.
 import { spawn } from 'node:child_process';
@@ -12,7 +12,7 @@ const persona = {
   firmId: process.env.LAB_FIRM_ID ?? 'firm-a',
   role: process.env.LAB_ROLE ?? 'ADVISOR',
 };
-const servers = { 'maf-lab billing': '/mcp', 'maf-lab portfolio': '/portfolio/mcp', 'maf-lab code': '/code/mcp' };
+const servers = { 'maf-lab billing': '/mcp', 'maf-lab portfolio': '/portfolio/mcp', 'maf-lab code': '/code/mcp', 'maf-lab bulgarian history': '/bulgarian-history/mcp' };
 
 async function devToken() {
   const reply = await fetch(`${lab}/dev/token`, {

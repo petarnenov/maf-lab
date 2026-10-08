@@ -63,6 +63,16 @@ public sealed class FakeToolSource : IToolSource
         ],"totalMatches":1,"truncated":false,"refineHint":null}
         """;
 
+    /// <summary>Also offer the Bulgarian history server's search (add-bulgarian-history-domain).</summary>
+    public bool WithBulgarianHistory { get; set; }
+
+    /// <summary>With <see cref="WithBulgarianHistory"/>: what search_bulgarian_history returns — one excerpt of the shared corpus.</summary>
+    public string BulgarianHistorySearchPayloadJson { get; set; } = """
+        {"results":[
+          {"snippet":"Априлското въстание от 1876 година е въоръжено въстание на българите в Османската империя. Избухва преждевременно на 20 април в Копривщица и е организирано от Гюргевския революционен комитет.","sourcePath":"docs/aprilsko-vastanie.md","sectionPath":"Априлско въстание","score":0.85,"updatedAt":"2026-09-01T00:00:00Z","docId":"shared/docs/aprilsko-vastanie.md"}
+        ],"totalMatches":1,"truncated":false,"refineHint":null}
+        """;
+
     /// <summary>The domains each GetToolsAsync call asked for; null for "every server".</summary>
     public List<IReadOnlySet<string>?> RequestedDomains { get; } = [];
 
@@ -170,6 +180,15 @@ public sealed class FakeToolSource : IToolSource
                 origins[Maf.Lab.Domain.Graph.GraphTools.TraceCodeSymbol] = new ToolOrigin("codebase", "maf-lab-code");
                 origins[Maf.Lab.Domain.Graph.GraphTools.ChangeImpact] = new ToolOrigin("codebase", "maf-lab-code");
             }
+        }
+        if (WithBulgarianHistory)
+        {
+            offered.Add(AIFunctionFactory.Create((string query, string[]? sourceTypes = null, int? maxResults = null) =>
+            {
+                Invocations.Add(Maf.Lab.Domain.BulgarianHistory.BulgarianHistoryTools.Search);
+                return Mcp(BulgarianHistorySearchPayloadJson);
+            }, Maf.Lab.Domain.BulgarianHistory.BulgarianHistoryTools.Search, "Searches the shared documentation on the history of Bulgaria."));
+            origins[Maf.Lab.Domain.BulgarianHistory.BulgarianHistoryTools.Search] = new ToolOrigin("bulgarian-history", "maf-lab-bulgarian-history");
         }
         if (!WithPortfolio)
         {

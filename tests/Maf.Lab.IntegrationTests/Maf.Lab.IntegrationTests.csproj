@@ -21,6 +21,7 @@
     <ProjectReference Include="..\..\src\Maf.Lab.Indexing\Maf.Lab.Indexing.csproj" />
     <ProjectReference Include="..\..\src\Maf.Lab.CodeSearch\Maf.Lab.CodeSearch.csproj" />
     <ProjectReference Include="..\..\src\Maf.Lab.Eval\Maf.Lab.Eval.csproj" />
+    <ProjectReference Include="..\..\src\Maf.Lab.BulgarianHistory\Maf.Lab.BulgarianHistory.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\Shared\**\*.cs" Link="Shared\%(RecursiveDir)%(Filename)%(Extension)" />

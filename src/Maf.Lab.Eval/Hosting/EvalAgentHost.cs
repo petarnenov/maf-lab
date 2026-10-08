@@ -25,17 +25,19 @@ public sealed class EvalAgentHost : IAsyncDisposable
 {
     private readonly WebApplication? _retrieval;
     private readonly WebApplication? _portfolio;
+    private readonly WebApplication? _bulgarianHistory;
     private readonly WebApplication? _code;
     private readonly string _workDir;
 
     private readonly bool _keepWorkDir;
 
-    private EvalAgentHost(ServiceProvider services, WebApplication? retrieval, WebApplication? portfolio, WebApplication? code, string workDir,
+    private EvalAgentHost(ServiceProvider services, WebApplication? retrieval, WebApplication? portfolio, WebApplication? bulgarianHistory, WebApplication? code, string workDir,
         bool keepWorkDir = false)
     {
         Services = services;
         _retrieval = retrieval;
         _portfolio = portfolio;
+        _bulgarianHistory = bulgarianHistory;
         _code = code;
         _workDir = workDir;
         _keepWorkDir = keepWorkDir;
@@ -81,6 +83,21 @@ public sealed class EvalAgentHost : IAsyncDisposable
             portfolioEndpoint = portfolio.Urls.First().TrimEnd('/') + "/mcp";
         }
 
+        // The Bulgarian history domain's server (add-bulgarian-history-domain), in-process the same way.
+        WebApplication? bulgarianHistory = null;
+        var bulgarianHistoryEndpoint = options.BulgarianHistoryMcpEndpoint;
+        if (string.IsNullOrWhiteSpace(bulgarianHistoryEndpoint))
+        {
+            bulgarianHistory = Maf.Lab.BulgarianHistory.Program.BuildApp([], b =>
+            {
+                b.Configuration.AddConfiguration(configuration);
+                b.Configuration["Urls"] = "http://127.0.0.1:0";
+                b.Logging.SetMinimumLevel(LogLevel.Warning);
+            });
+            await bulgarianHistory.StartAsync(ct);
+            bulgarianHistoryEndpoint = bulgarianHistory.Urls.First().TrimEnd('/') + "/mcp";
+        }
+
         // The codebase's server, the third domain (add-codebase-domain), the same way.
         WebApplication? code = null;
         var codeEndpoint = codeSettings is null ? options.CodeMcpEndpoint : "";
@@ -108,6 +125,7 @@ public sealed class EvalAgentHost : IAsyncDisposable
             [
                 new McpServerOptions { Domain = Domains.Portfolio, Endpoint = portfolioEndpoint },
                 new McpServerOptions { Domain = Domains.Codebase, Endpoint = codeEndpoint, Tools = [Maf.Lab.Domain.Code.CodeTools.Search, Maf.Lab.Domain.Graph.GraphTools.TraceCodeSymbol, Maf.Lab.Domain.Graph.GraphTools.ChangeImpact] },
+                new McpServerOptions { Domain = Domains.BulgarianHistory, Endpoint = bulgarianHistoryEndpoint },
             ];
         });
         services.AddDbContextFactory<MafDbContext>(o => o.UseSqlite($"Data Source={Path.Combine(workDir, "eval.db")}"));
@@ -133,7 +151,7 @@ public sealed class EvalAgentHost : IAsyncDisposable
         {
             await DatabaseInitializer.InitializeAsync(db, ct);
         }
-        return new EvalAgentHost(provider, retrieval, portfolio, code, workDir, options.KeepWorkDir);
+        return new EvalAgentHost(provider, retrieval, portfolio, bulgarianHistory, code, workDir, options.KeepWorkDir);
     }
 
     /// <summary>The codebase MCP server in-process on a loopback port, with <paramref name="settings"/> over the configuration.</summary>
@@ -181,7 +199,7 @@ public sealed class EvalAgentHost : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await Services.DisposeAsync();
-        foreach (var server in new[] { _retrieval, _portfolio, _code }.OfType<WebApplication>())
+        foreach (var server in new[] { _retrieval, _portfolio, _bulgarianHistory, _code }.OfType<WebApplication>())
         {
             await server.StopAsync();
             await server.DisposeAsync();

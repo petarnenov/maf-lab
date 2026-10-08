@@ -93,7 +93,7 @@ public class CodebaseDomainTests
 
         var forced = IntentClassifier.ForcesRetrieval(intent)
             ? ChatTurnRunner.ForcedSearches(decision.Domains, tools)
-            : ChatTurnRunner.CodebaseSearch(decision, tools);
+            : ChatTurnRunner.SearchOnlyDomainSearch(decision, tools);
 
         Assert.Equal([CodeTools.Search], forced);
     }
@@ -103,8 +103,8 @@ public class CodebaseDomainTests
     {
         var tools = Offered(CodeTools.Search, "search_documents");
 
-        Assert.Empty(ChatTurnRunner.CodebaseSearch(Decision(Intent.ChitChat, (Domains.Codebase, 0.9)), tools));
-        Assert.Empty(ChatTurnRunner.CodebaseSearch(Decision(Intent.Data, (Domains.Billing, 0.9), (Domains.Codebase, 0.6)), tools));
+        Assert.Empty(ChatTurnRunner.SearchOnlyDomainSearch(Decision(Intent.ChitChat, (Domains.Codebase, 0.9)), tools));
+        Assert.Empty(ChatTurnRunner.SearchOnlyDomainSearch(Decision(Intent.Data, (Domains.Billing, 0.9), (Domains.Codebase, 0.6)), tools));
     }
 
     [Fact]

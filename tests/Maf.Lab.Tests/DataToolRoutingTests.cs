@@ -239,7 +239,7 @@ public class DataToolRoutingTests
         var questions = body.GetProperty("questions");
         // The prompt-screening battery (injection-defense) also rides in the intent request, between the domain and the
         // routing questions; the routing questions still travel here and the state stays the user's question alone.
-        string[] expected = ["intent", "in_domain", "in_portfolio", "in_codebase", .. JevGuardQuestions.PromptIds,
+        string[] expected = ["intent", "in_domain", "in_portfolio", "in_codebase", "in_bulgarian_history", .. JevGuardQuestions.PromptIds,
             "tool_get_billing_run_status", "tool_search_billing_runs", "tool_propose_fee_adjustment",
             "tool_get_household_portfolio", "tool_get_aum_history", "tool_list_my_accounts", "run_status",
             // What a codebase question needs (route-structural-code-questions) rides in the same request, after them.
@@ -266,7 +266,7 @@ public class DataToolRoutingTests
         // Routing off: no tool_* or run_status questions. The intent, domain and prompt-screening questions
         // (injection-defense) still ride in the request, with one domain question per domain (add-portfolio-domain).
         // Code routing is its own switch: data routing off leaves the code-route question in the request.
-        string[] expected = [.. new[] { "intent", "in_domain", "in_portfolio", "in_codebase", "code_need" }.Concat(JevGuardQuestions.PromptIds).Order()];
+        string[] expected = [.. new[] { "intent", "in_domain", "in_portfolio", "in_codebase", "in_bulgarian_history", "code_need" }.Concat(JevGuardQuestions.PromptIds).Order()];
         Assert.Equal(expected, Assert.Single(jev.Questions).Keys.Order());
         Assert.Null(decision.Route);
         Assert.Null(decision.Routing);

@@ -3181,3 +3181,106 @@ be re-run then.
   - Accepted (20261004-180311, r1…r5): grade accuracy 0.9487, pointAccuracy 0.9211,
     sentenceAccuracy 0.9226, citationDetection 1.
 
+## 81. A fourth, shared-only domain: the history of Bulgaria (add-bulgarian-history-domain, 2026-10-08)
+
+- **Why.** The three domains are all about one firm's own data or the lab's own code. None is public by nature. A
+  corpus that is — ten articles on the history of Bulgaria from bg.wikipedia.org (CC BY-SA 4.0), 435 KB, in
+  `data-bulgarian-history/shared/docs/` — exercises the one thing the others cannot: knowledge every firm and every
+  advisor reads whole, through the same tenant-scoped query path, with nothing added to it. Before this change Jev put
+  such a question outside every domain and the chat refused it with the fixed reply.
+- **A server, a corpus, a collection, one tool** (the §40 pattern, minus the store and the read tools).
+  - `mcp-bulgarian-history` (`src/Maf.Lab.BulgarianHistory`, 2 replicas, `/bulgarian-history/mcp` through the balancer,
+    :5093 in `make dev`) reuses the retrieval core as a library and pins its collection and vocabulary
+    (`maf_bulgarian_history_chunks`, `maf_bulgarian_history_meta`) after every other configuration source, as the
+    portfolio server does.
+  - `search_bulgarian_history` is `search_portfolio_documents` with another corpus: read-only, `SearchDocumentsResult`,
+    the same hybrid search, relevance gate and reranker through `TenantScopedSearch.QueryAsync`. Its description says
+    what it is not for and names the tool that is (`get_aum_history`, `search_billing_runs`, `search_codebase`).
+  - The namespace is `Maf.Lab.Domain.BulgarianHistory`, never `…History`: that name is the chat history.
+- **"Unfiltered" means "entirely shared".** The corpus has one tenant folder, `shared`, so every chunk carries
+  `tenant_id = shared` and `TenantFilter.For` (`tenant_id ∈ [own firm, shared]`) matches it for every principal.
+  Advisor ids take part in no retrieval filter, as before. An acceptance test indexes the corpus into a real Qdrant and
+  checks that a firm-a advisor, a firm-b advisor and a firm-c admin with different advisor ids get identical results
+  in every retrieval mode, through the gate and the reranker, and through the server itself for two firms' tokens.
+  Rejected, each because a rule or a test forbids it:
+  - an "unfiltered" query method — CLAUDE.md's one query method, tenant-isolation's "no query path without this
+    restriction", caught by `QueryPathEnumerationTests`;
+  - a `public` flag on `SearchRequest` or `TenantFilter` — a tenant dimension in the one method; the test forbids a
+    `Tenant` property on the request;
+  - a `domain` field in `maf_chunks` — rejected in §40 (re-index everything, a second filter dimension, billing IDF
+    skewing the history terms);
+  - an anonymous server — every MCP server requires a token, and the query takes a principal;
+  - answering from the model's weights — the prompt answers only from tool results, and jev-usage §4.3 says the same;
+  - a tool inside `mcp-retrieval` — §40: one server, one corpus, one collection per domain, and a server fails alone;
+  - a separate Jev request — jev-usage §4.4: every question over one state goes in one request.
+- **The corpus is in Bulgarian, so the server turns query translation off.** The retrieval core rewrites any non-Latin
+  query into the corpus language, which for the other servers is English (`Retrieval:CorpusLanguage = en`). Here a
+  Cyrillic question is already in the corpus's language; the acceptance test caught the translation "the conversion of
+  the Bulgarians", which no word of the Bulgarian BM25 vocabulary matched, and sparse search returned nothing. The server
+  pins `Retrieval:CorpusLanguage = bg` and `Retrieval:NormalizeQueryLanguage = false` (overridable through
+  `BulgarianHistory:*`). The embedding model is multilingual, so an English question still finds its passages
+  untranslated.
+- **A fourth Noul, descriptive exclusions, no label.** `in_bulgarian_history` rides in the classification request with
+  the same `{ user_question }` state and the same `JevDomainInstructions` shape. The §54 lesson applies twice over: the
+  word "history" already means `get_aum_history`, the chat history, the runs that ran before and the code's commits, and
+  Jev reads literally. So the domain says what it is not as situations, never as labels — "how an account's assets
+  under management or market value changed from one quarter to the next; the user's own earlier conversations with this
+  assistant; the billing runs that ran before and how they ended; the commits and changes made to this lab's source
+  code" — because a label containing "history" would pull the question toward the domain it is meant to keep out. A
+  test asserts the request carries the four situations and none of the four labels.
+- **One rule for every search-only domain.** `ChatTurnRunner.CodebaseSearch` became `SearchOnlyDomainSearch` over
+  `Domains.SearchOnly = {codebase, bulgarian-history}`: a question whose primary domain has a search and no read tools
+  forces that search for any intent but small talk. The codebase keeps its behaviour, the history domain gets the same,
+  and a fifth such domain is a row, not a branch. `ForcedSearches` and `DataToolRouter` are unchanged: a data intent in
+  the history domain alone yields "no read tool belongs to a domain in scope" and the forced search answers it.
+- **No new guard or answer-check context.** The content guard's five questions are about injection, not subject
+  matter, and its billing context already describes "a document excerpt"; an article about a war or an uprising trips
+  none of them. The codebase got its own context because repository text addresses AIs by design; nothing like that
+  applies here. The answer check's two questions judge `answer` against `user_question` and `sources`, whatever the
+  framing sentence lists; changing it would reopen §79's calibration for every suite.
+- **system.v6** adds the domain, its tool, three examples and the scope rule: the history of Bulgaria is answered only
+  from what the search returns, and when the documentation does not cover a question the answer says so in one
+  sentence. `Agent:SystemPrompt=system.v5` rolls back. The fixed out-of-scope reply names the history of Bulgaria in
+  both languages.
+- **A gap closed on the way.** `QueryPathEnumerationTests` scanned Domain, Retrieval, Api, Indexing and Eval only;
+  Portfolio and CodeSearch — two assemblies that query Qdrant — were never scanned. It now scans them and the new
+  server. The wider scan found no rogue data-plane call. `GraphStoreTests` scans the new assembly too.
+- **Not done here, on purpose.** `DomainStats` in the Jev statistics keeps its billing/portfolio/both/none fields
+  (codebase is not counted there today either); a per-domain dictionary is a follow-up change. No retrieval eval rows for
+  the history corpus; the `domain` and `selection` suites measure what this change decides.
+- **Jev review (jev-usage §7).**
+  - Closed, atomic, single-dimension: one yes/no about one domain. Nothing code could compute: it needs language
+    understanding across three scripts.
+  - One request: the Noul rides in the classification request; the state is `{ user_question }` as before, referenced
+    by its backticked path.
+  - Positive polarity, criteria aligned: "Is `user_question` about something in `domain`?", high = yes.
+  - Gating: the existing gate 0.2 and scope 0.5 on a read-only action, with the review band between them (the most
+    probable domain alone); below the gate on a first turn the fixed reply, not a model call.
+  - Fallback: no answer means no verdict — every server loaded, nothing forced, nothing refused.
+  - Side effects: none; the domain has no write tool, and the router never routes to it.
+  - Model pinned `jev-1.13.0`; `model` and `usage` logged per call; the shared client retries 429/5xx and fails 401/422
+    fast, unchanged.
+  - Tested on labelled inputs in English, Bulgarian and Latin-script Bulgarian: 12 positive and 8 negative rows in
+    `domain.jsonl`, 5 rows in `selection.jsonl`, and the unit tests above.
+- **Eval results (2026-10-08, runs 20261008-170850-intent, 20261008-170929-domain, 20261008-171008-selection; stack
+  up, `OLLAMA_API_KEY` and `JEV_MAF_LAB` set).**
+  - `selection` (54 rows, 5 new): recall 1, precision 0.9831, exactMatch 0.9815, negativeAccuracy 1 — up from the
+    baseline's 0.9636 / 0.9592. Every history row picks `search_bulgarian_history` alone. The one miss is the old
+    `s-04` (`search_documents` plus `search_portfolio_documents`), as before.
+  - `domain` (101 rows, 20 new): accuracy 0.9208, `bulgarianHistoryRecall` 1, `codebaseRecall` 1, `notConfused` 1,
+    accuracy:bg 1, accuracy:bg-latn 1, accuracy:en 0.873, noneAccuracy 0.9375, crossingRecall 0.8571,
+    crossingPrecision 0.8182; thresholds (0.8 / 0.75 / 0.85) pass. All twelve positive rows score the domain alone;
+    the Noul gives every negative row 0.01, so no exclusion leaks. The eight misses: one Jev timeout (`d-billing-18`),
+    five billing↔portfolio crossings that do not involve the new domain (`d-billing-12`, `d-portfolio-06`,
+    `d-both-02`, `d-both-13`, `d-codebase-13`), and two history negatives that the *other* Nouls mislabel —
+    `d-bghistory-neg-01` (AUM over four quarters: portfolio 0.98 and billing 0.67, so `both` instead of `portfolio`)
+    and `d-bghistory-neg-05` (earlier conversations about fees: billing 0.34 in the review band, so `billing` instead
+    of `none`). Both are the §54 fee/AUM pull in the billing Noul, not the history one.
+  - `intent` (101 rows, none new): accuracy 0.9802, forcedWhenShould 0.9792, unforcedWhenShouldNot 0.9811; the two
+    misses are bg-latn rows (`i-in-proc-bg-latn-02`, `i-in-data-bg-latn-02`) untouched by this change.
+  - Floor sweep for the history rows: the domain scores every positive ≥ 0.5 and every negative 0.01, so the gate (0.2)
+    and scope (0.5) hold with no band to tune; the sweep's accuracy improves at 0.6–0.8 (0.906→0.921, 0.844→0.911,
+    0.813→0.871) and its crossing numbers fall at 0.3–0.5, all on the pre-existing crossings above.
+  - The `domain` baseline (`20260928-221037`, 64 rows) predates the codebase rows (81) and these (101), so the reported
+    "regressions" against it compare different denominators; `intent`'s one regression (bg-latn 0.964→0.929) is one row
+    of 28. The baseline moves only by `make eval-accept` on the owner's say-so; it has not been moved here.

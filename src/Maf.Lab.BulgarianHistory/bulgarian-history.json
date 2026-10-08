@@ -1,0 +1,10 @@
+{
+  "Logging": { "LogLevel": { "Default": "Information", "Microsoft.AspNetCore": "Warning" } },
+  "Urls": "http://localhost:5093",
+  "BulgarianHistory": {
+    "Collection": "maf_bulgarian_history_chunks",
+    "MetaCollection": "maf_bulgarian_history_meta",
+    "CorpusLanguage": "bg",
+    "NormalizeQueryLanguage": false
+  }
+}

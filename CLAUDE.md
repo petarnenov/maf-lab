@@ -50,7 +50,7 @@ sent only as the bearer header; never put it in a prompt, state, trace or log.
 Embeddings: local Ollama, one multilingual model (`embeddinggemma`, vector `dense_v3`). Changing it = new profile + `make rebuild-index FORCE=1`.
 Two instances serve it: `ollama` (11435) for search queries only, `ollama-batch` (11436) for document embeddings (indexing, migrate, admin index runs), each pinned to its own CPUs; every request must send that instance's `num_thread` (one without it reloads the model on all CPUs).
 
-Entry point: everything runs behind the nginx load balancer on http://localhost:7171 (api, mcp-retrieval, mcp-portfolio and compliance x2; mcp-code and copilot-runtime x1). Inspectors (dev only, loopback): A2A http://localhost:7172, MCP http://localhost:7173, Redis Insight http://localhost:7174, Neo4j Browser http://localhost:7175.
+Entry point: everything runs behind the nginx load balancer on http://localhost:7171 (api, mcp-retrieval, mcp-portfolio, mcp-bulgarian-history and compliance x2; mcp-code and copilot-runtime x1). Inspectors (dev only, loopback): A2A http://localhost:7172, MCP http://localhost:7173, Redis Insight http://localhost:7174, Neo4j Browser http://localhost:7175.
 Graph store: Neo4j (`neo4j:2026.09.0-community`), Bolt on 127.0.0.1:7687, password `NEO4J_PASSWORD` (dev default `maf-lab-dev-graph`).
 
 Commands (see `make help`):

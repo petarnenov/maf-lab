@@ -392,7 +392,7 @@ export function ChatPage() {
             aria-label="Message"
             value={draft}
             rows={2}
-            placeholder="Ask about billing, portfolios or the lab’s code: procedures, runs, fees, holdings, AUM, where something is implemented…"
+            placeholder="Ask about billing, portfolios, the lab’s code or the history of Bulgaria: procedures, runs, fees, holdings, AUM, where something is implemented…"
             onChange={(e) => {
               // An edit makes the text a new draft: the next ArrowUp starts again from the newest prompt.
               recall.current = idle;

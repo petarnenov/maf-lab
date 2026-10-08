@@ -16,6 +16,7 @@ public sealed class JevIntentClassifier(JevClient jev, IOptions<JevOptions> opti
     internal const string DomainQuestionId = "in_domain";
     internal const string PortfolioQuestionId = "in_portfolio";
     internal const string CodebaseQuestionId = "in_codebase";
+    internal const string BulgarianHistoryQuestionId = "in_bulgarian_history";
 
     /// <summary>The domain question for each domain; billing keeps its original id so earlier traces and stats still read.</summary>
     internal static readonly IReadOnlyDictionary<string, string> DomainQuestionIds = new Dictionary<string, string>
@@ -23,6 +24,7 @@ public sealed class JevIntentClassifier(JevClient jev, IOptions<JevOptions> opti
         [Domains.Billing] = DomainQuestionId,
         [Domains.Portfolio] = PortfolioQuestionId,
         [Domains.Codebase] = CodebaseQuestionId,
+        [Domains.BulgarianHistory] = BulgarianHistoryQuestionId,
     };
 
     internal const string Instructions =
@@ -87,6 +89,21 @@ public sealed class JevIntentClassifier(JevClient jev, IOptions<JevOptions> opti
         Languages: Domain.Languages,
         Question: "Is `user_question` about something in `domain`?");
 
+    /// <summary>
+    /// The history of Bulgaria, asked as a fourth Noul in the same request and over the same state
+    /// (add-bulgarian-history-domain). What it is not is described as situations, never by a label: "AUM history",
+    /// "chat history", "run history" and "commit history" each contain the word that would pull the question toward this
+    /// domain, so the exclusions say what those questions are about instead (jev-usage §4.2).
+    /// </summary>
+    internal static readonly JevDomainInstructions BulgarianHistoryDomain = new(
+        Domain: "The history of Bulgaria from antiquity to the present day: its states and rulers, wars and treaties, "
+            + "uprisings and the liberation, the unification, its church, culture, language and script, and the people and "
+            + "events of its past. Not in it: how an account's assets under management or market value changed from one quarter "
+            + "to the next; the user's own earlier conversations with this assistant; the billing runs that ran before and how "
+            + "they ended; the commits and changes made to this lab's source code.",
+        Languages: Domain.Languages,
+        Question: "Is `user_question` about something in `domain`?");
+
     private static readonly IReadOnlyDictionary<string, Intent> Intents = new Dictionary<string, Intent>(StringComparer.OrdinalIgnoreCase)
     {
         ["procedural"] = Intent.Procedural,
@@ -116,6 +133,7 @@ public sealed class JevIntentClassifier(JevClient jev, IOptions<JevOptions> opti
             [DomainQuestionId] = new JevNoulQuestion(Domain),
             [PortfolioQuestionId] = new JevNoulQuestion(PortfolioDomain),
             [CodebaseQuestionId] = new JevNoulQuestion(CodebaseDomain),
+            [BulgarianHistoryQuestionId] = new JevNoulQuestion(BulgarianHistoryDomain),
         };
         // The prompt-screening battery rides in the same request: questions are answered in parallel, so screening
         // costs neither a request nor latency of its own (injection-defense; DECISIONS.md §34).

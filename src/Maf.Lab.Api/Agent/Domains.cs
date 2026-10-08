@@ -13,9 +13,17 @@ public static class Domains
     public const string Portfolio = "portfolio";
     /// <summary>The lab's own software, served by the codebase server's search (add-codebase-domain).</summary>
     public const string Codebase = "codebase";
+    /// <summary>The history of Bulgaria, served by its server's search over a shared corpus (add-bulgarian-history-domain).</summary>
+    public const string BulgarianHistory = "bulgarian-history";
 
     /// <summary>Every domain, in the order the trace lists them.</summary>
-    public static readonly IReadOnlyList<string> All = [Billing, Portfolio, Codebase];
+    public static readonly IReadOnlyList<string> All = [Billing, Portfolio, Codebase, BulgarianHistory];
+
+    /// <summary>
+    /// The domains with a search and no read tools: their search is forced whatever the intent but small talk, since a
+    /// question in them has nothing else to be answered from (add-bulgarian-history-domain).
+    /// </summary>
+    public static readonly IReadOnlySet<string> SearchOnly = new HashSet<string>(StringComparer.Ordinal) { Codebase, BulgarianHistory };
 
     /// <summary>Each domain's documentation search: the tool a forcing intent calls in that domain.</summary>
     public static readonly IReadOnlyDictionary<string, string> SearchTool = new Dictionary<string, string>
@@ -23,6 +31,7 @@ public static class Domains
         [Billing] = SearchDocumentsTool.Name,
         [Portfolio] = PortfolioTools.Search,
         [Codebase] = Maf.Lab.Domain.Code.CodeTools.Search,
+        [BulgarianHistory] = Maf.Lab.Domain.BulgarianHistory.BulgarianHistoryTools.Search,
     };
 
     /// <summary>True for a documentation search of any domain: its result carries snippets and sources.</summary>

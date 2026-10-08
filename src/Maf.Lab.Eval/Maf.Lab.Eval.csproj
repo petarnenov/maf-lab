@@ -16,6 +16,7 @@
     <ProjectReference Include="..\Maf.Lab.Retrieval\Maf.Lab.Retrieval.csproj" />
     <ProjectReference Include="..\Maf.Lab.Api\Maf.Lab.Api.csproj" />
     <ProjectReference Include="..\Maf.Lab.Portfolio\Maf.Lab.Portfolio.csproj" />
+    <ProjectReference Include="..\Maf.Lab.BulgarianHistory\Maf.Lab.BulgarianHistory.csproj" />
     <ProjectReference Include="..\Maf.Lab.CodeSearch\Maf.Lab.CodeSearch.csproj" />
   </ItemGroup>
   <ItemGroup>

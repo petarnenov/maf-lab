@@ -39,6 +39,10 @@
           <mxGeometry x="650" y="110" width="140" height="70" as="geometry" />
         </mxCell>
 
+        <mxCell id="mcp-bulgarian-history" value="mcp-bulgarian-history&#10;MCP server (Bulgarian history)" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="650" y="10" width="140" height="70" as="geometry" />
+        </mxCell>
+
         <mxCell id="qdrant" value="qdrant&#10;vector store" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
           <mxGeometry x="860" y="220" width="140" height="80" as="geometry" />
         </mxCell>
@@ -162,6 +166,18 @@
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e-code-otel" value="OTLP" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;" edge="1" parent="1" source="mcp-code" target="otel-collector">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-api-bulgarian-history" value="/bulgarian-history/mcp via lb" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="api" target="mcp-bulgarian-history">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-bulgarian-history-qdrant" value="gRPC" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="mcp-bulgarian-history" target="qdrant">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-bulgarian-history-embeddings" value="embed" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="mcp-bulgarian-history" target="ollama-embeddings">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-bulgarian-history-otel" value="OTLP" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;" edge="1" parent="1" source="mcp-bulgarian-history" target="otel-collector">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e-api-testagent" value="A2A" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="api" target="test-agent">

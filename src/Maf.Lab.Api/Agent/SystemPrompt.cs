@@ -4,10 +4,11 @@ namespace Maf.Lab.Api.Agent;
 public sealed class SystemPrompt
 {
     /// <summary>
-    /// The prompt in use unless <c>Agent:SystemPrompt</c> names another. v5 (add-neo4j-graph) adds the graph tools to v4's
-    /// codebase domain and citation rule; <c>Agent:SystemPrompt=system.v4</c> rolls back.
+    /// The prompt in use unless <c>Agent:SystemPrompt</c> names another. v6 (add-bulgarian-history-domain) adds the
+    /// fourth domain, the history of Bulgaria, with its search and its scope rule to v5's graph tools;
+    /// <c>Agent:SystemPrompt=system.v5</c> rolls back.
     /// </summary>
-    public const string DefaultVersion = "system.v5";
+    public const string DefaultVersion = "system.v6";
 
     public SystemPrompt(IConfiguration configuration)
     {

@@ -22,6 +22,16 @@
       "console": "internalConsole"
     },
     {
+      "name": "mcp-bulgarian-history",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Maf.Lab.BulgarianHistory/bin/Debug/net10.0/Maf.Lab.BulgarianHistory.dll",
+      "cwd": "${workspaceFolder}/src/Maf.Lab.BulgarianHistory",
+      "env": { "ASPNETCORE_ENVIRONMENT": "Development" },
+      "console": "internalConsole"
+    },
+    {
       "name": "api",
       "type": "coreclr",
       "request": "launch",
@@ -61,8 +71,8 @@
   ],
   "compounds": [
     {
-      "name": "api + web (with mcp-retrieval and mcp-portfolio)",
-      "configurations": ["mcp-retrieval", "mcp-portfolio", "api", "web (vite)"],
+      "name": "api + web (with mcp-retrieval, mcp-portfolio and mcp-bulgarian-history)",
+      "configurations": ["mcp-retrieval", "mcp-portfolio", "mcp-bulgarian-history", "api", "web (vite)"],
       "stopAll": true
     }
   ]

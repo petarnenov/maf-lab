@@ -79,3 +79,23 @@
 {"id": "d-offcode-02", "question": "What is the difference between an abstract class and an interface in Java?", "expected": "none", "language": "en", "split": "design"}
 {"id": "d-offcode-03", "question": "Как се пише цикъл for в JavaScript?", "expected": "none", "language": "bg", "split": "holdout"}
 {"id": "d-offcode-04", "question": "kak da centriram div s CSS?", "expected": "none", "language": "bg-latn", "split": "holdout"}
+{"id": "d-bghistory-01", "question": "When was the April Uprising and why did it fail?", "expected": "bulgarian-history", "language": "en", "split": "design"}
+{"id": "d-bghistory-02", "question": "Who was Simeon I and what was the Golden Age?", "expected": "bulgarian-history", "language": "en", "split": "holdout"}
+{"id": "d-bghistory-03", "question": "What did the Treaty of San Stefano decide for Bulgaria?", "expected": "bulgarian-history", "language": "en", "split": "design"}
+{"id": "d-bghistory-04", "question": "How did the Unification of Bulgaria in 1885 happen?", "expected": "bulgarian-history", "language": "en", "split": "design"}
+{"id": "d-bghistory-05", "question": "Кога е покръстването на българите?", "expected": "bulgarian-history", "language": "bg", "split": "design"}
+{"id": "d-bghistory-06", "question": "Кой е цар Симеон I?", "expected": "bulgarian-history", "language": "bg", "split": "holdout"}
+{"id": "d-bghistory-07", "question": "Какви са причините за Априлското въстание?", "expected": "bulgarian-history", "language": "bg", "split": "design"}
+{"id": "d-bghistory-08", "question": "Как се стига до Съединението през 1885 г.?", "expected": "bulgarian-history", "language": "bg", "split": "holdout"}
+{"id": "d-bghistory-09", "question": "Колко време трае османското владичество в българските земи?", "expected": "bulgarian-history", "language": "bg", "split": "design"}
+{"id": "d-bghistory-10", "question": "Koga e Osvobozhdenieto na Bulgaria?", "expected": "bulgarian-history", "language": "bg-latn", "split": "design"}
+{"id": "d-bghistory-11", "question": "Kakvo e Balgarskoto vazrazhdane?", "expected": "bulgarian-history", "language": "bg-latn", "split": "holdout"}
+{"id": "d-bghistory-12", "question": "Koi osnovava Parvata balgarska darzhava?", "expected": "bulgarian-history", "language": "bg-latn", "split": "design"}
+{"id": "d-bghistory-neg-01", "question": "How did the AUM of A-1042 change over the last four quarters?", "expected": "portfolio", "language": "en", "split": "design"}
+{"id": "d-bghistory-neg-02", "question": "Как се е променила пазарната стойност на сметка B-200 по тримесечия?", "expected": "portfolio", "language": "bg", "split": "holdout"}
+{"id": "d-bghistory-neg-03", "question": "Which billing runs ran last quarter and how did they end?", "expected": "billing", "language": "en", "split": "design"}
+{"id": "d-bghistory-neg-04", "question": "Кои билинг цикли се провалиха миналия месец?", "expected": "billing", "language": "bg", "split": "holdout"}
+{"id": "d-bghistory-neg-05", "question": "Show me my earlier conversations with you about fees.", "expected": "none", "language": "en", "split": "design"}
+{"id": "d-bghistory-neg-06", "question": "Какво те попитах миналата седмица?", "expected": "none", "language": "bg", "split": "holdout"}
+{"id": "d-bghistory-neg-07", "question": "What changed in TenantScopedSearch in the last commits?", "expected": "codebase", "language": "en", "split": "design"}
+{"id": "d-bghistory-neg-08", "question": "Кои са последните промени в кода на DataToolRouter?", "expected": "codebase", "language": "bg", "split": "holdout"}

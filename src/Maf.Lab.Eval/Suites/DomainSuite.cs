@@ -38,6 +38,7 @@ public sealed class DomainSuite(EvalAgentHost host)
                 failures.Add(new EvalCaseFailure(c.Id,
                     $"expected {c.Expected}, got {actual} — billing={p?.GetValueOrDefault(Domains.Billing):0.00} "
                     + $"portfolio={p?.GetValueOrDefault(Domains.Portfolio):0.00} codebase={p?.GetValueOrDefault(Domains.Codebase):0.00} "
+                    + $"bulgarian-history={p?.GetValueOrDefault(Domains.BulgarianHistory):0.00} "
                     + $"intent={decision.Intent} reason={decision.Reason ?? "-"}"));
             }
             ctx.Progress($"domain {i + 1}/{cases.Count} {c.Id}: {actual}{(actual == c.Expected ? "" : $" (expected {c.Expected})")}");

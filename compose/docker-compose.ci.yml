@@ -45,6 +45,10 @@ services:
     environment:
       <<: *ci-model-env
 
+  mcp-bulgarian-history:
+    environment:
+      <<: *ci-model-env
+
   mcp-code:
     environment:
       <<: *ci-model-env

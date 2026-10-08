@@ -14,8 +14,8 @@ export Models__OllamaNumThread="${Models__OllamaNumThread:-${OLLAMA_INTERACTIVE_
 export Models__BatchOllamaEndpoint="${Models__BatchOllamaEndpoint:-http://localhost:11436}"
 export Models__BatchOllamaNumThread="${Models__BatchOllamaNumThread:-${OLLAMA_BATCH_THREADS:-12}}"
 
-# One corpus and one collection per domain: billing (data/ → maf_chunks), portfolio (data-portfolio/ → maf_portfolio_chunks)
-# and the codebase (the repository → maf_code_chunks).
+# One corpus and one collection per domain: billing (data/ → maf_chunks), portfolio (data-portfolio/ → maf_portfolio_chunks),
+# Bulgarian history (data-bulgarian-history/ → maf_bulgarian_history_chunks) and the codebase (the repository → maf_code_chunks).
 index_domain() {
   local collection="$1" corpus="$2" meta="$3"
   local points
@@ -31,6 +31,7 @@ index_domain() {
 
 index_domain "$COLLECTION" "${Indexing__CorpusRoot:-$ROOT/data}" "${Qdrant__MetaCollection:-maf_meta}"
 index_domain maf_portfolio_chunks "$ROOT/data-portfolio" maf_portfolio_meta
+index_domain maf_bulgarian_history_chunks "$ROOT/data-bulgarian-history" maf_bulgarian_history_meta
 # The codebase: the repository itself, cut by structure, in embedding tokens (see CODE_ENV in the Makefile).
 Indexing__Layout=repository Indexing__MaxChunkTokens=1024 Indexing__Bm25Tokenizer=code \
   index_domain maf_code_chunks "$ROOT" maf_code_meta
