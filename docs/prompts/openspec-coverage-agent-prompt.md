@@ -1,6 +1,6 @@
-# /opsx:propose add-coverage-dashboard-and-test-agent
+# /openspec-propose add-coverage-dashboard-and-test-agent
 
-> Paste everything below the line into Claude Code after `/opsx:propose add-coverage-dashboard-and-test-agent`.
+> Paste everything below the line into Claude Code after `/openspec-propose add-coverage-dashboard-and-test-agent`.
 > Section "Recommended additions" is optional: delete the items you don't want before running.
 
 ---

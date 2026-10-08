@@ -2,7 +2,7 @@
 name: openspec-models
 description: Which Claude model does which OpenSpec phase and task, at what effort, and who takes over when a model fails — two tries per model, then one model up, then the human. Read before starting an OpenSpec phase or delegating work to a subagent.
 applies_to: Claude Code sessions and subagents working on openspec/changes/* (explore, propose, apply, verify, sync, archive)
-based_on: Claude model table of 2026-10-06 (Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 5.5); OpenSpec OPSX commands (core + expanded profile)
+based_on: Claude model table of 2026-10-06 (Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 5.5); OpenSpec skills (core + expanded profile)
 ---
 
 # Rule: OpenSpec work by model
@@ -42,19 +42,19 @@ Decide it when the change is proposed and write it in `proposal.md`. When torn, 
 
 ## 3. Phase → model
 
-| OPSX command / artifact | LOW | MEDIUM | HIGH |
+| OpenSpec skill / artifact | LOW | MEDIUM | HIGH |
 |---|---|---|---|
-| `/opsx:explore` | Sonnet · medium | Opus · high | Fable · high |
+| `/openspec-explore` | Sonnet · medium | Opus · high | Fable · high |
 | ↳ code lookups (read-only subagents) | Haiku | Haiku | Haiku |
-| `/opsx:propose` · `proposal.md` | Sonnet | Opus · high | Fable · high |
+| `/openspec-propose` · `proposal.md` | Sonnet | Opus · high | Fable · high |
 | ↳ `specs/` (requirements, scenarios) | Sonnet | Fable · medium | Fable · high |
 | ↳ `design.md` | — | Opus · high | Fable · xhigh |
 | ↳ `tasks.md` (with the class tags) | Sonnet | Opus · medium | Opus · high |
 | `openspec validate --strict`, `make docs-check` | no model | no model | no model |
 | ↳ fixing their findings | Haiku | Haiku | Haiku |
-| `/opsx:apply` | by task class, §4 | | |
-| `/opsx:verify` and the archive review | Sonnet | Opus · high | Opus · high, then a Fable pass spec ↔ code |
-| `/opsx:sync`, `/opsx:archive` | Haiku | Haiku | Haiku, checked by Sonnet |
+| `/openspec-apply-change` | by task class, §4 | | |
+| the verify pass and the archive review | Sonnet | Opus · high | Opus · high, then a Fable pass spec ↔ code |
+| `/openspec-sync-specs`, `/openspec-archive-change` | Haiku | Haiku | Haiku, checked by Sonnet |
 
 The reviewer is never the model that wrote the code.
 
