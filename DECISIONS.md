@@ -3262,6 +3262,15 @@ be re-run then.
     fast, unchanged.
   - Tested on labelled inputs in English, Bulgarian and Latin-script Bulgarian: 12 positive and 8 negative rows in
     `domain.jsonl`, 5 rows in `selection.jsonl`, and the unit tests above.
+- **Found in the chat after the archive: the two server lists must agree by index.** `appsettings.json` (for
+  `make dev`) and the compose file's `Agent__Servers__N__*` (for Docker) both configure the servers, and .NET
+  configuration merges arrays by index: the environment overrides `Domain` and `Endpoint` of entry N and inherits
+  whatever else entry N holds in the JSON. The history server was entry 1 in the JSON and entry 2 in compose, so in
+  Docker it came up with the codebase entry's `Tools` allowlist and `search_bulgarian_history` was dropped without a
+  log line; the chat showed "tool does not exist" on every history question. The JSON now lists the servers in the
+  compose order, and `AgentServersConfigurationTests` binds the merged configuration the way `Program.cs` does and fails
+  when an index names different domains or an allowlist lands on another domain's server. Local in-process runs
+  (`make ask`, the evals) never saw it: they use the JSON alone.
 - **Eval results (2026-10-08, runs 20261008-170850-intent, 20261008-170929-domain, 20261008-171008-selection; stack
   up, `OLLAMA_API_KEY` and `JEV_MAF_LAB` set).**
   - `selection` (54 rows, 5 new): recall 1, precision 0.9831, exactMatch 0.9815, negativeAccuracy 1 — up from the
