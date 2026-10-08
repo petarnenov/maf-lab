@@ -167,6 +167,8 @@ context: |
 
 rules:
   proposal:
+    - State the risk tier (LOW, MEDIUM or HIGH) and its one-line reason, per
+      docs/rules/openspec-models.md §2; it picks the models for the change.
     - 'Include a `## Progress` section, per the progress-feedback spec. If the
       change adds or alters a CLI tool, a make target, or a UI action that can
       start a process longer than 3 seconds, say how it shows progress:
@@ -196,6 +198,8 @@ rules:
       instructions, criteria), thresholds per action risk, fallback, and
       pinned model version.
   tasks:
+    - Prefix every task with its class, `[mech]`, `[std]` or `[hard]`, per
+      docs/rules/openspec-models.md §4; the class picks the model in apply.
     - Add a task to run the Jev review checklist (docs/rules/jev-usage.md §7)
       and to test on labeled inputs, including Bulgarian ones.
     - End with a Documentation task group that updates each document the
@@ -205,6 +209,10 @@ rules:
 operations:
   apply:
     guidance:
+      - Pick the model for each task by its class, per
+        docs/rules/openspec-models.md §4. After two failed tries on one model,
+        move one model up with the §6 handoff; after Fable's two, stop and
+        report to the user.
       - Read docs/rules/jev-usage.md before implementing or changing any call
         to /v1/systemone.
       - When a change adds or alters a route, a make target, a project, a

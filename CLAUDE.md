@@ -61,3 +61,5 @@ Commands (see `make help`):
 - `make docs` (rewrite generated doc blocks) · `make docs-check` (docs vs code; also in `make ci`)
 
 - Before touching any TypeSafe Jev call, read docs/rules/jev-usage.md.
+- Before an OpenSpec phase or a subagent delegation, read docs/rules/openspec-models.md: model per
+  phase and task class; two tries per model, then one model up, then the human.
