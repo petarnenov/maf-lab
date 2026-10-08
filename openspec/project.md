@@ -65,6 +65,7 @@ maf-lab/
   compose/                    docker-compose.yml, the nginx load balancer, the Ollama stub for CI, OpenTelemetry config, seed data
   copilot-runtime/            CopilotKit's runtime (Node), wiring only: the web reaches the api's AG-UI agents through it; the AG-UI conformance check
   data/                       Sample corpus: docs/, procedures/, code/ per tenant + shared
+  data-history/               History domain corpus (Bulgarian history from bg.wikipedia.org, CC BY-SA 4.0): shared only, readable by every firm
   data-portfolio/             Portfolio domain corpus, same tenant layout, indexed into its own collection
   docs/                       HTTP API, trace events, telemetry and shared-state references; rules; screenshots; docs-sync.toml
   evals/                      JSONL datasets per suite, the accepted baseline, and the run reports
