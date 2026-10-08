@@ -129,7 +129,11 @@ bearer token and offer their union. The selected domains SHALL be:
 A turn with domains in scope SHALL store them as the conversation's domains. A server whose domain is not selected
 SHALL NOT be contacted during that turn.
 
-A server MAY be configured with a list of the tools it offers the agent. Its other tools SHALL not be offered.
+A server MAY be configured with a list of the tools it offers the agent. Its other tools SHALL not be offered. Such a
+list SHALL apply only to the server it is configured on: no other domain's server SHALL be narrowed by it, whichever
+configuration source (the settings file or the environment) each server comes from. Where the servers are configured
+in more than one source, every source SHALL name the same domain at the same position, and a test SHALL bind the
+sources together as the api does and fail when they disagree.
 
 Every tool SHALL be known by the domain and the server that own it. A tool name offered by two servers SHALL be kept
 from the first and dropped from the second, with a log entry.
@@ -162,6 +166,16 @@ A confirmation SHALL be sent to the server that owns the tool, whatever domains 
 #### Scenario: Only the listed tools of the codebase server
 - **WHEN** the codebase server offers search_codebase and ask_codebase and is configured to offer search_codebase
 - **THEN** the agent is offered search_codebase and not ask_codebase
+
+#### Scenario: An allowlist narrows no other server
+- **WHEN** the api runs in Docker with the compose environment layered over the settings file, and the codebase server
+  is the only one configured with a tools list
+- **THEN** the Bulgarian history server offers `search_bulgarian_history` and the portfolio server offers all its tools,
+  and a history question in the chat is answered from its search, not with "tool does not exist"
+
+#### Scenario: The two sources disagree on a position
+- **WHEN** the settings file names one domain at a position and the compose environment names another at the same one
+- **THEN** the configuration test fails and names the position and both domains
 
 ### Requirement: Retrieval forced in every domain in scope
 When a forcing intent is acted on, the agent SHALL force the search tool of every domain in scope that is offered.
