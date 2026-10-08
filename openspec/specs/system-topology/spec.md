@@ -8,7 +8,8 @@ and keeps that report in step with the drawn diagram that the UI renders it on.
 
 ### Requirement: Topology report
 The system SHALL expose, to any signed-in user, a report of the stack it is running in. The report SHALL contain one
-entry per service the lab is made of: the load balancer, the api, the MCP server of every domain (billing, portfolio and codebase), the compliance
+entry per service the lab is made of: the load balancer, the api, the MCP server of every domain (billing, portfolio,
+codebase and Bulgarian history), the compliance
 reviewer, the test-generation agent, the coverage runner, the shared state store, the vector store, the
 graph store, the model provider used for chat, the model provider used for embeddings, the web app, the telemetry collector, the
 metrics store and the trace store. Each entry SHALL carry a
@@ -25,8 +26,13 @@ particular, a configured API key SHALL never be reported, only whether one is co
 
 #### Scenario: Every domain's MCP server is reported
 - **WHEN** the topology is requested
-- **THEN** the billing, portfolio and codebase MCP servers each have an entry with their replicas, their endpoint and
-  the tools they offer, and an edge from the api
+- **THEN** the billing, portfolio, codebase and Bulgarian history MCP servers each have an entry with their replicas,
+  their endpoint and the tools they offer, and an edge from the api
+
+#### Scenario: The Bulgarian history server's edges
+- **WHEN** the topology is requested
+- **THEN** the Bulgarian history server has edges to the vector store, the embedding provider and the telemetry
+  collector, and none to the graph store or the chat provider
 
 #### Scenario: The telemetry services are part of the stack
 - **WHEN** the topology is requested
