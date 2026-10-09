@@ -181,6 +181,7 @@ export OLLAMA_API_KEY=…    # chat runs on Ollama Cloud (gpt-oss:120b); the key
 export JEV_MAF_LAB=…       # intent classification runs on TypeSafe Jev; same rule
 make                       # doctor-lite → build → start → wait until healthy → index if empty → http://localhost:7171
 make core                  # the core alone: no domain plugin, only the core's providers; every turn declines (plain make brings them back)
+make chat                  # chat with the domain plugins only (billing, code, portfolio), no dev/QA tooling
 make help                  # every target
 ```
 
@@ -191,6 +192,7 @@ make help                  # every target
 | `make help` | List the targets |
 | `make up` | Build and start the stack (api replicas via API_REPLICAS; a plugin's own in its plugin.mk), wait until healthy |
 | `make core` | Start the core with no plugin but its minimum providers (MAF_PLUGINS=none, MAF_CORE_PROVIDERS); declines every turn (decision 5h); a plain make brings them back |
+| `make chat` | Start chat with the domain plugins only (billing, code, portfolio + their stores and the jev provider), no dev/QA tooling |
 | `make product-check` | Build the product image variant (api, web) and check it holds no dev-or-qa-only plugin code |
 | `make plugins` | List every plugin: kind, scope, environments, whether installed, dependencies, description |
 | `make plugin-new` | Start a new plugin (NAME=…, KIND=mcp\|app): mcp copies _example, app renders the app template; prints the files written |
