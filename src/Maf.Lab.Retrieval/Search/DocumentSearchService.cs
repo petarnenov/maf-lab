@@ -156,7 +156,7 @@ public sealed partial class DocumentSearchService(
         RelevanceJudgement? judgement = null;
         var silenced = false;
         long relevanceMs = 0;
-        if ((settings.RelevanceGate || reranker is JevReranker) && candidates.Count > 0)
+        if ((settings.RelevanceGate || reranker is RelevanceReranker) && candidates.Count > 0)
         {
             clock.Restart();
             judgement = await LabTelemetry.InSpanAsync("retrieval.relevance",
@@ -173,8 +173,8 @@ public sealed partial class DocumentSearchService(
         else if (reranker is not null)
         {
             clock.Restart();
-            ranked = reranker is JevReranker
-                ? JevReranker.Order(candidates, judgement)
+            ranked = reranker is RelevanceReranker
+                ? RelevanceReranker.Order(candidates, judgement)
                 : await LabTelemetry.InSpanAsync("retrieval.rerank", () => reranker.RerankAsync(searchedQuery, candidates, ct));
             rerankMs = clock.ElapsedMilliseconds;
         }
@@ -275,7 +275,7 @@ public sealed partial class DocumentSearchService(
         // search made, and whoever counts them must not depend on the monitor being switched on.
         var relevance = judgement is null ? null
             : SearchDiagnostics.SummaryOf(judgement, settings.RelevanceGate, _options.RelevanceFloor, silenced,
-                settings.Rerank ? rerankerKind : null, rerankedByJev: reranker is JevReranker && !silenced && judgement.Scores is not null);
+                settings.Rerank ? rerankerKind : null, rerankedByJev: reranker is RelevanceReranker && !silenced && judgement.Scores is not null);
         return (ranked, relevance);
     }
 

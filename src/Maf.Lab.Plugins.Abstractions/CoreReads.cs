@@ -29,3 +29,15 @@ public interface IGuardSettings
 {
     GuardSettings Current { get; }
 }
+
+/// <summary>The intent classifier's configuration as the running service applies it, and the engine that answers it.</summary>
+public readonly record struct IntentSettings(string Engine, double MinConfidence, double MinInDomain, double TimeoutSeconds);
+
+/// <summary>
+/// A read port onto the intent classifier's effective configuration (introduce-provider-plugins): its thresholds are the
+/// core's and its engine is the installed provider's, so a plugin reads both here instead of binding a section itself.
+/// </summary>
+public interface IIntentSettings
+{
+    IntentSettings Current { get; }
+}

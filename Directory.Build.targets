@@ -1,7 +1,8 @@
 <Project>
   <!--
     In-process plugins are compiled in (introduce-plugins decision 5): the api, and the test projects that host it,
-    reference every plugins/<name>/server/*.csproj. The api applies only the installed ones (plugins/.installed); the
+    reference every plugins/<name>/server/*.csproj; provider plugins' plugins/<name>/lib/*.csproj go into the named
+    provider hosts below. The api applies only the installed ones (plugins/.installed); the
     rest are inert.
 
     The product image variant (decision 5e) builds with MafImageVariant=product and MafProductPlugins=|A|B| (the server
@@ -10,10 +11,22 @@
   -->
   <PropertyGroup>
     <_MafPluginHost Condition="'$(MSBuildProjectName)' == 'Maf.Lab.Api' or '$(MSBuildProjectName)' == 'Maf.Lab.Tests' or '$(MSBuildProjectName)' == 'Maf.Lab.IntegrationTests'">true</_MafPluginHost>
+    <!--
+      Provider plugins (introduce-provider-plugins 5t/5u) live in every process that asks a model, an embedder or the
+      decision engine, so their code (plugins/<name>/lib/*.csproj, which references the abstractions and the domain only)
+      goes into every project that opts in with <MafProviderHost>true</MafProviderHost> in its own csproj — not a list of
+      names here, which would name a plugin's project once a host moves into a plugin. Each host registers only the
+      installed ones (ProviderHost.AddInstalledProviders). This supersedes §81's "the api and the test hosts" for the
+      provider kind.
+    -->
   </PropertyGroup>
   <ItemGroup Condition="'$(_MafPluginHost)' == 'true'">
     <_MafPluginServer Include="$(MSBuildThisFileDirectory)plugins/*/server/*.csproj" />
     <ProjectReference Include="@(_MafPluginServer)" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(MafProviderHost)' == 'true'">
+    <_MafProviderLib Include="$(MSBuildThisFileDirectory)plugins/*/lib/*.csproj" />
+    <ProjectReference Include="@(_MafProviderLib)" />
   </ItemGroup>
   <!--
     A plugin's own service (plugins/<name>/service/, its own container, never compiled into the api or the product image)
@@ -37,9 +50,10 @@
     <Compile Include="$(MSBuildThisFileDirectory)plugins/*/tests/integration/**/*.cs" Link="Plugins/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
   <Target Name="_MafLeaveOutNonProductPlugins" BeforeTargets="AssignProjectConfiguration"
-          Condition="'$(_MafPluginHost)' == 'true' and '$(MafImageVariant)' == 'product'">
+          Condition="('$(_MafPluginHost)' == 'true' or '$(MafProviderHost)' == 'true') and '$(MafImageVariant)' == 'product'">
     <ItemGroup>
       <ProjectReference Remove="@(_MafPluginServer)" Condition="!$(MafProductPlugins.Contains('|%(_MafPluginServer.Filename)|'))" />
+      <ProjectReference Remove="@(_MafProviderLib)" Condition="!$(MafProductPlugins.Contains('|%(_MafProviderLib.Filename)|'))" />
     </ItemGroup>
   </Target>
 </Project>

@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace Maf.Lab.Tests;
 
@@ -60,6 +62,17 @@ public sealed class CliCancelTests
             held.ForEach(c => c.Dispose());
         }
     }
+
+    /// <summary>The name of a bundled provider plugin that provides the decision engine, or null when none is bundled.</summary>
+    private static string? BundledDecisionEngine() =>
+        Directory.EnumerateDirectories(Path.Combine(CorpusLoaderTests.RepoRoot(), "plugins"))
+            .Select(d => Path.Combine(d, "plugin.toml"))
+            .Where(File.Exists)
+            .Select(File.ReadAllText)
+            .Where(t => Regex.IsMatch(t, @"(?m)^kind\s*=\s*""provider""") && Regex.IsMatch(t, @"(?m)^provides\s*=\s*""decision-engine"""))
+            .Select(t => Regex.Match(t, @"(?m)^name\s*=\s*""([^""]+)""").Groups[1].Value)
+            .Order(StringComparer.Ordinal)
+            .FirstOrDefault();
 
     /// <summary>A tool's own build output (its dependencies are its own, not this test project's).</summary>
     private static string ToolPath(string projectDir, string tool)
@@ -146,10 +159,22 @@ public sealed class CliCancelTests
     public async Task The_eval_tool_stops_when_told_and_keeps_what_finished(string signal)
     {
         using var hole = new BlackHole();
+        // The eval refuses to start without exactly one decision engine installed: any bundled one, found as the build
+        // finds plugins (by glob), with no key, since the run is stopped before it would ask.
+        var engine = BundledDecisionEngine();
+        Assert.SkipWhen(engine is null, "no bundled decision-engine provider");
+        var root = Directory.CreateTempSubdirectory("maf-lab-cli-providers").FullName;
+        File.WriteAllText(Path.Combine(root, ".installed"), JsonSerializer.Serialize(new
+        {
+            schema = 1,
+            env = "dev",
+            plugins = new[] { new { manifest = new { schema = 1, name = engine, kind = "provider", provides = "decision-engine", environments = new[] { "dev" } }, serverJson = (object?)null, hasServer = false } },
+        }));
 
         var (exit, stderr) = await InterruptAsync(signal, hole, ToolPath("src/Maf.Lab.Eval", "Maf.Lab.Eval.dll"),
             ["--ask", "what is the procedure when a fee schedule is missing"], new()
         {
+            ["Plugins__Root"] = root,
             ["Qdrant__Host"] = "127.0.0.1",
             ["Qdrant__GrpcPort"] = hole.Port.ToString(),
             ["SharedState__ConnectionString"] = $"127.0.0.1:{hole.Port},abortConnect=false",

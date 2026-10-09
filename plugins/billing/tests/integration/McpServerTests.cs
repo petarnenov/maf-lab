@@ -235,6 +235,7 @@ public sealed class McpServerTests(CorpusIndexFixture corpus) : IAsyncDisposable
         configure?.Invoke(values);
         var factory = new WebApplicationFactory<Maf.Lab.Retrieval.Program>().WithWebHostBuilder(b =>
         {
+            b.UseFixtureEngine();
             b.UseEnvironment("Development");
             b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(values));
             b.WithFakeSharedState();
@@ -370,6 +371,7 @@ public sealed class McpDiagnosticsTests(CorpusIndexFixture corpus)
         var values = corpus.Config();
         await using var factory = new WebApplicationFactory<Maf.Lab.Retrieval.Program>().WithWebHostBuilder(b =>
         {
+            b.UseFixtureEngine();
             b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(values));
             b.WithFakeSharedState();
             b.ConfigureTestServices(s =>
@@ -419,6 +421,7 @@ public sealed class McpDiagnosticsTests(CorpusIndexFixture corpus)
         values["Retrieval:RelevanceGateEnabled"] = "true";
         await using var factory = new WebApplicationFactory<Maf.Lab.Retrieval.Program>().WithWebHostBuilder(b =>
         {
+            b.UseFixtureEngine();
             b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(values));
             b.WithFakeSharedState();
             b.ConfigureTestServices(s =>

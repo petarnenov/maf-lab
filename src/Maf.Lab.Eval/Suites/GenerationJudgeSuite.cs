@@ -1,4 +1,4 @@
-using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.Agent.Decisions;
 using Maf.Lab.Domain.Evals;
 using Maf.Lab.Eval.Datasets;
 using Maf.Lab.Eval.Judging;
@@ -23,7 +23,7 @@ namespace Maf.Lab.Eval.Suites;
 /// </list>
 /// Each rate is also given per domain, language and split.
 /// </summary>
-public sealed class GenerationJudgeSuite(JevAnswerCheck check, ReportingConfiguration reporting)
+public sealed class GenerationJudgeSuite(DecisionAnswerCheck check, ReportingConfiguration reporting)
 {
     public const string ScenarioPrefix = "generation-judge.";
 
@@ -43,13 +43,13 @@ public sealed class GenerationJudgeSuite(JevAnswerCheck check, ReportingConfigur
         var checkFailures = new List<EvalCaseFailure>();
         foreach (var c in labelled)
         {
-            var context = new JevGradeContext([.. c.Sources.SelectMany(AnswerCheckSuite.Current)], [], c.PreviousQuestion,
+            var context = new DecisionGradeContext([.. c.Sources.SelectMany(AnswerCheckSuite.Current)], [], c.PreviousQuestion,
                 [.. c.PreviousSources.Select(AnswerCheckSuite.Previous)]);
             var outcome = await GradeAsync(c.Id, c.Question, c.Answer, context, ct);
             var g = outcome.Grade;
             // A failed grade counts as nothing flagged, as an unchecked answer does in the check's own suite.
             var graded = new Metrics.AnswerCheckOutcome(c.Unsupported, c.OffTopic, g is not null,
-                g is not null && g.Faithfulness < JevGenerationEvaluator.PassMark, g is not null && g.Relevance < 1,
+                g is not null && g.Faithfulness < DecisionGenerationEvaluator.PassMark, g is not null && g.Relevance < 1,
                 g is not null && g.Uncertain > 0, c.Domain, c.Language, c.Split);
             gradeOutcomes.Add(graded);
             var gradeOk = g is not null && graded.NotGrounded == c.Unsupported && graded.NotRelevant == c.OffTopic;
@@ -74,7 +74,7 @@ public sealed class GenerationJudgeSuite(JevAnswerCheck check, ReportingConfigur
         var pointFailures = new List<EvalCaseFailure>();
         foreach (var c in pointCases)
         {
-            var outcome = await GradeAsync(c.Id, c.Question, c.Answer, new JevGradeContext([], c.ReferencePoints), ct);
+            var outcome = await GradeAsync(c.Id, c.Question, c.Answer, new DecisionGradeContext([], c.ReferencePoints), ct);
             var wrong = new List<string>();
             for (var j = 0; j < c.ReferencePoints.Count; j++)
             {
@@ -85,7 +85,7 @@ public sealed class GenerationJudgeSuite(JevAnswerCheck check, ReportingConfigur
                 if (g is not null && (c.Stated[j] != stated || c.Contradicted[j] != contradicted))
                 {
                     wrong.Add($"point {j} expected {(c.Stated[j] ? "stated" : "not stated")}/{(c.Contradicted[j] ? "contradicted" : "not contradicted")}, "
-                        + $"got stated={g.Answers[JevGradeRequest.StatedId(j)]:0.##} contradicts={g.Answers[JevGradeRequest.ContradictsId(j)]:0.##}");
+                        + $"got stated={g.Answers[DecisionGradeRequest.StatedId(j)]:0.##} contradicts={g.Answers[DecisionGradeRequest.ContradictsId(j)]:0.##}");
                 }
             }
             if (outcome.Grade is null)
@@ -104,7 +104,7 @@ public sealed class GenerationJudgeSuite(JevAnswerCheck check, ReportingConfigur
         var sentenceFailures = new List<EvalCaseFailure>();
         foreach (var c in sentenceCases)
         {
-            var outcome = await GradeAsync(c.Id, c.Question, c.Answer, new JevGradeContext([.. c.Sources.SelectMany(AnswerCheckSuite.Current)], []), ct);
+            var outcome = await GradeAsync(c.Id, c.Question, c.Answer, new DecisionGradeContext([.. c.Sources.SelectMany(AnswerCheckSuite.Current)], []), ct);
             var g = outcome.Grade;
             var wrong = new List<string>();
             for (var i = 0; i < c.Sentences.Count; i++)
@@ -114,8 +114,8 @@ public sealed class GenerationJudgeSuite(JevAnswerCheck check, ReportingConfigur
                 {
                     continue;
                 }
-                double? claimP = g?.Answers.GetValueOrDefault(JevGradeRequest.ClaimId(i));
-                double? supportedP = g?.Answers.GetValueOrDefault(JevGradeRequest.SupportedId(i));
+                double? claimP = g?.Answers.GetValueOrDefault(DecisionGradeRequest.ClaimId(i));
+                double? supportedP = g?.Answers.GetValueOrDefault(DecisionGradeRequest.SupportedId(i));
                 // Read as the grade reads it, citation check included.
                 var claim = g?.SentenceClaims[i] ?? false;
                 var supported = g?.SentenceSupported[i] ?? false;
@@ -149,7 +149,7 @@ public sealed class GenerationJudgeSuite(JevAnswerCheck check, ReportingConfigur
         ];
     }
 
-    private async Task<GradeOutcome> GradeAsync(string id, string question, string answer, JevGradeContext context, CancellationToken ct)
+    private async Task<GradeOutcome> GradeAsync(string id, string question, string answer, DecisionGradeContext context, CancellationToken ct)
     {
         await using (var run = await reporting.CreateScenarioRunAsync(ScenarioPrefix + id, cancellationToken: ct))
         {
@@ -261,7 +261,7 @@ public sealed class GenerationJudgeSuite(JevAnswerCheck check, ReportingConfigur
         $"{(unsupported ? "not grounded" : "grounded")}/{(offTopic ? "not relevant" : "relevant")}";
 
     /// <summary>The probabilities behind a faithfulness verdict, in sentence order: claim and support per sentence.</summary>
-    private static string Probabilities(JevGrade g, string supported, string claim) =>
+    private static string Probabilities(DecisionGrade g, string supported, string claim) =>
         "[" + string.Join(" ", g.Answers.Keys.Where(k => k.StartsWith(supported, StringComparison.Ordinal))
             .Select(k => k[supported.Length..])
             .Select(i => $"{i}:c{g.Answers[claim + i]:0.##}/s{g.Answers[supported + i]:0.##}")) + "]";

@@ -1,6 +1,6 @@
 using Maf.Lab.Api.Agent;
-using Maf.Lab.Api.Agent.Jev;
-using Maf.Lab.Retrieval.Jev;
+using Maf.Lab.Api.Agent.Decisions;
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Domain.Evals;
 using Maf.Lab.Eval.Datasets;
 using Maf.Lab.Eval.Hosting;
@@ -16,10 +16,10 @@ public sealed class IntentSuite(EvalAgentHost host)
 {
     public async Task<IReadOnlyList<EvalVariantResult>> RunAsync(SuiteContext ctx, CancellationToken ct)
     {
-        if (!host.Services.GetRequiredService<JevCredential>().IsConfigured)
+        if (!host.Services.GetRequiredService<IDecisionEngine>().IsConfigured)
         {
             // Without the key every decision is "not forced"; a 47% score would read as a classifier that got worse.
-            throw new InvalidOperationException($"The intent suite needs {JevCredential.EnvironmentVariable} in the environment.");
+            throw new InvalidOperationException("The intent suite needs a configured decision engine (the installed engine's credential in the environment).");
         }
         var classifier = host.Services.GetRequiredService<IIntentClassifier>();
         var cases = ctx.Take(DatasetLoader.Intent(ctx.DatasetRoot)).ToList();

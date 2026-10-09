@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Maf.Lab.Api.Agent;
-using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.Agent.Decisions;
 using Maf.Lab.Api.Agent.Tracing;
 using Maf.Lab.Api.BuiltIn;
 using Maf.Lab.Plugins.Code;
@@ -10,7 +10,6 @@ using Maf.Lab.Domain.Feedback;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Domain.Tracing;
 using Maf.Lab.Plugins.Abstractions;
-using Maf.Lab.Retrieval.Jev;
 using Maf.Lab.TestSupport;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
@@ -93,7 +92,7 @@ public class CodeAnswerChecksTests : IDisposable
         var context = screening.GetProperty("questions").GetProperty("guard_to_ai").GetProperty("instructions").GetProperty("context").GetString();
         Assert.Contains("maf-lab repository", context);
         Assert.DoesNotContain("ConfirmedCall", screening.GetProperty("questions").GetRawText());
-        Assert.Equal(JevGuardQuestions.ContentIds.Order(), screening.GetProperty("questions").EnumerateObject().Select(q => q.Name).Order());
+        Assert.Equal(GuardQuestions.ContentIds.Order(), screening.GetProperty("questions").EnumerateObject().Select(q => q.Name).Order());
     }
 
     [Fact]
@@ -229,16 +228,16 @@ public class CodeAnswerChecksTests : IDisposable
     {
         static string Snapshot(string name) => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "Jev", name));
         // The documents battery as measured by extract-billing (DECISIONS §81 part F).
-        Assert.Equal(Snapshot("guard-content-documents.json"), JsonSerializer.Serialize(JevGuardQuestions.Content, JevRequest.Json));
-        Assert.Equal(Snapshot("guard-content-codebase.json"), JsonSerializer.Serialize(JevGuardQuestions.CodeContent, JevRequest.Json));
-        Assert.Equal(JevGuardQuestions.Content.Keys, JevGuardQuestions.CodeContent.Keys);
-        Assert.Same(JevGuardQuestions.CodeContent, JevGuardQuestions.ContentFor(CodeTools.Search));
-        Assert.Same(JevGuardQuestions.Content, JevGuardQuestions.ContentFor("search_documents"));
-        foreach (var (id, q) in JevGuardQuestions.CodeContent)
+        Assert.Equal(Snapshot("guard-content-documents.json"), FakeDecisionEngine.QuestionsJson(GuardQuestions.Content));
+        Assert.Equal(Snapshot("guard-content-codebase.json"), FakeDecisionEngine.QuestionsJson(GuardQuestions.CodeContent));
+        Assert.Equal(GuardQuestions.Content.Keys, GuardQuestions.CodeContent.Keys);
+        Assert.Same(GuardQuestions.CodeContent, GuardQuestions.ContentFor(CodeTools.Search));
+        Assert.Same(GuardQuestions.Content, GuardQuestions.ContentFor("search_documents"));
+        foreach (var (id, q) in GuardQuestions.CodeContent)
         {
-            var node = JsonSerializer.SerializeToNode(q, JevRequest.Json)!;
+            var node = FakeDecisionEngine.QuestionNode(q);
             var question = node["instructions"]!["question"]!.GetValue<string>();
-            var billing = JsonSerializer.SerializeToNode(JevGuardQuestions.Content[id], JevRequest.Json)!["instructions"]!["question"]!.GetValue<string>();
+            var billing = FakeDecisionEngine.QuestionNode(GuardQuestions.Content[id])["instructions"]!["question"]!.GetValue<string>();
             Assert.Equal(billing, question);
             Assert.Contains("`untrusted_text`", question);
         }
@@ -280,12 +279,12 @@ public class CodeAnswerChecksTests : IDisposable
     [Fact]
     public void The_same_place_three_times_is_sent_once_and_the_repeats_are_counted()
     {
-        var same = Code("src/Maf.Lab.Api/Agent/Jev/JevAnswerCheck.cs", 229, 252, "internal static IReadOnlyList<string> Cap(...)");
+        var same = Code("src/Maf.Lab.Api/Agent/Jev/DecisionAnswerCheck.cs", 229, 252, "internal static IReadOnlyList<string> Cap(...)");
         var selection = AnswerSources.Select([same, Doc("shared/docs/a.md", "A", "text"), same, same], [], "It caps the sources.", 12_000);
 
         Assert.Equal(2, selection.Sources.Count);
         Assert.Equal(2, selection.Duplicates);
-        Assert.Equal("src/Maf.Lab.Api/Agent/Jev/JevAnswerCheck.cs:229-252 › S: internal static IReadOnlyList<string> Cap(...)", selection.Sources[0].Text);
+        Assert.Equal("src/Maf.Lab.Api/Agent/Jev/DecisionAnswerCheck.cs:229-252 › S: internal static IReadOnlyList<string> Cap(...)", selection.Sources[0].Text);
         Assert.True(selection.Codebase);
         Assert.False(selection.OverCap);
     }
@@ -352,16 +351,12 @@ public class CodeAnswerChecksTests : IDisposable
 
     // ── the check itself: over the cap, the context, the band ────────────────────────────────────────────────────────
 
-    private static (JevAnswerCheck Check, FakeJev Jev) Checker(AnswerCheckOptions? options = null, FakeJev? jev = null)
+    private static (DecisionAnswerCheck Check, FakeJev Jev) Checker(AnswerCheckOptions? options = null, FakeJev? jev = null)
     {
         jev ??= new FakeJev();
         var loggers = LoggerFactory.Create(_ => { });
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { [JevCredential.EnvironmentVariable] = FakeJev.TestKey }).Build();
-        var credential = new JevCredential(configuration, loggers.CreateLogger<JevCredential>());
-        var client = new HttpClient(new JevAuthHandler(credential) { InnerHandler = jev }) { BaseAddress = new Uri("https://jev.test/") };
-        var jevClient = new JevClient(new CheckTestClients(client), credential, Options.Create(new JevOptions()));
-        return (new JevAnswerCheck(jevClient, Options.Create(options ?? new AnswerCheckOptions()), NullLogger<JevAnswerCheck>.Instance), jev);
+        var jevClient = new FakeDecisionEngine(jev);
+        return (new DecisionAnswerCheck(jevClient, Options.Create(options ?? new AnswerCheckOptions()), NullLogger<DecisionAnswerCheck>.Instance), jev);
     }
 
     [Fact]
@@ -373,10 +368,10 @@ public class CodeAnswerChecksTests : IDisposable
 
         Assert.Empty(jev.Requests);
         Assert.Equal(AnswerVerdict.Unchecked, result.Verdict);
-        Assert.Equal(JevAnswerCheck.OverCap, result.Reason);
+        Assert.Equal(DecisionAnswerCheck.OverCap, result.Reason);
         Assert.Equal(0, result.Requests);
         Assert.Empty(result.Signals);
-        Assert.Equal("Jev answer check unavailable: sources over cap — unchecked", JevAnswerCheck.Title(result));
+        Assert.Equal("Jev answer check unavailable: sources over cap — unchecked", DecisionAnswerCheck.Title(result));
     }
 
     [Fact]
@@ -391,15 +386,15 @@ public class CodeAnswerChecksTests : IDisposable
 
         var bodies = jev.Requests.Select(r => JsonNode.Parse(r.Body)!).ToList();
         static string Snapshot(string name) => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "Jev", name));
-        Assert.Equal(Snapshot("answer-check-codebase.json"), bodies[0]["questions"]!.ToJsonString(JevRequest.Json));
-        Assert.Equal(Snapshot("answer-check-documents.json"), bodies[1]["questions"]!.ToJsonString(JevRequest.Json));
+        Assert.Equal(Snapshot("answer-check-codebase.json"), bodies[0]["questions"]!.ToJsonString(FakeDecisionEngine.Json));
+        Assert.Equal(Snapshot("answer-check-documents.json"), bodies[1]["questions"]!.ToJsonString(FakeDecisionEngine.Json));
         foreach (var body in bodies)
         {
             var questions = body["questions"]!.ToJsonString();
             Assert.DoesNotContain("MARKER", questions);
             Assert.Contains("MARKER", body["state"]!.ToJsonString());
         }
-        Assert.Contains("maf-lab repository", bodies[0]["questions"]![JevAnswerCheck.GroundedId]!["instructions"]!["context"]!.GetValue<string>());
+        Assert.Contains("maf-lab repository", bodies[0]["questions"]![DecisionAnswerCheck.GroundedId]!["instructions"]!["context"]!.GetValue<string>());
     }
 
     [Theory]
@@ -413,7 +408,7 @@ public class CodeAnswerChecksTests : IDisposable
     [InlineData(0.5, 0.9, AnswerVerdict.Uncertain, new string[0])]
     public async Task Each_probability_is_read_against_its_band(double relevant, double grounded, string verdict, string[] signals)
     {
-        var (check, _) = Checker(jev: new FakeJev { AnswerCheck = (id, _, _) => id == JevAnswerCheck.GroundedId ? grounded : relevant });
+        var (check, _) = Checker(jev: new FakeJev { AnswerCheck = (id, _, _) => id == DecisionAnswerCheck.GroundedId ? grounded : relevant });
 
         var result = await check.CheckAsync("q", "a", [], Ct);
 
@@ -427,9 +422,9 @@ public class CodeAnswerChecksTests : IDisposable
     {
         AnswerCheck With(string verdict, double r, double g) =>
             new(verdict, r, g, 0.2, 0.2, "jev-1.13.0", 300, null, 1, 10, 1) { RelevantPassAt = 0.8, GroundedPassAt = 0.8 };
-        Assert.Equal("Jev answer check: relevant 0.95 ≥ 0.80, grounded 0.95 ≥ 0.80 — pass", JevAnswerCheck.Title(With(AnswerVerdict.Pass, 0.95, 0.95)));
-        Assert.Equal("Jev answer check: relevant 0.95 ≥ 0.80, grounded 0.35 in 0.20–0.80 — uncertain", JevAnswerCheck.Title(With(AnswerVerdict.Uncertain, 0.95, 0.35)));
-        Assert.Equal("Jev answer check: relevant 0.95 ≥ 0.80, grounded 0.12 < 0.20 — not grounded", JevAnswerCheck.Title(With(AnswerVerdict.NotGrounded, 0.95, 0.12)));
+        Assert.Equal("Jev answer check: relevant 0.95 ≥ 0.80, grounded 0.95 ≥ 0.80 — pass", DecisionAnswerCheck.Title(With(AnswerVerdict.Pass, 0.95, 0.95)));
+        Assert.Equal("Jev answer check: relevant 0.95 ≥ 0.80, grounded 0.35 in 0.20–0.80 — uncertain", DecisionAnswerCheck.Title(With(AnswerVerdict.Uncertain, 0.95, 0.35)));
+        Assert.Equal("Jev answer check: relevant 0.95 ≥ 0.80, grounded 0.12 < 0.20 — not grounded", DecisionAnswerCheck.Title(With(AnswerVerdict.NotGrounded, 0.95, 0.12)));
     }
 
     [Fact]
@@ -450,7 +445,7 @@ public class CodeAnswerChecksTests : IDisposable
     public async Task An_uncertain_code_answer_is_traced_without_a_signal_and_logs_no_content()
     {
         using var api = CodeApi(null, "ANSWER-MARKER lives in src/Maf.Lab.Api/Agent/ToolSource.cs:17-27.");
-        api.Jev.AnswerCheck = (id, _, _) => id == JevAnswerCheck.GroundedId ? 0.35 : 0.9;
+        api.Jev.AnswerCheck = (id, _, _) => id == DecisionAnswerCheck.GroundedId ? 0.35 : 0.9;
 
         var events = await ApiFactory.ChatAsync(api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN), CodeQuestion);
 
@@ -466,9 +461,4 @@ public class CodeAnswerChecksTests : IDisposable
         Assert.All(api.Jev.Requests, r => Assert.DoesNotContain(FakeJev.TestKey, r.Body));
         Assert.DoesNotContain("ANSWER-MARKER", check.Title + check.Data.GetRawText());
     }
-}
-
-file sealed class CheckTestClients(HttpClient client) : IHttpClientFactory
-{
-    public HttpClient CreateClient(string name) => client;
 }

@@ -7,7 +7,7 @@ using Maf.Lab.Eval;
 using Maf.Lab.Eval.Datasets;
 using Maf.Lab.Eval.Suites;
 using Maf.Lab.Hosting.Cli;
-using Maf.Lab.Retrieval.Jev;
+using Maf.Lab.Plugins.Abstractions;
 using Microsoft.Extensions.Configuration;
 
 namespace Maf.Lab.Tests;
@@ -188,7 +188,7 @@ public class GraphDepthEvalTests : IDisposable
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => suite.RunAsync(ctx, structuralOnly: false, TestContext.Current.CancellationToken));
 
-        Assert.Contains(JevCredential.EnvironmentVariable, error.Message);
+        Assert.Contains("decision engine", error.Message);
         Assert.Contains("--structural-only", error.Message);
     }
 
@@ -307,4 +307,3 @@ public class GraphDepthEvalTests : IDisposable
         Assert.False(r.Metrics["depth-3"].ContainsKey("faithfulness:graph"));
     }
 }
-

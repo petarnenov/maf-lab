@@ -1,6 +1,6 @@
 using System.Text.Json;
 using Maf.Lab.Api.Agent;
-using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.Agent.Decisions;
 using Maf.Lab.Api.BuiltIn;
 using Maf.Lab.Plugins.Code;
 using Maf.Lab.Plugins.Abstractions;
@@ -8,7 +8,6 @@ using Maf.Lab.Domain.Code;
 using Maf.Lab.Domain.Graph;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Domain.Tracing;
-using Maf.Lab.Retrieval.Jev;
 using Maf.Lab.TestSupport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -29,7 +28,7 @@ public class CodeToolRoutingTests : IDisposable
     public void Dispose() => _domains.Dispose();
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
-    private static readonly JevOptions Options_ = new();
+    private static readonly IntentOptions Options_ = new();
 
     private static DomainVerdict Codebase(double p = 0.9) =>
         DomainVerdict.From(new Dictionary<string, double> { [CodePlugin.DomainId] = p, [BuiltInDomains.Billing] = 0.05 }, 0.5, 0.2);
@@ -37,8 +36,8 @@ public class CodeToolRoutingTests : IDisposable
     private static DecisionAnswer Need(string choice, double confidence = 0.9) => new(choice, confidence, null, null);
 
     private static (ToolRoute? Route, string? Reason) Route(string question, DecisionAnswer? answer, Intent intent = Intent.Procedural,
-        DomainVerdict? domains = null, JevOptions? o = null) =>
-        JevIntentClassifier.PrimaryRoute(new CodebaseBehaviour(), question, answer, intent, domains ?? Codebase(), o ?? Options_);
+        DomainVerdict? domains = null, IntentOptions? o = null) =>
+        DecisionIntentClassifier.PrimaryRoute(new CodebaseBehaviour(), question, answer, intent, domains ?? Codebase(), o ?? Options_);
 
     [Fact]
     public void The_options_bind_from_configuration_with_routing_on_and_a_floor_of_0_55()
@@ -50,7 +49,7 @@ public class CodeToolRoutingTests : IDisposable
         {
             ["Jev:RouteCodeTools"] = "false",
             ["Jev:MinCodeRouteConfidence"] = "0.75",
-        }).Build().GetSection(JevOptions.Section).Get<JevOptions>()!;
+        }).Build().GetSection(IntentOptions.Section).Get<IntentOptions>()!;
         Assert.False(bound.RouteCodeTools);
         Assert.Equal(0.75, bound.MinCodeRouteConfidence);
     }
@@ -142,15 +141,11 @@ public class CodeToolRoutingTests : IDisposable
 
     // ---- in the intent request ------------------------------------------------------------------------------------------
 
-    private static JevIntentClassifier Classifier(FakeJev jev, JevOptions o)
+    private static DecisionIntentClassifier Classifier(FakeJev jev, IntentOptions o)
     {
         var loggers = LoggerFactory.Create(_ => { });
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { [JevCredential.EnvironmentVariable] = FakeJev.TestKey }).Build();
-        var credential = new JevCredential(configuration, loggers.CreateLogger<JevCredential>());
-        var client = new HttpClient(new JevAuthHandler(credential) { InnerHandler = jev }) { BaseAddress = new Uri("https://jev.test/") };
         var options = Options.Create(o);
-        return new JevIntentClassifier(new JevClient(new RouteTestClients(client), credential, options), options, loggers);
+        return new DecisionIntentClassifier(new FakeDecisionEngine(jev), options, loggers);
     }
 
     [Fact]
@@ -158,7 +153,7 @@ public class CodeToolRoutingTests : IDisposable
     {
         var jev = new FakeJev { InDomain = 0.02, Codebase = _ => 0.93, Choose = _ => "other", CodeNeed = _ => "callers", CodeNeedConfidence = 0.88 };
 
-        var decision = await Classifier(jev, new JevOptions()).ClassifyAsync("Who calls TenantScopedSearch.QueryAsync?", Ct);
+        var decision = await Classifier(jev, new IntentOptions()).ClassifyAsync("Who calls TenantScopedSearch.QueryAsync?", Ct);
 
         var request = Assert.Single(jev.Requests).Body;
         Assert.Contains("\"code_need\"", request);
@@ -173,7 +168,7 @@ public class CodeToolRoutingTests : IDisposable
     {
         var jev = new FakeJev { InDomain = 0.02, Codebase = _ => 0.93, Choose = _ => "other", CodeNeed = _ => "callers" };
 
-        var decision = await Classifier(jev, new JevOptions { RouteCodeTools = false }).ClassifyAsync("Who calls TenantScopedSearch.QueryAsync?", Ct);
+        var decision = await Classifier(jev, new IntentOptions { RouteCodeTools = false }).ClassifyAsync("Who calls TenantScopedSearch.QueryAsync?", Ct);
 
         Assert.DoesNotContain("code_need", Assert.Single(jev.Requests).Body);
         Assert.Null(decision.CodeRouting);
@@ -287,10 +282,4 @@ public class CodeToolRoutingTests : IDisposable
         Assert.DoesNotContain(GraphTools.TraceCodeSymbol, tools.Invocations);
         Assert.DoesNotContain(CodeTools.Search, tools.Invocations);
     }
-}
-
-
-file sealed class RouteTestClients(HttpClient client) : IHttpClientFactory
-{
-    public HttpClient CreateClient(string name) => client;
 }

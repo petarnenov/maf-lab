@@ -30,6 +30,9 @@ endif
 # resolves the set; `make up` writes it to plugins/.installed and regenerates compose/lb/conf.d from it.
 MAF_ENV       ?= dev
 MAF_PLUGINS   ?=
+# The core's minimum providers (introduce-provider-plugins 5x): installed first whatever MAF_PLUGINS says, so `none` and
+# `make core` still have exactly one decision engine. Stage and prod name their own.
+MAF_CORE_PROVIDERS ?= jev
 ifeq ($(CI_MODE),1)
 # CI's plugin set, a positive list kept here only (introduce-plugins 5.1): CI_MODE means no downloads and no secrets,
 # so the developer tools stay out (a2a-inspector even builds from a git context). Each plugin extracted from the core
@@ -37,9 +40,9 @@ ifeq ($(CI_MODE),1)
 CI_PLUGINS    ?= billing,code,compliance,portfolio,monitor,conversation-history,insights,index-admin,observability,a2a,curriculum,_example
 MAF_PLUGINS   := $(CI_PLUGINS)
 endif
-export MAF_ENV MAF_PLUGINS
+export MAF_ENV MAF_PLUGINS MAF_CORE_PROVIDERS
 # The set passed explicitly: make 3.81's $(shell) does not see the variables make exports.
-PLUGINS_PY     = MAF_ENV='$(MAF_ENV)' MAF_PLUGINS='$(MAF_PLUGINS)' CI_MODE='$(CI_MODE)' python3 $(ROOT)/scripts/plugins.py
+PLUGINS_PY     = MAF_ENV='$(MAF_ENV)' MAF_PLUGINS='$(MAF_PLUGINS)' MAF_CORE_PROVIDERS='$(MAF_CORE_PROVIDERS)' CI_MODE='$(CI_MODE)' python3 $(ROOT)/scripts/plugins.py
 # The image variant (introduce-plugins decision 5e): full for dev, product (no dev-or-qa-only plugin code) for qa, stage
 # and prod, so stage and prod promote exactly the image qa tested. qa may run full beside it with MAF_IMAGE_VARIANT=full.
 MAF_IMAGE_VARIANT ?= $(if $(filter qa stage prod,$(MAF_ENV)),product,full)
@@ -129,6 +132,8 @@ help: ## List the targets
 up: require-docker ## Build and start the stack (api replicas via API_REPLICAS; a plugin's own in its plugin.mk), wait until healthy
 	@if [ "$(CI_MODE)" != "1" ] && [ -z "$$OLLAMA_API_KEY" ]; then echo "⚠ OLLAMA_API_KEY is not set: the stack starts, but chat (Ollama Cloud) will fail. Run 'make setup'."; fi
 	@if [ "$(CI_MODE)" != "1" ] && [ -z "$$JEV_MAF_LAB" ]; then echo "⚠ JEV_MAF_LAB is not set: the stack starts, but no turn is classified (nothing forced to search)."; fi
+	@# Exactly one decision engine among the installed providers, or nothing starts (introduce-provider-plugins 5t).
+	@$(PLUGINS_PY) check-providers
 	@# Earlier versions ran the api as root; give back to you whatever it left owned by root in the checkout.
 	@scripts/repair_ownership.sh "$(ROOT)" "$(MAF_LAB_REPO)"
 	@# The installed plugin set (the api reads it at start), and the balancer's conf.d in two stages, as plugin-on does
@@ -137,7 +142,7 @@ up: require-docker ## Build and start the stack (api replicas via API_REPLICAS; 
 	@# is healthy, each plugin's snippets and a checked, graceful reload.
 	@$(PLUGINS_PY) install --installed-only
 	@# (PLUGINS_PY sets MAF_PLUGINS itself, after any prefix, so the core-only stage spells its environment out.)
-	@MAF_ENV='$(MAF_ENV)' MAF_PLUGINS=none CI_MODE='$(CI_MODE)' python3 $(ROOT)/scripts/plugins.py install --conf-d-only
+	@MAF_ENV='$(MAF_ENV)' MAF_PLUGINS=none MAF_CORE_PROVIDERS='$(MAF_CORE_PROVIDERS)' CI_MODE='$(CI_MODE)' python3 $(ROOT)/scripts/plugins.py install --conf-d-only
 	@# compose itself waits for the balancer's dependencies to be healthy; if that fails, show which service and why.
 	$(COMPOSE) up -d --build --remove-orphans --scale api=$(API_REPLICAS) \
 	  || { scripts/wait_healthy.sh 0; exit 1; }
@@ -151,7 +156,7 @@ up: require-docker ## Build and start the stack (api replicas via API_REPLICAS; 
 	@# Every replica re-reads plugins/.installed now rather than at its next 30-second check.
 	@$(COMPOSE) exec -T redis redis-cli PUBLISH plugins-changed up >/dev/null 2>&1 || true
 
-core: ## Start the core with no plugin (MAF_PLUGINS=none), so no domain; declines every turn (decision 5h); a plain make brings them back
+core: ## Start the core with no plugin but its minimum providers (MAF_PLUGINS=none, MAF_CORE_PROVIDERS); declines every turn (decision 5h); a plain make brings them back
 	@$(MAKE) --no-print-directory up MAF_PLUGINS=none
 
 product-check: require-docker ## Build the product image variant (api, web) and check it holds no dev-or-qa-only plugin code

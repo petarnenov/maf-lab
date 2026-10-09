@@ -25,13 +25,15 @@ public class PluginHostTests
     [Fact]
     public async Task With_no_plugin_the_api_boots_and_registers_nothing_of_one()
     {
+        // No plugin but the core's minimum providers (introduce-provider-plugins 5x): its decision engine.
         using var factory = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = [] };
         var client = factory.ClientFor("adam", "firm-a", Role.USER);
 
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/fixture/ping", Ct)).StatusCode);
         Assert.Null(factory.Services.GetService<FixtureMarker>());
         var list = await client.GetFromJsonAsync<JsonElement>("/api/plugins", Json, Ct);
-        Assert.Equal(0, list.GetProperty("plugins").GetArrayLength());
+        var only = Assert.Single(list.GetProperty("plugins").EnumerateArray());
+        Assert.Equal("provider", only.GetProperty("kind").GetString());
     }
 
     [Fact]
@@ -43,7 +45,7 @@ public class PluginHostTests
         var ping = await client.GetFromJsonAsync<JsonElement>("/api/fixture/ping", Json, Ct);
         Assert.Equal("pong", ping.GetProperty("pong").GetString());
         var list = await client.GetFromJsonAsync<JsonElement>("/api/plugins", Json, Ct);
-        var plugin = Assert.Single(list.GetProperty("plugins").EnumerateArray());
+        var plugin = Assert.Single(list.GetProperty("plugins").EnumerateArray(), p => p.GetProperty("kind").GetString() != "provider");
         Assert.Equal("fixture", plugin.GetProperty("name").GetString());
         Assert.Equal("ok", plugin.GetProperty("health").GetString());
     }

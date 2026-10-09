@@ -67,6 +67,29 @@ public static class LabTelemetry
         public static readonly Histogram<double> RetrievalStage =
             Meter.CreateHistogram<double>("maf.retrieval.stage.duration", "ms", "How long a stage of retrieval takes.");
 
+        /// <summary>
+        /// The input tokens each decision request was charged (introduce-provider-plugins, 5k), by <c>call_site</c> (intent,
+        /// guard.prompt, guard.content, answer_check, relevance) and, where a turn asks it, <c>domains.count</c>: the number
+        /// of domains in use, which the turn's request grows with. Numbers only.
+        /// </summary>
+        public static readonly Histogram<long> DecisionInputTokens =
+            Meter.CreateHistogram<long>("maf.decision.input_tokens", "{token}", "Input tokens per decision request, by call site and domains in use.");
+
+        /// <summary>Records one decision request's input tokens, when the engine reported them.</summary>
+        public static void RecordDecision(string callSite, int? inputTokens, int? domains = null)
+        {
+            if (inputTokens is not { } tokens)
+            {
+                return;
+            }
+            var tags = new TagList { { "call_site", callSite } };
+            if (domains is { } n)
+            {
+                tags.Add("domains.count", n);
+            }
+            DecisionInputTokens.Record(tokens, tags);
+        }
+
         /// <summary>Graph reads by template name (<c>query</c>) and outcome. Never an argument value.</summary>
         public static readonly Histogram<double> GraphQueryDuration =
             Meter.CreateHistogram<double>("maf.graph.query.duration", "ms", "How long a graph read takes, by named query.");

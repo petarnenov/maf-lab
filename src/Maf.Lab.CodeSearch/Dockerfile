@@ -2,16 +2,25 @@
 # Build context: repository root (see compose/docker-compose.yml).
 FROM mcr.microsoft.com/dotnet/sdk:10.0.401-noble AS build
 WORKDIR /src
-COPY global.json Directory.Build.props Directory.Packages.props ./
+COPY global.json Directory.Build.props Directory.Build.targets Directory.Packages.props ./
 COPY src/ src/
+# Provider plugins are compiled into every process that asks the decision engine (introduce-provider-plugins): their
+# lib/ projects, by Directory.Build.targets' glob; the product variant keeps only those whose manifest allows stage or
+# prod (MAF_PRODUCT_PLUGINS, decision 5e).
+COPY plugins/ plugins/
+ARG MAF_IMAGE_VARIANT=full
+ARG MAF_PRODUCT_PLUGINS=||
 # NuGet packages come from a cache shared by every image build (DECISIONS.md §58). The first restore fills it with
 # anything it lacks, holding it alone so parallel builds never extract into the same folder; the second copies this
 # project's packages out of it into the stage, so publish needs neither the cache nor the network.
 ENV NUGET_PACKAGES=/nuget
 RUN --mount=type=cache,id=maf-lab-nuget,target=/root/.nuget/packages,sharing=locked \
     NUGET_PACKAGES=/root/.nuget/packages dotnet restore src/Maf.Lab.CodeSearch/Maf.Lab.CodeSearch.csproj \
-    && dotnet restore src/Maf.Lab.CodeSearch/Maf.Lab.CodeSearch.csproj --force --source /root/.nuget/packages
-RUN dotnet publish src/Maf.Lab.CodeSearch/Maf.Lab.CodeSearch.csproj -c Release -o /app /p:UseAppHost=false --no-restore
+      -p:MafImageVariant=$MAF_IMAGE_VARIANT "-p:MafProductPlugins=$MAF_PRODUCT_PLUGINS" \
+    && dotnet restore src/Maf.Lab.CodeSearch/Maf.Lab.CodeSearch.csproj --force --source /root/.nuget/packages \
+      -p:MafImageVariant=$MAF_IMAGE_VARIANT "-p:MafProductPlugins=$MAF_PRODUCT_PLUGINS"
+RUN dotnet publish src/Maf.Lab.CodeSearch/Maf.Lab.CodeSearch.csproj -c Release -o /app /p:UseAppHost=false --no-restore \
+      -p:MafImageVariant=$MAF_IMAGE_VARIANT "-p:MafProductPlugins=$MAF_PRODUCT_PLUGINS"
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.12-noble
 WORKDIR /app

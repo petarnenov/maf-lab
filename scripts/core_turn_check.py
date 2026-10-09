@@ -120,7 +120,9 @@ def main() -> int:
     with call(BASE + "/api/plugins", token=token) as r:
         in_use = json.loads(r.read())
     # First, so a stack that is not the core alone is named rather than failing later for another reason.
-    check("no plugin is in use", in_use.get("plugins") == [], json.dumps([p.get("name") for p in in_use.get("plugins", [])]))
+    # The core's minimum providers (introduce-provider-plugins 5x: MAF_CORE_PROVIDERS) are always installed; nothing else.
+    others = [p.get("name") for p in in_use.get("plugins", []) if p.get("kind") != "provider"]
+    check("no plugin but the core's providers is in use", others == [], json.dumps([p.get("name") for p in in_use.get("plugins", [])]))
     check("no domain is in use", in_use.get("domains") == [], json.dumps(in_use.get("domains")))
     if failures:
         return 1

@@ -1,15 +1,15 @@
 using Maf.Lab.Api.Agent;
-using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.Agent.Decisions;
 using Maf.Lab.Domain.Evals;
 using Maf.Lab.Eval.Datasets;
-using Maf.Lab.Retrieval.Jev;
+using Maf.Lab.Plugins.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Maf.Lab.Eval.Suites;
 
 /// <summary>
 /// Jev's answer check on its own (fit-answer-checks-to-code-questions): each labelled answer of
-/// <c>evals/answer-check.jsonl</c> is replayed through the production <see cref="JevAnswerCheck"/> — the same source
+/// <c>evals/answer-check.jsonl</c> is replayed through the production <see cref="DecisionAnswerCheck"/> — the same source
 /// selection, context choice, band and configuration — with no answering model and no tool. It measures how many
 /// unsupported answers the check flags and how many supported ones it leaves alone, per domain, language and split.
 /// </summary>
@@ -18,12 +18,12 @@ public sealed class AnswerCheckSuite(IServiceProvider services)
 {
     public async Task<IReadOnlyList<EvalVariantResult>> RunAsync(SuiteContext ctx, CancellationToken ct)
     {
-        if (!services.GetRequiredService<JevCredential>().IsConfigured)
+        if (!services.GetRequiredService<IDecisionEngine>().IsConfigured)
         {
             // Without the key every answer is unchecked; a check that flagged nothing would read as a perfect pass rate.
-            throw new InvalidOperationException($"The answer-check suite needs {JevCredential.EnvironmentVariable} in the environment.");
+            throw new InvalidOperationException("The answer-check suite needs a configured decision engine (the installed engine's credential in the environment).");
         }
-        var check = services.GetRequiredService<JevAnswerCheck>();
+        var check = services.GetRequiredService<DecisionAnswerCheck>();
         var cases = ctx.Take(DatasetLoader.AnswerCheck(ctx.DatasetRoot)).ToList();
         var outcomes = new List<Metrics.AnswerCheckOutcome>();
         var failures = new List<EvalCaseFailure>();
@@ -54,7 +54,7 @@ public sealed class AnswerCheckSuite(IServiceProvider services)
     }
 
     /// <summary>One labelled answer through the production check, and what it made of the labels.</summary>
-    internal static async Task<(AnswerCheck Result, Metrics.AnswerCheckOutcome Outcome)> CheckAsync(JevAnswerCheck check, AnswerCheckCase c,
+    internal static async Task<(AnswerCheck Result, Metrics.AnswerCheckOutcome Outcome)> CheckAsync(DecisionAnswerCheck check, AnswerCheckCase c,
         CancellationToken ct)
     {
         var result = await check.CheckAsync(c.Question, c.Answer, [.. c.Sources.SelectMany(Current)], ct,

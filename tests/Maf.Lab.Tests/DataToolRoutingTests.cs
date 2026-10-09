@@ -1,11 +1,10 @@
 using System.Text.Json;
 using Maf.Lab.Api.Agent;
-using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.Agent.Decisions;
 using Maf.Lab.Api.Agent.Tracing;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Domain.Tracing;
 using Maf.Lab.Plugins.Abstractions;
-using Maf.Lab.Retrieval.Jev;
 using Maf.Lab.TestSupport;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
@@ -22,7 +21,7 @@ public class DataToolRoutingTests : IDisposable
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
-    private static readonly JevOptions Routing = new() { RouteDataTools = true };
+    private static readonly IntentOptions Routing = new() { RouteDataTools = true };
 
     // The stand-in billing and portfolio domains the shared fakes speak: the routing mechanism, not billing's
     // own parsing (its cases are the billing plugin's, BillingDataToolRoutingTests).
@@ -73,24 +72,24 @@ public class DataToolRoutingTests : IDisposable
     [Fact]
     public void A_missing_tool_answer_means_no_routing_answer_at_all()
     {
-        var answers = new Dictionary<string, JevAnswer>
+        var answers = new Dictionary<string, DecisionAnswer>
         {
-            ["tool_get_billing_run_status"] = new("noul", null, null, null, 0.93),
-            ["tool_search_billing_runs"] = new("noul", null, null, null, 0.2),
-            ["run_status"] = new("choice", "none", null, 1.0),
+            ["tool_get_billing_run_status"] = new(null, null, 0.93, null),
+            ["tool_search_billing_runs"] = new(null, null, 0.2, null),
+            ["run_status"] = new("none", 1.0, null, null),
         };
 
         Assert.Null(DataToolRouter.Read(answers));
 
-        answers["tool_propose_fee_adjustment"] = new("noul", null, null, null, 0.02);
+        answers["tool_propose_fee_adjustment"] = new(null, null, 0.02, null);
         // Every tool the request asked about must be answered, the portfolio domain's included.
         Assert.Null(DataToolRouter.Read(answers));
 
-        answers["tool_get_household_portfolio"] = new("noul", null, null, null, 0.05);
-        answers["tool_get_aum_history"] = new("noul", null, null, null, 0.05);
+        answers["tool_get_household_portfolio"] = new(null, null, 0.05, null);
+        answers["tool_get_aum_history"] = new(null, null, 0.05, null);
         Assert.Null(DataToolRouter.Read(answers));
 
-        answers["tool_list_my_accounts"] = new("noul", null, null, null, 0.05);
+        answers["tool_list_my_accounts"] = new(null, null, 0.05, null);
         Assert.Equal(0.93, DataToolRouter.Read(answers)!.Tools["get_billing_run_status"]);
     }
 
@@ -156,28 +155,24 @@ public class DataToolRoutingTests : IDisposable
 
     // ── the classifier ───────────────────────────────────────────────────────────────────────────────────────────
 
-    private static (JevIntentClassifier Classifier, FakeJev Jev) Classifier(FakeJev? jev = null, JevOptions? options = null)
+    private static (DecisionIntentClassifier Classifier, FakeJev Jev) Classifier(FakeJev? jev = null, IntentOptions? options = null)
     {
         jev ??= new FakeJev();
         var loggers = LoggerFactory.Create(_ => { });
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { [JevCredential.EnvironmentVariable] = FakeJev.TestKey }).Build();
-        var credential = new JevCredential(configuration, loggers.CreateLogger<JevCredential>());
-        var client = new HttpClient(new JevAuthHandler(credential) { InnerHandler = jev }) { BaseAddress = new Uri("https://jev.test/") };
         var o = Options.Create(options ?? Routing);
-        return (new JevIntentClassifier(new JevClient(new RoutingClientFactory(client), credential, o), o, loggers), jev);
+        return (new DecisionIntentClassifier(new FakeDecisionEngine(jev), o, loggers), jev);
     }
 
     [Fact]
     public async Task With_routing_off_the_request_carries_no_routing_questions()
     {
-        var (classifier, jev) = Classifier(options: new JevOptions { RouteDataTools = false });
+        var (classifier, jev) = Classifier(options: new IntentOptions { RouteDataTools = false });
 
         var decision = await classifier.ClassifyAsync("status of run 4417", Ct);
 
         // Routing off: no tool_* or run_status questions. The intent, domain and prompt-screening questions
         // (injection-defense) still ride in the request, with one domain question per domain (add-portfolio-domain).
-        string[] expected = [.. new[] { "intent", "in_domain", "in_portfolio" }.Concat(JevGuardQuestions.PromptIds).Order()];
+        string[] expected = [.. new[] { "intent", "in_domain", "in_portfolio" }.Concat(GuardQuestions.PromptIds).Order()];
         Assert.Equal(expected, Assert.Single(jev.Questions).Keys.Order());
         Assert.Null(decision.Route);
         Assert.Null(decision.Routing);
@@ -295,9 +290,4 @@ public class DataToolRoutingTests : IDisposable
         Assert.Equal(["get_billing_run_status"], api.Tools.Invocations);
         Assert.Equal(JsonValueKind.Null, Trace(events).Single(t => t.Kind == TraceKinds.Intent).Data.GetProperty("routing").ValueKind);
     }
-}
-
-file sealed class RoutingClientFactory(HttpClient client) : IHttpClientFactory
-{
-    public HttpClient CreateClient(string name) => client;
 }

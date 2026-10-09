@@ -222,8 +222,8 @@ public interface IDomainBehaviour
     /// <summary>The domain this behaviour belongs to.</summary>
     string Domain { get; }
 
-    /// <summary>Closed questions this domain adds to the routing request beside its read tools, keyed, in the engine's form.</summary>
-    IReadOnlyDictionary<string, object> DataQuestions => new Dictionary<string, object>();
+    /// <summary>Closed questions this domain adds to the routing request beside its read tools, keyed.</summary>
+    IReadOnlyDictionary<string, DecisionQuestion> DataQuestions => new Dictionary<string, DecisionQuestion>();
 
     /// <summary>The arguments of a read tool the routing chose, taken from the question; or why there are none.</summary>
     (IReadOnlyDictionary<string, object?>? Arguments, string? Reason) BindRead(string tool, string question,
@@ -233,7 +233,7 @@ public interface IDomainBehaviour
     IReadOnlyList<DomainRoute> Alongside(string intent, string question, double confidence) => [];
 
     /// <summary>A question asked when this domain may be the primary one: what the question needs, beside its search.</summary>
-    KeyValuePair<string, object>? PrimaryRouteQuestion => null;
+    KeyValuePair<string, DecisionQuestion>? PrimaryRouteQuestion => null;
 
     /// <summary>The call a question whose primary domain this is starts with instead of the search; or why there is none.</summary>
     (DomainRoute? Route, string? Reason) PrimaryRoute(string question, string intent, DecisionAnswer? answer, double minConfidence) =>

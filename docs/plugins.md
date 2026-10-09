@@ -38,6 +38,7 @@ plugins/<name>/
   prompt.md            # a domain's prompt fragment (summary, scope, tools, examples, rules sections)
   service/             # a remote plugin's own server, built into its own image (any language)
   server/              # Maf.Lab.Plugins.<Name>.csproj: code that runs in the api (in-process plugins only)
+  lib/                 # Maf.Lab.Plugins.<Name>.csproj: a provider's code, in every process that takes providers
   web/index.ts         # definePlugin({...}): code that runs in the web app (in-process plugins only)
   docs/http-api.md     # its api routes, in the table shape of docs/http-api.md, which transcludes it
   tests/unit/          # compiled into Maf.Lab.Tests;      tests/integration/ into Maf.Lab.IntegrationTests
@@ -65,8 +66,16 @@ Two kinds of plugin cover almost everything:
   A2A agent, in any language. They need no C# in the api and no React. Start here.
 - **In-process plugins** (`app`) add api routes (`server/`) or screens (`web/`). Use one only for a screen or a route.
 
-A `provider` plugin implements something the core needs exactly one or more of (a decision engine, a chat model,
-embeddings); an `infra` plugin is a store or a dev tool.
+A `provider` plugin implements a port the core needs (`provides`): `decision-engine` (`IDecisionEngine`, typed
+closed-set decisions with a confidence, whose contract is `docs/rules/jev-usage.md`), `chat-model` (`IChatClient`) or
+`embeddings` (`IEmbeddingGenerator`). Its code is a `lib/` project that references only the abstractions and the
+domain, because it is compiled into every process that asks a model, an embedder or the decision engine (the api, the
+MCP servers, the indexer, the test agent, the eval); each registers only the installed providers
+(`ProviderHost.AddInstalledProviders`). Exactly one decision engine must be installed, or make and every such process
+refuse to start, naming the problem. `MAF_CORE_PROVIDERS` names the core's minimum, installed whatever `MAF_PLUGINS`
+says. A provider changes only with a restart of the stack (`make up`), never by `plugin-on`/`plugin-off`. A provider
+or model change reaches stage or prod only after the eval baselines hold with it (a manual gate). An `infra` plugin is
+a store or a dev tool.
 
 ## The manifest
 
@@ -136,7 +145,7 @@ allow and enable arrive with `enable-plugins-per-tenant`.
 | Command | What it does |
 |---|---|
 | `make` | Installs `MAF_PLUGINS` (unset: every bundled plugin `MAF_ENV` allows, except `_example`); a plugin's routes join the balancer once its services are healthy, as with `plugin-on` |
-| `make core` | The core alone: no plugin, so no domain (`MAF_PLUGINS=none`); every turn declines before any model, Jev or tool call. A mode you leave: a plain `make` or `make up` brings the built-ins back |
+| `make core` | The core alone: no plugin but its minimum providers (`MAF_PLUGINS=none`, `MAF_CORE_PROVIDERS`), so no domain; every turn declines before any model, decision-engine or tool call. A mode you leave: a plain `make` or `make up` brings the plugins back |
 | `make plugins` | Lists every plugin: kind, scope, environments, installed, dependencies |
 | `make plugin-new NAME=x KIND=mcp\|app` | Starts a new plugin (above) |
 | `make plugin-on NAME=x` | Starts its services, waits until healthy, adds its routes, records the set, tells the running services |

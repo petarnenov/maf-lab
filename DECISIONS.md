@@ -3783,3 +3783,78 @@ No package version moves in this change.
   so it replays unchanged; re-capture it against the live stack.
 - **Tracked:** `evals/ui-events.jsonl` predates the generic interrupt shape; re-record with
   `scripts/capture_ui_events.sh` on a stack with billing and monitor installed.
+
+## 86. The tenant-isolation spec claims only what the code does (correct-tenant-isolation-domain-roles, 2026-10-07)
+
+- **Why.** The scenario "Valid token yields principal" said the billing server scopes its results to the token's advisor
+  ids. No server reads `domain_roles` or `advisor_ids`: they are defined in `PrincipalClaims` and issued by the dev
+  issuer's personas, and only tests read them (found by the adopt-company-idp survey).
+- **Now.** The scenario says the core's principal holds no domain role or advisor id, that those claims travel in the
+  token for the domain's own server to read, and that none reads them today. The requirement says the domain's server
+  may read them. The user chose to correct the spec rather than leave it until the feature exists.
+- **Follow-up.** Billing advisor scoping (`domain_roles`, `advisor_ids`) is not implemented: a future billing-plugin
+  change, which reads them in its own server and restores a scenario that proves it.
+- Rejected: implementing advisor scoping in this change (a billing feature, not a spec fix), and leaving the spec as it
+  was (a requirement the code does not meet).
+
+## 87. The decision engine is a provider plugin (introduce-provider-plugins, part 1: task 1.1, 2026-10-07)
+
+- **Our own abstraction: `IDecisionEngine`** (`Maf.Lab.Plugins.Abstractions/Decisions.cs`). No established abstraction
+  holds typed, closed-set decisions with a calibrated confidence. Rejected: MEAI's `IChatClient` with structured output
+  (no calibrated probabilities), and MEAI.Evaluation's `IEvaluator` (it grades an answer; it does not route). Its
+  contract is `docs/rules/jev-usage.md`. The port is transport-level and names no vendor:
+  `DecideAsync(state, questions, budget, ct)` → `DecisionOutcome { Answers, Engine, Usage, Failure, DurationMs,
+  Skipped }`, with `ChoiceQuestion`, `NoulQuestion` (criteria optional), `ScoreQuestion` and the existing
+  `DecisionAnswer`. Every question's text stays in its caller (the intent classifier, the guard, the answer check, the
+  relevance judge, the eval grader, the domains' `DataQuestions`), so a second engine needs no copy of it. Rejected: a
+  semantic port per caller (`IClassify`, `IGuard`, …), which would move the question text into the engine.
+- **One request per state, not per turn** (jev-usage §0.4). The design's earlier "every question of a turn in one
+  request" was impossible (the answer check's state, the answer, does not exist when the turn's request goes out) and
+  is corrected; a turn still asks once for its question, once per tool result and once for its answer.
+- **The `jev` plugin** (kind `provider`, `provides = "decision-engine"`, every environment) holds the transport only:
+  `JevClient`, the credential (`JEV_MAF_LAB`, bearer header only), retry, circuit breaker, warm-up, the wire records and
+  `JevDecisionEngine`, which maps each neutral question back to the wire record the core sent before. The thresholds
+  stay with their callers in the core (`IntentOptions`, `GuardOptions`, `AnswerCheckOptions`, `RetrievalOptions`).
+- **Proof that nothing Jev reads changed:** golden files of every call site's exact `POST /v1/systemone` body, recorded
+  from main before the move (eefaa3e core, e9b8882 code), compared as strings through the real `JevDecisionEngine` (the
+  plugin's tests) and through the core tests' documented-shape engine (code's). One confirming `make eval
+  SUITE=selection` per landing, with the user's approval at the time; no other evals. Landing 1's run
+  (20261007-171311, through the jev engine): exactMatch 0.980, precision 0.982, recall 1, negativeAccuracy 1, against the
+  accepted 0.959 / 0.964 / 1 / 1; 420,156 decision-engine input tokens. The selection suite is now metered like the
+  intent, guardrail and answer-check suites, so a preflight shows the engine is answering.
+- **Named debt: the thresholds keep the `Jev:` section name** (`Jev:MinConfidence`, `Jev:AnswerCheck:MinRelevant`, …),
+  bound by core option classes, so every deployment's settings keep working; the plugin binds only its transport keys
+  from the same section. Renaming the section is a later change of its own.
+- **Data keeps its "jev" wording:** trace kinds, signal names, the stats screen and its routes, the relevance
+  reranker's kind (`Retrieval:Reranker=jev`) and the diagnostics field `rerankedByJev` are data the insights plugin and
+  older traces read. Types, namespaces (`Maf.Lab.Api.Agent.Decisions`) and messages no longer name Jev.
+- **Provider code goes into every host that opts in** with `<MafProviderHost>true</MafProviderHost>` in its own csproj
+  (the api, Retrieval, CodeSearch, Portfolio, Indexing, TestAgent, Eval and the two test projects), from
+  `plugins/<name>/lib/*.csproj`, which references the abstractions and the domain only. Not a list of project names in
+  `Directory.Build.targets`: once a host moves into a plugin (the evals follow-up), that list would name a plugin's
+  project from outside its folder. **Supersedes §81's "the api and the test hosts" for the provider
+  kind.** Each host calls `ProviderHost.AddInstalledProviders`, which registers the installed providers found next to
+  it and validates on start (`OptionsBuilder.ValidateOnStart` with an `IValidateOptions`, the first in the repo) that
+  exactly one decision engine is installed. The MCP servers mount `/plugins` read-only for `.installed`, and their
+  images copy `plugins/` and take the product variant's arguments; `check_product_image.sh` checks their built images
+  too. Rejected: a broad glob over every project; providers as remote services (a new hop on the turn's blocking path,
+  a protocol of our own); keeping the adapters in the core (it would still name the vendor).
+- **`MAF_CORE_PROVIDERS`** (dev default `jev`; landing 2 adds the model and embedding providers) is installed first,
+  whatever `MAF_PLUGINS` says: `none` and `make core` still have their decision engine. `make up` runs
+  `plugins.py check-providers` before it starts anything. `plugin-on`/`plugin-off` refuse a provider: it lives in
+  every process that asks it, and no rolling restart covers them all.
+- **Test hosts** install a fixture decision-engine provider (`tests/Shared/FixtureEngine.cs`) so the cardinality holds
+  without any engine's plugin, and the core tests ask a port-level `FakeDecisionEngine` that keeps `FakeJev`'s rules and
+  writes the documented request shape. Deleting the jev plugin's folder leaves `make test` green apart from its own
+  tests, which leave with it. The eval's token meter is a Decorator over the engine (`MeteredDecisionEngine`).
+- **One trace-only difference:** an engine that answers with no answers object at all now gives the intent's routing
+  step the reason "no routing answer" (the answers read as empty), where Jev's client used to skip the step without
+  one. No request body changes (the goldens), and no decision does.
+- **Insights** reads the classifier's thresholds and the engine's name through a read port, `IIntentSettings`
+  (`CoreReads.cs`, beside `IGuardSettings`), and no longer references the retrieval library.
+- **docs.py** finds a provider's pinned model by glob (`plugins/*/plugin.toml` with `kind = "provider"`, then the
+  `Model` default in its `lib/`), keyed by the plugin's name, so no core script names a plugin's path.
+- **Eval data:** generation rows `g-code-en-04`/`g-code-bg-04` were rewritten, because their source moved into a
+  plugin, to ask the same kind of question about a core file (`McpToolSource`'s per-server failure handling). The
+  accepted generation baseline is stale for those two rows until its next run (a paid run needs the user's approval).
+  `code-route` row `cr-impact-latn-02` names the classifier's new path.

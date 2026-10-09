@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.Agent.Decisions;
 using Maf.Lab.Domain.Billing;
 using Maf.Lab.Domain.Feedback;
 using Maf.Lab.Domain.Tenancy;
@@ -43,7 +43,7 @@ public class AnswerCheckTests
 
         var request = Assert.Single(CheckRequests(api));
         var questions = request.GetProperty("questions");
-        Assert.Equal([JevAnswerCheck.GroundedId, JevAnswerCheck.RelevantId], questions.EnumerateObject().Select(q => q.Name).Order());
+        Assert.Equal([DecisionAnswerCheck.GroundedId, DecisionAnswerCheck.RelevantId], questions.EnumerateObject().Select(q => q.Name).Order());
         Assert.All(questions.EnumerateObject(), q => Assert.Equal("noul", q.Value.GetProperty("type").GetString()));
         // The question, the answer and the excerpts are data in the state; the instructions name them and hold none of them.
         var state = request.GetProperty("state");
@@ -54,8 +54,8 @@ public class AnswerCheckTests
         Assert.DoesNotContain("ANSWER-MARKER", questions.GetRawText());
         Assert.DoesNotContain("FS-REQUIRED", questions.GetRawText());
         string Asked(string id) => questions.GetProperty(id).GetProperty("instructions").GetProperty("question").GetString()!;
-        Assert.Equal("Does `answer` address what `user_question` asks?", Asked(JevAnswerCheck.RelevantId));
-        Assert.Equal("Is every factual claim in `answer` supported by `sources` or `previous_sources`?", Asked(JevAnswerCheck.GroundedId));
+        Assert.Equal("Does `answer` address what `user_question` asks?", Asked(DecisionAnswerCheck.RelevantId));
+        Assert.Equal("Is every factual claim in `answer` supported by `sources` or `previous_sources`?", Asked(DecisionAnswerCheck.GroundedId));
 
         var trace = Trace(events);
         var kinds = trace.Select(t => t.Kind).ToList();
@@ -97,13 +97,13 @@ public class AnswerCheckTests
         // The first question has nothing before it; the follow-up is read together with what it follows up on.
         Assert.Equal("", checks[0].GetProperty("state").GetProperty("previous_question").GetString());
         Assert.Equal(Procedural, checks[1].GetProperty("state").GetProperty("previous_question").GetString());
-        Assert.Contains("previous_question", checks[1].GetProperty("questions").GetProperty(JevAnswerCheck.RelevantId).GetRawText());
+        Assert.Contains("previous_question", checks[1].GetProperty("questions").GetProperty(DecisionAnswerCheck.RelevantId).GetRawText());
 
         // What the model read for that question travels too: a follow-up answered from it is still grounded.
         Assert.Empty(checks[0].GetProperty("state").GetProperty("previous_sources").EnumerateArray());
         var before = checks[1].GetProperty("state").GetProperty("previous_sources").EnumerateArray().Select(e => e.GetString()!).ToList();
         Assert.Contains(before, b => b.Contains("FS-REQUIRED"));
-        Assert.Contains("previous_sources", checks[1].GetProperty("questions").GetProperty(JevAnswerCheck.GroundedId).GetRawText());
+        Assert.Contains("previous_sources", checks[1].GetProperty("questions").GetProperty(DecisionAnswerCheck.GroundedId).GetRawText());
         var check = Trace(second).Single(t => t.Kind == TraceKinds.AnswerCheck);
         Assert.Equal(before.Count, check.Data.GetProperty("previousSources").GetInt32());
         Assert.DoesNotContain("FS-REQUIRED", check.Data.GetRawText());
@@ -140,7 +140,7 @@ public class AnswerCheckTests
     [Fact]
     public async Task An_unsupported_answer_is_flagged_for_review()
     {
-        var jev = new FakeJev { AnswerCheck = (id, _, _) => id == JevAnswerCheck.GroundedId ? 0.12 : 0.9 };
+        var jev = new FakeJev { AnswerCheck = (id, _, _) => id == DecisionAnswerCheck.GroundedId ? 0.12 : 0.9 };
         using var api = new ApiFactory(ApiFactory.ProceduralModel(Marker), jev: jev);
 
         var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), Procedural);
@@ -159,7 +159,7 @@ public class AnswerCheckTests
     [Fact]
     public async Task An_answer_beside_the_question_is_flagged_and_the_old_floor_name_still_binds()
     {
-        var jev = new FakeJev { AnswerCheck = (id, _, _) => id == JevAnswerCheck.RelevantId ? 0.55 : 0.95 };
+        var jev = new FakeJev { AnswerCheck = (id, _, _) => id == DecisionAnswerCheck.RelevantId ? 0.55 : 0.95 };
         using var api = new ApiFactory(ApiFactory.ProceduralModel(Marker), jev: jev)
         {
             ExtraSettings = new Dictionary<string, string?> { ["Jev:AnswerCheck:MinRelevant"] = "0.6" },
@@ -275,7 +275,7 @@ public class AnswerCheckTests
     [Fact]
     public async Task Both_floors_missed_names_grounding_and_fires_both_signals()
     {
-        var jev = new FakeJev { AnswerCheck = (id, _, _) => id == JevAnswerCheck.GroundedId ? 0.1 : 0.1 };
+        var jev = new FakeJev { AnswerCheck = (id, _, _) => id == DecisionAnswerCheck.GroundedId ? 0.1 : 0.1 };
         using var api = new ApiFactory(ApiFactory.ProceduralModel(Marker), jev: jev);
 
         var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), Procedural);
@@ -291,6 +291,6 @@ public class AnswerCheckTests
     {
         var none = new AnswerCheck(AnswerVerdict.Unchecked, null, null, 0.5, 0.5, "jev-1.13.0", 0, "no key", 0, 0, 0);
         Assert.Empty(none.Signals);
-        Assert.Equal("Jev answer check unavailable: no key — unchecked", JevAnswerCheck.Title(none));
+        Assert.Equal("Jev answer check unavailable: no key — unchecked", DecisionAnswerCheck.Title(none));
     }
 }

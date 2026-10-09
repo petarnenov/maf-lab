@@ -1,7 +1,6 @@
 using System.Text.RegularExpressions;
 using Maf.Lab.Domain.Graph;
 using Maf.Lab.Plugins.Abstractions;
-using Maf.Lab.Retrieval.Jev;
 
 namespace Maf.Lab.Plugins.Code;
 
@@ -40,8 +39,8 @@ public static partial class CodeToolRouter
         ["none"] = "Not about this software's source code, or none of the above",
     };
 
-    internal static KeyValuePair<string, object> Question() =>
-        KeyValuePair.Create(QuestionId, (object)new JevChoiceQuestion(Instructions, Criteria));
+    internal static KeyValuePair<string, DecisionQuestion> Question() =>
+        KeyValuePair.Create(QuestionId, (DecisionQuestion)new ChoiceQuestion(Instructions, Criteria));
 
     /// <summary>
     /// The graph call a codebase question starts with, or why there is none. That the codebase is the primary domain is

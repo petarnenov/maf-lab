@@ -180,7 +180,7 @@ make setup                 # install what's missing (.NET SDK at the version glo
 export OLLAMA_API_KEY=…    # chat runs on Ollama Cloud (gpt-oss:120b); the key is only read from the environment
 export JEV_MAF_LAB=…       # intent classification runs on TypeSafe Jev; same rule
 make                       # doctor-lite → build → start → wait until healthy → index if empty → http://localhost:7171
-make core                  # the core alone: no plugin, so no domain; every turn declines (plain make brings them back)
+make core                  # the core alone: no domain plugin, only the core's providers; every turn declines (plain make brings them back)
 make help                  # every target
 ```
 
@@ -190,7 +190,7 @@ make help                  # every target
 | `make all` | Start everything: build, run, wait for health, index if empty (default) |
 | `make help` | List the targets |
 | `make up` | Build and start the stack (api replicas via API_REPLICAS; a plugin's own in its plugin.mk), wait until healthy |
-| `make core` | Start the core with no plugin (MAF_PLUGINS=none), so no domain; declines every turn (decision 5h); a plain make brings them back |
+| `make core` | Start the core with no plugin but its minimum providers (MAF_PLUGINS=none, MAF_CORE_PROVIDERS); declines every turn (decision 5h); a plain make brings them back |
 | `make product-check` | Build the product image variant (api, web) and check it holds no dev-or-qa-only plugin code |
 | `make plugins` | List every plugin: kind, scope, environments, whether installed, dependencies, description |
 | `make plugin-new` | Start a new plugin (NAME=…, KIND=mcp\|app): mcp copies _example, app renders the app template; prints the files written |
@@ -277,6 +277,7 @@ allows, `none` means the core alone (`make core`), otherwise a comma-separated l
 | `curriculum` | app | installation | dev, qa | The curriculum map: where the concepts and rules of the 5-day Fullstack AI Engineer study plan are applied in this lab, each with the core files that implement it, the spec that states it and the screen that shows it. A web page only, with no server and no request. |
 | `index-admin` | app | installation | dev, qa, stage, prod | The index administration screen and its routes: a tenant admin indexes, checks the drift of and migrates the corpora the installed plugins declare, as admin jobs in the core's job store. Brings the indexing pipeline into the api. |
 | `insights` | app | installation | dev, qa | The Jev and intent statistics: how every Jev call site — intent, guardrail, relevance, routing and the answer check — behaved on the firm's chat turns over a window, read from the turns' core records. Numbers only. |
+| `jev` | provider | installation | dev, qa, stage, prod | TypeSafe Jev (System One) as the decision engine: every routing, screening, relevance and answer-check question goes to it through IDecisionEngine, with the pinned jev-1.13.0 model. Needs JEV_MAF_LAB, sent only as the bearer header. |
 | `mcp-inspector` | infra | installation | dev, qa | The MCP Inspector, listing the lab's MCP servers with a dev user's token: a dev and qa tool. |
 | `monitor` | app | installation | dev, qa | Behind the scenes of every chat turn: the full trace (model calls, prompt, retrieval diagnostics, guard, answer check), live while it runs and kept for a while after, with the run's AG-UI frames and time travel. |
 | `neo4j` | infra | installation | dev, qa, stage, prod | The graph store (Neo4j Community): billing's relationships and the repository's code graph, read through the core's one tenant-scoped graph method. A store that domain plugins depend on. |

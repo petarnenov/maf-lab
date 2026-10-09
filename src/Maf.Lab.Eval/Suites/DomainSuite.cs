@@ -3,7 +3,7 @@ using Maf.Lab.Api.BuiltIn;
 using Maf.Lab.Domain.Evals;
 using Maf.Lab.Eval.Datasets;
 using Maf.Lab.Eval.Hosting;
-using Maf.Lab.Retrieval.Jev;
+using Maf.Lab.Plugins.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Maf.Lab.Eval.Suites;
@@ -17,9 +17,9 @@ public sealed class DomainSuite(EvalAgentHost host)
 {
     public async Task<IReadOnlyList<EvalVariantResult>> RunAsync(SuiteContext ctx, CancellationToken ct)
     {
-        if (!host.Services.GetRequiredService<JevCredential>().IsConfigured)
+        if (!host.Services.GetRequiredService<IDecisionEngine>().IsConfigured)
         {
-            throw new InvalidOperationException($"The domain suite needs {JevCredential.EnvironmentVariable} in the environment.");
+            throw new InvalidOperationException("The domain suite needs a configured decision engine (the installed engine's credential in the environment).");
         }
         // Its cases include codebase questions: without the code plugin they would all score as misses.
         host.RequireDomain("codebase", "code");
@@ -28,7 +28,7 @@ public sealed class DomainSuite(EvalAgentHost host)
         var cases = ctx.Take(DatasetLoader.Domain(ctx.DatasetRoot)).ToList();
         var outcomes = new List<(DomainCase Case, string Actual)>();
         var answered = new List<(DomainCase Case, IReadOnlyDictionary<string, double>? Probabilities, bool Forcing)>();
-        var options = host.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<JevOptions>>().Value;
+        var options = host.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Maf.Lab.Api.Agent.IntentOptions>>().Value;
         var failures = new List<EvalCaseFailure>();
         foreach (var (c, i) in cases.Select((c, i) => (c, i)))
         {

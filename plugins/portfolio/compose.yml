@@ -10,15 +10,22 @@ services:
     build:
       context: ..
       dockerfile: src/Maf.Lab.Portfolio/Dockerfile
+      # full or product, as the api's (introduce-plugins 5e): the provider plugins' code it keeps (introduce-provider-plugins).
+      args:
+        MAF_IMAGE_VARIANT: ${MAF_IMAGE_VARIANT:-full}
+        MAF_PRODUCT_PLUGINS: ${MAF_PRODUCT_PLUGINS:-||}
     deploy:
       replicas: 2
     env_file: [env/retrieval.env, env/platform.env, env/graph.env]
     environment:
+      # The installed providers (the decision engine the relevance judge asks), read from plugins/.installed.
+      Plugins__Root: /plugins
       Urls: http://+:8080
       Portfolio__Collection: maf_portfolio_chunks
       Portfolio__MetaCollection: maf_portfolio_meta
       Portfolio__SeedPath: /seed/portfolio-households.json
     volumes:
+      - ../plugins:/plugins:ro
       - ../plugins/portfolio/files/seed:/seed:ro
     depends_on:
       qdrant:

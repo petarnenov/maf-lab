@@ -2,8 +2,7 @@ using Maf.Lab.Api.Agent.AGUI;
 using Maf.Lab.A2A;
 using Maf.Lab.Api.Admin;
 using Maf.Lab.Api.Agent;
-using Maf.Lab.Api.Agent.Jev;
-using Maf.Lab.Retrieval.Jev;
+using Maf.Lab.Api.Agent.Decisions;
 using Maf.Lab.Api.Endpoints;
 using Maf.Lab.Api.Feedback;
 using Maf.Lab.Api.Plugins;
@@ -70,7 +69,9 @@ public partial class Program
         builder.Services.AddHttpClient("mcp");
         builder.Services.AddSingleton<IToolSource, McpToolSource>();
         builder.Services.AddSingleton<ConversationService>();
-        builder.Services.AddJevIntentClassifier(builder.Configuration);
+        // The installed providers (the decision engine), then the core's callers over the port they implement.
+        Maf.Lab.Plugins.Abstractions.ProviderHost.AddInstalledProviders(builder.Services, builder.Configuration);
+        builder.Services.AddDecisionCallers(builder.Configuration);
         // Writes a person confirms (generalize-write-confirmation): the core's half of the seam and the ports a plugin's
         // flow reaches it through; the flows themselves are the installed plugins' (PluginHost).
         builder.Services.AddScoped<Agent.Writes.WriteTurnContext>();
@@ -88,6 +89,7 @@ public partial class Program
         builder.Services.AddScoped<Maf.Lab.Plugins.Abstractions.IConversationStore, Storage.ConversationStore>();
         builder.Services.AddScoped<Maf.Lab.Plugins.Abstractions.ITurnRecords, Storage.TurnRecords>();
         builder.Services.AddSingleton<Maf.Lab.Plugins.Abstractions.IGuardSettings, Agent.CoreGuardSettings>();
+        builder.Services.AddSingleton<Maf.Lab.Plugins.Abstractions.IIntentSettings, Agent.CoreIntentSettings>();
         builder.Services.AddScoped<ChatTurnRunner>();
         builder.Services.AddScoped<Agent.RunRejoin>();
         // Every agent reaches a browser through the Agent Framework's own AG-UI server (agui-protocol-only).
@@ -148,8 +150,6 @@ public partial class Program
         Coverage.CoverageRunnerRegistration.AddCoverageRunnerClient(builder.Services);
 
         var app = builder.Build();
-        // Resolved now so a missing JEV_MAF_LAB is reported once at startup, not on the first turn.
-        app.Services.GetRequiredService<JevCredential>();
         using (var scope = app.Services.CreateScope())
         {
             var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<MafDbContext>>();

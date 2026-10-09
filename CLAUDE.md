@@ -63,10 +63,11 @@ Entry point: everything runs behind the nginx load balancer on http://localhost:
 Graph store: Neo4j (`neo4j:2026.09.0-community`), Bolt on 127.0.0.1:7687, password `NEO4J_PASSWORD` (dev default `maf-lab-dev-graph`).
 
 Plugins: `make plugins` lists them, `make plugin-on NAME=` / `make plugin-off NAME=` switch one, `MAF_PLUGINS` picks the
-set (unset: every bundled plugin allowed in `MAF_ENV` except `_example`; `none`: no plugin; otherwise a list,
-dependencies added; `CI_MODE=1` uses `CI_PLUGINS`). `make core` starts the core alone — no plugin, so no
-domain (`MAF_PLUGINS=none`; every domain is a plugin): every turn declines before any model, Jev or tool call, and a
-plain `make` brings the plugins back.
+set (unset: every bundled plugin allowed in `MAF_ENV` except `_example`; `none`: no domain plugin, only the core's
+providers; otherwise a list, dependencies added; `CI_MODE=1` uses `CI_PLUGINS`; `MAF_CORE_PROVIDERS` is always
+installed first). `make core` starts the core alone — no domain plugin, only the core's providers
+(`MAF_PLUGINS=none` + `MAF_CORE_PROVIDERS`; every domain is a plugin): every turn declines before any model,
+decision-engine or tool call, and a plain `make` brings the plugins back.
 
 Commands: `make help`.
 

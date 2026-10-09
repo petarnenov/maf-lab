@@ -34,6 +34,8 @@ public partial class Program
         builder.AddLabTelemetry("maf-lab-mcp-code");
 
         builder.Services.AddMafRetrievalCore(builder.Configuration);
+        // The installed providers: the decision engine the relevance judge asks.
+        Maf.Lab.Plugins.Abstractions.ProviderHost.AddInstalledProviders(builder.Services, builder.Configuration);
         builder.Services.AddDevJwtAuthentication(builder.Configuration);
         // The code graph (callers, callees, change impact). Like the billing server, it starts without the graph store.
         builder.Services.AddGraphStore(builder.Configuration);
@@ -61,7 +63,6 @@ public partial class Program
 
         builder.Services.AddInstanceHealth();
         var app = builder.Build();
-        app.Services.GetRequiredService<Retrieval.Jev.JevCredential>();
         app.UseInstanceHeader();
         app.UseAuthentication();
         app.UseAuthorization();

@@ -1,12 +1,11 @@
 using System.Text.Json;
 using Maf.Lab.Api.Agent;
-using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.Agent.Decisions;
 using Maf.Lab.Api.Agent.Tracing;
 using Maf.Lab.Api.BuiltIn;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Domain.Tracing;
 using Maf.Lab.Plugins.Abstractions;
-using Maf.Lab.Retrieval.Jev;
 using Maf.Lab.TestSupport;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
@@ -22,18 +21,14 @@ namespace Maf.Lab.Tests;
 public class CodeRoutingRequestTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
-    private static readonly JevOptions Routing = new() { RouteDataTools = true };
+    private static readonly IntentOptions Routing = new() { RouteDataTools = true };
 
-    private static (JevIntentClassifier Classifier, FakeJev Jev) Classifier(FakeJev? jev = null, JevOptions? options = null)
+    private static (DecisionIntentClassifier Classifier, FakeJev Jev) Classifier(FakeJev? jev = null, IntentOptions? options = null)
     {
         jev ??= new FakeJev();
         var loggers = LoggerFactory.Create(_ => { });
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { [JevCredential.EnvironmentVariable] = FakeJev.TestKey }).Build();
-        var credential = new JevCredential(configuration, loggers.CreateLogger<JevCredential>());
-        var client = new HttpClient(new JevAuthHandler(credential) { InnerHandler = jev }) { BaseAddress = new Uri("https://jev.test/") };
         var o = Options.Create(options ?? Routing);
-        return (new JevIntentClassifier(new JevClient(new CodeRoutingClientFactory(client), credential, o), o, loggers), jev);
+        return (new DecisionIntentClassifier(new FakeDecisionEngine(jev), o, loggers), jev);
     }
 
     [Fact]
@@ -49,7 +44,7 @@ public class CodeRoutingRequestTests
         var questions = body.GetProperty("questions");
         // The prompt-screening battery (injection-defense) also rides in the intent request, between the domain and the
         // routing questions; the routing questions still travel here and the state stays the user's question alone.
-        string[] expected = ["intent", "in_domain", "in_portfolio", "in_codebase", .. JevGuardQuestions.PromptIds,
+        string[] expected = ["intent", "in_domain", "in_portfolio", "in_codebase", .. GuardQuestions.PromptIds,
             "tool_get_billing_run_status", "tool_search_billing_runs", "tool_propose_fee_adjustment",
             "tool_get_household_portfolio", "tool_get_aum_history", "tool_list_my_accounts",
             // (Billing's own run_status question is the billing plugin's; the core's stand-in for billing asks none.)
@@ -71,22 +66,17 @@ public class CodeRoutingRequestTests
     public async Task With_routing_off_the_request_carries_no_routing_questions()
     {
         using var domains = CodePluginSupport.Use();
-        var (classifier, jev) = Classifier(options: new JevOptions { RouteDataTools = false });
+        var (classifier, jev) = Classifier(options: new IntentOptions { RouteDataTools = false });
 
         var decision = await classifier.ClassifyAsync("status of run 4417", Ct);
 
         // Routing off: no tool_* or run_status questions. The intent, domain and prompt-screening questions
         // (injection-defense) still ride in the request, with one domain question per domain (add-portfolio-domain).
         // Code routing is its own switch: data routing off leaves the code-route question in the request.
-        string[] expected = [.. new[] { "intent", "in_domain", "in_portfolio", "in_codebase", "code_need" }.Concat(JevGuardQuestions.PromptIds).Order()];
+        string[] expected = [.. new[] { "intent", "in_domain", "in_portfolio", "in_codebase", "code_need" }.Concat(GuardQuestions.PromptIds).Order()];
         Assert.Equal(expected, Assert.Single(jev.Questions).Keys.Order());
         Assert.Null(decision.Route);
         Assert.Null(decision.Routing);
         Assert.Null(decision.RouteReason);
     }
-}
-
-file sealed class CodeRoutingClientFactory(HttpClient client) : IHttpClientFactory
-{
-    public HttpClient CreateClient(string name) => client;
 }

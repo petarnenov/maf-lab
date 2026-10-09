@@ -1,8 +1,8 @@
 using System.Net;
 using System.Text.Json;
 using Maf.Lab.Api.Agent;
-using Maf.Lab.Api.Agent.Jev;
-using Maf.Lab.Retrieval.Jev;
+using Maf.Lab.Api.Agent.Decisions;
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.TestSupport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -21,27 +21,23 @@ public class IntentClassifierTests : IDisposable
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private sealed record Harness(JevIntentClassifier Classifier, FakeJev Jev, CapturingLoggerProvider Logs);
+    private sealed record Harness(DecisionIntentClassifier Classifier, FakeJev Jev, CapturingLoggerProvider Logs);
 
-    private static Harness Build(FakeJev? jev = null, string? key = FakeJev.TestKey, JevOptions? options = null, JevCircuitBreaker? breaker = null)
+    private static Harness Build(FakeJev? jev = null, bool configured = true, IntentOptions? options = null, bool opensOnFirstFailure = false)
     {
         jev ??= new FakeJev();
         var logs = new CapturingLoggerProvider();
         var loggers = LoggerFactory.Create(b => b.AddProvider(logs).SetMinimumLevel(LogLevel.Trace));
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { [JevCredential.EnvironmentVariable] = key })
-            .Build();
-        var credential = new JevCredential(configuration, loggers.CreateLogger<JevCredential>());
-        var client = new HttpClient(new JevAuthHandler(credential) { InnerHandler = jev }) { BaseAddress = new Uri("https://jev.test/") };
-        var o = Options.Create(options ?? new JevOptions());
-        var classifier = new JevIntentClassifier(new JevClient(new SingleClientFactory(client), credential, o, breaker), o, loggers);
+        var o = Options.Create(options ?? new IntentOptions());
+        var engine = new FakeDecisionEngine(jev) { IsConfigured = configured, OpenAfterFailures = opensOnFirstFailure ? 1 : 0 };
+        var classifier = new DecisionIntentClassifier(engine, o, loggers);
         return new Harness(classifier, jev, logs);
     }
 
     [Fact]
     public async Task With_the_circuit_open_the_turn_proceeds_with_no_intent_and_nothing_is_sent()
     {
-        var h = Build(new FakeJev { Status = HttpStatusCode.ServiceUnavailable }, breaker: JevCircuitBreakerTests.OpensOnFirstFailure());
+        var h = Build(new FakeJev { Status = HttpStatusCode.ServiceUnavailable }, opensOnFirstFailure: true);
         await h.Classifier.ClassifyAsync("what is the procedure when a fee schedule is missing", Ct);
         var sent = h.Jev.Requests.Count;
 
@@ -136,7 +132,7 @@ public class IntentClassifierTests : IDisposable
     [InlineData(0.7, 0.8, Intent.Other, "low confidence (0.70)")]
     public async Task A_choice_below_the_confidence_floor_forces_nothing(double confidence, double floor, Intent expected, string? reason)
     {
-        var h = Build(new FakeJev { Confidence = confidence }, options: new JevOptions { MinConfidence = floor });
+        var h = Build(new FakeJev { Confidence = confidence }, options: new IntentOptions { MinConfidence = floor });
 
         var decision = await h.Classifier.ClassifyAsync("what is the procedure when a fee schedule is missing", Ct);
 
@@ -178,7 +174,7 @@ public class IntentClassifierTests : IDisposable
     public async Task A_transport_that_hangs_times_out_within_the_budget()
     {
         // Ignores the token on purpose: the turn must not wait on a transport that never answers.
-        var h = Build(new FakeJev { Hang = TimeSpan.FromSeconds(30) }, options: new JevOptions { TimeoutSeconds = 0.2 });
+        var h = Build(new FakeJev { Hang = TimeSpan.FromSeconds(30) }, options: new IntentOptions { TimeoutSeconds = 0.2 });
 
         var started = DateTime.UtcNow;
         var decision = await h.Classifier.ClassifyAsync("what is the procedure when a fee schedule is missing", Ct);
@@ -199,13 +195,10 @@ public class IntentClassifierTests : IDisposable
         Assert.Equal("HttpRequestException", decision.Reason);
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    public async Task Without_a_key_nothing_is_sent_and_the_missing_key_is_reported_once(string? key)
+    [Fact]
+    public async Task Without_a_configured_engine_nothing_is_sent()
     {
-        var h = Build(key: key);
+        var h = Build(configured: false);
 
         var first = await h.Classifier.ClassifyAsync("what is the procedure when a fee schedule is missing", Ct);
         var second = await h.Classifier.ClassifyAsync("hi", Ct);
@@ -214,14 +207,12 @@ public class IntentClassifierTests : IDisposable
         Assert.Equal(Intent.Other, first.Intent);
         Assert.Equal("no key", first.Reason);
         Assert.Equal("no key", second.Reason);
-        var warning = Assert.Single(h.Logs.Messages, m => m.Contains(JevCredential.EnvironmentVariable));
-        Assert.Contains("not set", warning);
     }
 
     [Fact]
     public async Task Timeout_zero_disables_classification()
     {
-        var h = Build(options: new JevOptions { TimeoutSeconds = 0 });
+        var h = Build(options: new IntentOptions { TimeoutSeconds = 0 });
 
         var decision = await h.Classifier.ClassifyAsync("what is the procedure when a fee schedule is missing", Ct);
 
@@ -314,7 +305,7 @@ public class IntentClassifierTests : IDisposable
     public async Task Without_a_domain_answer_or_with_the_refusal_off_nothing_is_outside_the_domains()
     {
         var missing = await Build(new FakeJev { InDomain = null }).Classifier.ClassifyAsync("What do frogs eat?", Ct);
-        var off = await Build(new FakeJev { InDomain = 0.0 }, options: new JevOptions { RefuseOutsideDomains = false })
+        var off = await Build(new FakeJev { InDomain = 0.0 }, options: new IntentOptions { RefuseOutsideDomains = false })
             .Classifier.ClassifyAsync("What do frogs eat?", Ct);
         var failed = await Build(new FakeJev { InDomain = 0.0, Status = System.Net.HttpStatusCode.InternalServerError })
             .Classifier.ClassifyAsync("What do frogs eat?", Ct);
@@ -327,48 +318,11 @@ public class IntentClassifierTests : IDisposable
     [Fact]
     public async Task A_zero_floor_turns_the_gate_off()
     {
-        var h = Build(new FakeJev { InDomain = 0.0 }, options: new JevOptions { MinInDomain = 0 });
+        var h = Build(new FakeJev { InDomain = 0.0 }, options: new IntentOptions { MinInDomain = 0 });
 
         var decision = await h.Classifier.ClassifyAsync("what is the procedure when a fee schedule is missing", Ct);
 
         Assert.Equal(Intent.Procedural, decision.Intent);
         Assert.Null(decision.Reason);
     }
-
-    [Fact]
-    public void The_documented_noul_answer_is_read()
-    {
-        // The Noul example response from https://docs.typesafe.ai/api, verbatim.
-        const string json = """
-            {"model":"jev-1.13.0","answers":{"is_urgent":{"type":"noul","noul":0.95}},"usage":{"input_tokens":296,"output_tokens":20}}
-            """;
-
-        var response = JsonSerializer.Deserialize<JevResponse>(json, JevRequest.Json)!;
-
-        Assert.Equal(0.95, response.Answers!["is_urgent"].Noul);
-    }
-
-    [Fact]
-    public void The_documented_response_shape_is_read()
-    {
-        // The example response from https://docs.typesafe.ai/api, verbatim.
-        const string json = """
-            {"model":"jev-1.13.0","answers":{"department":{"type":"choice","choice":"billing",
-             "probabilities":{"billing":0.88,"technical":0.12,"sales":0.0},"confidence":0.81}},
-             "usage":{"input_tokens":318,"output_tokens":34}}
-            """;
-
-        var response = JsonSerializer.Deserialize<JevResponse>(json, JevRequest.Json)!;
-
-        Assert.Equal("jev-1.13.0", response.Model);
-        var answer = response.Answers!["department"];
-        Assert.Equal("billing", answer.Choice);
-        Assert.Equal(0.81, answer.Confidence);
-        Assert.Equal(0.88, answer.Probabilities!["billing"]);
-    }
-}
-
-file sealed class SingleClientFactory(HttpClient client) : IHttpClientFactory
-{
-    public HttpClient CreateClient(string name) => client;
 }

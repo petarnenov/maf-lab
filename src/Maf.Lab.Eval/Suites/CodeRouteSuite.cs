@@ -1,11 +1,11 @@
 using Maf.Lab.Api.Agent;
-using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.Agent.Decisions;
 using Maf.Lab.Domain.Evals;
 using Maf.Lab.Domain.Graph;
 using Maf.Lab.Eval.Datasets;
 using Maf.Lab.Eval.Hosting;
 using Maf.Lab.Hosting.Cli;
-using Maf.Lab.Retrieval.Jev;
+using Maf.Lab.Plugins.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -25,11 +25,11 @@ public sealed class CodeRouteSuite(EvalAgentHost host)
 
     public async Task<IReadOnlyList<EvalVariantResult>> RunAsync(SuiteContext ctx, CancellationToken ct)
     {
-        if (!host.Services.GetRequiredService<JevCredential>().IsConfigured)
+        if (!host.Services.GetRequiredService<IDecisionEngine>().IsConfigured)
         {
-            throw new InvalidOperationException($"The code-route suite needs {JevCredential.EnvironmentVariable} in the environment.");
+            throw new InvalidOperationException("The code-route suite needs a configured decision engine (the installed engine's credential in the environment).");
         }
-        var options = host.Services.GetRequiredService<IOptions<JevOptions>>().Value;
+        var options = host.Services.GetRequiredService<IOptions<Maf.Lab.Api.Agent.IntentOptions>>().Value;
         if (!options.RouteCodeTools)
         {
             throw new InvalidOperationException("The code-route suite measures Jev:RouteCodeTools, which is off.");

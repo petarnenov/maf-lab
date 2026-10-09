@@ -30,6 +30,8 @@ public partial class Program
         builder.RequireSharedState<Maf.Lab.Domain.SharedState.IIdempotencyStore>();
 
         builder.Services.AddMafRetrievalCore(builder.Configuration);
+        // The installed providers: the decision engine the relevance judge asks.
+        Maf.Lab.Plugins.Abstractions.ProviderHost.AddInstalledProviders(builder.Services, builder.Configuration);
         builder.Services.AddDevJwtAuthentication(builder.Configuration);
         // The graph store: billing relationships. The driver connects on first use, so the server starts without it and
         // the graph tool answers "temporarily unavailable" until it is back.
@@ -51,8 +53,6 @@ public partial class Program
             .WithTools<BillingGraphTools>();
 
         var app = builder.Build();
-        // Resolved now so a missing JEV_MAF_LAB is reported once at startup, not on the first gated search.
-        app.Services.GetRequiredService<Jev.JevCredential>();
         app.UseInstanceHeader();
         app.UseAuthentication();
         app.UseAuthorization();

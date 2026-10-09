@@ -70,11 +70,12 @@ public sealed class LlmReranker(IChatClientFactory providers, IOptions<ModelOpti
 }
 
 /// <summary>
-/// Orders candidates by Jev's probability that each addresses the query — the relevance gate's own answer, so gate and
-/// order never cost two requests. Equal probabilities keep their fused order (Jev answers to two decimals, and ties are
-/// common); candidates beyond those judged follow in fused order. A judge that did not answer leaves the fused order.
+/// Orders candidates by the decision engine's probability that each addresses the query — the relevance gate's own
+/// answer, so gate and order never cost two requests. Its kind stays "jev" (configuration data). Equal probabilities keep
+/// their fused order (the engine answers to two decimals, and ties are common); candidates beyond those judged follow in
+/// fused order. A judge that did not answer leaves the fused order.
 /// </summary>
-public sealed class JevReranker(IRelevanceJudge judge) : IReranker
+public sealed class RelevanceReranker(IRelevanceJudge judge) : IReranker
 {
     public string Kind => RerankerKinds.Jev;
 

@@ -26,7 +26,7 @@ public class SharedStateTests
     {
         // No connection string and nothing registered: the store this service declared it needs is not there.
         await using var server = new WebApplicationFactory<Maf.Lab.Retrieval.Program>()
-            .WithWebHostBuilder(b => b.ConfigureTestServices(s => s.RemoveAll<IIdempotencyStore>()));
+            .WithWebHostBuilder(b => b.UseFixtureEngine().ConfigureTestServices(s => s.RemoveAll<IIdempotencyStore>()));
 
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => Task.Run(() => server.CreateClient(), Ct));
 
@@ -39,7 +39,7 @@ public class SharedStateTests
     public async Task A_service_with_a_store_serves_whichever_store_it_is()
     {
         await using var server = new WebApplicationFactory<Maf.Lab.Retrieval.Program>()
-            .WithWebHostBuilder(b => b.WithFakeSharedState());
+            .WithWebHostBuilder(b => b.UseFixtureEngine().WithFakeSharedState());
 
         var response = await server.CreateClient().GetAsync("/health", Ct);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -108,7 +108,7 @@ public class SharedStateTests
     public async Task A_replica_that_cannot_reach_the_store_answers_health_in_the_shape_the_balancer_reads()
     {
         await using var server = new WebApplicationFactory<Maf.Lab.Retrieval.Program>()
-            .WithWebHostBuilder(b => b.UseSetting($"{SharedStateOptions.Section}:ConnectionString",
+            .WithWebHostBuilder(b => b.UseFixtureEngine().UseSetting($"{SharedStateOptions.Section}:ConnectionString",
                 "127.0.0.1:6399,connectTimeout=200,syncTimeout=200,abortConnect=false"));
 
         var response = await server.CreateClient().GetAsync("/health", Ct);
@@ -125,7 +125,7 @@ public class SharedStateTests
     public async Task A_healthy_replica_answers_health_with_its_status_and_name_only()
     {
         await using var server = new WebApplicationFactory<Maf.Lab.Retrieval.Program>()
-            .WithWebHostBuilder(b => b.WithFakeSharedState());
+            .WithWebHostBuilder(b => b.UseFixtureEngine().WithFakeSharedState());
 
         var response = await server.CreateClient().GetAsync("/health", Ct);
 

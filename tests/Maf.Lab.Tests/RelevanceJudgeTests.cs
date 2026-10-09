@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using Maf.Lab.Retrieval.Configuration;
-using Maf.Lab.Retrieval.Jev;
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Retrieval.Rerank;
 using Maf.Lab.Retrieval.Store;
 using Maf.Lab.TestSupport;
@@ -33,21 +33,15 @@ public class RelevanceJudgeTests
         Chunk(2, "Households group accounts for breakpoints."),
     ];
 
-    private sealed record Harness(JevRelevanceJudge Judge, FakeJev Jev, CapturingLoggerProvider Logs);
+    private sealed record Harness(DecisionRelevanceJudge Judge, FakeJev Jev, CapturingLoggerProvider Logs);
 
-    private static Harness Build(FakeJev? jev = null, string? key = FakeJev.TestKey, RetrievalOptions? options = null,
-        JevCircuitBreaker? breaker = null)
+    private static Harness Build(FakeJev? jev = null, bool configured = true, RetrievalOptions? options = null, bool opensOnFirstFailure = false)
     {
         jev ??= new FakeJev();
         var logs = new CapturingLoggerProvider();
         var loggers = LoggerFactory.Create(b => b.AddProvider(logs).SetMinimumLevel(LogLevel.Trace));
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { [JevCredential.EnvironmentVariable] = key })
-            .Build();
-        var credential = new JevCredential(configuration, loggers.CreateLogger<JevCredential>());
-        var client = new HttpClient(new JevAuthHandler(credential) { InnerHandler = jev }) { BaseAddress = new Uri("https://jev.test/") };
-        var judge = new JevRelevanceJudge(new JevClient(new OneClientFactory(client), credential, Options.Create(new JevOptions()), breaker),
-            Options.Create(options ?? new RetrievalOptions()), loggers.CreateLogger<JevRelevanceJudge>());
+        var engine = new FakeDecisionEngine(jev) { IsConfigured = configured, OpenAfterFailures = opensOnFirstFailure ? 1 : 0 };
+        var judge = new DecisionRelevanceJudge(engine, Options.Create(options ?? new RetrievalOptions()), loggers.CreateLogger<DecisionRelevanceJudge>());
         return new Harness(judge, jev, logs);
     }
 
@@ -139,12 +133,12 @@ public class RelevanceJudgeTests
     [Fact]
     public async Task With_the_circuit_open_nothing_is_sent_and_the_search_keeps_its_fused_order()
     {
-        var h = Build(new FakeJev { Status = HttpStatusCode.ServiceUnavailable }, breaker: JevCircuitBreakerTests.OpensOnFirstFailure());
+        var h = Build(new FakeJev { Status = HttpStatusCode.ServiceUnavailable }, opensOnFirstFailure: true);
         await h.Judge.JudgeAsync("fee schedule", Candidates, Ct);
         var sent = h.Jev.Requests.Count;
 
         var judgement = await h.Judge.JudgeAsync("fee schedule", Candidates, Ct);
-        var ranked = await new JevReranker(h.Judge).RerankAsync("fee schedule", Candidates, Ct);
+        var ranked = await new RelevanceReranker(h.Judge).RerankAsync("fee schedule", Candidates, Ct);
 
         Assert.Equal(sent, h.Jev.Requests.Count);
         Assert.Null(judgement.Scores);
@@ -156,7 +150,7 @@ public class RelevanceJudgeTests
     [Fact]
     public async Task Without_a_key_nothing_is_sent()
     {
-        var h = Build(key: null);
+        var h = Build(configured: false);
 
         var judgement = await h.Judge.JudgeAsync("fee schedule", Candidates, Ct);
 
@@ -193,7 +187,7 @@ public class RelevanceJudgeTests
     public async Task The_jev_reranker_orders_by_probability_and_keeps_fused_order_on_ties()
     {
         var h = Build(new FakeJev { Relevance = (_, text) => text.Contains("Households") ? 0.8 : text.Contains("missing") ? 0.8 : 0.1 });
-        var reranker = new JevReranker(h.Judge);
+        var reranker = new RelevanceReranker(h.Judge);
 
         var ranked = await reranker.RerankAsync("q", Candidates, Ct);
 
@@ -206,7 +200,7 @@ public class RelevanceJudgeTests
     [Fact]
     public void Candidates_beyond_those_judged_follow_in_fused_order()
     {
-        var ranked = JevReranker.Order(Candidates, new RelevanceJudgement([0.1, 0.9], null, "jev-1.13.0", 1));
+        var ranked = RelevanceReranker.Order(Candidates, new RelevanceJudgement([0.1, 0.9], null, "jev-1.13.0", 1));
 
         Assert.Equal(["firm-a/docs/d1.md", "firm-a/docs/d0.md", "firm-a/docs/d2.md"], ranked.Select(r => r.Chunk.DocId));
     }
@@ -216,13 +210,9 @@ public class RelevanceJudgeTests
     {
         var h = Build(new FakeJev { Status = HttpStatusCode.ServiceUnavailable });
 
-        var ranked = await new JevReranker(h.Judge).RerankAsync("q", Candidates, Ct);
+        var ranked = await new RelevanceReranker(h.Judge).RerankAsync("q", Candidates, Ct);
 
         Assert.Equal(Candidates, ranked);
     }
 }
 
-file sealed class OneClientFactory(HttpClient client) : IHttpClientFactory
-{
-    public HttpClient CreateClient(string name) => client;
-}

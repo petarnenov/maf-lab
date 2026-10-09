@@ -324,7 +324,7 @@ public static class DatasetLoader
             return new SentenceLabel(Str(x, "text", where), claim, supported, x.TryGetProperty("citation", out var ci) && ci.ValueKind == JsonValueKind.True, ambiguous);
         }).ToList();
         var answer = Str(e, "answer", where);
-        var cut = Judging.AnswerSentences.Split(Api.Agent.Jev.AnswerText.Normalise(answer));
+        var cut = Judging.AnswerSentences.Split(Api.Agent.Decisions.AnswerText.Normalise(answer));
         if (!cut.SequenceEqual(labels.Select(l => l.Text)))
         {
             throw new InvalidDataException($"{where}: the labelled sentences are not the {cut.Count} sentences code cuts the answer into.");

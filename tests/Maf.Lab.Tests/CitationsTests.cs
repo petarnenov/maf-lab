@@ -1,5 +1,5 @@
 using Maf.Lab.Api.Agent;
-using Maf.Lab.Api.Agent.Jev;
+using Maf.Lab.Api.Agent.Decisions;
 using Maf.Lab.Api.BuiltIn;
 using Maf.Lab.Eval;
 using Maf.Lab.Eval.Judging;
@@ -62,9 +62,9 @@ public class CitationsTests
     public void A_sentence_citing_a_place_no_source_holds_is_an_unsupported_claim_whatever_jev_answers()
     {
         var input = new GradeInput("q", "It is built in `TenantFilter`. (See src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs:88-95.)", Read, []);
-        var request = JevGradeRequest.Build(input, new JudgeOptions());
+        var request = DecisionGradeRequest.Build(input, new JudgeOptions());
 
-        var grade = JevGrade.From(request, request.Questions.Keys.ToDictionary(id => id, _ => 0.95));
+        var grade = DecisionGrade.From(request, request.Questions.Keys.ToDictionary(id => id, _ => 0.95));
 
         Assert.Equal(0.5, grade.Faithfulness);
         Assert.Equal([true, false], grade.SentenceSupported);

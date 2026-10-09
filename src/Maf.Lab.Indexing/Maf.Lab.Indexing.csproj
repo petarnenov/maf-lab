@@ -1,5 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <!-- Takes the installed provider plugins' code (Directory.Build.targets; introduce-provider-plugins). -->
+    <MafProviderHost>true</MafProviderHost>
     <Description>Console app: source loaders, chunkers, embedding, upsert, drift</Description>
   </PropertyGroup>
   <PropertyGroup>
