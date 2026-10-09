@@ -2,7 +2,6 @@ using Maf.Lab.A2A;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Maf.Lab.Api.A2A;
 using Maf.Lab.Plugins.A2A;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
@@ -19,6 +18,7 @@ public class A2AStreamingTests
 
     private static async Task<HttpClient> PartnerClientAsync(ApiFactory api)
     {
+        A2APluginSupport.BootstrapPartners(api);
         var client = api.CreateClient();
         var response = await client.PostAsJsonAsync("/a2a/token", new A2AEndpoints.TokenRequest("acme-portal", "s3cret"), Ct);
         var token = (await response.Content.ReadFromJsonAsync<A2AEndpoints.TokenResponse>(Ct))!.AccessToken;

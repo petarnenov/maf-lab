@@ -100,28 +100,20 @@ services:
     # The user who runs make (exported by it): the api writes into the repository (branches, merges) and evals/,
     # and on Linux whatever it writes there belongs to this user. Root here left root-owned files in the checkout.
     user: "${MAF_LAB_UID:-1000}:${MAF_LAB_GID:-1000}"
-    env_file: [env/retrieval.env, env/platform.env, env/graph.env, env/a2a.env, env/compliance.env, env/observability.env]
+    env_file: [env/retrieval.env, env/platform.env, env/graph.env, env/a2a.env, env/observability.env, env/coverage.env]
     environment:
       Urls: http://+:8080
       # Writable by any user; a uid with no passwd entry would otherwise get HOME=/.
       HOME: /tmp
       Storage__ConnectionString: Data Source=/app-data/maf-lab.db
       Evals__Root: /evals
-      # The drawn topology, served to the web app by the api (the web image is built from web/ only).
-      Topology__DiagramPath: /docs/topology.drawio
-      # The Coverage screen (add-coverage-dashboard-and-test-agent): the repository, the runner that measures it and
-      # the agent that writes tests for it. Only the api may write to the repository (branches and merges).
-      Coverage__RepoRoot: ${MAF_LAB_REPO:?set MAF_LAB_REPO to the repository path (make does)}
-      CoverageRunner__BaseUrl: http://coverage-runner:8080
-      TestAgent__BaseUrl: http://test-agent:8080
-      TestAgent__ClientId: maf-lab-assistant
-      TestAgent__ClientSecret: ${TEST_AGENT_CLIENT_SECRET:-assistant-testgen-dev-secret}
-      # Optional: opens GitHub issues for suspected bugs. A token limited to this repository's issues, for the api only.
-      GITHUB_ISSUES_TOKEN: ${GITHUB_ISSUES_TOKEN:-}
       # The installed plugins, read at run time from the mounted folder (introduce-plugins decision 2), and the
       # environment the deployment declares, which an installed plugin must allow.
       Plugins__Root: /plugins
       MAF_ENV: ${MAF_ENV:-dev}
+      Auth__Authority: ${AUTH_AUTHORITY:-}
+      Auth__CoreRoleClientId: ${AUTH_CORE_ROLE_CLIENT_ID:-api}
+      Auth__WebClientId: ${AUTH_WEB_CLIENT_ID:-web}
     deploy:
       replicas: 2
     # Docker's stop grace exceeds the api's own drain (HostOptions.ShutdownTimeout = 30 s): SIGKILL never races the
@@ -134,7 +126,6 @@ services:
     volumes:
       - api-data:/app-data
       - ../evals:/evals
-      - ../docs:/docs:ro
       # At the host's own path: the repository's worktrees record host paths.
       - ${MAF_LAB_REPO}:${MAF_LAB_REPO}
       # The plugin manifests and the installed set, read only.
@@ -147,63 +138,6 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
-
-  # The test-generation agent: A2A only, internal only. It holds the model key and reads the repository; the tests it
-  # writes are built and run by the coverage runner, never here. Its environment is its own, not the shared env files: it has
-  # no business with Jev, the billing partner or the retrieval settings.
-  test-agent:
-    build:
-      context: ..
-      dockerfile: src/Maf.Lab.TestAgent/Dockerfile
-    deploy:
-      replicas: 1
-    environment:
-      Urls: http://+:8080
-      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
-      Models__Provider: ollama
-      Models__ChatEndpoint: ${CHAT_ENDPOINT:-https://ollama.com}
-      Auth__SigningKey: ${AUTH_SIGNING_KEY:-maf-lab-dev-signing-key-change-me-0123456789}
-      A2A__Audience: maf-lab-test-agent
-      A2A__PublicBaseUrl: http://test-agent:8080
-      A2A__RequiredScope: a2a.testgen.run
-      A2A__StoreKeyspace: testgen
-      A2A__Partners__maf-lab-assistant__Secret: ${TEST_AGENT_CLIENT_SECRET:-assistant-testgen-dev-secret}
-      A2A__Partners__maf-lab-assistant__Scopes__0: a2a.testgen.run
-      TestAgent__RepoRoot: ${MAF_LAB_REPO}
-      TestAgent__WorkRoot: /work
-      TestAgent__RunnerBaseUrl: http://coverage-runner:8080
-      Telemetry__Endpoint: ${TELEMETRY_ENDPOINT:-http://otel-collector:4317}
-      SharedState__ConnectionString: ${REDIS_CONNECTION:-redis:6379}
-    volumes:
-      - ${MAF_LAB_REPO}:${MAF_LAB_REPO}:ro
-      - testagent-work:/work
-    networks:
-      - default
-      - runner
-    depends_on:
-      redis:
-        condition: service_healthy
-      coverage-runner:
-        condition: service_healthy
-
-  # The coverage runner builds and runs model-written tests: on the internal network only (no route out), with no
-  # secret but the key it checks service tokens with, and the repository read-only.
-  coverage-runner:
-    build:
-      context: ..
-      dockerfile: src/Maf.Lab.CoverageRunner/Dockerfile
-    deploy:
-      replicas: 1
-    environment:
-      Urls: http://+:8080
-      Auth__SigningKey: ${AUTH_SIGNING_KEY:-maf-lab-dev-signing-key-change-me-0123456789}
-      Runner__RepoRoot: ${MAF_LAB_REPO}
-      Telemetry__Endpoint: ${TELEMETRY_ENDPOINT:-http://otel-collector:4317}
-    volumes:
-      - ${MAF_LAB_REPO}:${MAF_LAB_REPO}:ro
-      - runner-work:/work
-    networks:
-      - runner
 
   # CopilotKit's runtime, wiring only (agui-protocol-only): the browser's CopilotKit reaches the api's AG-UI agents through
   # it, through the balancer, with the caller's own bearer token. One replica: it keeps no state that matters.
@@ -242,7 +176,8 @@ services:
   # The shared state store: conversations, run state, tasks, webhooks and idempotency keys.
   redis:
     image: redis:8.8.3-alpine
-    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    # Content-permission end acknowledgement must survive a crash before the next periodic AOF flush.
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "always"]
     volumes:
       - redis-data:/data
     healthcheck:
@@ -270,10 +205,6 @@ services:
     depends_on:
       api:
         condition: service_healthy
-      test-agent:
-        condition: service_healthy
-      coverage-runner:
-        condition: service_healthy
       web:
         condition: service_healthy
       copilot-runtime:
@@ -288,8 +219,6 @@ networks:
     internal: true
 
 volumes:
-  testagent-work:
-  runner-work:
   ollama-models:
   api-data:
   redis-data:

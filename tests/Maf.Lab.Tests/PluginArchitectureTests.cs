@@ -20,7 +20,7 @@ public sealed class PluginArchitectureTests
     private static readonly string[] CoreAssemblies =
     [
         "Maf.Lab.Domain", "Maf.Lab.Hosting", "Maf.Lab.Retrieval", "Maf.Lab.Api", "Maf.Lab.Indexing", "Maf.Lab.A2A", "Maf.Lab.TestGen",
-        "Maf.Lab.Plugins.Abstractions",
+        "Maf.Lab.Plugins.Abstractions", "Maf.Lab.Evaluation",
     ];
 
     private static readonly string[] Forbidden = ["Qdrant.Client", "Neo4j.Driver", "AGUI.Abstractions", "AGUI.Server"];
@@ -45,13 +45,13 @@ public sealed class PluginArchitectureTests
 
     /// <summary>
     /// The other direction: a plugin reaches the core only through the abstractions and the shared libraries (Domain,
-    /// Retrieval, Indexing — the indexing pipeline, extract-index-admin-plugin — and the A2A protocol library, extract-a2a)
+    /// Retrieval, Indexing — the indexing pipeline, extract-index-admin-plugin — A2A, and TestGen's shared contracts)
     /// — never the api or the other services' assemblies, whose types are the core's to change.
     /// </summary>
     [Fact]
     public void No_plugin_references_the_core()
     {
-        string[] core = ["Maf.Lab.Api", "Maf.Lab.Hosting", "Maf.Lab.TestGen"];
+        string[] core = ["Maf.Lab.Api", "Maf.Lab.Hosting"];
         var plugins = PluginAssemblies().ToList();
         Assert.NotEmpty(plugins);
         AssertNone(plugins.SelectMany(path =>

@@ -1,0 +1,8 @@
+schema = 1
+name = "topology"
+kind = "app"
+scope = "installation"
+environments = ["dev", "qa"]
+description = "Live topology and bounded probes of core and installed plugin services."
+progress = "Page: the topology screen shows Loading and Refreshing while its report loads"
+stopping = "Key: Esc on the screen; Stop: abort the report request and its probes; Recorded in: nothing — a read; Shown: the last report remains"

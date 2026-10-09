@@ -45,10 +45,10 @@ The review is **simulated**: a threshold (`Review:RefuseAboveAmount`) and a stop
 (`Review:MinDurationMs`/`MaxDurationMs`, 20–60 s in the stack), with `Review:AskForJustificationRate` deciding how
 often it asks first. It binds nobody.
 
-**How the assistant authenticates to it.** With its own client credentials (`Compliance:ClientId` /
-`Compliance:ClientSecret`), exchanged at the reviewer's own token endpoint. A user's token is never forwarded: the
+**How the assistant authenticates to it.** With its own client credentials (`A2A:Clients:compliance:ClientId` /
+`A2A:Clients:compliance:ClientSecret`), exchanged at the reviewer's own token endpoint. A user's token is never forwarded: the
 audiences differ, so a token for `/a2a` is refused at `/compliance/a2a` and the other way round. The reviewer is
-found by fetching its card from `Compliance:BaseUrl` — the card says where it answers, and nothing else is
+found by fetching its card from `A2A:Clients:compliance:BaseUrl` — the card says where it answers, and nothing else is
 hard-coded. A consultation ends as a verdict, a question, a timeout (`Compliance:Deadline`), an unreachable agent
 or a failure, and each one is written to the audit record as `a2a.consultation` — agent, adjustment id, task id,
 outcome and duration, never the content. When the chat run that asked is stopped while a review is in flight, the review is

@@ -20,7 +20,6 @@ make lint-web
 
 make verify              # end-to-end checks through the load balancer
 make specs               # OpenSpec validation (strict)
-make eval SUITE=selection
 ```
 
 Single-test examples:
@@ -45,39 +44,48 @@ MCP note: workspace MCP server config lives in `.mcp.json` (Playwright server vi
 - **Routing model:** the table below, generated from `compose/lb/nginx.conf`.
 - **API service (`src/Maf.Lab.Api`):** ASP.NET Core host for chat SSE, history, feedback, admin/compliance surfaces, A2A protocol, and topology/trace endpoints. Persists app state in SQLite.
 - **Retrieval service (`src/Maf.Lab.Retrieval`):** MCP server exposing `search_documents` + billing-related tools over `/mcp`; retrieval runs against Qdrant (dense+sparse hybrid).
-- **Indexing and eval CLIs:** `src/Maf.Lab.Indexing` builds/updates the Qdrant corpus index; `src/Maf.Lab.Eval` runs the selection/retrieval/generation/injection/confirmation/intent/guardrail/domain/presentation/answer-check/code-route suites against the running stack, and the graph-depth comparison (never gated) when named.
+- **Indexing CLI:** `src/Maf.Lab.Indexing` builds/updates the Qdrant corpus index. Optional developer runners and their make targets live with their owning plugins; consult the generated target catalogue.
 - **Web app (`web/`):** Vite + React + TypeScript; in local non-balancer dev it proxies `/api` and `/dev` to the API process.
 
 <!-- generated:lb-routes — edit compose/lb/nginx.conf, then run make docs -->
 | Path | Match | Served by |
 |---|---|---|
 | `^/[a-z0-9-]+/mcp$` | regex | the balancer itself |
+| `/.well-known/oauth-protected-resource` | prefix | the balancer itself |
 | `^/[a-z0-9-]+/(a2a\|\.well-known/agent-card\.json)(/\|$)` | regex | the balancer itself |
 | `/lb-health` | exact | the balancer itself |
-| `/api/coverage/runs/agent` | exact | `api` |
 | `/copilotkit/` | prefix | `copilot-runtime` |
 | `/api/chat` | exact | `api` |
 | `/api/` | prefix | `api` |
 | `/dev/` | prefix | `api` |
-| `/.well-known/agent-card.json` | exact | `api` |
-| `/a2a` | prefix | `api` |
 | `/` | prefix | `web` |
 | `/example/mcp` | exact | `mcp-example` at `/mcp` (plugin `_example`) |
+| `/.well-known/agent-card.json` | exact | `api` (plugin `a2a`) |
+| `/a2a` | exact | `api` (plugin `a2a`) |
+| `/a2a/` | prefix | `api` (plugin `a2a`) |
 | `/mcp` | exact | `mcp-retrieval` (plugin `billing`) |
+| `/.well-known/oauth-protected-resource/mcp` | exact | `mcp-retrieval` (plugin `billing`) |
 | `/code/mcp` | exact | `mcp-code` at `/mcp` (plugin `code`) |
+| `/.well-known/oauth-protected-resource/code/mcp` | exact | `mcp-code` (plugin `code`) |
 | `/compliance` | prefix | `compliance` (plugin `compliance`) |
+| `/api/coverage/runs/agent` | exact | `api` (plugin `coverage`) |
 | `/v1/traces` | prefix | `otel-collector` (plugin `observability`) |
 | `/jaeger` | prefix | `jaeger` (plugin `observability`) |
 | `/portfolio/mcp` | exact | `mcp-portfolio` at `/mcp` (plugin `portfolio`) |
+| `/.well-known/oauth-protected-resource/portfolio/mcp` | exact | `mcp-portfolio` (plugin `portfolio`) |
 <!-- /generated:lb-routes -->
 
 ## Key conventions in this codebase
 
+- **Migration order (user decision, 2026-10-08):** finish the agreed code migration first. Indexing, reindexing,
+  graph refreshes and live evals that depend on those indexes run after the entire code migration is complete.
+  During migration, use builds, contract tests and docs/spec checks; keep the final index/eval gate deferred and
+  continue the planned code tasks.
 - **Progress feedback (top priority):** every CLI tool shows a progress bar for the work it does, and every process started from the UI that can take longer than 3 seconds shows progress that matches the page's theme and design (spec: `progress-feedback`). Every proposal says how its work shows progress in a `## Progress` section (`Terminal:`, `Page:`, `None — <reason>`, or `Not yet — <reason>; follow-up: <change>`); `make docs-check` fails one without it.
 - **SOLID and established standards (top priority):** follow the SOLID principles and use only established, widely adopted industry standards and practices — official protocols (MCP, A2A, AG-UI), RFCs (OAuth, JWT), OpenTelemetry, recognised patterns (POSA, GoF, ports and adapters, composition root). Name the standard or pattern a design relies on; never invent a format, protocol or mechanism where an established one exists, and record any exception in DECISIONS.md with the alternatives rejected. Checkable rules are architecture tests, not prose (spec: `solid-and-standards`). Every proposal says what it stands on in a `## Principles` section (`SOLID:` and `Standards:`, `Own: <what> — <why>; DECISIONS §<n>` for anything of its own, or `None — <reason>`); `make docs-check` fails one without it.
 - **Everything can be stopped (top priority):** Esc on the page that started the work, Ctrl+C or SIGTERM in a terminal (exit 130, at a safe point, cancelling the server work it started). Only the protocols' own means carry a stop (CopilotKit stop, an aborted request, MCP's transport, A2A `tasks/cancel`, this system's cancel routes); work that outlives its request is stopped through the store that owns its state, atomically, watched by its worker, from any replica (spec: `stop-anything`). Every proposal says how its work stops in a `## Stopping` section (`Key:`, `Stop:`, `Recorded in:`, `Shown:`, or `None — <reason>`); `make docs-check` fails one without it.
 - Read `openspec/project.md` first for stack/layout conventions; active proposals live under `openspec/changes/`.
-- **Tenant isolation rule:** tenant (`tenant_id`) is derived from the authenticated principal only; the core principal holds core roles only (`TENANT_ADMIN`, `USER`, `READ_ONLY`), and domain roles are claims only the domain's server reads. Do not add tenant parameters to endpoints, tools, or query builders.
+- **Tenant isolation rule:** tenant (`tenant_id`) is derived from the authenticated principal only; the core principal holds core roles only (`TENANT_ADMIN`, `USER`, `READ_ONLY`, `PLATFORM_ADMIN`), and domain roles are claims only the domain's server reads. Do not add tenant parameters to endpoints, tools, or query builders.
 - **Only official AG-UI events (agui-protocol-only):** agents are Agent Framework `AIAgent`s behind `MapAGUIServer`; what this system adds is content mapped in `src/Maf.Lab.Api/Agent/AGUI/AGUIMappings.cs`, the only place an AG-UI event is built. Never emit or consume a `CUSTOM` event, and never write SSE or call an agent with `fetch`: the web reaches agents only through CopilotKit and its runtime. `AGUIProtocolOnlyTests` and ESLint enforce it.
 - **Single tenant query path:** all tenant-scoped Qdrant reads go through `TenantScopedSearch.QueryAsync(...)` and `TenantFilter` (`src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs`). Do not add alternate query-building paths.
 - **Single graph read path:** all Neo4j reads go through `TenantScopedGraph.ReadAsync(principal, query)` (`src/Maf.Lab.Retrieval/Graph/TenantScopedGraph.cs`), which binds `$readable` from the principal and runs one of the constant Cypher templates in `GraphTemplates`; writes go through `TenantScopedGraphMaintenance`. Every node a template matches carries `tenant_id IN $readable`. Never build Cypher from a request, a tool argument or model output.

@@ -14,3 +14,7 @@ The tokens are minted from the dev credentials in the compose files — the A2A 
 opens (`/lab/token`), the MCP catalog is rewritten with a new one every hour — and are never stored outside the
 containers. By hand: `POST /dev/token` for MCP, `POST /a2a/token` or `/compliance/a2a/token` for A2A; a token for one
 A2A audience is refused by the other.
+
+Run the startup and token-refresh tests from the repository root with
+`node --experimental-vm-modules --test plugins/mcp-inspector/tests/start.test.mjs`.
+They execute the launcher with mocked filesystem, network, timer, and process boundaries.

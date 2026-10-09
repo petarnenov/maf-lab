@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><Description>Coverage snapshots, test-generation runs and their admin UI protocol host</Description></PropertyGroup>
+  <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /><PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/Maf.Lab.Plugins.Abstractions/Maf.Lab.Plugins.Abstractions.csproj" />
+    <ProjectReference Include="../../../src/Maf.Lab.Domain/Maf.Lab.Domain.csproj" />
+    <ProjectReference Include="../../../src/Maf.Lab.Retrieval/Maf.Lab.Retrieval.csproj" />
+    <ProjectReference Include="../../../src/Maf.Lab.A2A/Maf.Lab.A2A.csproj" />
+    <ProjectReference Include="../../../src/Maf.Lab.TestGen/Maf.Lab.TestGen.csproj" />
+  </ItemGroup>
+  <ItemGroup><InternalsVisibleTo Include="Maf.Lab.Tests" /></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="../files/appsettings.json" LogicalName="CoverageDefaults" /></ItemGroup>
+</Project>

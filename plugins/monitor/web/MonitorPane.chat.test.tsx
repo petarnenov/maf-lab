@@ -251,6 +251,7 @@ describe('ChatPage with the monitor', () => {
   });
 
   it('time travel rewinds the selected answer only, and chat typing never scrubs', async () => {
+    const user = userEvent.setup();
     let chatCalls = 0;
     const answer = 'Assign the missing fee schedule and re-run the billing run.';
     const fetchMock = vi.fn(async (url: string) => {
@@ -278,15 +279,15 @@ describe('ChatPage with the monitor', () => {
 
     renderChat([monitorPlugin]);
     for (const q of ['first', 'second']) {
-      await userEvent.type(screen.getByLabelText('Message'), q);
-      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+      await user.type(screen.getByLabelText('Message'), q);
+      await user.click(screen.getByRole('button', { name: 'Send' }));
     }
     await screen.findByText(answer);
     const [firstTurn, secondTurn] = screen.getAllByTestId('assistant-turn');
     expect(within(secondTurn).queryByTestId('rewind-banner')).not.toBeInTheDocument();
 
     // Typing arrows in the chat box must not move the cursor.
-    await userEvent.type(screen.getByLabelText('Message'), '{ArrowLeft}{Home}');
+    await user.type(screen.getByLabelText('Message'), '{ArrowLeft}{Home}');
     expect(screen.getByTestId('tt-step')).toHaveTextContent(
       `step ${fixtureTrace.length} / ${fixtureTrace.length}`,
     );
@@ -294,8 +295,8 @@ describe('ChatPage with the monitor', () => {
     // Move onto the first answer chunk.
     const firstChunk = fixtureTrace.findIndex((e) => e.kind === 'answer.delta') + 1;
     screen.getByRole('region', { name: 'Behind the scenes' }).focus();
-    await userEvent.keyboard('{Home}');
-    for (let i = 0; i < firstChunk; i++) await userEvent.keyboard('{ArrowRight}');
+    await user.keyboard('{Home}');
+    await user.keyboard('{ArrowRight}'.repeat(firstChunk));
 
     const banner = within(secondTurn).getByTestId('rewind-banner');
     expect(banner).toHaveTextContent(`Viewing step ${firstChunk} of ${fixtureTrace.length}`);
@@ -306,15 +307,15 @@ describe('ChatPage with the monitor', () => {
     expect(within(firstTurn).queryByTestId('rewind-banner')).not.toBeInTheDocument();
 
     // Between the tool call and its result the card is running.
-    await userEvent.keyboard('{Home}');
+    await user.keyboard('{Home}');
     const callStep = fixtureTrace.findIndex((e) => e.kind === 'tool.call') + 1;
-    for (let i = 0; i < callStep; i++) await userEvent.keyboard('{ArrowRight}');
+    await user.keyboard('{ArrowRight}'.repeat(callStep));
     expect(within(secondTurn).getByTestId('tool-call-card')).toHaveAttribute(
       'data-state',
       'running',
     );
 
-    await userEvent.click(
+    await user.click(
       within(banner.ownerDocument.body).getByRole('button', { name: 'Return to now' }),
     );
     expect(within(secondTurn).queryByTestId('rewind-banner')).not.toBeInTheDocument();

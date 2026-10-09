@@ -35,6 +35,9 @@ jobs:
       - run: make specs
       # The runner's own Python 3.12; the docs check needs nothing else (openspec/specs/documentation-sync).
       - run: make docs-check
+      # Offline realm/server-profile validation: no realm import or external IdP service.
+      - name: Check stage and prod Keycloak bundles
+        run: make keycloak-check
 
   dotnet:
     name: .NET build and tests
@@ -52,7 +55,8 @@ jobs:
           restore-keys: nuget-${{ runner.os }}-
       - name: Build with warnings as errors
         run: make lint-dotnet
-      - name: Unit and integration tests (Testcontainers Qdrant)
+      # Ephemeral fixtures are isolated from the model-free Compose e2e stack.
+      - name: Unit and integration tests (Testcontainers Qdrant, Neo4j, Keycloak 26.8.0)
         run: make test-dotnet
       - name: A scaffolded plugin of each kind builds and keeps the docs in sync
         run: make plugin-new-check

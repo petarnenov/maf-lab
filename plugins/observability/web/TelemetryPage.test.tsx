@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { hangingFetch, jsonResponse, renderWithProviders } from '@maf/testing';
+import { hangingFetch, jsonResponse, makeSession, renderWithProviders } from '@maf/testing';
 import { TelemetryPage } from './TelemetryPage';
 import type { TelemetryReport } from './types';
 
@@ -46,7 +46,7 @@ describe('TelemetryPage', () => {
       }),
     );
 
-    renderWithProviders(<TelemetryPage />);
+    renderWithProviders(<TelemetryPage />, { session: makeSession('PLATFORM_ADMIN') });
 
     const turns = await screen.findByRole('region', { name: 'Turns by outcome' });
     expect(turns).toHaveTextContent('answered');
@@ -58,7 +58,7 @@ describe('TelemetryPage', () => {
     expect(instances).toHaveTextContent('api-1');
     expect(instances).toHaveTextContent('api-2');
 
-    expect(urls[0]).toContain('/api/telemetry?window=1h');
+    expect(urls[0]).toContain('/api/platform/telemetry?window=1h');
   });
 
   it('says a period has no data rather than showing it as zero', async () => {
@@ -67,7 +67,7 @@ describe('TelemetryPage', () => {
       vi.fn(async () => jsonResponse(report())),
     );
 
-    renderWithProviders(<TelemetryPage />);
+    renderWithProviders(<TelemetryPage />, { session: makeSession('PLATFORM_ADMIN') });
 
     const tokens = await screen.findByRole('region', { name: 'Tokens used' });
     expect(within(tokens).getByText('No data for this period.')).toBeInTheDocument();
@@ -84,7 +84,7 @@ describe('TelemetryPage', () => {
       }),
     );
 
-    renderWithProviders(<TelemetryPage />);
+    renderWithProviders(<TelemetryPage />, { session: makeSession('PLATFORM_ADMIN') });
     await screen.findByRole('region', { name: 'Turns by outcome' });
 
     await userEvent.selectOptions(screen.getByLabelText('Period'), '24h');
@@ -106,7 +106,7 @@ describe('TelemetryPage', () => {
       ),
     );
 
-    renderWithProviders(<TelemetryPage />);
+    renderWithProviders(<TelemetryPage />, { session: makeSession('PLATFORM_ADMIN') });
 
     expect(await screen.findByRole('alert')).toHaveTextContent('could not be reached');
     // The screen is still there, with its controls, rather than an empty chart.
@@ -119,7 +119,9 @@ describe('TelemetryPage', () => {
       vi.fn(async () => jsonResponse(report())),
     );
 
-    const { unmount } = renderWithProviders(<TelemetryPage />);
+    const { unmount } = renderWithProviders(<TelemetryPage />, {
+      session: makeSession('PLATFORM_ADMIN'),
+    });
     expect(await screen.findByRole('link', { name: 'Open the trace store' })).toHaveAttribute(
       'href',
       'http://localhost:7171/jaeger',
@@ -133,10 +135,10 @@ describe('TelemetryPage', () => {
   // Moved from the core's reports.stop and abort tests with the screen (stop-anything).
   it('stops its read on Esc, says so while it loads, and shows no error', async () => {
     const held = hangingFetch(
-      (url) => url.startsWith('/api/telemetry'),
+      (url) => url.startsWith('/api/platform/telemetry'),
       () => jsonResponse([]),
     );
-    renderWithProviders(<TelemetryPage />);
+    renderWithProviders(<TelemetryPage />, { session: makeSession('PLATFORM_ADMIN') });
     await waitFor(() => expect(held.length).toBeGreaterThan(0));
     expect(await screen.findByTestId('stop-hint')).toHaveTextContent('Esc to stop');
 
@@ -149,10 +151,10 @@ describe('TelemetryPage', () => {
 
   it('aborts its read when the page is left while it is still loading', async () => {
     const held = hangingFetch(
-      (url) => url.startsWith('/api/telemetry'),
+      (url) => url.startsWith('/api/platform/telemetry'),
       () => jsonResponse([]),
     );
-    const page = renderWithProviders(<TelemetryPage />);
+    const page = renderWithProviders(<TelemetryPage />, { session: makeSession('PLATFORM_ADMIN') });
     await waitFor(() => expect(held.length).toBeGreaterThan(0));
     expect(held.every((h) => !h.signal.aborted)).toBe(true);
 

@@ -21,6 +21,7 @@ public sealed class PluginOptions
 /// <summary>One installed plugin as the core sees it: its manifest, its MCP server description, and whether code of it runs here.</summary>
 public sealed record InstalledPlugin(PluginManifest Manifest, JsonObject? ServerJson, bool HasServer)
 {
+    public JsonObject? AgentCard { get; init; }
     public string Name => Manifest.Name;
 
     /// <summary>The MCP endpoint its server.json advertises (the first remote), when it has one.</summary>
@@ -117,7 +118,10 @@ public sealed class PluginCatalogue : IHostedService, IDisposable
                 problems.Add($"invalid manifest: {entry?["manifest"]?["name"]?.ToString() ?? "(no name)"}");
                 continue;
             }
-            plugins.Add(new InstalledPlugin(manifest, entry!["serverJson"] as JsonObject, entry["hasServer"]?.GetValue<bool>() ?? false));
+            plugins.Add(new InstalledPlugin(manifest, entry!["serverJson"] as JsonObject, entry["hasServer"]?.GetValue<bool>() ?? false)
+            {
+                AgentCard = entry["agentCard"] as JsonObject,
+            });
         }
         return new PluginSet(plugins, root["env"]?.GetValue<string>(), problems);
     }
@@ -128,6 +132,7 @@ public sealed class PluginCatalogue : IHostedService, IDisposable
             .Where(p => p.Manifest.Kind == PluginKinds.Mcp && p.Manifest.Domain is not null && p.McpEndpoint is not null)
             .ToDictionary(p => p.Name, p => new McpServerOptions
             {
+                Plugin = p.Name,
                 Domain = p.Manifest.Domain!.Id,
                 Endpoint = p.McpEndpoint!,
                 Tools = [.. p.Manifest.Domain.Tools],

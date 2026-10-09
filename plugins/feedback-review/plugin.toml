@@ -1,0 +1,8 @@
+schema = 1
+name = "feedback-review"
+kind = "app"
+scope = "tenant"
+environments = ["dev", "qa", "stage", "prod"]
+description = "Flagged turns and reviewer labels, with review panels from installed plugins."
+progress = "Page: the review queue shows its loading state and label submission shows Saving"
+stopping = "None — queue reads abort with their request; label writes finish within their request"

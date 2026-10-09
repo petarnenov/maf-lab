@@ -10,4 +10,5 @@ services:
       replicas: 1
     env_file: [env/platform.env]
     environment:
+      Auth__Audience: _example
       Urls: http://+:8080

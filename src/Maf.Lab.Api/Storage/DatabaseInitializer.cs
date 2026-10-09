@@ -2,6 +2,7 @@ using System.Data.Common;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Maf.Lab.Plugins.Abstractions;
 
 namespace Maf.Lab.Api.Storage;
 
@@ -53,6 +54,10 @@ public static partial class DatabaseInitializer
             await db.Database.ExecuteSqlRawAsync(statement, ct);
         }
         await BackfillAsync(db, ct);
+        foreach (var migration in db.PluginModels.OfType<IContributesDataMigration>())
+        {
+            await migration.MigrateDataAsync(db, ct);
+        }
     }
 
     /// <summary>
@@ -378,23 +383,7 @@ public static partial class DatabaseInitializer
             SET "LastActivityAt" = COALESCE((SELECT MAX(t."CreatedAt") FROM "Turns" t WHERE t."ConversationId" = "Conversations"."Id"), "CreatedAt")
             WHERE "LastActivityAt" IS NULL OR "LastActivityAt" = '' OR "LastActivityAt" LIKE '0001-01-01%'
             """, ct);
-        // A run whose budget stopped an attempt used to be stored one attempt short (keep-attempt-on-budget-stop).
-        await db.Database.ExecuteSqlRawAsync("""
-            UPDATE "TestGenRuns"
-            SET "Attempt" = (SELECT MAX(a."Attempt") FROM "TestGenRunActivity" a WHERE a."RunId" = "TestGenRuns"."Id")
-            WHERE "Attempt" < (SELECT MAX(a."Attempt") FROM "TestGenRunActivity" a WHERE a."RunId" = "TestGenRuns"."Id")
-            """, ct);
-        // A run stored before its end was recorded (show-test-run-duration): its first update in a state that is not
-        // running, else its last change. Running runs have no end; a row that has one is left alone.
-        await db.Database.ExecuteSqlRawAsync("""
-            UPDATE "TestGenRuns"
-            SET "FinishedAt" = COALESCE(
-                (SELECT MIN(e."At") FROM "TestGenRunEvents" e
-                 WHERE e."RunId" = "TestGenRuns"."Id"
-                   AND json_extract(e."Json", '$.state') NOT IN ('submitted', 'working', 'verifying')),
-                "UpdatedAt")
-            WHERE "FinishedAt" IS NULL AND "State" NOT IN ('submitted', 'working', 'verifying')
-            """, ct);
+
     }
 
     internal static IEnumerable<string> Statements(string script) =>

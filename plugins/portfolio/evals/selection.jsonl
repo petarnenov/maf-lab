@@ -1,0 +1,8 @@
+{"id": "s-50", "question": "How much drift triggers a rebalance?", "expectedTools": ["search_portfolio_documents"], "category": "portfolio", "tenantId": "firm-a"}
+{"id": "s-51", "question": "What does account A-1042 hold, and is it outside its drift tolerance?", "expectedTools": ["get_household_portfolio"], "category": "portfolio", "tenantId": "firm-a"}
+{"id": "s-52", "question": "Show me the quarter-end AUM of A-1043 over the last year.", "expectedTools": ["get_aum_history"], "category": "portfolio", "tenantId": "firm-a"}
+{"id": "s-55", "question": "Which accounts do I have access to?", "expectedTools": ["list_my_accounts"], "category": "portfolio", "tenantId": "firm-a"}
+{"id": "s-56", "question": "Покажи ми сметките, до които имам достъп", "expectedTools": ["list_my_accounts"], "category": "portfolio", "tenantId": "firm-a"}
+{"id": "s-57", "question": "What households do I manage?", "expectedTools": ["list_my_accounts"], "category": "portfolio", "tenantId": "firm-b"}
+{"id": "s-58", "question": "Кои акаунти мога да виждам?", "expectedTools": ["list_my_accounts"], "category": "portfolio", "tenantId": "firm-a"}
+{"id": "s-59", "question": "What is the model portfolio and current allocation of my account A-1043?", "expectedTools": ["get_household_portfolio"], "category": "portfolio", "tenantId": "firm-a"}

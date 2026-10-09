@@ -16,7 +16,7 @@ namespace Maf.Lab.Tests;
 /// Jev's check of the final answer (answer-check): which turns are checked, what the check reads, what it records, and
 /// that it flags a turn for review without ever failing or changing it.
 /// </summary>
-public class AnswerCheckTests
+public partial class AnswerCheckTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -135,25 +135,6 @@ public class AnswerCheckTests
         Assert.DoesNotContain("FS-REQUIRED", recorded);
         Assert.DoesNotContain(FakeJev.TestKey, recorded);
         Assert.DoesNotContain(api.Logs.Messages, m => m.Contains("ANSWER-MARKER"));
-    }
-
-    [Fact]
-    public async Task An_unsupported_answer_is_flagged_for_review()
-    {
-        var jev = new FakeJev { AnswerCheck = (id, _, _) => id == DecisionAnswerCheck.GroundedId ? 0.12 : 0.9 };
-        using var api = new ApiFactory(ApiFactory.ProceduralModel(Marker), jev: jev);
-
-        var events = await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), Procedural);
-
-        Assert.Equal(Marker, ApiFactory.AnswerOf(events));
-        var check = Trace(events).Single(t => t.Kind == TraceKinds.AnswerCheck);
-        Assert.Equal("not_grounded", check.Data.GetProperty("verdict").GetString());
-        Assert.EndsWith("grounded 0.12 < 0.30 — not grounded", check.Title);
-        Assert.Contains(TurnSignal.AnswerNotGrounded, Signals(events));
-        Assert.DoesNotContain(TurnSignal.AnswerNotRelevant, Signals(events));
-
-        var queue = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN).GetFromJsonAsync<List<ReviewQueueItem>>("/api/admin/feedback/queue", Json, Ct);
-        Assert.Contains(queue!, q => q.Signals.Contains(TurnSignal.AnswerNotGrounded));
     }
 
     [Fact]

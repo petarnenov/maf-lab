@@ -1,0 +1,67 @@
+services:
+  # The test-generation agent: A2A only, internal only. It holds the model key and reads the repository; the tests it
+  # writes are built and run by the coverage runner, never here. Its environment is its own, not the shared env files: it has
+  # no business with Jev, the billing partner or the retrieval settings.
+  test-agent:
+    build:
+      context: ..
+      dockerfile: plugins/coverage/service/test-agent/Dockerfile
+      args:
+        MAF_IMAGE_VARIANT: ${MAF_IMAGE_VARIANT:-full}
+        MAF_PRODUCT_PLUGINS: ${MAF_PRODUCT_PLUGINS:-||}
+    deploy:
+      replicas: 1
+    environment:
+      Urls: http://+:8080
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+      Models__Provider: ollama
+      MAF_CHAT_MODEL: ${MAF_CHAT_MODEL:-ollama-cloud}
+      Plugins__Root: /plugins
+      Models__ChatEndpoint: ${CHAT_ENDPOINT:-https://ollama.com}
+      Auth__SigningKey: ${AUTH_SIGNING_KEY:-maf-lab-dev-signing-key-change-me-0123456789}
+      A2A__Audience: maf-lab-test-agent
+      A2A__PublicBaseUrl: http://test-agent:8080
+      A2A__RequiredScope: a2a.testgen.run
+      A2A__StoreKeyspace: testgen
+      A2A__Partners__maf-lab-assistant__Secret: ${TEST_AGENT_CLIENT_SECRET:-assistant-testgen-dev-secret}
+      A2A__Partners__maf-lab-assistant__Scopes__0: a2a.testgen.run
+      TestAgent__RepoRoot: ${MAF_LAB_REPO}
+      TestAgent__WorkRoot: /work
+      TestAgent__RunnerBaseUrl: http://coverage-runner:8080
+      Telemetry__Endpoint: ${TELEMETRY_ENDPOINT:-http://otel-collector:4317}
+      SharedState__ConnectionString: ${REDIS_CONNECTION:-redis:6379}
+    volumes:
+      - ${MAF_LAB_REPO}:${MAF_LAB_REPO}:ro
+      - testagent-work:/work
+      - ../plugins:/plugins:ro
+    networks:
+      - default
+      - runner
+    depends_on:
+      redis:
+        condition: service_healthy
+      coverage-runner:
+        condition: service_healthy
+
+  # The coverage runner builds and runs model-written tests: on the internal network only (no route out), with no
+  # secret but the key it checks service tokens with, and the repository read-only.
+  coverage-runner:
+    build:
+      context: ..
+      dockerfile: plugins/coverage/service/runner/Dockerfile
+    deploy:
+      replicas: 1
+    environment:
+      Urls: http://+:8080
+      Auth__SigningKey: ${AUTH_SIGNING_KEY:-maf-lab-dev-signing-key-change-me-0123456789}
+      Runner__RepoRoot: ${MAF_LAB_REPO}
+      Telemetry__Endpoint: ${TELEMETRY_ENDPOINT:-http://otel-collector:4317}
+    volumes:
+      - ${MAF_LAB_REPO}:${MAF_LAB_REPO}:ro
+      - runner-work:/work
+    networks:
+      - runner
+
+volumes:
+  testagent-work:
+  runner-work:

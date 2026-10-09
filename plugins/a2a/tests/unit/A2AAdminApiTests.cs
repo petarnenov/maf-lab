@@ -3,9 +3,13 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Maf.Lab.A2A;
-using Maf.Lab.Api.Endpoints;
+using Maf.Lab.Plugins.A2A;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.TestSupport;
+using Maf.Lab.Plugins.Abstractions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Maf.Lab.Tests;
 
@@ -30,6 +34,7 @@ public class A2AAdminApiTests
 
     private static async Task<HttpClient> PartnerAsync(ApiFactory api)
     {
+        A2APluginSupport.BootstrapPartners(api);
         var client = api.CreateClient();
         var response = await client.PostAsJsonAsync("/a2a/token", new A2AEndpoints.TokenRequest("acme-portal", "s3cret"), Ct);
         var token = (await response.Content.ReadFromJsonAsync<A2AEndpoints.TokenResponse>(Ct))!.AccessToken;
@@ -171,5 +176,43 @@ public class A2AAdminApiTests
             .PostAsync("/api/admin/a2a/tasks/nothing/cancel", null, Ct);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task The_plugin_owns_its_existing_table_names()
+    {
+        using var api = Api();
+        await using var context = await api.Services.GetRequiredService<IDbContextFactory<DbContext>>().CreateDbContextAsync(Ct);
+        Assert.Equal("A2ATasks", context.Model.FindEntityType(typeof(A2ATaskRow))!.GetTableName());
+        Assert.Equal("A2APushConfigs", context.Model.FindEntityType(typeof(A2APushConfigRow))!.GetTableName());
+        Assert.Equal("A2APushDeliveries", context.Model.FindEntityType(typeof(A2APushDeliveryRow))!.GetTableName());
+    }
+
+    [Fact]
+    public void A_protocol_host_requires_an_explicit_store_keyspace()
+    {
+        using var api = new ApiFactory(ApiFactory.ProceduralModel())
+        {
+            InstalledPlugins = A2APluginSupport.Installed,
+            ExtraSettings = new Dictionary<string, string?> { ["A2A:StoreKeyspace"] = "" },
+        };
+        var error = Assert.Throws<OptionsValidationException>(() => api.CreateClient());
+        Assert.Contains("A2A:StoreKeyspace is required", error.Message);
+    }
+
+    [Fact]
+    public async Task Plugin_removal_stops_live_tasks_through_the_owning_server()
+    {
+        using var api = Api(stepMs: 3_000);
+        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
+        var running = StartRunAsync(await PartnerAsync(api));
+        var taskId = await RunningTaskAsync(admin);
+        var work = new A2APlugin().CreateOpenWork(api.Services);
+        Assert.Contains(await work.ListOpenAsync(Ct), item => item.Id == taskId);
+        await work.CancelAllAsync(Ct);
+        await Task.WhenAny(running, Task.Delay(TimeSpan.FromSeconds(20), Ct));
+        Assert.DoesNotContain(await work.ListOpenAsync(Ct), item => item.Id == taskId);
+        var task = await api.Services.GetRequiredService<global::A2A.ITaskStore>().GetTaskAsync(taskId, Ct);
+        Assert.Equal(global::A2A.TaskState.Canceled, task!.Status.State);
     }
 }

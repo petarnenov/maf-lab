@@ -21,7 +21,7 @@ from pathlib import Path
 
 CONFIG = "docs/docs-sync.toml"
 VERBS = ("GET", "POST", "PUT", "PATCH", "DELETE")
-ROUTE_SOURCES = ("src/Maf.Lab.Api", "src/Maf.Lab.A2A", "src/Maf.Lab.Hosting")
+ROUTE_SOURCES = ("src/Maf.Lab.Api", "src/Maf.Lab.Hosting")
 # Every plugin's in-process part maps routes too (introduce-plugins task 3.6).
 PLUGIN_ROUTE_SOURCES = "plugins/*/server"
 HTTP_API = "docs/http-api.md"
@@ -297,14 +297,24 @@ def discover_plugins(repo: Repo) -> dict:
 
 
 def check_plugin_manifests(repo: Repo) -> list[Finding]:
-    """Every plugins/<name>/plugin.toml against plugins/plugin.schema.json, its progress and stopping, its dependencies."""
+    """Every manifest's schema/progress/stopping; missing dependencies fail explicit deployment selections.
+
+    With the automatic set a removed folder deactivates its dependants, as plugins.resolve does.
+    """
     found = discover_plugins(repo)
     findings = [Finding(f"plugins/{name}/plugin.toml", None, "plugins", problem,
                         "fix the manifest (plugins/plugin.schema.json, docs/plugins.md)")
                 for name, p in found.items() for problem in p.problems]
+    raw = (os.environ.get("MAF_PLUGINS") or "").strip()
+    selected = {n.strip() for n in raw.split(",") if n.strip()} if raw not in ("", "none") else set()
+    while True:
+        dependencies = {d for n in selected if n in found for d in found[n].depends}
+        if dependencies <= selected:
+            break
+        selected |= dependencies
     for name, p in found.items():
         for dependency in p.depends:
-            if dependency not in found:
+            if dependency not in found and name in selected:
                 findings.append(Finding(f"plugins/{name}/plugin.toml", None, "plugins",
                                         f"depends on `{dependency}`, which has no plugins/{dependency}/plugin.toml",
                                         "add that plugin or remove the dependency"))
@@ -448,8 +458,14 @@ def check_routes(repo: Repo) -> tuple[list[Finding], int]:
     registered, findings = registered_routes(repo)
     documented = documented_routes(repo)
     routes_cfg = repo.config.get("routes", {})
-    undocumented = routes_cfg.get("undocumented", {})
+    undocumented = dict(routes_cfg.get("undocumented", {}))
     library = {**routes_cfg.get("library", {}), **routes_cfg.get("elsewhere", {})}
+    # SDK bindings belong to the plugin that maps them. Deleting its folder also removes its exemptions.
+    for config in sorted(repo.root.glob("plugins/*/docs/docs-sync.toml")):
+        plugin_routes = tomllib.loads(repo.read(str(config.relative_to(repo.root)))).get("routes", {})
+        undocumented.update(plugin_routes.get("undocumented", {}))
+        library.update(plugin_routes.get("library", {}))
+        library.update(plugin_routes.get("elsewhere", {}))
 
     def library_match(path: str) -> str | None:
         for key in library:
@@ -536,7 +552,7 @@ PROVIDER_MODEL = r'\bModel\s*\{\s*get;\s*set;\s*\}\s*=\s*"([^"]+)"'
 def configured_models(repo: Repo) -> tuple[dict[str, str], list[Finding]]:
     findings: list[Finding] = []
     anchors = {
-        "chat": ("src/Maf.Lab.Retrieval/Configuration/Options.cs", r'\bChatModel\s*\{\s*get;\s*set;\s*\}\s*=\s*"([^"]+)"'),
+        "chat": ("src/Maf.Lab.Plugins.Abstractions/ModelOptions.cs", r'\bChatModel\s*\{\s*get;\s*set;\s*\}\s*=\s*"([^"]+)"'),
         "dense": ("src/Maf.Lab.Retrieval/Configuration/Options.cs", r'\bDenseVector\s*\{\s*get;\s*set;\s*\}\s*=\s*"([^"]+)"'),
     }
     values: dict[str, str] = {}
@@ -551,7 +567,7 @@ def configured_models(repo: Repo) -> tuple[dict[str, str], list[Finding]]:
             continue
         sources = sorted((manifest.parent / "lib").glob("*.cs"))
         pins = [m[1] for f in sources if (m := re.search(PROVIDER_MODEL, f.read_text(encoding="utf-8")))]
-        if sources and not pins:
+        if sources and not pins and data.get("provides") == "decision-engine":
             findings.append(Finding(str(manifest.parent.relative_to(repo.root)) + "/lib", None, "models",
                                     f"cannot find the configured {data['name']} value",
                                     "declare the pinned model as a `Model` property default in the provider's lib/"))
@@ -567,7 +583,7 @@ def configured_models(repo: Repo) -> tuple[dict[str, str], list[Finding]]:
     if "dense" in values:
         rel = anchors["dense"][0]
         m = re.search(r'\["' + re.escape(values["dense"]) + r'"\]\s*=\s*new\s+EmbeddingProfile\s*\{[^}]*?\bModel\s*=\s*"([^"]+)"',
-                      repo.read(rel), re.S)
+                      repo.read("src/Maf.Lab.Plugins.Abstractions/ModelOptions.cs"), re.S)
         if m:
             values["embedding"] = m[1]
         else:

@@ -9,6 +9,8 @@ export type PluginHealth = 'ok' | 'unavailable' | 'unknown';
 /** Every contribution of the plugins in use, each tagged with the plugin it came from (for its error boundary). */
 export interface PluginRegistry {
   plugins: readonly MafWebPlugin[];
+  /** False while registration/modules are being resolved; a saved plugin URL must wait for its routes. */
+  ready?: boolean;
   /** Each plugin's health, by name; a plugin not named here is `unknown`. */
   health?: Readonly<Record<string, PluginHealth>>;
 }

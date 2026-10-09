@@ -1,0 +1,9 @@
+schema = 1
+name = "company-login"
+kind = "app"
+scope = "installation"
+environments = ["dev", "qa", "stage", "prod"]
+public = true
+description = "Public company identity settings for authorization-code sign-in with PKCE."
+progress = "None — configuration is a short cancellable read; browser sign-in remains in adopt-company-idp"
+stopping = "None — the configuration read ends with its request and starts no background work"

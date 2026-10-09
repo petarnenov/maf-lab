@@ -2,6 +2,19 @@ import { trace } from '@opentelemetry/api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { startBrowserTracing } from './browserTracing';
 
+// Exercise the actual tracer/processor/instrumentation, with the collector replaced at its exporter boundary.
+// shutdown flushes asynchronously; a fetch-only stub can be restored before that flush begins and leak real IO.
+vi.mock('@opentelemetry/exporter-trace-otlp-http', () => ({
+  OTLPTraceExporter: class {
+    export(_spans: unknown[], done: (result: { code: number }) => void) {
+      done({ code: 0 });
+    }
+    shutdown() {
+      return Promise.resolve();
+    }
+  },
+}));
+
 describe('browser tracing', () => {
   afterEach(() => {
     trace.disable();

@@ -1,0 +1,9 @@
+schema = 1
+name = "ollama-embeddings"
+kind = "provider"
+provides = "embeddings"
+scope = "installation"
+environments = ["dev", "qa", "stage", "prod"]
+description = "Local embeddings through IEmbeddingGenerator, with separate query and batch instances and their per-request thread counts."
+progress = "None — requests keep the progress of the agent or index run that asks them"
+stopping = "None — requests take the caller's cancellation token and stop with its work"

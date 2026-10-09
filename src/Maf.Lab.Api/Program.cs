@@ -1,11 +1,9 @@
 using Maf.Lab.Api.Agent.AGUI;
 using Maf.Lab.A2A;
-using Maf.Lab.Api.A2A;
 using Maf.Lab.Api.Admin;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Decisions;
 using Maf.Lab.Api.Endpoints;
-using Maf.Lab.Api.Feedback;
 using Maf.Lab.Api.Plugins;
 using Maf.Lab.Api.Storage;
 using Maf.Lab.Retrieval;
@@ -17,7 +15,7 @@ using Maf.Lab.Hosting;
 
 namespace Maf.Lab.Api;
 
-/// <summary>Agent host: chat over SSE, feedback, admin and eval reports.</summary>
+/// <summary>Agent host: chat over AG-UI, history, feedback and contributed plugin routes.</summary>
 public partial class Program
 {
     public static void Main(string[] args) => BuildApp(args).Run();
@@ -35,6 +33,7 @@ public partial class Program
         // loses others, so it does not start at all.
         builder.AddSharedState();
         builder.RequireSharedState<Maf.Lab.Domain.SharedState.IRunStateStore>();
+        builder.RequireSharedState<Maf.Lab.Domain.SharedState.IBreakGlassPermissionStore>();
 
         // The api's drain on a graceful stop: Docker's stop grace (40 s) exceeds it, so a stopping replica finishes its
         // runs or records them cancelled before it can be killed (introduce-plugins decision 2).
@@ -42,15 +41,29 @@ public partial class Program
         // The installed plugins: read at run time, composed here (introduce-plugins decision 5).
         builder.AddMafPlugins(plugins);
         builder.Services.AddHttpClient("plugins");
+        builder.Services.Configure<Plugins.PluginHealthOptions>(builder.Configuration.GetSection(Plugins.PluginHealthOptions.Section));
+        builder.Services.TryAddSingleton<Maf.Lab.Domain.Services.IServiceResolver, Maf.Lab.Hosting.Services.DnsServiceResolver>();
+        builder.Services.AddSingleton<Plugins.PluginHealth>();
+        builder.Services.AddHttpClient(Plugins.PluginHealth.HttpClientName, client => client.Timeout = Timeout.InfiniteTimeSpan)
+            .ConfigurePrimaryHttpMessageHandler(Plugins.PluginHealth.CreateHandler);
+        builder.Services.Configure<Plugins.PluginTokenExchangeOptions>(builder.Configuration.GetSection(Plugins.PluginTokenExchangeOptions.Section));
+        builder.Services.AddHttpClient(Plugins.PluginTokenExchange.ClientName)
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+        builder.Services.TryAddSingleton<Maf.Lab.Plugins.Abstractions.IPluginTokens, Plugins.PluginTokenExchange>();
+        builder.Services.AddSingleton<Plugins.PluginAccessChanges>();
+        builder.Services.AddSingleton<Plugins.IPluginAccessChanges>(sp => sp.GetRequiredService<Plugins.PluginAccessChanges>());
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<Plugins.PluginAccessChanges>());
+        builder.Services.AddSingleton<Maf.Lab.Plugins.Abstractions.IPluginEntitlements, Plugins.PluginEntitlements>();
+        builder.Services.AddSingleton<Maf.Lab.Plugins.Abstractions.IPluginAccess, Plugins.PluginAccess>();
         // The domains in use, as data (introduce-plugins decision 6): every installed plugin's, rebuilt when the installed
         // set changes.
         builder.Services.AddSingleton(sp => new DomainCatalogue(
             sp.GetServices<Maf.Lab.Plugins.Abstractions.IDomainBehaviour>(), sp.GetService<Plugins.PluginCatalogue>(),
             sp.GetService<Microsoft.Extensions.Options.IOptions<Plugins.PluginOptions>>()));
 
-        // Qdrant, models and Jev for chat, A2A, topology and feedback; indexing is a plugin's to register.
+        // Retrieval and model providers for chat and shared feedback state; indexing is a plugin's to register.
         builder.Services.AddMafRetrievalCore(builder.Configuration);
-        builder.Services.AddDevJwtAuthentication(builder.Configuration);
+        builder.Services.AddLabAuthentication(builder.Configuration);
         builder.Services.AddAuthorizationBuilder();
         builder.Services.Configure<Microsoft.AspNetCore.Authorization.AuthorizationOptions>(AuthPolicies.Add);
         builder.Services.Configure<AgentOptions>(builder.Configuration.GetSection(AgentOptions.Section));
@@ -67,9 +80,17 @@ public partial class Program
         builder.Services.AddSingleton<SystemPrompt>();
         builder.Services.AddSingleton<TokenCounter>();
         builder.Services.AddSingleton<ToolAudit>();
+        builder.Services.AddSingleton<Compliance.OperatorSessionAudit>();
+        builder.Services.AddSingleton<Compliance.ContentAccessGrants>();
+        builder.Services.AddHostedService<Compliance.ContentAccessGrantReconciler>();
+        builder.Services.AddScoped<Maf.Lab.Domain.Tenancy.IOperatorContentAccess, Compliance.CoreOperatorContentAccess>();
+        builder.Services.AddSingleton<Maf.Lab.Plugins.Abstractions.ISystemAudit, Agent.CoreSystemAudit>();
         builder.Services.AddHttpClient("mcp");
         builder.Services.AddSingleton<IToolSource, McpToolSource>();
         builder.Services.AddSingleton<ConversationService>();
+        builder.Services.AddSingleton<DataLifecycle.CoreDataLifecycle>();
+        builder.Services.AddSingleton(sp => new Plugins.NamedDataLifecycle(null,
+            sp.GetRequiredService<DataLifecycle.CoreDataLifecycle>().CreateDataLifecycle(sp)));
         // The installed providers (the decision engine), then the core's callers over the port they implement.
         Maf.Lab.Plugins.Abstractions.ProviderHost.AddInstalledProviders(builder.Services, builder.Configuration);
         builder.Services.AddDecisionCallers(builder.Configuration);
@@ -89,26 +110,21 @@ public partial class Program
         builder.Services.AddScoped<Maf.Lab.Plugins.Abstractions.ITurnAccess, Storage.TurnAccess>();
         builder.Services.AddScoped<Maf.Lab.Plugins.Abstractions.IConversationStore, Storage.ConversationStore>();
         builder.Services.AddScoped<Maf.Lab.Plugins.Abstractions.ITurnRecords, Storage.TurnRecords>();
+        builder.Services.AddScoped<Maf.Lab.Plugins.Abstractions.IFeedbackReviewStore, Feedback.CoreFeedbackReviewStore>();
         builder.Services.AddSingleton<Maf.Lab.Plugins.Abstractions.IGuardSettings, Agent.CoreGuardSettings>();
         builder.Services.AddSingleton<Maf.Lab.Plugins.Abstractions.IIntentSettings, Agent.CoreIntentSettings>();
         builder.Services.AddScoped<ChatTurnRunner>();
         builder.Services.AddScoped<Agent.RunRejoin>();
         // Every agent reaches a browser through the Agent Framework's own AG-UI server (agui-protocol-only).
         builder.Services.AddAGUIHosting();
+        builder.Services.AddSingleton<Maf.Lab.Plugins.Abstractions.IAgentRunInput, CoreAgentRunInput>();
         builder.Services.AddSingleton<Agent.ChatAgent>();
-        builder.Services.AddSingleton<Coverage.TestGenRunAgent>();
-        builder.Services.AddSingleton<DatasetWriter>();
+        builder.Services.TryAddSingleton<Maf.Lab.Plugins.Abstractions.IAppendEvalDataset, Maf.Lab.Plugins.Abstractions.NoEvalDataset>();
         builder.Services.Configure<AdminJobOptions>(builder.Configuration.GetSection("AdminJobs"));
         builder.Services.AddSingleton<AdminJobRunner>();
+        builder.Services.AddSingleton<Maf.Lab.Plugins.Abstractions.IInstallationJobs, CoreInstallationJobs>();
         // The job store as a plugin reaches it, scoped to the request's principal (extract-index-admin-plugin).
         builder.Services.AddScoped<Maf.Lab.Plugins.Abstractions.IAdminJobs, CoreAdminJobs>();
-        builder.Services.Configure<Topology.TopologyOptions>(builder.Configuration.GetSection(Topology.TopologyOptions.Section));
-        builder.Services.AddMemoryCache();
-        builder.Services.AddHttpClient("topology");
-        builder.Services.AddSingleton<Topology.IServiceResolver, Topology.DnsServiceResolver>();
-        // The graph store's driver, for the topology report's reachability probe only; the api reads no graph data.
-        Maf.Lab.Retrieval.Graph.GraphServiceCollectionExtensions.AddGraphStore(builder.Services, builder.Configuration);
-        builder.Services.AddSingleton<Topology.TopologyProbe>();
         // A turn's link to its trace: none until a plugin that keeps the traces registers its own (Null Object).
         builder.Services.TryAddSingleton<Maf.Lab.Plugins.Abstractions.ITraceLink, Maf.Lab.Plugins.Abstractions.NoTraceLink>();
         // The assistant's agent card and handler are the a2a plugin's (extract-a2a); it reaches the core through these.
@@ -120,44 +136,11 @@ public partial class Program
         builder.Services.TryAddSingleton<Maf.Lab.Plugins.Abstractions.IReviewerConsultation, Agent.Writes.NoReviewer>();
         // The audit record as a screen reads it; the screen is the compliance plugin's.
         builder.Services.AddScoped<Maf.Lab.Plugins.Abstractions.IAuditTrail, Compliance.CoreAuditTrail>();
-        builder.Services.AddHttpClient("a2a-push");
-        builder.Services.AddSingleton<A2A.PushNotificationDispatcher>();
-        // The store reads the partner behind the request it serves. Transitional (extract-a2a batch 1): the a2a plugin
-        // registers the same accessor with its partner authentication; batch 2 moves the store, and this line, into it.
-        builder.Services.TryAddSingleton<Maf.Lab.A2A.IPartnerAccessor, Maf.Lab.A2A.HttpPartnerAccessor>();
-        builder.Services.AddSingleton<global::A2A.ITaskStore, A2A.SqliteTaskStore>();
-        // The protocol server, its partner authentication and its routes are the a2a plugin's (extract-a2a); the stores they
-        // read stay here until batch 2 moves them with their tables.
-        builder.Services.AddSingleton<IPushConfigStore, A2A.SqlitePushConfigStore>();
         builder.Services.Configure<Storage.MessageRetentionOptions>(
             builder.Configuration.GetSection(Storage.MessageRetentionOptions.Section));
         builder.Services.AddSingleton<Storage.MessageRetentionService>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<Storage.MessageRetentionService>());
-        // The Coverage screen (add-coverage-dashboard-and-test-agent): snapshots, thresholds, and the runner that measures.
-        builder.Services.Configure<Coverage.CoverageOptions>(builder.Configuration.GetSection(Coverage.CoverageOptions.Section));
-        builder.Services.Configure<Coverage.CoverageRunnerOptions>(builder.Configuration.GetSection(Coverage.CoverageRunnerOptions.Section));
-        builder.Services.AddSingleton<Coverage.IRepository, Coverage.GitRepository>();
-        builder.Services.AddSingleton<Coverage.CoverageStore>();
-        builder.Services.AddSingleton<Coverage.CoverageIngestor>();
-        builder.Services.AddSingleton<Coverage.CoverageRefresher>();
-        builder.Services.Configure<Coverage.TestAgentOptions>(builder.Configuration.GetSection(Coverage.TestAgentOptions.Section));
-        builder.Services.AddSingleton<Coverage.ModelAvailability>();
-        builder.Services.AddHttpClient(Coverage.TestAgentClient.HttpClientName);
-        builder.Services.AddSingleton<Coverage.TestAgentClient>();
-        builder.Services.AddHttpClient(Coverage.TestAgentProbe.HttpClientName);
-        builder.Services.AddSingleton<Coverage.TestAgentProbe>();
-        builder.Services.AddSingleton<Coverage.RunActivityStore>();
-        builder.Services.AddSingleton<Coverage.TestGenRuns>();
-        builder.Services.Configure<Coverage.GitHubOptions>(builder.Configuration.GetSection(Coverage.GitHubOptions.Section));
-        builder.Services.AddHttpClient(Coverage.GitHubIssues.HttpClientName);
-        builder.Services.AddSingleton<Coverage.GitHubIssues>();
-        builder.Services.AddSingleton(sp => (Coverage.GitRepository)sp.GetRequiredService<Coverage.IRepository>());
-        builder.Services.AddSingleton<Coverage.RepoWriter>();
-        builder.Services.AddSingleton<Coverage.IRunVerifier, Coverage.RunVerifier>();
-        builder.Services.AddSingleton<Coverage.CandidateDecisions>();
-        builder.Services.AddSingleton<Coverage.RunFollower>();
-        builder.Services.AddHostedService(sp => sp.GetRequiredService<Coverage.RunFollower>());
-        Coverage.CoverageRunnerRegistration.AddCoverageRunnerClient(builder.Services);
+
 
         var app = builder.Build();
         using (var scope = app.Services.CreateScope())
@@ -167,34 +150,58 @@ public partial class Program
             DatabaseInitializer.InitializeAsync(db).GetAwaiter().GetResult();
         }
 
-        // Every request, and the work it starts, reads this host's domains (ambient per flow, so two hosts in one test
-        // process never see each other's).
-        var domains = app.Services.GetRequiredService<DomainCatalogue>();
-        app.Use(async (context, next) =>
-        {
-            using var _ = DomainCatalogue.Use(domains.Freeze());
-            await next(context);
-        });
         app.UseInstanceHeader();
         app.UseA2ASpecWire();
         app.UseAuthentication();
+        // Record entry before dispatch, independently of dashboard plugins and even if a route later refuses access.
+        // A storage failure prevents dispatch: an operator must never enter without the tenant-visible record.
+        var operatorAudit = app.Services.GetRequiredService<Compliance.OperatorSessionAudit>();
+        var identity = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Maf.Lab.Domain.Configuration.AuthOptions>>().Value;
+        var companyIdentity = !string.IsNullOrWhiteSpace(identity.Authority);
+        var operatorIssuer = companyIdentity ? new Uri(identity.Authority!).AbsoluteUri.TrimEnd('/') : identity.Issuer;
+        app.Use(async (context, next) =>
+        {
+            if (Maf.Lab.Domain.Tenancy.PrincipalClaims.TryCreate(context.User, out var principal) && principal.IsPlatformAdmin)
+            {
+                if (!Compliance.OperatorSessionAudit.TryReadSession(context.User, principal, companyIdentity, out var sessionId))
+                {
+                    await Microsoft.AspNetCore.Authentication.AuthenticationHttpContextExtensions.ChallengeAsync(context,
+                        Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme);
+                    return;
+                }
+                await operatorAudit.RecordAsync(principal, operatorIssuer, sessionId, context.RequestAborted);
+            }
+            await next(context);
+        });
+        // Entitlements are read only after the token is validated. One scope feeds every request reader.
+        var domains = app.Services.GetRequiredService<DomainCatalogue>();
+        var access = app.Services.GetRequiredService<Maf.Lab.Plugins.Abstractions.IPluginAccess>();
+        app.Use(async (context, next) =>
+        {
+            if (Maf.Lab.Domain.Tenancy.PrincipalClaims.TryCreate(context.User, out var principal))
+            {
+                var snapshot = await access.For(principal, context.RequestAborted);
+                using var permissionScope = Maf.Lab.Plugins.Abstractions.PluginAccessContext.Use(principal, snapshot);
+                using var domainScope = DomainCatalogue.Use(domains.For(snapshot));
+                await next(context);
+            }
+            else
+            {
+                using var domainScope = DomainCatalogue.Use(DomainCatalogue.Empty);
+                await next(context);
+            }
+        });
         app.UseAuthorization();
         app.UseMiddleware<Agent.AGUI.RunTap>();
         app.MapInstanceHealth();
-        if (app.Configuration.GetValue("Auth:EnableDevIssuer", true))
-        {
-            app.MapDevIssuer();
-        }
-        app.MapChat();
-        app.MapChatAgent();
-        app.MapTestGenRunAgent();
-        app.MapFeedback();
-        app.MapEvalReports();
-        app.MapHistory();
-        app.MapTopology();
-        app.MapA2AAdmin();
-        app.MapCoverage();
-        app.MapPlugins();
+        var core = app.MapGroup("").AddEndpointFilter<Compliance.OperatorContentFilter>();
+        core.MapChat();
+        core.MapChatAgent();
+        core.MapFeedback();
+        core.MapHistory();
+        core.MapPlugins();
+        core.MapPluginAdministration();
+        core.MapContentAccess();
         app.MapMafPlugins();
         return app;
     }

@@ -28,20 +28,20 @@ export function IndexAdminPage() {
   // The corpora the installed plugins declare; the first is shown until the admin picks another.
   const corpora = useQuery({
     queryKey: ['admin', 'index', 'corpora', userKey],
-    queryFn: ({ signal }) => api<CorpusView[]>('/api/admin/index/corpora', { signal }),
+    queryFn: ({ signal }) => api<CorpusView[]>('/api/platform/index/corpora', { signal }),
   });
   const corpus = chosen ?? corpora.data?.[0]?.name ?? null;
   const query = corpus ? `?corpus=${encodeURIComponent(corpus)}` : '';
 
   const status = useQuery({
     queryKey: ['admin', 'index', 'status', corpus, userKey],
-    queryFn: ({ signal }) => api<IndexStatus>(`/api/admin/index/status${query}`, { signal }),
+    queryFn: ({ signal }) => api<IndexStatus>(`/api/platform/index/status${query}`, { signal }),
     enabled: !!corpus,
   });
   const driftKey = ['admin', 'index', 'drift', corpus, userKey];
   const drift = useQuery({
     queryKey: driftKey,
-    queryFn: ({ signal }) => api<DriftReport>(`/api/admin/index/drift${query}`, { signal }),
+    queryFn: ({ signal }) => api<DriftReport>(`/api/platform/index/drift${query}`, { signal }),
     enabled: !!corpus,
   });
 
@@ -50,7 +50,7 @@ export function IndexAdminPage() {
   const job = useQuery({
     queryKey: ['admin', 'jobs', trackedJobId, userKey],
     queryFn: ({ signal }) =>
-      api<AdminJob>(`/api/admin/jobs/${encodeURIComponent(trackedJobId!)}`, { signal }),
+      api<AdminJob>(`/api/platform/jobs/${encodeURIComponent(trackedJobId!)}`, { signal }),
     enabled: !!trackedJobId,
     refetchInterval: (query) => (isJobActive(query.state.data) || !query.state.data ? 1500 : false),
   });
@@ -63,12 +63,13 @@ export function IndexAdminPage() {
   }, [job.data, queryClient]);
 
   const runIndex = useMutation({
-    mutationFn: () => api<AdminJob>('/api/admin/index/run', { method: 'POST', body: { corpus } }),
+    mutationFn: () =>
+      api<AdminJob>('/api/platform/index/run', { method: 'POST', body: { corpus } }),
     onSuccess: (started) => setJobId(started.jobId),
   });
   const migrate = useMutation({
     mutationFn: () =>
-      api<AdminJob>('/api/admin/index/migrate', {
+      api<AdminJob>('/api/platform/index/migrate', {
         method: 'POST',
         body: targetModel.trim() ? { corpus, targetModel: targetModel.trim() } : { corpus },
       }),
@@ -83,7 +84,7 @@ export function IndexAdminPage() {
   const [driftStopped, setDriftStopped] = useState(false);
   const cancelJob = useMutation({
     mutationFn: (id: string) =>
-      api<AdminJob>(`/api/admin/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
+      api<AdminJob>(`/api/platform/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ['admin', 'jobs'] }),
   });
   const stopping = jobActive && stoppingJob === job.data?.jobId;

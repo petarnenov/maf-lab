@@ -14,11 +14,16 @@ namespace Maf.Lab.Api.Agent;
 /// its structured content, unless it is an error. Null for "absent or unavailable"; never throws for a server that cannot
 /// answer.
 /// </summary>
-public sealed class DomainToolCall(IToolSource tools, IOptions<AuthOptions> auth, ILogger<DomainToolCall> logger) : IDomainToolCall
+public sealed class DomainToolCall(IToolSource tools, IOptions<AuthOptions> auth, ILogger<DomainToolCall> logger, DomainCatalogue domains, IPluginAccess access) : IDomainToolCall
 {
     public async Task<JsonElement?> CallAsync(Principal principal, string domain, string tool, IReadOnlyDictionary<string, object?> arguments,
         CancellationToken ct)
     {
+        var snapshot = PluginAccessContext.For(principal) ?? await access.For(principal, ct);
+        using var permissionScope = PluginAccessContext.Use(principal, snapshot);
+        var permitted = domains.For(snapshot);
+        using var domainScope = DomainCatalogue.Use(permitted);
+        if (permitted.Get(domain) is null) return null;
         var (token, _) = DevJwt.Issue(auth.Value, principal.UserId, principal.TenantId, principal.Role);
         try
         {

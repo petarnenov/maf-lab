@@ -23,6 +23,8 @@ This change was split out of `introduce-plugins` to keep that one reviewable.
   one decision engine and the named chat provider.
 - **Every provider must pass a contract suite**, and a provider change reaches stage or prod only when the eval
   baselines hold.
+  Per the user's 2026-10-08 sequencing decision, the agreed code migration completes first; indexing and the
+  index-backed live evals are deferred final validation. Builds, contracts and docs/spec checks run during migration.
 - **Input tokens are measured.** The decision request's input tokens per turn are recorded by the number of domains in
   use (`introduce-plugins` 5k).
 

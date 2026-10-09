@@ -1,0 +1,19 @@
+{"id": "d-billing-01", "question": "What is the procedure when a fee schedule is missing?", "expected": "billing", "language": "en", "split": "design"}
+{"id": "d-billing-02", "question": "How do I issue a billing credit?", "expected": "billing", "language": "en", "split": "design"}
+{"id": "d-billing-03", "question": "Why did run 4417 fail?", "expected": "billing", "language": "en", "split": "holdout"}
+{"id": "d-billing-04", "question": "Which billing runs failed in June 2026?", "expected": "billing", "language": "en", "split": "design"}
+{"id": "d-billing-05", "question": "Who can approve a fee adjustment above the threshold?", "expected": "billing", "language": "en", "split": "design"}
+{"id": "d-billing-06", "question": "How is a partial quarter prorated on the invoice?", "expected": "billing", "language": "en", "split": "holdout"}
+{"id": "d-billing-07", "question": "Каква е процедурата, когато липсва тарифа за такси?", "expected": "billing", "language": "bg", "split": "design"}
+{"id": "d-billing-08", "question": "Как се издава кредит по фактура?", "expected": "billing", "language": "bg", "split": "design"}
+{"id": "d-billing-09", "question": "Zashto se provali run 4417?", "expected": "billing", "language": "bg-latn", "split": "holdout"}
+{"id": "d-billing-10", "question": "Kak se odobryava korekciya na taksata?", "expected": "billing", "language": "bg-latn", "split": "design"}
+{"id": "d-billing-11", "question": "Credit 200 off the fee on A-1043, we overcharged them.", "expected": "billing", "language": "en", "split": "design"}
+{"id": "d-billing-12", "question": "What does the AUM-STALE failure code mean?", "expected": "billing", "language": "en", "split": "holdout"}
+{"id": "d-billing-13", "question": "Which billing runs are still pending for September 2026?", "expected": "billing", "language": "en", "split": "holdout"}
+{"id": "d-billing-14", "question": "Who can approve a billing credit above the limit?", "expected": "billing", "language": "en", "split": "holdout"}
+{"id": "d-billing-15", "question": "Какво означава кодът за грешка FS-REQUIRED?", "expected": "billing", "language": "bg", "split": "holdout"}
+{"id": "d-billing-16", "question": "How are household fees allocated across accounts?", "expected": "billing", "language": "en", "split": "design"}
+{"id": "d-billing-17", "question": "how do fee adjustments get approved?", "expected": "billing", "language": "en", "split": "design"}
+{"id": "d-billing-18", "question": "who is allowed to adjust a fee, and what is the approval threshold?", "expected": "billing", "language": "en", "split": "design"}
+{"id": "d-billing-19", "question": "Why did the fee on our invoice include a minimum-fee line?", "expected": "billing", "language": "en", "split": "design"}

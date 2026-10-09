@@ -10,7 +10,7 @@ using Microsoft.Extensions.Options;
 
 namespace Maf.Lab.Plugins.IndexAdmin;
 
-/// <summary>The corpora a tenant admin may index: the installed plugins' tenant-layout corpora, by plugin name.</summary>
+/// <summary>The corpora a platform operator may index: the installed plugins' tenant-layout corpora, by plugin name.</summary>
 public sealed class OfferedCorpora(IInstalledPlugins installed)
 {
     /// <summary>The repository layout (the code corpus) is the installation's, never one tenant's to rebuild.</summary>

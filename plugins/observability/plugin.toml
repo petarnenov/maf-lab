@@ -6,3 +6,16 @@ environments = ["dev", "qa", "stage", "prod"]
 description = "The telemetry stack and its screen: the OpenTelemetry collector every service exports to, Prometheus and Jaeger behind it, the browser's own spans, a turn's link to its trace, and the Telemetry screen's numbers. Without it the services' exports go nowhere."
 progress = "Page: the Telemetry screen shows its loading state and the Esc hint while its numbers are read"
 stopping = "Key: Esc on the Telemetry screen; Stop: the screen's read is an aborted request; Recorded in: nothing — a read keeps no state; Shown: the screen keeps what it last showed and the hint goes"
+
+[topology]
+service = "otel-collector"
+url = "http://otel-collector:8889/metrics"
+label = "otel collector"
+
+[[topology.nodes]]
+service = "prometheus"
+url = "http://prometheus:9090/-/healthy"
+
+[[topology.nodes]]
+service = "jaeger"
+url = "http://jaeger:16686/jaeger/"

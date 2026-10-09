@@ -8,7 +8,7 @@
 ".claude" = "Agent tooling: the OpenSpec skills and commands this repository's agents use"
 ".github" = "GitHub Actions workflows (ci, evals) and the Copilot instructions"
 ".vscode" = "Compound api + web debugging, and tasks for compose up, index and eval"
-"compose" = "docker-compose.yml, the nginx load balancer, the Ollama stub for CI"
+"compose" = "docker-compose.yml, nginx load balancer, Ollama stub for CI and external company IdP realm/profile templates"
 "docs" = "HTTP API, trace events, telemetry and shared-state references; rules; screenshots; docs-sync.toml"
 "evals" = "JSONL datasets per suite, the accepted baseline, and the run reports"
 "openspec" = "Specs, active changes and the archive; project.md is the source for the OpenSpec context"
@@ -27,21 +27,16 @@
 
 # Rows in docs/http-api.md for routes an SDK registers, which no string literal in this repository shows.
 [routes.library]
-"/a2a" = "MapA2A (A2A SDK) registers the JSON-RPC endpoint at AgentCardFactory.A2APath"
-"/a2a/message:send" = "MapA2A registers the HTTP+JSON binding beside the JSON-RPC endpoint"
-"/a2a/message:stream" = "MapA2A registers the HTTP+JSON binding beside the JSON-RPC endpoint"
-"/a2a/tasks…" = "MapA2A registers the HTTP+JSON task paths beside the JSON-RPC endpoint"
 "/api/chat" = "MapAGUIServer (the Agent Framework's AG-UI hosting) registers it at ChatAgentEndpoint.Path"
-"/api/coverage/runs/agent" = "MapAGUIServer (the Agent Framework's AG-UI hosting) registers it at TestGenRunEndpoint.Path"
+"/.well-known/oauth-protected-resource/mcp" = "Billing's AddMcp authentication request handler serves its configured RFC9728 metadata URI in company mode"
+"/.well-known/oauth-protected-resource/portfolio/mcp" = "Portfolio's AddMcp authentication request handler serves its configured RFC9728 metadata URI in company mode"
+"/.well-known/oauth-protected-resource/code/mcp" = "Code's AddMcp authentication request handler serves its configured RFC9728 metadata URI in company mode"
 
 # Rows in docs/http-api.md for routes another host serves behind the same balancer.
 [routes.elsewhere]
 "/copilotkit/info" = "copilot-runtime (CopilotKit's runtime, Node) serves it behind the balancer at /copilotkit/"
 "/copilotkit/agent/{}/run" = "copilot-runtime serves it behind the balancer at /copilotkit/, for the chat and testgen agents"
 "/copilotkit/agent/{}/stop/{}" = "copilot-runtime serves it behind the balancer at /copilotkit/, for the chat and testgen agents"
-"/compliance/.well-known/agent-card.json" = "The compliance agent's MapA2ASurface, under its A2A:PathBase /compliance"
-"/compliance/a2a/token" = "The compliance agent's MapA2ASurface, under its A2A:PathBase /compliance"
-"/compliance/a2a" = "The compliance agent's MapA2A, under its A2A:PathBase /compliance"
 
 # A name in a checked document that matches a kind's pattern must equal the configured value for that kind.
 [models.patterns]

@@ -15,9 +15,6 @@ public sealed class AdminJobOptions
     public TimeSpan CancelPollEvery { get; set; } = TimeSpan.FromSeconds(1);
 }
 
-/// <summary>A job that failed for a reason its summary may name: the message is shown to the administrator.</summary>
-public sealed class AdminJobFailure(string reason, Exception? inner = null) : Exception(reason, inner);
-
 /// <summary>
 /// Runs admin jobs (index, migrate) with their state in the shared database, so any api replica can report a job's
 /// status and at most one job per firm and kind runs at a time across replicas. The replica that starts a job runs it

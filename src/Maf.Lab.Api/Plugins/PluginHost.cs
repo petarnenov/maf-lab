@@ -74,6 +74,11 @@ public static class PluginHost
         {
             builder.Services.AddSingleton(sp => new NamedOpenWork(((IMafPlugin)plugin).Name, plugin.CreateOpenWork(sp)));
         }
+        foreach (var plugin in loaded.OfType<IContributesDataLifecycle>())
+        {
+            // Disabled plugins still own stored data: lifecycle follows installation, never enablement.
+            builder.Services.AddSingleton(sp => new NamedDataLifecycle(((IMafPlugin)plugin).Name, plugin.CreateDataLifecycle(sp)));
+        }
         builder.Services.AddSingleton(new LoadedPlugins(loaded));
         return builder;
     }
@@ -192,7 +197,18 @@ public static class PluginHost
             var group = app.MapGroup("");
             group.WithMetadata(new PluginRouteMetadata(name));
             group.AddEndpointFilter(async (context, next) =>
-                catalogue.Current.Contains(name) ? await next(context) : Results.NotFound());
+            {
+                var manifest = catalogue.Current.Plugins.FirstOrDefault(p => p.Name == name)?.Manifest;
+                if (manifest is null) return Results.NotFound();
+                var protocolAccess = context.HttpContext.RequestServices.GetServices<IPluginRouteAccess>()
+                    .FirstOrDefault(candidate => candidate.Plugin == name);
+                if (protocolAccess is not null) return await protocolAccess.InvokeAsync(context, next);
+                var inUse = manifest.Scope == PluginScopes.Installation
+                    || PluginAccessContext.Current?.IsInUse(name) == true
+                    || (manifest.Public && context.HttpContext.User.Identity?.IsAuthenticated != true);
+                return inUse ? await next(context) : Results.NotFound();
+            });
+            group.AddEndpointFilter<Compliance.OperatorContentFilter>();
             endpoints.MapEndpoints(new Agent.AGUI.PluginEndpoints(group));
         }
         return app;
@@ -204,3 +220,6 @@ public sealed record PluginRouteMetadata(string Plugin);
 
 /// <summary>A plugin's open work, by its name, for `/api/plugins/{name}/open-work`.</summary>
 public sealed record NamedOpenWork(string Plugin, IOpenWork Work);
+
+/// <summary>One installed store's lifecycle. A null plugin identifies the core, without reserving a plugin name.</summary>
+public sealed record NamedDataLifecycle(string? Plugin, IDataLifecycle Lifecycle);

@@ -47,3 +47,9 @@ path = "files/corpus"
 collection = "maf_chunks"
 meta_collection = "maf_meta"
 graph = "billing"
+
+[topology]
+id = "mcp"
+service = "mcp-retrieval"
+health = "/health"
+label = "mcp-retrieval"

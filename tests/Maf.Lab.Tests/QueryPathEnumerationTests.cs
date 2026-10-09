@@ -59,8 +59,8 @@ public class QueryPathEnumerationTests
 
     /// <summary>The core's assemblies and every in-process plugin's (introduce-plugins task 3.3): plugin code cannot escape.</summary>
     private static IEnumerable<string> ProductAssemblies() =>
-        new[] { "Maf.Lab.Domain", "Maf.Lab.Retrieval", "Maf.Lab.Api", "Maf.Lab.Indexing", "Maf.Lab.Eval" }
-            .Select(n => Path.Combine(AppContext.BaseDirectory, n + ".dll"))
+        Directory.EnumerateFiles(AppContext.BaseDirectory, "Maf.Lab.*.dll")
+            .Where(p => !Path.GetFileNameWithoutExtension(p).EndsWith("Tests", StringComparison.Ordinal))
             .Concat(PluginArchitectureTests.PluginAssemblies());
 
     private static List<(string Type, string Caller, string Method)> FindQdrantDataPlaneCalls(IEnumerable<string> assemblies)

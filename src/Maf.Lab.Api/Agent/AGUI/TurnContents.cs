@@ -4,6 +4,7 @@ using AGUI.Abstractions;
 using AGUI.Server;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using Maf.Lab.Plugins.Abstractions;
 
 namespace Maf.Lab.Api.Agent.AGUI;
 
@@ -18,11 +19,11 @@ public static class TurnContents
     public const string ActivityType = "application/vnd.maf-lab.activity+json";
 
     /// <summary>The run's shared state: becomes <c>STATE_SNAPSHOT</c>.</summary>
-    public const string StateType = "application/vnd.maf-lab.state+json";
+    public const string StateType = AgentContents.StateType;
 
     /// <summary>A step of the run starting or finishing: becomes <c>STEP_STARTED</c>/<c>STEP_FINISHED</c>.</summary>
-    public const string StepStartedType = "application/vnd.maf-lab.step-started";
-    public const string StepFinishedType = "application/vnd.maf-lab.step-finished";
+    public const string StepStartedType = AgentContents.StepStartedType;
+    public const string StepFinishedType = AgentContents.StepFinishedType;
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -53,11 +54,11 @@ public static class TurnContents
         Data(StateType, new { focus = accountId is null ? null : new { accountId } });
 
     /// <summary>Any shared state the agent keeps, as a whole snapshot.</summary>
-    public static AIContent State(JsonElement snapshot) => new DataContent(Encoding.UTF8.GetBytes(snapshot.GetRawText()), StateType);
+    public static AIContent State(JsonElement snapshot) => AgentContents.State(snapshot);
 
-    public static AIContent StepStarted(string name) => new DataContent(Encoding.UTF8.GetBytes(name), StepStartedType);
+    public static AIContent StepStarted(string name) => AgentContents.StepStarted(name);
 
-    public static AIContent StepFinished(string name) => new DataContent(Encoding.UTF8.GetBytes(name), StepFinishedType);
+    public static AIContent StepFinished(string name) => AgentContents.StepFinished(name);
 
     /// <summary>The run stops to ask a person: the server finishes it with the protocol's interrupt.</summary>
     public static AIContent Ask(PersonQuestion question) => new InterruptRequestContent(question.Id)

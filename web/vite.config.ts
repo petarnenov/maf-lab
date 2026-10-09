@@ -21,6 +21,8 @@ export default defineConfig({
     dedupe: [
       'react',
       'react-dom',
+      '@ag-ui/client',
+      '@ag-ui/core',
       '@tanstack/react-query',
       'vitest',
       '@testing-library/react',

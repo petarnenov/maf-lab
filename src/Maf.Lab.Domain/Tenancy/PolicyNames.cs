@@ -7,5 +7,7 @@ namespace Maf.Lab.Domain.Tenancy;
 public static class PolicyNames
 {
     /// <summary>A tenant administrator of the caller's own tenant.</summary>
+    public const string PlatformAdmin = "platform-admin";
+
     public const string TenantAdmin = "tenant-admin";
 }

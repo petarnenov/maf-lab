@@ -1,0 +1,9 @@
+schema = 1
+name = "ollama-cloud"
+kind = "provider"
+provides = "chat-model"
+scope = "installation"
+environments = ["dev", "qa", "stage", "prod"]
+description = "Ollama Cloud chat models through IChatClient, with the existing model, thinking options, credentials and cancellation."
+progress = "None — requests keep the progress of the agent or index run that asks them"
+stopping = "None — requests take the caller's cancellation token and stop with its work"

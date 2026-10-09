@@ -1,9 +1,9 @@
-import type { DevUser } from '../api/types';
+import type { SessionUser } from '../api/types';
 
 export interface Session {
   token: string;
   expiresAt: string;
-  user: DevUser;
+  user: SessionUser;
 }
 
 const STORAGE_KEY = 'maf-lab.session';

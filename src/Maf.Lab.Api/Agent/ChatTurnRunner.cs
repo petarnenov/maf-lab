@@ -67,7 +67,8 @@ public sealed partial class ChatTurnRunner(
     TimeProvider time,
     ILoggerFactory loggers,
     DomainCatalogue domainCatalogue,
-    TurnObservers observers)
+    TurnObservers observers,
+    IPluginAccess pluginAccess)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private readonly ILogger _logger = loggers.CreateLogger<ChatTurnRunner>();
@@ -84,7 +85,9 @@ public sealed partial class ChatTurnRunner(
     {
         var turnId = runId;
         // One view of the domains for the whole turn, also for the static readers it calls (the per-turn snapshot).
-        var domains = domainCatalogue.Freeze();
+        var permission = PluginAccessContext.For(principal) ?? await pluginAccess.For(principal, ct);
+        using var permissionScope = PluginAccessContext.Use(principal, permission);
+        var domains = domainCatalogue.For(permission);
         using var domainScope = DomainCatalogue.Use(domains);
         var traceId = Activity.Current?.TraceId.ToHexString();
         var trace = new TurnTrace(observation);

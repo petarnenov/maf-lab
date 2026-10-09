@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>The ollama-embeddings provider: Local embeddings through IEmbeddingGenerator, with separate query and batch instances and their per-request thread counts.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="OllamaSharp" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
+    <ProjectReference Include="../../../src/Maf.Lab.Plugins.Abstractions/Maf.Lab.Plugins.Abstractions.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Maf.Lab.Tests" />
+    <InternalsVisibleTo Include="Maf.Lab.IntegrationTests" />
+  </ItemGroup>
+</Project>

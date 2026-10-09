@@ -97,7 +97,7 @@ describe('web plugins', () => {
     const nav = screen.getByRole('navigation', { name: 'Main' });
     expect(await within(nav).findByRole('link', { name: 'Fixture' })).toBeInTheDocument();
     // Re-rendered by the anonymous and the signed-in answer alike: one activation all the same.
-    expect(activate).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(activate).toHaveBeenCalledTimes(1));
     expect(deactivate).not.toHaveBeenCalled();
 
     app.unmount();
@@ -118,7 +118,7 @@ describe('web plugins', () => {
       within(nav)
         .getAllByRole('link')
         .map((l) => l.textContent),
-    ).toEqual(['Chat', 'Evals', 'Topology', 'Coverage', 'Feedback review', 'Agent to agent']);
+    ).toEqual(['Chat']);
   });
 
   it('shows a plugin whose service is down as unavailable, not hidden, and not as a link to follow', async () => {

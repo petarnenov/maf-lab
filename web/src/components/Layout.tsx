@@ -1,22 +1,16 @@
 import { useRef } from 'react';
 import { NavLink, Outlet } from 'react-router';
-import { DevTokenPicker } from './DevTokenPicker';
 import { ThemeButton } from '../theme/ThemeButton';
 import styles from './Layout.module.css';
 import hidden from '../shared/VisuallyHidden.module.css';
 import { useStickyHeader } from './useStickyHeader';
+import { PluginBoundary } from '../plugins/PluginBoundary';
 import { usePlugins } from '../plugins/context';
 import { contributions } from '../plugins/registry';
 import { useAuth } from '../auth/useAuth';
+import { ContentAccessBanner } from '../shared/ContentAccessBanner';
 
-const LINKS = [
-  { to: '/chat', label: 'Chat' },
-  { to: '/evals', label: 'Evals' },
-  { to: '/topology', label: 'Topology' },
-  { to: '/coverage', label: 'Coverage' },
-  { to: '/admin/feedback', label: 'Feedback review' },
-  { to: '/admin/a2a', label: 'Agent to agent' },
-];
+const LINKS = [{ to: '/chat', label: 'Chat' }];
 
 export function Layout() {
   const headerRef = useRef<HTMLElement>(null);
@@ -24,7 +18,11 @@ export function Layout() {
   const plugins = usePlugins();
   const { session } = useAuth();
   const admin = session?.user.role === 'TENANT_ADMIN';
-  const pluginLinks = contributions(plugins, 'nav').filter(({ item }) => !item.adminOnly || admin);
+  const pluginLinks = contributions(plugins, 'nav').filter(
+    ({ item }) =>
+      (!item.adminOnly || admin) &&
+      (!item.platformAdminOnly || session?.user.role === 'PLATFORM_ADMIN'),
+  );
 
   return (
     <div className={styles.shell}>
@@ -87,10 +85,15 @@ export function Layout() {
             ),
           )}
         </nav>
-        <DevTokenPicker />
+        {contributions(plugins, 'authControls').map(({ plugin, item }) => (
+          <PluginBoundary key={`${plugin}:${item.id}`} plugin={plugin}>
+            {item.render()}
+          </PluginBoundary>
+        ))}
         <ThemeButton />
       </header>
       <main className={styles.main}>
+        <ContentAccessBanner />
         <Outlet />
       </main>
     </div>

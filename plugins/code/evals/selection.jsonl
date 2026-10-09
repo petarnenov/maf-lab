@@ -1,0 +1,9 @@
+{"id": "s-70", "question": "Where is the tenant filter applied to Qdrant queries in the code?", "expectedTools": ["search_codebase"], "category": "codebase", "tenantId": "firm-a"}
+{"id": "s-71", "question": "How does the code make a tool call idempotent?", "expectedTools": ["search_codebase"], "category": "codebase", "tenantId": "firm-a"}
+{"id": "s-72", "question": "как в кода се прави идемпотентност на тул?", "expectedTools": ["search_codebase"], "category": "codebase", "tenantId": "firm-a"}
+{"id": "s-73", "question": "покажи ми дефиницията на code mcp сървъра", "expectedTools": ["search_codebase"], "category": "codebase", "tenantId": "firm-a"}
+{"id": "s-74", "question": "Which class splits Markdown documents by headings?", "expectedTools": ["search_codebase"], "category": "codebase", "tenantId": "firm-a"}
+{"id": "s-79", "question": "Who calls TenantScopedSearch.QueryAsync?", "expectedTools": ["trace_code_symbol"], "category": "graph", "tenantId": "firm-a"}
+{"id": "s-80", "question": "Кой извиква TenantScopedSearch.QueryAsync в кода?", "expectedTools": ["trace_code_symbol"], "category": "graph", "tenantId": "firm-a"}
+{"id": "s-81", "question": "What tests cover src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs?", "expectedTools": ["change_impact"], "category": "graph", "tenantId": "firm-a"}
+{"id": "s-82", "question": "Кои тестове покриват src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs?", "expectedTools": ["change_impact"], "category": "graph", "tenantId": "firm-a"}

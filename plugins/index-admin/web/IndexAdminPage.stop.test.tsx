@@ -1,7 +1,7 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { jsonResponse, renderWithProviders } from '@maf/testing';
+import { jsonResponse, makeSession, renderWithProviders } from '@maf/testing';
 import { IndexAdminPage } from './IndexAdminPage';
 
 const corpora = [{ name: 'billing', hasGraph: true }];
@@ -31,20 +31,20 @@ function screenWithJob(kind: 'index' | 'migrate') {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
-      if (url === '/api/admin/index/corpora') return jsonResponse(corpora);
-      if (url === '/api/admin/index/status?corpus=billing') return jsonResponse(status);
-      if (url === '/api/admin/index/drift?corpus=billing') return jsonResponse(drift);
+      if (url === '/api/platform/index/corpora') return jsonResponse(corpora);
+      if (url === '/api/platform/index/status?corpus=billing') return jsonResponse(status);
+      if (url === '/api/platform/index/drift?corpus=billing') return jsonResponse(drift);
       if (
-        url === `/api/admin/index/${kind === 'index' ? 'run' : 'migrate'}` &&
+        url === `/api/platform/index/${kind === 'index' ? 'run' : 'migrate'}` &&
         init?.method === 'POST'
       )
         return jsonResponse(job('running'), 202);
-      if (url === '/api/admin/jobs/j1/cancel' && init?.method === 'POST') {
+      if (url === '/api/platform/jobs/j1/cancel' && init?.method === 'POST') {
         cancels.push(url);
         canceled = true;
         return jsonResponse(job('canceled', 'Canceled by an administrator.'), 202);
       }
-      if (url === '/api/admin/jobs/j1')
+      if (url === '/api/platform/jobs/j1')
         return jsonResponse(
           canceled
             ? job('canceled', 'Canceled by an administrator. It had indexed 3 of 10 documents.')
@@ -53,7 +53,7 @@ function screenWithJob(kind: 'index' | 'migrate') {
       return jsonResponse({}, 404);
     }),
   );
-  renderWithProviders(<IndexAdminPage />);
+  renderWithProviders(<IndexAdminPage />, { session: makeSession('PLATFORM_ADMIN') });
   return { cancels };
 }
 
@@ -70,7 +70,7 @@ describe('IndexAdminPage: Esc stops what it started', () => {
 
       await userEvent.keyboard('{Escape}');
 
-      await waitFor(() => expect(cancels).toEqual(['/api/admin/jobs/j1/cancel']));
+      await waitFor(() => expect(cancels).toEqual(['/api/platform/jobs/j1/cancel']));
       expect(await screen.findByTestId('job-status')).toHaveTextContent(
         'canceled — Canceled by an administrator. It had indexed 3 of 10 documents.',
       );
@@ -86,8 +86,8 @@ describe('IndexAdminPage: Esc stops what it started', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string, init?: RequestInit) => {
-        if (url === '/api/admin/index/corpora') return Promise.resolve(jsonResponse(corpora));
-        if (url === '/api/admin/index/status?corpus=billing')
+        if (url === '/api/platform/index/corpora') return Promise.resolve(jsonResponse(corpora));
+        if (url === '/api/platform/index/status?corpus=billing')
           return Promise.resolve(jsonResponse(status));
         if (init?.signal) signals.push(init.signal);
         return new Promise<Response>((_, reject) =>
@@ -97,7 +97,7 @@ describe('IndexAdminPage: Esc stops what it started', () => {
         );
       }),
     );
-    renderWithProviders(<IndexAdminPage />);
+    renderWithProviders(<IndexAdminPage />, { session: makeSession('PLATFORM_ADMIN') });
     expect(await screen.findByTestId('stop-hint')).toHaveTextContent('Esc to stop');
 
     await userEvent.keyboard('{Escape}');

@@ -18,7 +18,7 @@ namespace Maf.Lab.Tests;
 /// </para>
 /// </summary>
 [Collection("TestGeneration")]
-public sealed class CliCancelTests
+public sealed partial class CliCancelTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -63,16 +63,37 @@ public sealed class CliCancelTests
         }
     }
 
-    /// <summary>The name of a bundled provider plugin that provides the decision engine, or null when none is bundled.</summary>
-    private static string? BundledDecisionEngine() =>
-        Directory.EnumerateDirectories(Path.Combine(CorpusLoaderTests.RepoRoot(), "plugins"))
-            .Select(d => Path.Combine(d, "plugin.toml"))
-            .Where(File.Exists)
-            .Select(File.ReadAllText)
-            .Where(t => Regex.IsMatch(t, @"(?m)^kind\s*=\s*""provider""") && Regex.IsMatch(t, @"(?m)^provides\s*=\s*""decision-engine"""))
-            .Select(t => Regex.Match(t, @"(?m)^name\s*=\s*""([^""]+)""").Groups[1].Value)
-            .Order(StringComparer.Ordinal)
-            .FirstOrDefault();
+    /// <summary>The CLI's installed providers, found by manifest capability so no test names a bundled plugin.</summary>
+    private sealed class CliProviders : IDisposable
+    {
+        public string Root { get; } = Directory.CreateTempSubdirectory("maf-lab-cli-providers-").FullName;
+        public string Chat { get; }
+
+        public CliProviders()
+        {
+            var providers = Directory.EnumerateDirectories(Path.Combine(CorpusLoaderTests.RepoRoot(), "plugins"))
+                .Select(d => Path.Combine(d, "plugin.toml")).Where(File.Exists).Select(File.ReadAllText)
+                .Where(t => Regex.IsMatch(t, @"(?m)^kind\s*=\s*""provider"""))
+                .Select(t => new
+                {
+                    schema = 1,
+                    name = Regex.Match(t, @"(?m)^name\s*=\s*""([^""]+)""").Groups[1].Value,
+                    kind = "provider",
+                    provides = Regex.Match(t, @"(?m)^provides\s*=\s*""([^""]+)""").Groups[1].Value,
+                    environments = new[] { "dev" },
+                }).OrderBy(p => p.name, StringComparer.Ordinal).GroupBy(p => p.provides).Select(g => g.First()).ToList();
+            Assert.SkipUnless(new[] { "decision-engine", "chat-model", "embeddings" }.All(k => providers.Any(p => p.provides == k)),
+                "CLI cancellation needs bundled decision, chat and embeddings providers");
+            Chat = providers.Single(p => p.provides == "chat-model").name;
+            File.WriteAllText(Path.Combine(Root, ".installed"), JsonSerializer.Serialize(new
+            {
+                schema = 1, env = "dev",
+                plugins = providers.Select(p => new { manifest = p, serverJson = (object?)null, hasServer = false }),
+            }));
+        }
+
+        public void Dispose() => Directory.Delete(Root, recursive: true);
+    }
 
     /// <summary>A tool's own build output (its dependencies are its own, not this test project's).</summary>
     private static string ToolPath(string projectDir, string tool)
@@ -141,55 +162,10 @@ public sealed class CliCancelTests
     [Theory]
     [InlineData("TERM")]
     [InlineData("INT")]
-    public async Task The_a2a_probe_stops_when_told(string signal)
-    {
-        using var hole = new BlackHole();
-
-        var (exit, stderr) = await InterruptAsync(signal, hole, ToolPath("tools/Maf.Lab.A2AProbe", "Maf.Lab.A2AProbe.dll"),
-            [$"http://127.0.0.1:{hole.Port}"], new());
-
-        Assert.Equal(130, exit);
-        Assert.Contains("Cancelled", LastLine(stderr), StringComparison.Ordinal);
-        Assert.Contains("make eval-a2a", LastLine(stderr), StringComparison.Ordinal);
-    }
-
-    [Theory]
-    [InlineData("TERM")]
-    [InlineData("INT")]
-    public async Task The_eval_tool_stops_when_told_and_keeps_what_finished(string signal)
-    {
-        using var hole = new BlackHole();
-        // The eval refuses to start without exactly one decision engine installed: any bundled one, found as the build
-        // finds plugins (by glob), with no key, since the run is stopped before it would ask.
-        var engine = BundledDecisionEngine();
-        Assert.SkipWhen(engine is null, "no bundled decision-engine provider");
-        var root = Directory.CreateTempSubdirectory("maf-lab-cli-providers").FullName;
-        File.WriteAllText(Path.Combine(root, ".installed"), JsonSerializer.Serialize(new
-        {
-            schema = 1,
-            env = "dev",
-            plugins = new[] { new { manifest = new { schema = 1, name = engine, kind = "provider", provides = "decision-engine", environments = new[] { "dev" } }, serverJson = (object?)null, hasServer = false } },
-        }));
-
-        var (exit, stderr) = await InterruptAsync(signal, hole, ToolPath("src/Maf.Lab.Eval", "Maf.Lab.Eval.dll"),
-            ["--ask", "what is the procedure when a fee schedule is missing"], new()
-        {
-            ["Plugins__Root"] = root,
-            ["Qdrant__Host"] = "127.0.0.1",
-            ["Qdrant__GrpcPort"] = hole.Port.ToString(),
-            ["SharedState__ConnectionString"] = $"127.0.0.1:{hole.Port},abortConnect=false",
-        });
-
-        Assert.Equal(130, exit);
-        Assert.Equal(Maf.Lab.Eval.Program.AfterCancel, LastLine(stderr));
-    }
-
-    [Theory]
-    [InlineData("TERM")]
-    [InlineData("INT")]
     public async Task The_indexer_stops_when_told_and_says_what_to_run_again(string signal)
     {
         using var hole = new BlackHole();
+        using var providers = new CliProviders();
         // A corpus of one document: a run over a missing corpus stops before it reaches the store, with nothing to stop.
         var corpus = Directory.CreateTempSubdirectory("maf-lab-cli-corpus-");
         Directory.CreateDirectory(Path.Combine(corpus.FullName, "firm-a", "docs"));
@@ -202,6 +178,8 @@ public sealed class CliCancelTests
                 ["Qdrant__Host"] = "127.0.0.1",
                 ["Qdrant__GrpcPort"] = hole.Port.ToString(),
                 ["Indexing__CorpusRoot"] = corpus.FullName,
+                ["Plugins__Root"] = providers.Root,
+                ["MAF_CHAT_MODEL"] = providers.Chat,
             });
 
             Assert.Equal(130, exit);

@@ -23,6 +23,7 @@ public static class IndexingServiceCollectionExtensions
         services.TryAddSingleton<DriftService>();
         services.TryAddSingleton<MigrationService>();
         services.AddGraphStore(configuration);
+        Graph.GraphContributionHost.Add(services, configuration);
         services.TryAddSingleton<Graph.GraphBuildService>();
         services.TryAddSingleton<Graph.RetrievalCopyService>();
         return services;

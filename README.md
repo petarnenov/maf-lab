@@ -23,7 +23,7 @@ connect: billing relationships (`trace_billing_relationships`) and the code grap
 - HTTP contract between API and web: [`docs/http-api.md`](docs/http-api.md); the trace event format:
   [`docs/trace-events.md`](docs/trace-events.md); telemetry: [`docs/telemetry.md`](docs/telemetry.md); shared state:
   [`docs/shared-state.md`](docs/shared-state.md)
-- Screens: `/chat`, `/evals`, `/topology`, `/coverage`, `/curriculum` (plugin `curriculum`), and for admins `/admin/index` (plugin `index-admin`), `/admin/feedback`,
+- Screens: `/admin` for tenant admins, `/platform` for platform operators (optional admin shell plugins), `/chat`, `/evals`, `/topology`, `/coverage`, `/curriculum` (plugin `curriculum`), and for platform operators `/admin/index` (plugin `index-admin`),
   `/admin/compliance`, `/admin/jev`, `/admin/a2a`; `/telemetry` while the `observability` plugin is installed
 
 ```mermaid
@@ -121,23 +121,28 @@ The balancer's routes, as `compose/lb/nginx.conf`, the api upstream template and
 | Path | Match | Served by |
 |---|---|---|
 | `^/[a-z0-9-]+/mcp$` | regex | the balancer itself |
+| `/.well-known/oauth-protected-resource` | prefix | the balancer itself |
 | `^/[a-z0-9-]+/(a2a\|\.well-known/agent-card\.json)(/\|$)` | regex | the balancer itself |
 | `/lb-health` | exact | the balancer itself |
-| `/api/coverage/runs/agent` | exact | `api` |
 | `/copilotkit/` | prefix | `copilot-runtime` |
 | `/api/chat` | exact | `api` |
 | `/api/` | prefix | `api` |
 | `/dev/` | prefix | `api` |
-| `/.well-known/agent-card.json` | exact | `api` |
-| `/a2a` | prefix | `api` |
 | `/` | prefix | `web` |
 | `/example/mcp` | exact | `mcp-example` at `/mcp` (plugin `_example`) |
+| `/.well-known/agent-card.json` | exact | `api` (plugin `a2a`) |
+| `/a2a` | exact | `api` (plugin `a2a`) |
+| `/a2a/` | prefix | `api` (plugin `a2a`) |
 | `/mcp` | exact | `mcp-retrieval` (plugin `billing`) |
+| `/.well-known/oauth-protected-resource/mcp` | exact | `mcp-retrieval` (plugin `billing`) |
 | `/code/mcp` | exact | `mcp-code` at `/mcp` (plugin `code`) |
+| `/.well-known/oauth-protected-resource/code/mcp` | exact | `mcp-code` (plugin `code`) |
 | `/compliance` | prefix | `compliance` (plugin `compliance`) |
+| `/api/coverage/runs/agent` | exact | `api` (plugin `coverage`) |
 | `/v1/traces` | prefix | `otel-collector` (plugin `observability`) |
 | `/jaeger` | prefix | `jaeger` (plugin `observability`) |
 | `/portfolio/mcp` | exact | `mcp-portfolio` at `/mcp` (plugin `portfolio`) |
+| `/.well-known/oauth-protected-resource/portfolio/mcp` | exact | `mcp-portfolio` (plugin `portfolio`) |
 <!-- /generated:lb-routes -->
 
 <table>
@@ -162,8 +167,8 @@ unavailable
 </tr>
 </table>
 
-The same picture, drawn in [`docs/topology.drawio`](docs/topology.drawio) and **live**, is at
-[`/topology`](http://localhost:7171/topology): each box carries the state of that service — healthy, degraded or
+The same picture, drawn in the topology plugin's embedded draw.io diagram and **live**, is at
+[`/topology`](http://localhost:7171/topology) (plugin `topology`): each box carries the state of that service — healthy, degraded or
 unreachable — its replicas by name, and the facts that explain the lab's behaviour (chunks in the index, models,
 tools offered). Edit the diagram in draw.io (save it *uncompressed*) and the page follows; a service that exists in
 the report but not in the drawing fails the test suite.
@@ -183,6 +188,10 @@ make                       # doctor-lite → build → start → wait until heal
 make core                  # the core alone: no domain plugin, only the core's providers; every turn declines (plain make brings them back)
 make help                  # every target
 ```
+
+`MAF_CORE_PROVIDERS` installs the core's minimum first (dev default: `jev ollama-cloud ollama-embeddings`).
+`MAF_CHAT_MODEL` selects an installed chat provider (default `ollama-cloud`); `CHAT_MODEL` selects its model.
+make and the provider hosts refuse a missing decision engine or selected chat provider. See [the provider guide](docs/plugins.md).
 
 <!-- generated:make-targets — edit the Makefile's ## comments, then run make docs -->
 | Command | What it does |
@@ -212,7 +221,7 @@ make help                  # every target
 | `make rebuild-index` | Re-create each plugin's collection with every configured dense vector and re-index it (asks unless FORCE=1) |
 | `make migrate` | Fill a provisioned dense vector with its configured model in each plugin's collection (TO=dense_v3) |
 | `make test` | Run all tests (.NET unit + integration, web) |
-| `make test-dotnet` | .NET tests (integration tests start Qdrant and Neo4j via Testcontainers) |
+| `make test-dotnet` | .NET tests (integration tests start Qdrant, Neo4j and Keycloak via Testcontainers) |
 | `make test-web` | Web tests (Vitest) |
 | `make lint` | Build .NET with warnings as errors; ESLint + Prettier for web |
 | `make lint-dotnet` | .NET build with warnings as errors |
@@ -221,17 +230,29 @@ make help                  # every target
 | `make specs` | Validate all OpenSpec specs and changes (strict) |
 | `make docs` | Rewrite the generated blocks in README, project.md, config.yaml and the Copilot instructions |
 | `make docs-check` | Check the docs against the code (generated blocks, routes, make targets, models, links); changes nothing |
+| `make keycloak-check` | Check stage/prod external Keycloak realm bundles for supported server features (no import) |
 | `make ci` | Run locally what GitHub Actions runs on every pull request |
 | `make ci-e2e` | Model-free end-to-end: stack with the Ollama stub, index, verify, A2A conformance, test generation (CI mode) |
 | `make ci-e2e-core` | Model-free core-only end-to-end: make core with the Ollama stub, verify, and the decline with no model, Jev or tool call (CI mode) |
+| `make plugin-e2e` | Run the installed plugins' end-to-end checks, contributed by their make fragments |
 | `make core-turn-check` | On a core-only stack: a turn declines with the fixed reply, and the stub saw no model or Jev call (used by ci-e2e-core) |
-| `make testgen-e2e` | Model-free test generation end to end: refresh, run, verify, accept (used by ci-e2e, against its clone) |
-| `make coverage` | Refresh the coverage snapshot at main (both toolchains, through the running stack) |
 | `make verify` | Verify the running stack through the load balancer (37 checks), then AG-UI conformance of every agent (8 checks) |
+| `make screenshots` | Re-take the README screenshots from the running stack into docs/screenshots (SHOTS=chat,topology for a subset) |
+| `make dev` | Run mcp/api/web locally without Docker (infra stays in compose); Ctrl-C stops |
+| `make doctor` | Check prerequisites (Docker, .NET SDK, Node/npm, make, OLLAMA_API_KEY, JEV_MAF_LAB, MAF_LAB_REPO, GITHUB_ISSUES_TOKEN) |
+| `make setup` | Install what 'make doctor' reports missing (.NET SDK unattended; prints the rest) |
+| `make index-billing` | Index the billing corpus (→ maf_chunks, served by mcp-retrieval) only; unchanged documents are skipped |
+| `make graph-billing` | Build the billing graph only (accounts, runs, households) in Neo4j |
+| `make neo4j-chunks` | Spike: copy each domain's chunks from Qdrant into Neo4j for eval-retrieval-backends (billing's here; portfolio adds its own) |
+| `make eval-retrieval-backends` | Spike comparison: retrieval cases on Qdrant and on Neo4j side by side, never gated (run make neo4j-chunks first) |
+| `make index-code` | Index the repository itself (→ maf_code_chunks, served by mcp-code) only; unchanged files are skipped |
+| `make graph-code` | Build the code graph only (calls, types, tests) in Neo4j |
+| `make coverage` | Refresh the repository coverage snapshot at main through the running stack |
+| `make testgen-e2e` | Model-free test generation: refresh, run, verify and accept in the CI clone |
+| `make dev-token` | Issue one development persona token (PERSONA= TENANT= AUDIENCE=); stdout is the token |
 | `make eval` | Run evals (SUITE=all\|selection\|retrieval\|generation\|injection\|confirmation\|intent\|domain\|presentation\|guardrail\|answer-check\|code-route\|graph-depth\|generation-judge) against the stack's MCP servers |
 | `make ask` | Ask one question through the agent and print its trace (Q="…" TENANT=firm-a), e.g. a cross-domain one |
-| `make screenshots` | Re-take the README screenshots from the running stack into docs/screenshots (SHOTS=chat,topology for a subset) |
-| `make eval-accept` | Run the evals and accept their metrics as the new baseline (REPEAT=N: mean of N runs; commit the result) |
+| `make eval-accept` | Accept an existing report (REPORT=runId), or run and accept a suite if REPORT is omitted |
 | `make eval-selection` | Eval: tool selection (recall/precision) |
 | `make eval-retrieval` | Eval: retrieval (recall@5/@20, MRR per mode) |
 | `make eval-generation` | Eval: answers graded by Jev, mean of 3 runs (REPEAT=N to change) |
@@ -243,16 +264,8 @@ make help                  # every target
 | `make eval-answer-check` | Eval: Jev's answer check alone — are labelled unsupported answers flagged and supported ones not? (needs JEV_MAF_LAB) |
 | `make eval-code-route` | Eval: Jev's code-route answer alone — would each code question start with the right graph call or the search? (needs JEV_MAF_LAB) |
 | `make eval-graph-depth` | Comparison: code graph traces at depth 2, 3 and 4, side by side, never gated (STRUCTURAL=1 for no model) |
-| `make dev` | Run mcp/api/web locally without Docker (infra stays in compose); Ctrl-C stops |
-| `make doctor` | Check prerequisites (Docker, .NET SDK, Node/npm, make, OLLAMA_API_KEY, JEV_MAF_LAB, MAF_LAB_REPO, GITHUB_ISSUES_TOKEN) |
-| `make setup` | Install what 'make doctor' reports missing (.NET SDK unattended; prints the rest) |
-| `make eval-a2a` | Conformance: an outside client drives the agents through evals/a2a-conformance.jsonl |
-| `make index-billing` | Index the billing corpus (→ maf_chunks, served by mcp-retrieval) only; unchanged documents are skipped |
-| `make graph-billing` | Build the billing graph only (accounts, runs, households) in Neo4j |
-| `make neo4j-chunks` | Spike: copy each domain's chunks from Qdrant into Neo4j for eval-retrieval-backends (billing's here; portfolio adds its own) |
-| `make eval-retrieval-backends` | Spike comparison: retrieval cases on Qdrant and on Neo4j side by side, never gated (run make neo4j-chunks first) |
-| `make index-code` | Index the repository itself (→ maf_code_chunks, served by mcp-code) only; unchanged files are skipped |
-| `make graph-code` | Build the code graph only (calls, types, tests) in Neo4j |
+| `make eval-a2a` | Conformance: the outside A2A client checks the installed protocol hosts |
+| `make tenant-allow` | Allow a plugin through a tenant-scoped operator token (TENANT= PLUGIN= ENABLE=1); MAF_BEARER_TOKEN overrides dev issuance |
 | `make index-portfolio` | Index the portfolio corpus (→ maf_portfolio_chunks, served by mcp-portfolio) only |
 <!-- /generated:make-targets -->
 
@@ -272,10 +285,15 @@ allows, `none` means the core alone (`make core`), otherwise a comma-separated l
 | `a2a-inspector` | infra | installation | dev, qa | The A2A Inspector (a2aproject), opened on the lab's agent cards with a fresh partner token: a dev and qa tool. |
 | `billing` | mcp | tenant | dev, qa, stage, prod | Fee billing as a domain: its MCP server (mcp-retrieval: documentation search, run status and history, the billing graph, fee adjustments), its corpus and seeds, and its domain descriptor and routing. |
 | `code` | mcp | installation | dev, qa | The lab's own source code as a domain: the codebase MCP server (search_codebase and the code-graph tools), its domain descriptor and routing, and the chat's Code snippets pane. |
+| `company-login` | app | installation | dev, qa, stage, prod | Public company identity settings for authorization-code sign-in with PKCE. |
 | `compliance` | a2a | tenant | dev, qa, stage, prod | The compliance reviewer: an A2A agent (two replicas behind /compliance) that reviews a large fee adjustment before a person is asked to confirm it, the client that consults it, and the audit screen (verify, browse and export the tenant's audit record). |
 | `conversation-history` | app | installation | dev, qa, stage, prod | The chat's conversation list: the caller's own conversations, searched and paged, renamed and deleted, beside the chat. Without it, a conversation is still reopened by its URL and a new one started from the chat's header. |
+| `coverage` | app | installation | dev, qa | Repository coverage, isolated test execution and the test-generation agent, with verified candidates accepted by an administrator. |
 | `curriculum` | app | installation | dev, qa | The curriculum map: where the concepts and rules of the 5-day Fullstack AI Engineer study plan are applied in this lab, each with the core files that implement it, the spec that states it and the screen that shows it. A web page only, with no server and no request. |
-| `index-admin` | app | installation | dev, qa, stage, prod | The index administration screen and its routes: a tenant admin indexes, checks the drift of and migrates the corpora the installed plugins declare, as admin jobs in the core's job store. Brings the indexing pipeline into the api. |
+| `dev-login` | app | installation | dev, qa | Development personas and audience-bound tokens; absent from stage and production. |
+| `evals` | app | installation | dev, qa | Evaluation reports, dataset export and developer runners for the installed plugins' cases. |
+| `feedback-review` | app | tenant | dev, qa, stage, prod | Flagged turns and reviewer labels, with review panels from installed plugins. |
+| `index-admin` | app | installation | dev, qa, stage, prod | The index administration screen and its routes: a platform operator indexes, checks the drift of and migrates the corpora the installed plugins declare, as admin jobs in the core's job store. Brings the indexing pipeline into the api. |
 | `insights` | app | installation | dev, qa | The Jev and intent statistics: how every Jev call site — intent, guardrail, relevance, routing and the answer check — behaved on the firm's chat turns over a window, read from the turns' core records. Numbers only. |
 | `jev` | provider | installation | dev, qa, stage, prod | TypeSafe Jev (System One) as the decision engine: every routing, screening, relevance and answer-check question goes to it through IDecisionEngine, with the pinned jev-1.13.0 model. Needs JEV_MAF_LAB, sent only as the bearer header. |
 | `mcp-inspector` | infra | installation | dev, qa | The MCP Inspector, listing the lab's MCP servers with a dev user's token: a dev and qa tool. |
@@ -283,9 +301,14 @@ allows, `none` means the core alone (`make core`), otherwise a comma-separated l
 | `neo4j` | infra | installation | dev, qa, stage, prod | The graph store (Neo4j Community): billing's relationships and the repository's code graph, read through the core's one tenant-scoped graph method. A store that domain plugins depend on. |
 | `neo4j-browser` | infra | installation | dev, qa | Neo4j Browser on the graph store, forwarded on loopback: a dev and qa tool. |
 | `observability` | app | installation | dev, qa, stage, prod | The telemetry stack and its screen: the OpenTelemetry collector every service exports to, Prometheus and Jaeger behind it, the browser's own spans, a turn's link to its trace, and the Telemetry screen's numbers. Without it the services' exports go nowhere. |
+| `ollama-cloud` | provider | installation | dev, qa, stage, prod | Ollama Cloud chat models through IChatClient, with the existing model, thinking options, credentials and cancellation. |
+| `ollama-embeddings` | provider | installation | dev, qa, stage, prod | Local embeddings through IEmbeddingGenerator, with separate query and batch instances and their per-request thread counts. |
+| `platform-admin` | app | installation | dev, qa, stage, prod | Organization-scoped plugin allowances and platform administration sections. |
 | `portfolio` | mcp | tenant | dev, qa, stage, prod | Investment portfolios as a domain: its MCP server (mcp-portfolio: documentation search, an account's holdings, its quarter-end AUM history and the accounts a user can access), its corpus and seed, its data cards, and its domain descriptor and routing. |
 | `qdrant` | infra | installation | dev, qa, stage, prod | The vector store (Qdrant): each domain's chunks and their dense and sparse vectors, read through the core's one tenant-scoped query method. A store that domain plugins depend on. |
 | `redis-insight` | infra | installation | dev, qa | Redis Insight on the lab's Redis (run state, stops, shared stores), loopback only: a dev and qa tool. |
+| `tenant-admin` | app | tenant | dev, qa, stage, prod | Tenant plugin switches and administration sections contributed by plugins in use. |
+| `topology` | app | installation | dev, qa | Live topology and bounded probes of core and installed plugin services. |
 <!-- /generated:plugins -->
 
 ## Chat history
@@ -334,44 +357,6 @@ retrieval eval reports recall per language. When translation was introduced, Bul
 from **0.21 to 0.68** while English stayed at 0.69; today's accepted figures are in `evals/baseline.json`. Switch it
 off with `Retrieval__NormalizeQueryLanguage=false`; the corpus language is `Retrieval__CorpusLanguage` (default `en`).
 
-## Another agent talking to this one (A2A)
-
-The assistant is also an **[A2A 1.0](https://a2a-protocol.org) agent**, so another system can work with it without
-a person in the loop. It advertises itself at `http://localhost:7171/.well-known/agent-card.json` — a signed card
-naming its skills, its transports (JSON-RPC and HTTP+JSON) and how to authenticate — and answers on `/a2a`.
-
-A partner is a **system, not a user**: its token's audience is the A2A endpoint, it carries no user identity, and
-the firms it may see come from the server's `A2A:Partners` registration rather than from anything it sends. Ask
-about a firm outside that set and you get one fixed sentence and no data — not the run, not whether it exists.
-
-It can ask about a billing run, ask anything else (answered by the same agent and the same MCP tools the chat UI
-uses), or **start a billing run** — which comes back as a task it can follow, resume when the agent asks for a
-missing period, resubscribe to after a dropped connection, cancel, or be notified about through a webhook. That
-run is **simulated**: it walks the real lifecycle over the seeded runs and bills nobody. The card says so, the
-final artifact says so (`"simulated": true`), and so does this paragraph.
-
-Two clients prove it from outside: `python3 scripts/a2a_probe.py` speaks the 1.0 wire format and imports no A2A
-library at all, and `make eval-a2a` runs `tools/Maf.Lab.A2AProbe`, which builds an agent from nothing but the card
-using the A2A client. The preview SDK underneath does not yet speak 1.0 on the wire; every difference and what is
-done about it is in `DECISIONS.md`.
-
-**Conformance is a dataset, run by an outside client.** `evals/a2a-conformance.jsonl` names what such a client
-must be able to do — discovery, the extended card after authenticating, a direct answer, a streamed task,
-resubscribing after a dropped stream, resuming a task that asked for something, cancelling, a push delivery to a
-webhook it registered, and a request outside its entitlement being refused. The probe reads that file and runs
-the scenario each row names; it has no project reference to `src/`, which is what makes it evidence rather than a
-self-assessment. It writes a report in the same shape every eval suite writes, to `evals/reports/`, and
-`make ci-e2e` runs it. `make eval SUITE=…` does **not** — that target dispatches into the harness, which links
-against the service.
-
-**`/admin/a2a`** (TENANT_ADMIN) is where that traffic is visible: what arrived from partners, what this system
-asked of the reviewer, and every push delivery — each with its state, when it happened and how long it took. A
-task still running can be cancelled from there, through the same protocol call a partner would make. The same
-page shows the test-generation agent, through the api: whether its card answers, what the card says, what a run
-gets by default, and its runs by state with the most recent ones — each with how long its work took, counting on
-while it runs, and what its model calls cost (the amount its budget counted, `≈` when the price is an estimate) —
-each file opening on the Coverage page.
-
 ## A second agent it consults (A2A, the other way round)
 
 The lab runs a **second agent** of its own: a compliance reviewer, in its own container behind the same entry
@@ -387,40 +372,13 @@ a question back, a timeout that keeps the task id so the answer can be collected
 failure. Each one is written to the same audit record as everything else, with no message content.
 
 That verdict is **simulated** — a threshold and a stopwatch. It binds nobody, and the card, the artifact and this
-paragraph all say so. `make eval-a2a` drives both agents from outside, using nothing but their cards.
+paragraph all say so. The protocol plugin’s conformance target drives both agents from outside, using nothing but their cards.
 
 A verdict is another system's word about our question, so it is checked before it is believed: it must decide,
 and it must decide about the adjustment and the account we asked about. `evals/injection-a2a.jsonl` holds what a
 broken or hostile reviewer might send — an instruction buried in its reason, a verdict about a different account,
 a decision that is neither approved nor refused — and each one is driven through that check and through the write
 flow against a reviewer that answers with it verbatim. None of them changes what executes.
-
-## Coverage, and a third agent that writes tests
-
-**`/coverage`** shows how well the lab's own C# and TypeScript source is covered by tests — folder by folder, file by
-file and line by line, each file against its threshold (a configured default, or the file's own override). Any
-signed-in user can look; only a TENANT_ADMIN can change a threshold, refresh coverage or start, cancel, accept or
-discard a run, and the server enforces that. `make coverage` refreshes the snapshot at `main` through the running
-stack.
-
-Raising a file's threshold above its current coverage asks to confirm, then for a model and its cost estimate, and
-then starts a **test-generation run**. The api hands the file to the **test-agent**, a third agent reachable only over
-A2A and only by the api. It reads the repository at the run's commit, may write only test files, and loops — write
-tests, run them with coverage, read the result — until the file reaches the target or it runs out of attempts. The
-tests run in the **coverage-runner**, which has no secrets and no route to the internet. A test the agent believes
-exposes a bug is skipped and reported, not worked around.
-
-The api then checks the result itself before anyone sees it, commits it to a candidate branch
-(`test-agent/<file-slug>-<runId>`), and waits for a TENANT_ADMIN to accept it — a conflict-free merge into `main` — or
-discard it. A suspected bug whose test still fails when un-skipped becomes a GitHub issue (`GITHUB_ISSUES_TOKEN`). The page
-follows a run live, and `/admin/a2a` shows the agent and its runs. `make testgen-e2e` drives the whole path without a
-model; `make ci-e2e` includes it.
-
-The api writes to the repository (those branches and merges) and `evals/` as the user who ran `make`
-(`MAF_LAB_UID`/`MAF_LAB_GID`, from `id -u`/`id -g`), so on Linux everything it leaves there is yours; a one-shot
-`api-data-init` hands its data volume to that user first. Earlier versions ran it as root: `make up` finds paths owned
-by root in the checkout and gives exactly those back to you. On rootless Docker or `userns-remap`, run
-`make MAF_LAB_UID=0 MAF_LAB_GID=0`.
 
 ## The first thing it can change
 
@@ -501,8 +459,8 @@ follow-up that Jev puts in no domain keeps its conversation's domains, and with 
 question **crosses** the boundary: a procedural question then searches both domains' documentation, each on its own
 server, before the model's first call. The trace records a `domain` event (the verdict), `domain`/`server` on every tool
 event, a `boundary` event whenever a call enters the other domain, and the domain path on `turn.end`; the monitor's
-**Domains** tab draws it, and `make eval SUITE=domain` measures the verdict over 81 labelled questions. Try "Why did
-the fee on A-1042 go up this quarter — did its AUM cross a tier?" as firm-a. `make eval-intent`
+**Domains** tab draws it, and the domain evaluation suite measures the verdict over 81 labelled questions. Try "Why did
+the fee on A-1042 go up this quarter — did its AUM cross a tier?" as firm-a. the intent evaluation suite
 measures the classifier alone over 101 labelled questions in English, Bulgarian and Latin-script Bulgarian. A choice below `Jev:MinConfidence` (0.5), a timeout
 (`Jev:TimeoutSeconds`, 2; 0 disables it), a rejected call or a missing key leaves the turn unforced, and the event
 says why.
@@ -537,7 +495,7 @@ turn. Every tab shows the state as of the chosen step, and the chat rewinds with
 sources appear as they were at that moment. While a turn streams, the monitor follows it; drag back to pause and use
 "Back to live" to catch up.
 
-Click an earlier answer to reopen its stored trace (kept 7 days). Reviewers can open a trace from `/admin/feedback`. The
+Click an earlier answer to reopen its stored trace (kept 7 days). While a review screen is installed, reviewers can open its trace panel. The
 event format is in [`docs/trace-events.md`](docs/trace-events.md). Retrieval internals come from the MCP server in the
 tool result `_meta`, which the model never sees.
 
@@ -565,12 +523,11 @@ ollama pull embeddinggemma                                    # (qwen3:4b only f
 dotnet run --project src/Maf.Lab.Indexing                     # index Indexing__CorpusRoot (index | drift | status | rebuild --yes | migrate --to <vector>)
 dotnet run --project src/Maf.Lab.Retrieval                    # billing MCP server on :5090 (Billing__SeedPath, Billing__AccountsSeedPath)
 dotnet run --project src/Maf.Lab.Portfolio                    # portfolio MCP server on :5091 (Portfolio__SeedPath)
-dotnet run --project src/Maf.Lab.CodeSearch                   # codebase MCP server on :5092 (make index first)
 dotnet run --project src/Maf.Lab.Api                          # agent host on :5080
 cd web && npm install && npm run dev                          # UI on :5174
 ```
 
-VS Code: the compound launch **"api + web (with mcp-retrieval and mcp-portfolio)"** starts all four (not the codebase server: run `src/Maf.Lab.CodeSearch` by hand); tasks cover `compose up`, `index`,
+VS Code: the compound launch **"api + web (with mcp-retrieval and mcp-portfolio)"** starts all four (optional MCP servers start through their dev hooks); tasks cover `compose up`, `index`,
 `eval` and tests.
 
 Switch the model provider by configuration only, e.g. `Models__Provider=openai Models__OpenAIApiKey=… Models__ChatModel=gpt-4.1-mini`
@@ -646,126 +603,6 @@ It runs in `make ci` and in the CI `specs` job, with Python 3.11+ and nothing el
 `DECISIONS.md`, eval reports and archived changes are history, and are not checked. Prose is checked by review:
 archiving a change asks for a read-only pass over these documents against the change's diff.
 
-## Evals — when you must run them
-
-```bash
-make eval                     # all gated suites against the running stack's MCP (graph-depth runs only when named)
-make eval-selection           # or eval-retrieval / -generation / -injection / -confirmation / -intent / -guardrail / -answer-check / -code-route / -presentation / -graph-depth / -retrieval-backends / -a2a
-dotnet run --project src/Maf.Lab.Eval -- --suite retrieval --rerank   # extra flags: use the CLI directly
-dotnet run --project src/Maf.Lab.Eval -- --import-feedback --suite retrieval
-```
-
-Evals run **on demand**, not on every commit. They are **required** before merging any change to:
-
-- the **system prompt** (`src/Maf.Lab.Api/Prompts/*`) → `selection`, `generation`, `injection`
-- a **tool description or schema** (`src/Maf.Lab.{Retrieval,Portfolio,CodeSearch}/Tools/*`) → `selection`
-- the **model** (chat or embedding, `Models:*`) → `all`
-- the **tool set** (adding/removing a tool) → `selection`, `injection`
-- the **chunking or retrieval configuration** (chunkers, `Indexing:*`, `Retrieval:*`, BM25) → `retrieval`, `generation`
-- **query normalisation** (`Retrieval:NormalizeQueryLanguage`, `Retrieval:CorpusLanguage`, the translation model) → `retrieval`
-- a **Jev screening or check** (the guard's batteries or `Guard:*`, the answer check's questions or `Jev:AnswerCheck:*`) →
-  `guardrail`, `answer-check`; both call Jev alone, with no chat model and no tool
-- the **generation grade** (`src/Maf.Lab.Eval/Judging/*`, `Evals:Judge:*`) → `generation-judge` first (labelled answers,
-  no agent), then `generation`
-- the **code graph** (the builder in `src/Maf.Lab.Indexing/Graph`, or a trace or impact depth in `CodeGraphTools`) →
-  `graph-depth`
-- a question about the **vector store itself** (Qdrant versus Neo4j) → the billing plugin's `neo4j-chunks` target, then
-  `retrieval-backends`, a comparison like `graph-depth`: the retrieval cases on Qdrant and on an eval-only Neo4j search
-  over the same copied chunks, side by side, never gated (neo4j-retrieval-spike)
-- the **code-route question** (`CodeToolRouter`, `Jev:RouteCodeTools`, `Jev:MinCodeRouteConfidence`) → `code-route`, which
-  asks Jev alone whether each code question would start with the right graph call or the search, and `intent`
-
-`graph-depth` is a **comparison**, not a gate. It runs the same labelled code-graph cases with the graph tools pinned to
-2, 3 and 4 calls, on a codebase server it starts itself (`CodeSearch:GraphDepthPin`, never set in a deployment). It
-reports two layers side by side:
-- **structural**, with no model: recall, also split by the depth a case needs, nodes, tokens, truncation and latency;
-- **end-to-end**: the Jev grade `generation` uses (faithfulness against what the turn read, relevance), and whether
-  the answer names what it needed.
-
-Beside the all-turn end-to-end scores it reports each variant's scores over its own turns that called a graph tool
-(`:graph`, with `graphTurns`), and over the cases that called the graph in every variant (`:common`, with
-`commonCases`). Read a depth's effect from the `:common` scores, where the three depths answered the same questions
-with the graph. It has no thresholds, is never compared with or accepted into the baseline, and `all` does not run it.
-`make eval-graph-depth STRUCTURAL=1` runs the structural layer alone, with no chat model or Jev key. End-to-end numbers
-vary between runs, so compare two runs before reading a difference as a result.
-
-### How `generation` is graded
-
-Jev grades every answer, in **one request per case**. Code cuts the answer into sentences, and every question is a
-yes/no about one item:
-- per sentence: does it state a fact, and is that fact supported by what the turn read. A place the sentence cites
-  (`path:start-end`, "Section 3 → Step 2") is looked up in code, not asked of Jev: a place no source holds makes the
-  sentence unsupported, and a found one is masked before Jev reads the rest;
-- per reference point (`referencePoints` in `generation.jsonl`): does the answer state it, and does it contradict it;
-- per source: is it on the question's subject;
-- once: does the answer address the question.
-
-Code counts the yeses (a Noul is yes at 0.5) into these metrics:
-- `faithfulness`: supported claim sentences over claim sentences;
-- `relevance`;
-- `completeness`: points stated;
-- `referenceAgreement`: 1 − points contradicted;
-- `retrievalJudged`: sources on the subject;
-- `judgeUncertain`: answers in the 0.2–0.8 band, a diagnostic.
-
-A failed case names the unsupported sentences, the cited places no source holds, and the missed or contradicted
-points. Without `JEV_MAF_LAB` the suite refuses to run rather than report a grade of nothing.
-
-The agent answers differently on every run, so `make eval-generation` runs the 36 cases **three times** and gates
-the mean (`Evals:Repeat`, or `REPEAT=N`). Every run keeps its own report. `make eval-accept SUITE=generation REPEAT=10`
-accepts the mean of ten runs as the baseline.
-
-The grade is an evaluator of `Microsoft.Extensions.AI.Evaluation`. Each case is kept under `evals/reports/meai/`, and
-every run writes `evals/reports/<runId>.html` beside its JSON and Markdown: every case with its scores, the sentences
-behind them, and how they moved over the last ten runs.
-
-`make eval SUITE=generation-judge` measures the grade itself, with no agent, and reports four variants:
-- `grade`: the grade on `answer-check.jsonl`'s labelled answers;
-- `check`: the production answer check on the same rows;
-- `points`: the grade on `generation-judge.jsonl`'s reference points labelled stated or contradicted;
-- `sentences`: the grade per sentence on `generation-sentences.jsonl` — claims, support, and citations correct and
-  invented, apart.
-
-Each variant reports accuracy overall and per domain, language and split. See DECISIONS.md §79.
-
-### Not getting worse
-
-The thresholds answer "is this usable at all"; the **baseline** answers "is this worse than it was".
-`evals/baseline.json` is committed and records the metrics this repository has accepted, per suite and variant.
-Every run compares against it and fails when a metric drops by more than the tolerance, naming what moved:
-
-```
-✗ REGRESSION retrieval/hybrid mrr: 0.9 → 0.647 (-0.253)
-↑ improved retrieval/hybrid recall@5: 0.5 → 0.687 (+0.187)
-· within tolerance retrieval/hybrid recall@5:bg: 0.681 → 0.66 (-0.021)
-make eval-accept        # run the suites and accept their metrics as the new baseline (then commit it)
-```
-
-A run never moves the baseline by itself, and a run below its thresholds is refused rather than blessed. A metric
-the baseline does not mention is reported as *new* and one it mentions but the run did not produce as *missing* —
-both are how a rename silently switches the gate off. The tolerance is `Evals:RegressionTolerance` (0.02), overridden
-per metric in `Evals:RegressionTolerances`, each override carrying what it was measured from: in `retrieval`,
-`recall@5:bg` and `recall@20` use 0.025, because a non-English query is translated by a live model and moved about
-0.021 over five runs while `recall@5:en` did not move at all; in `generation`, each
-tolerance is the range of every 3-run mean over ten runs (faithfulness 0.035), and a `generation-judge` tolerance is
-never below one labelled item. `/evals` plots any metric across past runs with the baseline marked.
-
-Datasets are JSONL under `evals/`; reports land in `evals/reports/` (JSON for the `/evals` page, Markdown for humans).
-Three of them are not run by the harness: `a2a-conformance.jsonl` is run by the probe (`make eval-a2a`), and
-`injection-a2a.jsonl` and `ui-events.jsonl` are fixture sets driven by tests — the first through the verdict check
-and the write flow, the second replayed through the browser's reducer. `ui-events.jsonl` holds runs captured from
-a running stack by `scripts/capture_ui_events.sh`; re-capture it when what the server emits changes. The current
-recording predates the generic interrupt shape (DECISIONS §85): re-record it on a stack with billing and monitor installed.
-Thresholds are configuration (`src/Maf.Lab.Eval/eval.json` → `Evals:Thresholds`); the command exits non-zero when a
-suite falls below them. Labeled production feedback (UI → `/admin/feedback`) is appended to the datasets, so the next
-run includes it. The contextual-retrieval variant needs a second index:
-
-```bash
-Qdrant__Collection=maf_chunks_ctx Qdrant__MetaCollection=maf_chunks_ctx_meta \
-  dotnet run --project src/Maf.Lab.Indexing -- index --contextual on
-dotnet run --project src/Maf.Lab.Eval -- --suite retrieval --contextual
-```
-
 ## Compliance
 
 Every audited action — a tool call, a conversation deletion, a compliance export — is one row in a **single ordered
@@ -804,3 +641,35 @@ is — the chain proves what was recorded, not that the recorded person is who t
 Tenant comes from the token only · one tenant-scoped query path (and one for the graph, no model-written Cypher) · tool results are DTOs · no message content in logs ·
 version moves update `DECISIONS.md` · `generated:` blocks are never edited by hand (`make docs`). See
 [`CLAUDE.md`](CLAUDE.md).
+
+Company identity is being integrated under `adopt-company-idp`: the API and production MCP services now accept
+JWKS-signed access tokens when `AUTH_AUTHORITY` is configured, and stage/prod require it. `dev-login` remains
+dev/qa only and cannot coexist with company authentication. See [identity configuration](docs/plugins.md#health-and-company-identity-configuration).
+Browser sign-in and real Keycloak validation are still open; no external IdP runs in the dev or CI compose stack.
+
+The external Keycloak 26.8.0 templates are in [`compose/keycloak`](compose/keycloak). Run `make keycloak-check`
+before applying them, with the same feature overrides used for the IdP server build. The check is offline and runs
+in CI; it does not import a realm or verify the deployed server. Replace the realm/origin/hostname/TLS/database
+placeholders in the external deployment process and supply its confidential-client credentials there.
+`AUTH_WEB_CLIENT_ID` defaults to `web`; match it to the public client ID. The `company-login` plugin serves public
+browser settings at `/api/identity/configuration`. Provisioning must maintain immutable group IDs in the protected
+`group_ids` attribute, which the native mapper emits as the standard `groups` claim; group names/paths do not grant
+document access. The isolated native Keycloak Testcontainer fixture is part of the integration test suite and
+requires Docker, without adding an IdP to the compose stack.
+
+Company MCP hosts also require their public `BILLING_MCP_RESOURCE_URI`, `PORTFOLIO_MCP_RESOURCE_URI` and
+`CODE_MCP_RESOURCE_URI`. The SDK serves anonymous RFC9728 metadata and advertises its fixed URL in a 401 challenge.
+For HTTPS behind an HTTP backend, set `MCP_TRUSTED_PROXY_NETWORK` to the immediate ingress peer's explicit CIDR
+and ensure the last proxy forwards the public HTTPS scheme/host. The default lab nginx listener is HTTP; a TLS
+deployment must preserve the public scheme through that final balancer. See [MCP authorization settings](docs/plugins.md#mcp-authorization-metadata).
+
+Company operators select a tenant with `organization:<alias>` and carry the IdP's native session ID. The API records
+the first authenticated entry once per session and organization, durably across replicas and refreshes. Tenant
+administrators see identities and times in Overview, even without Compliance. Entry records do not grant content
+access. See [operator session audit](docs/plugins.md#operator-session-entry-audit).
+
+Break-glass content permission is a separate, audited, session-bound grant with a required ticket/incident reference
+and a fixed expiry of at most one hour. The platform dashboard confirms it; tenant Overview lists its metadata.
+API and direct MCP content calls require the own-store permission. Synchronous AOF Redis persistence is required
+for durable end acknowledgement; unsupported/unavailable permission state denies operator content. See
+[break-glass settings and lifecycle](docs/plugins.md#break-glass-content-permission).

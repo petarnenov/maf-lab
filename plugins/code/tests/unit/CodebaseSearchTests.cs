@@ -1,7 +1,8 @@
+extern alias service;
 using System.Net.Http.Headers;
 using System.Text.Json;
-using Maf.Lab.CodeSearch;
-using Maf.Lab.CodeSearch.Tools;
+using service::Maf.Lab.CodeSearch;
+using service::Maf.Lab.CodeSearch.Tools;
 using Maf.Lab.Domain.Code;
 using Maf.Lab.Domain.Graph;
 using Maf.Lab.Domain.Retrieval;
@@ -496,8 +497,8 @@ public class CodebaseSearchTests : IDisposable
         Assert.Empty(chat.Requests);
     }
 
-    private static WebApplicationFactory<Maf.Lab.CodeSearch.Program> CodeServer(string? depthPin = null) =>
-        new WebApplicationFactory<Maf.Lab.CodeSearch.Program>().WithWebHostBuilder(b =>
+    private static WebApplicationFactory<service::Maf.Lab.CodeSearch.Program> CodeServer(string? depthPin = null) =>
+        new WebApplicationFactory<service::Maf.Lab.CodeSearch.Program>().WithWebHostBuilder(b =>
         {
             b.UseFixtureEngine();
             b.UseEnvironment("Development");
@@ -510,9 +511,9 @@ public class CodebaseSearchTests : IDisposable
             b.ConfigureLogging(l => l.SetMinimumLevel(LogLevel.Warning));
         });
 
-    private static async Task<IList<McpClientTool>> ListToolsAsync(WebApplicationFactory<Maf.Lab.CodeSearch.Program> factory)
+    private static async Task<IList<McpClientTool>> ListToolsAsync(WebApplicationFactory<service::Maf.Lab.CodeSearch.Program> factory)
     {
-        var (token, _) = DevJwt.Issue(new AuthOptions(), "u-a", TenantId.Firm("firm-a"), Role.USER);
+        var (token, _) = DevJwt.Issue(new AuthOptions { Audience = "code" }, "u-a", TenantId.Firm("firm-a"), Role.USER);
         var http = factory.CreateDefaultClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         var transport = new HttpClientTransport(new HttpClientTransportOptions
@@ -569,7 +570,7 @@ public class CodebaseSearchTests : IDisposable
         // Built and started here rather than through WebApplicationFactory: the factory runs the server's Main on a
         // thread of its own, whose Run() disposes the host as soon as the start fails, while the factory may still be
         // reading that host's services — an ObjectDisposedException instead of the validation error, now and then.
-        await using var app = Maf.Lab.CodeSearch.Program.BuildApp(["--environment=Development", "--urls=http://127.0.0.1:0"], b =>
+        await using var app = service::Maf.Lab.CodeSearch.Program.BuildApp(["--environment=Development", "--urls=http://127.0.0.1:0"], b =>
         {
             b.Configuration["Qdrant:GrpcPort"] = "1";
             foreach (var (key, value) in TestProviders.FixtureEngineSettings)

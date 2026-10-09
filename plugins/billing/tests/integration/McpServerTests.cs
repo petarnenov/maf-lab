@@ -253,7 +253,7 @@ public sealed class McpServerTests(CorpusIndexFixture corpus) : IAsyncDisposable
         WebApplicationFactory<Maf.Lab.Retrieval.Program>? factory = null, params DelegatingHandler[] handlers)
     {
         factory ??= Factory();
-        var (token, _) = DevJwt.Issue(new AuthOptions(), user, TenantId.Firm(firm), role);
+        var (token, _) = DevJwt.Issue(new AuthOptions { Audience = "billing" }, user, TenantId.Firm(firm), role);
         var http = factory.CreateDefaultClient(handlers);
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         var transport = new HttpClientTransport(new HttpClientTransportOptions
@@ -380,7 +380,7 @@ public sealed class McpDiagnosticsTests(CorpusIndexFixture corpus)
                 s.AddSingleton<IDenseEncoder>(FakeDenseEncoder.Default());
             });
         });
-        var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.USER);
+        var (token, _) = DevJwt.Issue(new AuthOptions { Audience = "billing" }, "chris", TenantId.Firm("firm-c"), Role.USER);
         var http = factory.CreateDefaultClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         await using var client = await McpClient.CreateAsync(new HttpClientTransport(new HttpClientTransportOptions
@@ -432,7 +432,7 @@ public sealed class McpDiagnosticsTests(CorpusIndexFixture corpus)
                 s.AddSingleton<Maf.Lab.Retrieval.Rerank.IRelevanceJudge>(new FixedJudge(0.8));
             });
         });
-        var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.USER);
+        var (token, _) = DevJwt.Issue(new AuthOptions { Audience = "billing" }, "chris", TenantId.Firm("firm-c"), Role.USER);
         var http = factory.CreateDefaultClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         await using var client = await McpClient.CreateAsync(new HttpClientTransport(new HttpClientTransportOptions

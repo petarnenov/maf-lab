@@ -3,12 +3,6 @@ using Microsoft.AspNetCore.Http;
 
 namespace Maf.Lab.Retrieval.Auth;
 
-/// <summary>The only way request-handling code obtains the caller's principal. Reads validated token claims only.</summary>
-public interface IPrincipalAccessor
-{
-    Principal Current { get; }
-}
-
 public sealed class HttpPrincipalAccessor(IHttpContextAccessor http) : IPrincipalAccessor
 {
     public Principal Current =>

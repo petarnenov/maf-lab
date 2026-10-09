@@ -11,8 +11,6 @@
     <PackageReference Include="Microsoft.Data.Sqlite" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
     <PackageReference Include="Microsoft.Extensions.AI" />
-    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
-    <PackageReference Include="OllamaSharp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Maf.Lab.Hosting\Maf.Lab.Hosting.csproj" />
@@ -24,7 +22,6 @@
     <InternalsVisibleTo Include="Maf.Lab.IntegrationTests" />
     <!-- The portfolio server reuses the search tool's result shaping, the seed paths and the bootstrap loop. -->
     <InternalsVisibleTo Include="Maf.Lab.Portfolio" />
-    <InternalsVisibleTo Include="Maf.Lab.CodeSearch" />
     <!-- The graph build reads the same seed files the billing tools do. -->
     <InternalsVisibleTo Include="Maf.Lab.Indexing" />
   </ItemGroup>

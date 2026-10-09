@@ -195,6 +195,8 @@ def discover() -> dict[str, Plugin]:
             problems.append(f"/name: {manifest.get('name')!r} differs from the folder name {folder.name!r}")
         if manifest.get("kind") == "provider" and not manifest.get("provides"):
             problems.append("/provides: a provider plugin names what it provides")
+        if manifest.get("private_to") and manifest.get("scope") != "tenant":
+            problems.append("/private_to: a private plugin must have tenant scope")
         found[folder.name] = Plugin(folder.name, folder, manifest, problems)
     return found
 
@@ -218,7 +220,16 @@ def resolve(available: dict[str, Plugin] | None = None) -> list[Plugin]:
     elif raw:
         requested = [n.strip() for n in raw.split(",") if n.strip()]
     else:
-        requested = [n for n, p in available.items() if not n.startswith(OPT_IN_PREFIX) and env in p.environments]
+        # Folder removal also makes its dependants unavailable in the automatic set. Explicit selection still fails
+        # below with the missing dependency's name; cycles and invalid manifests remain errors in either mode.
+        unavailable = {n for n, p in available.items() if any(d not in available for d in p.depends)}
+        while True:
+            blocked = {n for n, p in available.items() if any(d in unavailable for d in p.depends)}
+            if blocked <= unavailable:
+                break
+            unavailable |= blocked
+        requested = [n for n, p in available.items()
+                     if not n.startswith(OPT_IN_PREFIX) and env in p.environments and n not in unavailable]
     # The core's minimum providers come first, whatever else is asked for (introduce-provider-plugins 5x): "none" still
     # means no domain, app or dev plugin, never no decision engine.
     core = [n for n in re.split(r"[\s,]+", os.environ.get("MAF_CORE_PROVIDERS") or "") if n]
@@ -259,6 +270,14 @@ def provider_problems(plugins: list[Plugin]) -> list[str]:
         return ["no decision engine is installed: name exactly one provider with provides = \"decision-engine\" in MAF_CORE_PROVIDERS"]
     if len(engines) > 1:
         return [f"more than one decision engine is installed ({', '.join(engines)}): install exactly one"]
+    chat = os.environ.get("MAF_CHAT_MODEL", "ollama-cloud")
+    if not any(p.name == chat and p.manifest.get("kind") == "provider" and p.manifest.get("provides") == "chat-model" for p in plugins):
+        return [f'chat provider {chat!r} is not installed with provides = "chat-model" (MAF_CHAT_MODEL)']
+    embedders = [p.name for p in plugins if p.manifest.get("kind") == "provider" and p.manifest.get("provides") == "embeddings"]
+    if len(embedders) > 1:
+        return [f"more than one embeddings provider is installed ({', '.join(embedders)}): install exactly one"]
+    if not embedders and any(p.manifest.get("corpus") for p in plugins):
+        return ['a corpus requires an embeddings provider: install one provider with provides = "embeddings"']
     return []
 
 
@@ -267,11 +286,16 @@ def server_json(plugin: Plugin) -> dict | None:
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
 
 
+def agent_card(plugin: Plugin) -> dict | None:
+    path = plugin.folder / "agent-card.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+
+
 def installed_document(plugins: list[Plugin]) -> dict:
     return {
         "schema": 1,
         "env": environment(),
-        "plugins": [{"manifest": p.manifest, "serverJson": server_json(p), "hasServer": p.has_server} for p in plugins],
+        "plugins": [{"manifest": p.manifest, "serverJson": server_json(p), "agentCard": agent_card(p), "hasServer": p.has_server} for p in plugins],
     }
 
 
@@ -489,7 +513,7 @@ def main(argv: list[str]) -> int:
             plugin = discover().get(argv[2])
             if plugin is None:
                 raise PluginError(f"plugin '{argv[2]}' does not exist")
-            print(json.dumps({"manifest": plugin.manifest, "serverJson": server_json(plugin), "hasServer": plugin.has_server}))
+            print(json.dumps({"manifest": plugin.manifest, "serverJson": server_json(plugin), "agentCard": agent_card(plugin), "hasServer": plugin.has_server}))
         elif command == "product-servers":
             # The server projects the product image variant keeps (decision 5e): plugins that allow stage or prod.
             # A provider's lib/ projects too: they are compiled into every provider host (introduce-provider-plugins).

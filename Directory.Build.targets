@@ -1,8 +1,8 @@
 <Project>
   <!--
     In-process plugins are compiled in (introduce-plugins decision 5): the api, and the test projects that host it,
-    reference every plugins/<name>/server/*.csproj; provider plugins' plugins/<name>/lib/*.csproj go into the named
-    provider hosts below. The api applies only the installed ones (plugins/.installed); the
+    reference every plugins/<name>/server/*.csproj; pure contribution libraries under plugins/<name>/lib/*.csproj go into the
+    opted-in provider/indexing hosts below. The api applies only the installed ones (plugins/.installed); the
     rest are inert.
 
     The product image variant (decision 5e) builds with MafImageVariant=product and MafProductPlugins=|A|B| (the server
@@ -17,7 +17,8 @@
       goes into every project that opts in with <MafProviderHost>true</MafProviderHost> in its own csproj — not a list of
       names here, which would name a plugin's project once a host moves into a plugin. Each host registers only the
       installed ones (ProviderHost.AddInstalledProviders). This supersedes §81's "the api and the test hosts" for the
-      provider kind.
+      provider kind. The same generic lib/ glob supplies pure graph builder contributions to the indexer;
+      each host registers only the contribution interfaces it uses.
     -->
   </PropertyGroup>
   <ItemGroup Condition="'$(_MafPluginHost)' == 'true'">
@@ -34,7 +35,7 @@
     amends DECISIONS §81 part F, which had rejected a service/ glob for billing's eval-hosted library).
   -->
   <ItemGroup Condition="'$(MSBuildProjectName)' == 'Maf.Lab.Tests' or '$(MSBuildProjectName)' == 'Maf.Lab.IntegrationTests'">
-    <_MafPluginService Include="$(MSBuildThisFileDirectory)plugins/*/service/*.csproj" />
+    <_MafPluginService Include="$(MSBuildThisFileDirectory)plugins/*/service/**/*.csproj" />
     <!-- Under extern alias `service`: a service's top-level Program is global and would shadow core types (Eval's Program). -->
     <ProjectReference Include="@(_MafPluginService)" Aliases="service" />
   </ItemGroup>

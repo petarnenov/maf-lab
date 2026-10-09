@@ -1,4 +1,4 @@
-// What GET /api/telemetry answers: what the stack measured about itself. See this plugin's docs/http-api.md.
+// What GET /api/platform/telemetry answers: what the stack measured about itself. See this plugin's docs/http-api.md.
 
 export interface TelemetrySeries {
   label: string;

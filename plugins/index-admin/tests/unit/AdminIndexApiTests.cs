@@ -11,7 +11,7 @@ namespace Maf.Lab.Tests;
 
 /// <summary>
 /// The admin index API over a real host and job runner (SQLite in a temp folder), with the index-admin plugin installed:
-/// what a TENANT_ADMIN's screen gets from /api/admin/index/* and /api/admin/jobs/{id}. The vector store is unreachable in
+/// what a PLATFORM_ADMIN's screen gets from /api/platform/index/* and /api/platform/jobs/{id}. The vector store is unreachable in
 /// these tests, so a job that reaches it ends failed; what each test asserts is the endpoint's own contract.
 /// </summary>
 public sealed class AdminIndexApiTests
@@ -30,12 +30,15 @@ public sealed class AdminIndexApiTests
     private static ApiFactory AdminApi(Dictionary<string, string?>? extra = null) =>
         IndexAdminPluginSupport.Api([IndexAdminPluginSupport.CorpusPlugin("alpha")], extra);
 
-    [Fact]
-    public async Task The_admin_index_surface_is_for_tenant_admins()
+    [Theory]
+    [InlineData(Role.USER)]
+    [InlineData(Role.READ_ONLY)]
+    [InlineData(Role.TENANT_ADMIN)]
+    public async Task The_admin_index_surface_is_for_platform_operators(Role role)
     {
         using var api = AdminApi();
 
-        var response = await api.ClientFor("bob", "firm-a", Role.USER).GetAsync("/api/admin/index/status", Ct);
+        var response = await api.ClientFor("bob", "firm-a", role).GetAsync("/api/platform/index/status", Ct);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -44,19 +47,19 @@ public sealed class AdminIndexApiTests
     public async Task A_running_job_is_stopped_through_its_cancel_route()
     {
         using var api = AdminApi();
-        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.PLATFORM_ADMIN);
         var runner = api.Services.GetRequiredService<Maf.Lab.Api.Admin.AdminJobRunner>();
         var job = await runner.StartAsync("firm-a", "index", async ct => { await Task.Delay(Timeout.Infinite, ct); return "never"; }, Ct);
 
-        var response = await admin.PostAsync($"/api/admin/jobs/{job.JobId}/cancel", null, Ct);
+        var response = await admin.PostAsync($"/api/platform/jobs/{job.JobId}/cancel", null, Ct);
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         Assert.Equal(AdminJobStates.Canceled, (await response.Content.ReadFromJsonAsync<AdminJob>(Json, Ct))!.State);
         // Once ended, a second cancel is a conflict; an unknown job is not found; a non-admin may not.
-        Assert.Equal(HttpStatusCode.Conflict, (await admin.PostAsync($"/api/admin/jobs/{job.JobId}/cancel", null, Ct)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await admin.PostAsync("/api/admin/jobs/j_nope/cancel", null, Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await admin.PostAsync($"/api/platform/jobs/{job.JobId}/cancel", null, Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await admin.PostAsync("/api/platform/jobs/j_nope/cancel", null, Ct)).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await api.ClientFor("bob", "firm-a", Role.USER)
-            .PostAsync($"/api/admin/jobs/{job.JobId}/cancel", null, Ct)).StatusCode);
+            .PostAsync($"/api/platform/jobs/{job.JobId}/cancel", null, Ct)).StatusCode);
     }
 
     [Fact]
@@ -65,8 +68,8 @@ public sealed class AdminIndexApiTests
         // One profile, and it is the active vector: there is no other target to fall back to.
         using var api = AdminApi();
 
-        var response = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN)
-            .PostAsync("/api/admin/index/migrate", null, Ct);
+        var response = await api.ClientFor("alice", "firm-a", Role.PLATFORM_ADMIN)
+            .PostAsync("/api/platform/index/migrate", null, Ct);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var problem = await response.Content.ReadFromJsonAsync<JsonElement>(Json, Ct);
@@ -79,8 +82,8 @@ public sealed class AdminIndexApiTests
     {
         using var api = AdminApi(TwoVectors());
 
-        var response = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN)
-            .PostAsJsonAsync("/api/admin/index/migrate", new { targetModel = "not-a-vector" }, Ct);
+        var response = await api.ClientFor("alice", "firm-a", Role.PLATFORM_ADMIN)
+            .PostAsJsonAsync("/api/platform/index/migrate", new { targetModel = "not-a-vector" }, Ct);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var problem = await response.Content.ReadFromJsonAsync<JsonElement>(Json, Ct);
@@ -93,8 +96,8 @@ public sealed class AdminIndexApiTests
     {
         using var api = AdminApi();
 
-        var response = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN)
-            .PostAsync("/api/admin/index/migrate", new StringContent("{not json", Encoding.UTF8, "application/json"), Ct);
+        var response = await api.ClientFor("alice", "firm-a", Role.PLATFORM_ADMIN)
+            .PostAsync("/api/platform/index/migrate", new StringContent("{not json", Encoding.UTF8, "application/json"), Ct);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var problem = await response.Content.ReadFromJsonAsync<JsonElement>(Json, Ct);
@@ -105,15 +108,15 @@ public sealed class AdminIndexApiTests
     public async Task A_migrate_to_a_configured_vector_name_starts_a_job_that_can_be_polled()
     {
         using var api = AdminApi(TwoVectors());
-        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.PLATFORM_ADMIN);
 
-        var response = await admin.PostAsJsonAsync("/api/admin/index/migrate", new { targetModel = "dense_alt" }, Ct);
+        var response = await admin.PostAsJsonAsync("/api/platform/index/migrate", new { targetModel = "dense_alt" }, Ct);
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         var job = await response.Content.ReadFromJsonAsync<AdminJob>(Json, Ct);
         Assert.NotNull(job);
         Assert.Equal("migrate", job.Kind);
-        Assert.Equal($"/api/admin/jobs/{job.JobId}", response.Headers.Location?.ToString());
+        Assert.Equal($"/api/platform/jobs/{job.JobId}", response.Headers.Location?.ToString());
         var finished = await WaitAsync(admin, job.JobId);
         // The vector store is unreachable in these tests: the job is reported failed, not running forever.
         Assert.Equal(AdminJobStates.Failed, finished.State);
@@ -123,9 +126,9 @@ public sealed class AdminIndexApiTests
     public async Task A_migrate_may_name_the_model_instead_of_the_vector()
     {
         using var api = AdminApi(TwoVectors());
-        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.PLATFORM_ADMIN);
 
-        var response = await admin.PostAsJsonAsync("/api/admin/index/migrate", new { targetModel = "alt-model" }, Ct);
+        var response = await admin.PostAsJsonAsync("/api/platform/index/migrate", new { targetModel = "alt-model" }, Ct);
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         var job = await response.Content.ReadFromJsonAsync<AdminJob>(Json, Ct);
@@ -138,9 +141,9 @@ public sealed class AdminIndexApiTests
     public async Task A_migrate_with_no_body_targets_the_configured_vector_that_is_not_active()
     {
         using var api = AdminApi(TwoVectors());
-        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.PLATFORM_ADMIN);
 
-        var response = await admin.PostAsync("/api/admin/index/migrate", null, Ct);
+        var response = await admin.PostAsync("/api/platform/index/migrate", null, Ct);
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         var job = await response.Content.ReadFromJsonAsync<AdminJob>(Json, Ct);
@@ -156,15 +159,15 @@ public sealed class AdminIndexApiTests
         // corpus stops before it, and succeeds with nothing to do.
         using var api = AdminApi();
         IndexAdminPluginSupport.WriteDocument(api, "alpha");
-        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.PLATFORM_ADMIN);
 
-        var response = await admin.PostAsync("/api/admin/index/run", null, Ct);
+        var response = await admin.PostAsync("/api/platform/index/run", null, Ct);
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         var job = await response.Content.ReadFromJsonAsync<AdminJob>(Json, Ct);
         Assert.NotNull(job);
         Assert.Equal("index", job.Kind);
-        Assert.Equal($"/api/admin/jobs/{job.JobId}", response.Headers.Location?.ToString());
+        Assert.Equal($"/api/platform/jobs/{job.JobId}", response.Headers.Location?.ToString());
         var finished = await WaitAsync(admin, job.JobId);
         Assert.Equal(AdminJobStates.Failed, finished.State);
     }
@@ -174,7 +177,7 @@ public sealed class AdminIndexApiTests
     {
         using var api = AdminApi();
 
-        var response = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN).GetAsync("/api/admin/jobs/j_missing", Ct);
+        var response = await api.ClientFor("alice", "firm-a", Role.PLATFORM_ADMIN).GetAsync("/api/platform/jobs/j_missing", Ct);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -183,7 +186,7 @@ public sealed class AdminIndexApiTests
     {
         for (var i = 0; i < 400; i++)
         {
-            var job = await client.GetFromJsonAsync<AdminJob>($"/api/admin/jobs/{jobId}", Json, Ct);
+            var job = await client.GetFromJsonAsync<AdminJob>($"/api/platform/jobs/{jobId}", Json, Ct);
             if (job is { } done && done.State is AdminJobStates.Succeeded or AdminJobStates.Failed)
             {
                 return done;

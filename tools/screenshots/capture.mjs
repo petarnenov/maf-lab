@@ -116,6 +116,10 @@ async function main() {
       const page = await context.newPage();
       try {
         await page.goto(`${BASE}${shot.url}`, { waitUntil: 'networkidle' });
+        if (new URL(page.url()).pathname !== new URL(shot.url, BASE).pathname) {
+          console.log(`  skipped: ${shot.url} is not served by the installed pages`);
+          continue;
+        }
         if (shot.prepare) await shot.prepare(page);
         else await page.locator(shot.ready).first().waitFor({ timeout: 30_000 });
         await page.waitForLoadState('networkidle');

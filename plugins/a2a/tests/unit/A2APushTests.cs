@@ -4,7 +4,6 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Maf.Lab.Api.A2A;
 using Maf.Lab.Plugins.A2A;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -28,6 +27,7 @@ public class A2APushTests
 
     private static async Task<HttpClient> PartnerClientAsync(ApiFactory api)
     {
+        A2APluginSupport.BootstrapPartners(api);
         var client = api.CreateClient();
         var response = await client.PostAsJsonAsync("/a2a/token", new A2AEndpoints.TokenRequest("acme-portal", "s3cret"), Ct);
         var token = (await response.Content.ReadFromJsonAsync<A2AEndpoints.TokenResponse>(Ct))!.AccessToken;
@@ -127,7 +127,7 @@ public class A2APushTests
         });
 
         await using var db = ChatApiTests.Db(api);
-        var recorded = await db.A2APushDeliveries.Where(d => d.TaskId == taskId).ToListAsync(Ct);
+        var recorded = await db.Set<A2APushDeliveryRow>().Where(d => d.TaskId == taskId).ToListAsync(Ct);
         Assert.Equal(deliveries.Count, recorded.Count);
         Assert.All(recorded, row => Assert.True(row.Delivered));
     }
@@ -145,7 +145,7 @@ public class A2APushTests
         Assert.Equal("completed", task.GetProperty("status").GetProperty("state").GetString());
 
         await using var db = ChatApiTests.Db(api);
-        var failures = await db.A2APushDeliveries.Where(d => d.TaskId == taskId).ToListAsync(Ct);
+        var failures = await db.Set<A2APushDeliveryRow>().Where(d => d.TaskId == taskId).ToListAsync(Ct);
         Assert.NotEmpty(failures);
         Assert.All(failures, row =>
         {
@@ -167,7 +167,7 @@ public class A2APushTests
         var taskId = await StartedRunAsync(client, api, url, "shhh");
 
         await using var db = ChatApiTests.Db(api);
-        var rows = await db.A2APushDeliveries.Where(d => d.TaskId == taskId).ToListAsync(Ct);
+        var rows = await db.Set<A2APushDeliveryRow>().Where(d => d.TaskId == taskId).ToListAsync(Ct);
         Assert.NotEmpty(rows);
         Assert.All(rows, row => Assert.Equal("HTTP 500", row.Error));
         Assert.Equal(rows.Sum(r => r.Attempts), received.Count);

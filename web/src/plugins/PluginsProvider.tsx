@@ -42,11 +42,19 @@ export function PluginsProvider({
     queryKey: ['plugins', token],
     queryFn: ({ signal }) => apiRequest<PluginList>(token, '/api/plugins', { signal }),
     staleTime: 30_000,
+    refetchInterval: 30_000,
   });
   // The modules loaded, by the names in use; the registry is derived from them and the latest health, so a plugin whose
   // health changes re-renders without being imported again.
   const [loaded, setLoaded] = useState<readonly MafWebPlugin[]>([]);
+  const [loadedNames, setLoadedNames] = useState<string | null>(null);
   const names = (inUse.data?.plugins ?? []).map((p) => p.name).join(',');
+  // Old modules may finish loading after the caller or allowance changes. They never contribute unless
+  // the current caller's latest registration names them, even while replacement modules are loading.
+  const visible = useMemo(() => {
+    const wanted = new Set(names.split(','));
+    return loaded.filter((plugin) => wanted.has(plugin.name));
+  }, [loaded, names]);
 
   useEffect(() => {
     let current = true;
@@ -56,6 +64,7 @@ export function PluginsProvider({
       setLoaded(
         loaded.flatMap((result) => (result.status === 'fulfilled' ? [result.value.default] : [])),
       );
+      setLoadedNames(names);
     });
     return () => {
       current = false;
@@ -66,18 +75,18 @@ export function PluginsProvider({
   // on every change to the set, so the activations live in a ref, keyed by plugin name.
   const active = useRef(new Map<string, (() => void) | undefined>());
   useEffect(() => {
-    const present = new Set(loaded.map((plugin) => plugin.name));
+    const present = new Set(visible.map((plugin) => plugin.name));
     for (const [name, deactivate] of active.current) {
       if (present.has(name)) continue;
       active.current.delete(name);
       deactivate?.();
     }
-    for (const plugin of loaded) {
+    for (const plugin of visible) {
       if (active.current.has(plugin.name)) continue;
       const deactivate = plugin.activate?.();
       active.current.set(plugin.name, typeof deactivate === 'function' ? deactivate : undefined);
     }
-  }, [loaded]);
+  }, [visible]);
   useEffect(() => {
     const activations = active.current;
     return () => {
@@ -89,10 +98,11 @@ export function PluginsProvider({
   const listed = inUse.data?.plugins;
   const registry = useMemo<PluginRegistry>(
     () => ({
-      plugins: loaded,
+      plugins: visible,
+      ready: !inUse.isPending && loadedNames === names,
       health: Object.fromEntries((listed ?? []).map((p) => [p.name, p.health ?? 'unknown'])),
     }),
-    [loaded, listed],
+    [visible, listed, inUse.isPending, loadedNames, names],
   );
 
   // Known only once a signed-in answer is in: an anonymous one lists no domains (introduce-plugins 5h).

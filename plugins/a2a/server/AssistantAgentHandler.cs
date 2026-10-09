@@ -29,6 +29,9 @@ public sealed partial class AssistantAgentHandler(
     IOptions<A2AOptions> options,
     IActivityAudit audit,
     IAssistantAnswer assistant,
+    IPluginAccess access,
+    IInstalledPlugins installed,
+    IA2ATaskOwner taskOwners,
     ITaskStore tasks,
     IHostApplicationLifetime lifetime,
     TimeProvider time,
@@ -49,32 +52,43 @@ public sealed partial class AssistantAgentHandler(
         var text = context.UserText ?? "";
         var started = time.GetUtcNow();
         var updater = new TaskUpdater(queue, context.TaskId, context.ContextId);
+        var readers = PartnerPluginAccess.Current ?? await PartnerPluginAccess.CaptureAsync(partner, access, cancellationToken);
+        var named = FirmReference(text) ?? FirmReference(HistoryText(context));
+        var owner = context.IsContinuation ? await taskOwners.OwnerAsync(context.TaskId, cancellationToken) : null;
+        var selected = readers.FirstOrDefault(reader => reader.Principal == owner)
+            ?? BillingReaders(readers).FirstOrDefault(reader => named is null || reader.Principal.TenantId == named)
+            ?? readers.FirstOrDefault();
+        using var actorScope = selected is null ? null : PluginAccessContext.Use(selected.Principal, selected.Access);
+        if (selected is not null) PartnerPluginAccess.SelectTask(context.TaskId, selected.Principal);
+        var actor = selected?.Principal;
 
         try
         {
             if (WantsToStartARun(text) || context.IsContinuation)
             {
-                await RunBillingAsync(partner, context, queue, updater, text, cancellationToken);
+                await RunBillingAsync(readers, context, queue, updater, text, cancellationToken);
                 return;
             }
-            await AnswerAsync(partner, queue, text, cancellationToken);
+            actor = await AnswerAsync(readers, queue, text, cancellationToken) ?? actor;
         }
         finally
         {
-            await RecordAsync(partner, context.IsContinuation ? "continue" : "message", context.TaskId, started, cancellationToken);
+            await RecordAsync(partner, context.IsContinuation ? "continue" : "message", context.TaskId, started, cancellationToken,
+                actor);
         }
     }
 
     public async Task CancelAsync(RequestContext context, AgentEventQueue queue, CancellationToken cancellationToken)
     {
         var started = time.GetUtcNow();
+        var owner = await taskOwners.OwnerAsync(context.TaskId, cancellationToken);
         await new TaskUpdater(queue, context.TaskId, context.ContextId).CancelAsync(cancellationToken);
 
         // A cancel can also come from the firm whose data is being worked on, who is not a partner at all. The
         // task ends the same way; who asked is recorded by whoever asked.
         if (Partner() is { } partner)
         {
-            await RecordAsync(partner, "cancel", context.TaskId, started, cancellationToken);
+            await RecordAsync(partner, "cancel", context.TaskId, started, cancellationToken, owner);
         }
     }
 
@@ -95,22 +109,23 @@ public sealed partial class AssistantAgentHandler(
     /// named run is answered from the run's own record, because the entitlement check is the answer; anything else
     /// goes to the assistant itself, which is where the documentation and the reasoning live.
     /// </summary>
-    private async Task AnswerAsync(PartnerPrincipal partner, AgentEventQueue queue, string text, CancellationToken ct)
+    private async Task<Principal?> AnswerAsync(IReadOnlyList<PartnerReader> readers, AgentEventQueue queue, string text, CancellationToken ct)
     {
         if (RunReference().Match(text) is { Success: true } match)
         {
+            var (status, actor) = await StatusForAsync(readers, match.Groups["run"].Value, ct);
             await queue.EnqueueMessageAsync(
                 new Message
                 {
                     MessageId = Guid.NewGuid().ToString("N"),
                     Role = MessageRole.Agent,
-                    Parts = [new Part { Text = await StatusForAsync(partner, match.Groups["run"].Value, ct) }],
+                    Parts = [new Part { Text = status }],
                 }, ct);
             queue.Complete();
-            return;
+            return actor;
         }
 
-        if (partner.AllowedFirms.Count == 0)
+        if (BillingReaders(readers).FirstOrDefault(reader => reader.Principal == PluginAccessContext.Principal) is not { } reader)
         {
             await queue.EnqueueMessageAsync(
                 new Message
@@ -120,13 +135,15 @@ public sealed partial class AssistantAgentHandler(
                     Parts = [new Part { Text = OutOfScope }],
                 }, ct);
             queue.Complete();
-            return;
+            return null;
         }
 
         // The assistant answers as a read-only principal for the first firm this partner may see; this plugin frames it.
-        var answer = await assistant.AnswerAsync(Readers(partner).First(), text, ct);
+        using var scope = PluginAccessContext.Use(reader.Principal, reader.Access);
+        var answer = await assistant.AnswerAsync(reader.Principal, text, ct);
         await queue.EnqueueMessageAsync(Say(answer), ct);
         queue.Complete();
+        return reader.Principal;
     }
 
     /// <summary>
@@ -134,31 +151,33 @@ public sealed partial class AssistantAgentHandler(
     /// registration's order. The tenant comes from the partner's entitlement only, so no principal exists for a firm the
     /// partner was not registered for.
     /// </summary>
-    private static IEnumerable<Principal> Readers(PartnerPrincipal partner) =>
-        partner.AllowedFirms.Select(allowed => new Principal($"a2a:{allowed.Value}", allowed, UserRole.READ_ONLY));
+    private IEnumerable<PartnerReader> BillingReaders(IReadOnlyList<PartnerReader> readers) =>
+        readers.Where(reader => AssistantAgentCard.HasBilling(installed, [reader]));
 
-    private async Task<string> StatusForAsync(PartnerPrincipal partner, string runId, CancellationToken ct)
+    private async Task<(string Text, Principal? Actor)> StatusForAsync(IReadOnlyList<PartnerReader> readers, string runId, CancellationToken ct)
     {
         // The entitlement decides, and it decides the same way whether or not the run exists: a partner learns
         // nothing about another firm, not even that one of its runs exists.
-        foreach (var reader in Readers(partner))
+        foreach (var reader in BillingReaders(readers))
         {
             var status = await CallBillingAsync<BillingRunStatus>(reader, "get_billing_run_status",
                 new Dictionary<string, object?> { ["runId"] = runId }, ct);
             if (status is not null)
             {
-                return $"Run {status.RunId} for {reader.TenantId.Value} is {status.Status} "
+                return ($"Run {status.RunId} for {reader.Principal.TenantId.Value} is {status.Status} "
                     + $"({status.AccountCount} accounts, period {status.PeriodStart:yyyy-MM-dd} to {status.PeriodEnd:yyyy-MM-dd})"
-                    + (status.FailureReason is null ? "." : $". Reason: {status.FailureReason}");
+                    + (status.FailureReason is null ? "." : $". Reason: {status.FailureReason}"), reader.Principal);
             }
         }
-        return OutOfScope;
+        return (OutOfScope, null);
     }
 
     /// <summary>The simulated run: submitted → working (with progress) → completed, or asked for what is missing.</summary>
-    private async Task RunBillingAsync(PartnerPrincipal partner, RequestContext context, AgentEventQueue queue,
+    private async Task RunBillingAsync(IReadOnlyList<PartnerReader> readers, RequestContext context, AgentEventQueue queue,
         TaskUpdater updater, string text, CancellationToken ct)
     {
+        var named = FirmReference(text) ?? FirmReference(HistoryText(context));
+        var reader = BillingReaders(readers).FirstOrDefault(r => r.Principal == PluginAccessContext.Principal);
         // The task itself is the first event: a non-streaming caller gets it as the result, and a streaming one
         // gets something to attach its later updates to. A continuation already has one, and saying "submitted"
         // again would take it backwards, so it is sent as it stands.
@@ -173,8 +192,9 @@ public sealed partial class AssistantAgentHandler(
 
         // The firm the text names, or the partner's first; the run reads as that firm's reader, which exists only when the
         // partner may see it.
-        var named = FirmReference(text);
-        if (Readers(partner).FirstOrDefault(r => named is null || r.TenantId == named) is not { } reader)
+        if (reader is null || (named is not null && reader.Principal.TenantId != named)
+            || (context.IsContinuation && FirmReference(HistoryText(context)) is { } original
+            && reader.Principal.TenantId != original))
         {
             await updater.RejectAsync(Say(OutOfScope), ct);
             return;
@@ -196,7 +216,7 @@ public sealed partial class AssistantAgentHandler(
         await using var watch = TaskCancelWatch.Start(tasks, context.TaskId, TimeSpan.FromMilliseconds(options.Value.CancelPollMs), time);
         using var run = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopping, watch.Token);
         var work = run.Token;
-        await updater.StartWorkAsync(Say($"Starting the billing run for {reader.TenantId.Value}, period {period}."), work);
+        await updater.StartWorkAsync(Say($"Starting the billing run for {reader.Principal.TenantId.Value}, period {period}."), work);
         foreach (var step in new[] { "Loading accounts", "Applying fee schedules", "Producing invoices" })
         {
             work.ThrowIfCancellationRequested();
@@ -214,7 +234,7 @@ public sealed partial class AssistantAgentHandler(
                     // A DataPart: structured for the caller's code, not prose for a human to parse.
                     Data = System.Text.Json.JsonSerializer.SerializeToElement(new BillingRunArtifact
                     {
-                        FirmId = reader.TenantId.Value,
+                        FirmId = reader.Principal.TenantId.Value,
                         Period = period,
                         RunId = latest?.RunId,
                         Status = latest?.Status ?? "unknown",
@@ -224,7 +244,7 @@ public sealed partial class AssistantAgentHandler(
                 },
             ],
             name: "billing-run-result", cancellationToken: work);
-        await updater.CompleteAsync(Say($"The simulated run for {reader.TenantId.Value} ({period}) is complete."), work);
+        await updater.CompleteAsync(Say($"The simulated run for {reader.Principal.TenantId.Value} ({period}) is complete."), work);
     }
 
     private static string HistoryText(RequestContext context) =>
@@ -242,13 +262,14 @@ public sealed partial class AssistantAgentHandler(
     /// other partner question reaches a domain. Null when billing is not installed, its server cannot answer, or the
     /// tool says it found nothing.
     /// </summary>
-    private async Task<T?> CallBillingAsync<T>(Principal reader, string tool, Dictionary<string, object?> arguments,
+    private async Task<T?> CallBillingAsync<T>(PartnerReader reader, string tool, Dictionary<string, object?> arguments,
         CancellationToken ct) where T : class
     {
         // A read-only principal for one of the partner's firms: a partner reads one firm at a time, with no advisor
         // scope. Not the partner's own token, whose A2A audience the MCP server refuses by construction
         // (PartnerIdentity).
-        var result = await tools.CallAsync(reader, BillingDomain, tool, arguments, ct);
+        using var scope = PluginAccessContext.Use(reader.Principal, reader.Access);
+        var result = await tools.CallAsync(reader.Principal, BillingDomain, tool, arguments, ct);
         try
         {
             return result is { } content ? content.Deserialize<T>(Web) : null;
@@ -262,13 +283,14 @@ public sealed partial class AssistantAgentHandler(
 
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
-    private async Task RecordAsync(PartnerPrincipal partner, string operation, string taskId, DateTimeOffset started, CancellationToken ct)
+    private async Task RecordAsync(PartnerPrincipal partner, string operation, string taskId, DateTimeOffset started, CancellationToken ct,
+        Principal? actor = null)
     {
         try
         {
             await audit.RecordAsync(
                 new Principal(partner.PartnerId,
-                    partner.AllowedFirms.Count > 0 ? partner.AllowedFirms.First() : TenantId.Firm("unknown"),
+                    actor?.TenantId ?? (partner.AllowedFirms.Count > 0 ? partner.AllowedFirms.First() : TenantId.Firm("unknown")),
                     UserRole.READ_ONLY),
                 RequestKind, $"a2a.{operation}", $"taskId={taskId}", "ok",
                 (long)(time.GetUtcNow() - started).TotalMilliseconds, ct);

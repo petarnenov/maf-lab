@@ -1,4 +1,6 @@
-using Maf.Lab.Api.Storage;
+using Maf.Lab.Api.DataLifecycle;
+using Maf.Lab.Domain.Tenancy;
+using Maf.Lab.Plugins.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -24,26 +26,75 @@ public sealed class MessageRetentionOptions
 /// </summary>
 public sealed class MessageRetentionService(
     IDbContextFactory<MafDbContext> db,
+    CoreDataLifecycle lifecycle,
     IOptions<MessageRetentionOptions> options,
     TimeProvider time,
     ILogger<MessageRetentionService> logger) : BackgroundService
 {
     public async Task<int> PurgeAsync(CancellationToken ct)
     {
-        var cutoff = time.GetUtcNow().UtcDateTime.AddDays(-options.Value.RetentionDays);
+        var cutoff = time.GetUtcNow().AddDays(-options.Value.RetentionDays);
         await using var ctx = await db.CreateDbContextAsync(ct);
 
-        var stale = await ctx.Conversations.Where(c => c.LastActivityAt < cutoff).Select(c => c.Id).ToListAsync(ct);
-        if (stale.Count == 0)
+        var owners = await ctx.Conversations.Where(c => c.LastActivityAt < cutoff.UtcDateTime)
+            .Select(c => c.TenantId).Distinct().ToListAsync(ct);
+        var removed = 0;
+        var jobs = new LifecycleJobStore(db);
+        var runner = new LifecycleJobRunner(jobs, time, TimeSpan.FromSeconds(1));
+        foreach (var owner in owners)
         {
-            return 0;
+            var tenant = TenantId.Firm(owner);
+            LifecycleJobSnapshot job;
+            try
+            {
+                // Admission and hold creation share the database writer lock. This old core-only
+                // schedule must obey that protocol too, before full per-tenant scheduling replaces it.
+                job = await jobs.EnqueueAsync(new DataLifecycleScope(tenant), LifecycleOperation.Retention,
+                    ["core"], cutoff, ct);
+            }
+            catch (LifecycleLegalHoldBlockedException blocked)
+            {
+                logger.LogInformation("message retention blocked by legal hold {HoldIds} for tenant {Tenant}",
+                    string.Join(",", blocked.Holds.Select(h => h.Id)), owner);
+                continue;
+            }
+            catch (LifecycleJobBusyException)
+            {
+                // Another replica or another lifecycle operation still owns this tenant.
+                continue;
+            }
+            var count = 0;
+            LifecycleJobSnapshot result;
+            try
+            {
+                result = await runner.RunAsync(tenant, job.Id, async (snapshot, _, token) =>
+                {
+                    // Use the persisted cutoff and the same content closure as erasure, before turns
+                    // lose the ownership of copied feedback/labels. The whole operation is awaited.
+                    count = await lifecycle.PurgeAsync(new DataRetentionPolicy(snapshot.Tenant, snapshot.RetainFrom!.Value), token);
+                }, ct);
+            }
+            catch
+            {
+                try
+                {
+                    // Admission already committed. A canceled request or failed claim must not
+                    // strand a queued job. If it may be running, requesting stop keeps the slot
+                    // until the attempt can prove that its work has unwound.
+                    await jobs.RequestStopAsync(tenant, job.Id, CancellationToken.None);
+                }
+                catch (Exception cleanupFailure)
+                {
+                    logger.LogWarning("message retention stop request failed: {ErrorType}", cleanupFailure.GetType().Name);
+                }
+                throw;
+            }
+            ct.ThrowIfCancellationRequested();
+            if (result.State == LifecycleJobState.Succeeded) removed += count;
+            else if (result.State == LifecycleJobState.Failed)
+                logger.LogWarning("message retention failed for tenant {Tenant}", owner);
         }
-        // The turns go with the conversation, their core records with them. A plugin's diagnostics of them (the monitor's)
-        // follow its own, shorter retention.
-        await ctx.Turns.Where(t => stale.Contains(t.ConversationId)).ExecuteDeleteAsync(ct);
-        await ctx.Messages.Where(m => stale.Contains(m.ConversationId)).ExecuteDeleteAsync(ct);
-        await ctx.PendingWrites.Where(p => stale.Contains(p.ConversationId)).ExecuteDeleteAsync(ct);
-        return await ctx.Conversations.Where(c => stale.Contains(c.Id)).ExecuteDeleteAsync(ct);
+        return removed;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

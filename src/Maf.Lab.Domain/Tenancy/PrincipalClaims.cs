@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Collections.Frozen;
 
 namespace Maf.Lab.Domain.Tenancy;
 
@@ -8,6 +9,7 @@ public static class PrincipalClaims
     public const string UserId = "sub";
     public const string TenantId = "tenant_id";
     public const string Role = "role";
+    public const string Groups = "groups";
 
     /// <summary>Domain roles, such as <c>billing:advisor</c>. The core never reads them; the domain's own server does.</summary>
     public const string DomainRoles = "domain_roles";
@@ -46,7 +48,10 @@ public static class PrincipalClaims
             return false;
         }
 
-        principal = new Principal(sub, tenant, parsedRole);
+        principal = new Principal(sub, tenant, parsedRole)
+        {
+            GroupIds = user.FindAll(Groups).Select(c => c.Value).Where(v => !string.IsNullOrWhiteSpace(v)).ToFrozenSet(StringComparer.Ordinal),
+        };
         return true;
     }
 

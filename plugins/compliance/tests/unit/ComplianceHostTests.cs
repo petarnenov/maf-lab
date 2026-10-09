@@ -13,7 +13,7 @@ public sealed class ComplianceHostTests
     public async Task The_reviewer_reads_its_own_audience()
     {
         await using var app = service::Maf.Lab.ComplianceAgent.Program.BuildApp(
-            ProjectDir.ContentRootArgsAt(Path.Combine("plugins", "compliance", "service")), TestHostContentRootTests.InMemoryStores);
+            ProjectDir.ContentRootArgsAt(Path.Combine("plugins", "compliance", "service")), Maf.Lab.TestSupport.ProtocolHostFixtures.InMemoryStores);
 
         Assert.Equal("maf-lab-compliance", app.Services.GetRequiredService<IOptions<A2AOptions>>().Value.Audience);
     }

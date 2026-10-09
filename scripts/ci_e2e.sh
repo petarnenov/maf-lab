@@ -12,7 +12,7 @@ shift
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEV_PROJECT="${DEV_PROJECT:-maf-lab}"
 E2E_PROJECT="${E2E_PROJECT:-maf-lab-e2e}"
-E2E_TARGETS="${E2E_TARGETS:-up index-if-empty verify eval-a2a testgen-e2e}"
+E2E_TARGETS="${E2E_TARGETS:-up index-if-empty verify plugin-e2e}"
 FILES=(-f "$ROOT/compose/docker-compose.yml" -f "$ROOT/compose/docker-compose.ci.yml")
 
 echo "▸ Stopping the dev stack ($DEV_PROJECT, volumes kept) — the e2e stack needs its ports"

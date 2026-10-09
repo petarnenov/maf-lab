@@ -67,7 +67,8 @@ public class A2AGuardrailTests : IDisposable
 
     private static (AssistantAgentHandler Handler, ApiFactory Api) Partner(FakeJev jev)
     {
-        var api = new ApiFactory(ApiFactory.ProceduralModel(), jev: jev);
+        var api = new ApiFactory(ApiFactory.ProceduralModel(), jev: jev) { InstalledPlugins = A2APluginSupport.Installed };
+        A2APluginSupport.BootstrapPartners(api);
         var partner = new PartnerPrincipal("acme-portal", new HashSet<TenantId> { TenantId.Firm("firm-a") },
             new HashSet<string> { A2AScopes.BillingRead });
         var handler = new AssistantAgentHandler(
@@ -76,6 +77,9 @@ public class A2AGuardrailTests : IDisposable
             Options.Create(new A2AOptions { SimulatedStepMs = 1 }),
             api.Services.GetRequiredService<IActivityAudit>(),
             api.Services.GetRequiredService<IAssistantAnswer>(),
+            api.Services.GetRequiredService<IPluginAccess>(),
+            api.Services.GetRequiredService<IInstalledPlugins>(),
+            api.Services.GetRequiredService<IA2ATaskOwner>(),
             api.Services.GetRequiredService<global::A2A.ITaskStore>(),
             api.Services.GetRequiredService<Microsoft.Extensions.Hosting.IHostApplicationLifetime>(),
             TimeProvider.System,

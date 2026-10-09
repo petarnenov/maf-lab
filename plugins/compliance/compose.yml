@@ -2,7 +2,7 @@
 # against compose/, as in every merged compose file.
 #
 # The reviewer: its own audience and its own registry (a token for the assistant's surface is no good here), its tasks
-# in the shared store. Only this plugin's own service: the api's client settings are the core's (compose/env/compliance.env).
+# in the shared store. Only this plugin's own service: the api's client settings are the core's (compose/env/a2a.env).
 services:
   compliance:
     build:

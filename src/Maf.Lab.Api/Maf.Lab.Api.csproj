@@ -22,7 +22,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Maf.Lab.A2A\Maf.Lab.A2A.csproj" />
-    <ProjectReference Include="..\Maf.Lab.TestGen\Maf.Lab.TestGen.csproj" />
     <ProjectReference Include="..\Maf.Lab.Hosting\Maf.Lab.Hosting.csproj" />
     <ProjectReference Include="..\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />
     <!-- Chat never queries the store directly (only via MCP tools); indexing is a plugin's to bring. -->
@@ -32,9 +31,9 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Maf.Lab.Tests" />
     <InternalsVisibleTo Include="Maf.Lab.IntegrationTests" />
-    <InternalsVisibleTo Include="Maf.Lab.Eval" />
   </ItemGroup>
   <ItemGroup>
     <None Update="Prompts\*.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup><ProjectReference Include="../Maf.Lab.Evaluation/Maf.Lab.Evaluation.csproj" /></ItemGroup>
 </Project>

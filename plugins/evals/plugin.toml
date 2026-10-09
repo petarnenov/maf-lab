@@ -1,0 +1,8 @@
+schema = 1
+name = "evals"
+kind = "app"
+scope = "installation"
+environments = ["dev", "qa"]
+description = "Evaluation reports, dataset export and developer runners for the installed plugins' cases."
+progress = "Terminal: suites show their progress bars; Page: the reports screen shows its loading state"
+stopping = "Key: Ctrl+C or SIGTERM; Stop: at a safe point between cases; Recorded in: finished report files; Shown: canceled with completed suites kept"

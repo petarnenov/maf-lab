@@ -29,12 +29,16 @@ context: |
     accounts, runs, fee schedules, documents) and the code graph (projects,
     files, types, methods, calls, read with Roslyn), every node tagged with
     its tenant.
-  - Models: one multilingual embedding model on the local Ollama in Docker
-    (embeddinggemma, vector dense_v3) — two instances, one for search queries
-    and one for document batches, each on its own CPUs — and the chat model on Ollama Cloud
-    (gpt-oss:120b). Typed decisions go to TypeSafe Jev (jev-1.13.0). The
-    provider is abstracted behind Microsoft.Extensions.AI so it can be
-    switched to Azure OpenAI / OpenAI by configuration only.
+  - Models: installed provider plugins. Typed decisions go through `IDecisionEngine`
+    (today `jev`, pinned jev-1.13.0); chat uses `IChatClient`, selected by
+    `MAF_CHAT_MODEL` (today `ollama-cloud`, gpt-oss:120b); embeddings use
+    `IEmbeddingGenerator` (today `ollama-embeddings`, local embeddinggemma,
+    vector dense_v3). Query and document embeddings keep separate instances
+    and each request's num_thread (dev defaults 4/12). `MAF_CORE_PROVIDERS`
+    defaults to `jev ollama-cloud ollama-embeddings`, installed first, even
+    with no domain. Exactly one decision engine and the named chat provider
+    must be installed. A provider or model change reaches stage or prod only
+    when the accepted eval baselines hold.
   - Sparse encoder: BM25 implemented in C# (tokenizer, IDF from the indexed
     corpus, persisted vocabulary). No external service.
   - Frontend: React (latest), TypeScript, Vite, React Router, TanStack Query
@@ -72,7 +76,7 @@ context: |
     .claude/                         Agent tooling: the OpenSpec skills and commands this repository's agents use
     .github/                         GitHub Actions workflows (ci, evals) and the Copilot instructions
     .vscode/                         Compound api + web debugging, and tasks for compose up, index and eval
-    compose/                         docker-compose.yml, the nginx load balancer, the Ollama stub for CI
+    compose/                         docker-compose.yml, nginx load balancer, Ollama stub for CI and external company IdP realm/profile templates
     copilot-runtime/                 CopilotKit's runtime (Node), wiring only: the web reaches the api's AG-UI agents through it; the AG-UI conformance check
     docs/                            HTTP API, trace events, telemetry and shared-state references; rules; screenshots; docs-sync.toml
     evals/                           JSONL datasets per suite, the accepted baseline, and the run reports
@@ -82,20 +86,16 @@ context: |
     src/                             .NET projects, one per service or shared library
       Maf.Lab.A2A/                   A2A code both agents share: partner identity, the signed card, the 1.0 wire format, the request handler
       Maf.Lab.Api/                   ASP.NET Core host: the agents behind the Agent Framework's AG-UI server (MapAGUIServer), history, feedback, admin, A2A
-      Maf.Lab.CodeSearch/            MCP server over the repository itself: search_codebase, ask_codebase (own collection)
-      Maf.Lab.CoverageRunner/        The coverage runner: builds and tests a commit plus a diff with coverage, with no secrets and no egress
       Maf.Lab.Domain/                Shared contracts ONLY (principal, tenant, result shapes)
-      Maf.Lab.Eval/                  Console app: eval datasets, runners, metrics, report
+      Maf.Lab.Evaluation/            Shared evaluation dataset formats, validation, text normalization and pure metrics
       Maf.Lab.Hosting/               What every service runs: instance identity and /health, telemetry, shared state
       Maf.Lab.Indexing/              Console app: source loaders, chunkers, embedding, upsert, drift
       Maf.Lab.Plugins.Abstractions/  The plugin contract: what a plugin is (identity, manifest) and the seams through which it reaches the core (IContributes*, ports)
       Maf.Lab.Portfolio/             MCP server for the portfolio domain: search_portfolio_documents (own collection), household read tools
       Maf.Lab.Retrieval/             MCP server exposing search_documents; Qdrant access; BM25; the relevance judge (over the installed decision engine)
-      Maf.Lab.TestAgent/             The test-generation agent: an A2A server that writes tests for one file until it reaches a coverage target
       Maf.Lab.TestGen/               What the api, the test agent and the runner share: wire contracts, the test-path allowlist, guardrails, Cobertura, git
     tests/                           xUnit unit tests and Testcontainers integration tests
     tools/                           Developer tools outside the running stack
-      Maf.Lab.A2AProbe/              A2A conformance probe: builds an agent from the card alone (make eval-a2a)
       screenshots/                   Playwright script that captures the README screenshots in both themes
     web/                             Vite + React app
   ```
@@ -103,6 +103,11 @@ context: |
 
   ## Conventions
 
+  - **Migration order (user decision, 2026-10-08).** Complete the code migration according to the agreed plan before
+    running indexing, reindexing, graph refreshes or live evals that depend on those indexes. During code migration,
+    use builds, contract tests and documentation/spec checks. Track index and eval requirements as deferred final
+    validation, and continue the planned code tasks. A source or timestamp change does not start an intermediate
+    index refresh. The promotion gate still applies before stage/prod.
   - **Progress feedback (top priority).** Every CLI tool shows a progress bar
     for the work it does, and every process started from the UI that can take
     longer than 3 seconds shows progress that matches the page's theme and
@@ -139,7 +144,7 @@ context: |
     Details: the `solid-and-standards` spec.
   - Tenant is `tenant_id`. It is derived from the caller's token, never from a
     request parameter, tool argument, or model output. The core principal holds
-    only core roles (`TENANT_ADMIN`, `USER`, `READ_ONLY`); domain roles and
+    only core roles (`TENANT_ADMIN`, `USER`, `READ_ONLY`, `PLATFORM_ADMIN`); domain roles and
     attributes (billing's advisor ids) are claims only the domain's server reads.
   - Every Qdrant query goes through exactly one method that takes a
     Principal and applies the tenant filter. No other code builds queries.
@@ -164,17 +169,17 @@ context: |
   - Evals run on demand and on change of prompt, tool description, model, or
     tool set — not on every commit.
 
-  ## Jev (TypeSafe System One)
+  ## Typed decisions (IDecisionEngine; Jev today)
 
-  Used for typed decisions: intent routing, guardrails, RAG passage
+  The installed decision engine is used for intent routing, guardrails, RAG passage
   filtering, tool-call verification. Full rule: docs/rules/jev-usage.md.
 
-  - Core: Jev decides, code controls, LLM writes.
+  - Core: the decision engine decides, code controls, LLM writes.
   - Closed answer spaces only; one atomic question each.
   - All questions over one state go in ONE request.
-  - No math, dates, or counting in Jev.
+  - No math, dates, or counting in the decision engine.
   - Gate every answer on confidence scaled to risk.
-  - Jev is never a security boundary.
+  - The decision engine is never a security boundary.
 # /generated:project-context
 
 rules:

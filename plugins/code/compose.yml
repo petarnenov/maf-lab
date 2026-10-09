@@ -10,7 +10,7 @@ services:
   mcp-code:
     build:
       context: ..
-      dockerfile: src/Maf.Lab.CodeSearch/Dockerfile
+      dockerfile: plugins/code/service/Dockerfile
       # full or product, as the api's (introduce-plugins 5e): the provider plugins' code it keeps (introduce-provider-plugins).
       args:
         MAF_IMAGE_VARIANT: ${MAF_IMAGE_VARIANT:-full}
@@ -21,12 +21,20 @@ services:
     environment:
       # The installed providers (the decision engine the relevance judge asks), read from plugins/.installed.
       Plugins__Root: /plugins
+      MAF_ENV: ${MAF_ENV:-dev}
+      Auth__Authority: ${AUTH_AUTHORITY:-}
+      Auth__CoreRoleClientId: ${AUTH_CORE_ROLE_CLIENT_ID:-api}
+      Auth__ResourceUri: ${CODE_MCP_RESOURCE_URI:-}
+      Auth__TrustedProxyNetworks__0: ${MCP_TRUSTED_PROXY_NETWORK:-}
+      Auth__Audience: code
       Urls: http://+:8080
       CodeSearch__Collection: maf_code_chunks
       CodeSearch__MetaCollection: maf_code_meta
     volumes:
       - ../plugins:/plugins:ro
     depends_on:
+      redis:
+        condition: service_healthy
       qdrant:
         condition: service_healthy
       neo4j:

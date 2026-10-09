@@ -14,16 +14,28 @@ export type { AdminJob, AdminJobState };
 export { ApiError } from '../api/client';
 
 /** The signed-in user's api client: a plugin's own routes, called as the user, with the core's errors and stop. */
-export { useApi } from '../auth/useAuth';
+export { useApi, useApiText } from '../auth/useAuth';
 
 /** The signed-in session (who, which tenant, which role), for what a plugin's page shows about the caller. */
+export type { SessionUser, Role } from '../api/types';
 export { useAuth } from '../auth/useAuth';
 
 /** The signed-in persona as a query key's part: a plugin's cached reads never show one user's data to another. */
 export { useUserKey } from '../history/historyApi';
 
 /** A link to another page of the app, followed by the core's router without a reload. */
+/** Read installed contributions when a plugin hosts panels from other plugins. */
+export { usePlugins } from './context';
+export { contributions } from './registry';
+export { PluginBoundary } from './PluginBoundary';
+export type { FeedbackKind, TurnSignal, ToolCallRecord } from '../api/types';
+
 export { PageLink } from './PageLink';
+/** The current page's query parameters, read and changed through the core's router. */
+export { useSearchParams as usePageQuery } from 'react-router';
+/** Official CopilotKit runtime access, for a plugin that follows its own registered agent. */
+export { useCopilotKit, type CopilotKitCoreReact } from '@copilotkit/react-core/v2/context';
+export { agentNamed } from '../agents/agents';
 
 /**
  * The web plugin API (introduce-plugins decision 8): what a plugin's `web/index.ts` may contribute, through
@@ -37,6 +49,7 @@ export interface PluginRoute {
   path: string;
   element: ReactNode;
   admin?: boolean;
+  platformAdmin?: boolean;
 }
 
 /** A link in the main navigation: a route of the app (`to`) or another site (`href`, opened in a new tab). */
@@ -45,6 +58,7 @@ export interface PluginNavLink {
   to?: string;
   href?: string;
   adminOnly?: boolean;
+  platformAdminOnly?: boolean;
 }
 
 /** The assistant turn the chat has selected, read-only: what a pane shows next to it. */
@@ -192,6 +206,13 @@ export interface PluginReviewPanel {
   render: (context: { turnId: string }) => ReactNode;
 }
 
+/** A dashboard section supplied by an installed plugin. The shell owns its navigation and boundary. */
+export interface PluginAdminSection {
+  id: string;
+  label: string;
+  render: () => ReactNode;
+}
+
 export interface MafWebPlugin {
   /** The plugin's name: its folder under plugins/, and the name /api/plugins lists. */
   name: string;
@@ -201,6 +222,8 @@ export interface MafWebPlugin {
    * a contribution, such as the browser's own tracing.
    */
   activate?: () => void | (() => void);
+  /** Authentication controls supplied by the public sign-in plugin, rendered by the shell. */
+  authControls?: readonly { id: string; render: () => ReactNode }[];
   routes?: readonly PluginRoute[];
   nav?: readonly PluginNavLink[];
   chatPanes?: readonly PluginChatPane[];
@@ -213,6 +236,8 @@ export interface MafWebPlugin {
   monitorTabs?: readonly PluginMonitorTab[];
   runObservers?: readonly PluginRunObserver[];
   reviewPanels?: readonly PluginReviewPanel[];
+  tenantAdminSections?: readonly PluginAdminSection[];
+  platformAdminSections?: readonly PluginAdminSection[];
 }
 
 /** Declares a plugin's web part. An identity function: the type is the contract. */

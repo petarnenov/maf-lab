@@ -1,7 +1,7 @@
+extern alias service;
 using System.Text.Json;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Decisions;
-using Maf.Lab.Api.BuiltIn;
 using Maf.Lab.Plugins.Code;
 using Maf.Lab.Domain.Chat;
 using Maf.Lab.Domain.Code;
@@ -92,7 +92,7 @@ public class CodebaseDomainTests : IDisposable
     public void A_codebase_question_searches_the_codebase_whatever_its_intent(Intent intent)
     {
         var tools = Offered(CodeTools.Search, "search_documents");
-        var decision = Decision(intent, (CodePlugin.DomainId, 0.9), (BuiltInDomains.Billing, 0.1));
+        var decision = Decision(intent, (CodePlugin.DomainId, 0.9), ("billing", 0.1));
 
         var forced = IntentClassifier.ForcesRetrieval(intent)
             ? ChatTurnRunner.ForcedSearches(decision.Domains, tools)
@@ -107,7 +107,7 @@ public class CodebaseDomainTests : IDisposable
         var tools = Offered(CodeTools.Search, "search_documents");
 
         Assert.Empty(ChatTurnRunner.AnyIntentSearch(Decision(Intent.ChitChat, (CodePlugin.DomainId, 0.9)), tools));
-        Assert.Empty(ChatTurnRunner.AnyIntentSearch(Decision(Intent.Data, (BuiltInDomains.Billing, 0.9), (CodePlugin.DomainId, 0.6)), tools));
+        Assert.Empty(ChatTurnRunner.AnyIntentSearch(Decision(Intent.Data, ("billing", 0.9), (CodePlugin.DomainId, 0.6)), tools));
     }
 
     [Fact]
@@ -115,7 +115,7 @@ public class CodebaseDomainTests : IDisposable
     {
         var tools = Offered(CodeTools.Search, "search_documents");
 
-        var forced = ChatTurnRunner.ForcedSearches(Decision(Intent.Procedural, (BuiltInDomains.Billing, 0.8), (CodePlugin.DomainId, 0.7)).Domains, tools);
+        var forced = ChatTurnRunner.ForcedSearches(Decision(Intent.Procedural, ("billing", 0.8), (CodePlugin.DomainId, 0.7)).Domains, tools);
 
         Assert.Equal(["search_documents", CodeTools.Search], forced);
     }
@@ -125,21 +125,21 @@ public class CodebaseDomainTests : IDisposable
     [Fact]
     public void Domains_are_loaded_by_scope_then_by_conversation_then_all()
     {
-        var inScope = ChatTurnRunner.SelectDomains(DomainVerdict.From(new Dictionary<string, double> { [CodePlugin.DomainId] = 0.9 }, 0.5, 0.2), [BuiltInDomains.Portfolio]);
-        var followUp = ChatTurnRunner.SelectDomains(DomainVerdict.From(new Dictionary<string, double> { [BuiltInDomains.Billing] = 0.05 }, 0.5, 0.2), [BuiltInDomains.Portfolio]);
-        var fresh = ChatTurnRunner.SelectDomains(DomainVerdict.From(new Dictionary<string, double> { [BuiltInDomains.Billing] = 0.05 }, 0.5, 0.2), []);
-        var noVerdict = ChatTurnRunner.SelectDomains(null, [BuiltInDomains.Portfolio]);
-        var routed = ChatTurnRunner.SelectDomains(DomainVerdict.From(new Dictionary<string, double> { [BuiltInDomains.Billing] = 0.9 }, 0.5, 0.2), [],
+        var inScope = ChatTurnRunner.SelectDomains(DomainVerdict.From(new Dictionary<string, double> { [CodePlugin.DomainId] = 0.9 }, 0.5, 0.2), ["portfolio"]);
+        var followUp = ChatTurnRunner.SelectDomains(DomainVerdict.From(new Dictionary<string, double> { ["billing"] = 0.05 }, 0.5, 0.2), ["portfolio"]);
+        var fresh = ChatTurnRunner.SelectDomains(DomainVerdict.From(new Dictionary<string, double> { ["billing"] = 0.05 }, 0.5, 0.2), []);
+        var noVerdict = ChatTurnRunner.SelectDomains(null, ["portfolio"]);
+        var routed = ChatTurnRunner.SelectDomains(DomainVerdict.From(new Dictionary<string, double> { ["billing"] = 0.9 }, 0.5, 0.2), [],
             Maf.Lab.Domain.Portfolio.PortfolioTools.ListAccounts);
 
         Assert.Equal([CodePlugin.DomainId], inScope.Domains!);
         Assert.Equal(ChatTurnRunner.LoadInScope, inScope.Reason);
-        Assert.Equal([BuiltInDomains.Portfolio], followUp.Domains!);
+        Assert.Equal(["portfolio"], followUp.Domains!);
         Assert.Equal(ChatTurnRunner.LoadConversation, followUp.Reason);
         Assert.Equal((null, ChatTurnRunner.LoadAll), (fresh.Domains, fresh.Reason));
         Assert.Equal((null, ChatTurnRunner.LoadAll), (noVerdict.Domains, noVerdict.Reason));
         // A routed read tool's domain is loaded even when the verdict left it out.
-        Assert.Equal([BuiltInDomains.Billing, BuiltInDomains.Portfolio], routed.Domains!.Order(StringComparer.Ordinal));
+        Assert.Equal(["billing", "portfolio"], routed.Domains!.Order(StringComparer.Ordinal));
     }
 
     private static List<TraceEvent> Trace(IEnumerable<SseEvent> events) =>
@@ -213,27 +213,8 @@ public class CodebaseDomainTests : IDisposable
 
         await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "What is the procedure when a fee schedule is missing?");
 
-        Assert.Equal([BuiltInDomains.Billing], tools.RequestedDomains.Single()!);
+        Assert.Equal(["billing"], tools.RequestedDomains.Single()!);
         Assert.DoesNotContain(CodeTools.Search, api.Chat.Requests[^1].Options!.Tools!.Select(t => t.Name));
-    }
-
-    // ---- the domain eval's labels --------------------------------------------------------------------------------------
-
-    [Fact]
-    public void Domain_labels_name_every_domain_in_scope_and_keep_both_for_billing_and_portfolio()
-    {
-        DomainVerdict Verdict(params (string D, double P)[] ps) => DomainVerdict.From(ps.ToDictionary(p => p.D, p => p.P), 0.5, 0.2);
-
-        Assert.Equal("codebase", Maf.Lab.Eval.Suites.DomainSuite.Label(Verdict((CodePlugin.DomainId, 0.9))));
-        Assert.Equal("both", Maf.Lab.Eval.Suites.DomainSuite.Label(Verdict((BuiltInDomains.Portfolio, 0.9), (BuiltInDomains.Billing, 0.8))));
-        Assert.Equal("billing+codebase", Maf.Lab.Eval.Suites.DomainSuite.Label(Verdict((CodePlugin.DomainId, 0.9), (BuiltInDomains.Billing, 0.8))));
-        Assert.True(Maf.Lab.Eval.Datasets.DatasetLoader.IsDomainExpectation("billing+codebase"));
-        Assert.False(Maf.Lab.Eval.Datasets.DatasetLoader.IsDomainExpectation("billing+billing"));
-        Assert.False(Maf.Lab.Eval.Datasets.DatasetLoader.IsDomainExpectation("weather"));
-
-        var metrics = Maf.Lab.Eval.Suites.Metrics.Domain([("codebase", "codebase", "en", "design"), ("billing+codebase", "codebase", "en", "design")]);
-        Assert.Equal(1.0, metrics["codebaseRecall"]);
-        Assert.Equal(0.0, metrics["crossingRecall"]);
     }
 
     // ---- the real tool source ---------------------------------------------------------------------------------------------
@@ -241,7 +222,7 @@ public class CodebaseDomainTests : IDisposable
     [Fact]
     public async Task The_tool_source_contacts_only_the_selected_servers_and_keeps_the_allow_list()
     {
-        await using var code = new WebApplicationFactory<Maf.Lab.CodeSearch.Program>().WithWebHostBuilder(b =>
+        await using var code = new WebApplicationFactory<service::Maf.Lab.CodeSearch.Program>().WithWebHostBuilder(b =>
         {
             b.UseFixtureEngine();
             b.UseEnvironment("Development");
@@ -253,7 +234,7 @@ public class CodebaseDomainTests : IDisposable
         var source = new McpToolSource(Options.Create(new AgentOptions
         {
             // Billing is unreachable: a turn that did not select it must neither contact it nor fail on it.
-            Servers = new(StringComparer.Ordinal) { ["billing"] = new McpServerOptions { Domain = BuiltInDomains.Billing, Endpoint = "http://billing.test/mcp" }, ["codebase"] = new McpServerOptions { Domain = CodePlugin.DomainId, Endpoint = "http://code.test/mcp", Tools = [CodeTools.Search] } },
+            Servers = new(StringComparer.Ordinal) { ["billing"] = new McpServerOptions { Domain = "billing", Endpoint = "http://billing.test/mcp" }, ["codebase"] = new McpServerOptions { Domain = CodePlugin.DomainId, Endpoint = "http://code.test/mcp", Tools = [CodeTools.Search] } },
         }), LoggerFactory.Create(_ => { }), new CodeTestClients(() => new HttpClient(router, disposeHandler: false)),
             domainCatalogue: CodePluginSupport.ThreeDomains());
         var (token, _) = Maf.Lab.Retrieval.Auth.DevJwt.Issue(new Maf.Lab.Domain.Configuration.AuthOptions(), "alice", TenantId.Firm("firm-a"), Role.TENANT_ADMIN);
@@ -269,16 +250,16 @@ public class CodebaseDomainTests : IDisposable
         await using var all = await source.GetToolsAsync(token, null, Ct);
         Assert.Contains("billing.test", router.Hosts);
         Assert.Equal([CodeTools.Search], all.Names);
-        Assert.Equal([BuiltInDomains.Billing], all.Unavailable);
+        Assert.Equal(["billing"], all.Unavailable);
 
         // Every server the turn needs is down: there is nothing to answer from, so the call fails as a whole.
-        await Assert.ThrowsAnyAsync<Exception>(() => source.GetToolsAsync(token, null, Ct, new HashSet<string> { BuiltInDomains.Billing }));
+        await Assert.ThrowsAnyAsync<Exception>(() => source.GetToolsAsync(token, null, Ct, new HashSet<string> { "billing" }));
     }
 
     [Fact]
     public async Task A_configured_server_of_a_domain_not_in_use_is_never_contacted()
     {
-        await using var code = new WebApplicationFactory<Maf.Lab.CodeSearch.Program>().WithWebHostBuilder(b =>
+        await using var code = new WebApplicationFactory<service::Maf.Lab.CodeSearch.Program>().WithWebHostBuilder(b =>
         {
             b.UseFixtureEngine();
             b.UseEnvironment("Development");
@@ -293,7 +274,7 @@ public class CodebaseDomainTests : IDisposable
         {
             Servers = new(StringComparer.Ordinal)
             {
-                ["billing"] = new McpServerOptions { Domain = BuiltInDomains.Billing, Endpoint = "http://billing.test/mcp" },
+                ["billing"] = new McpServerOptions { Domain = "billing", Endpoint = "http://billing.test/mcp" },
                 ["codebase"] = new McpServerOptions { Domain = CodePlugin.DomainId, Endpoint = "http://code.test/mcp", Tools = [CodeTools.Search] },
             },
         }), LoggerFactory.Create(_ => { }), new CodeTestClients(() => new HttpClient(router, disposeHandler: false)), domainCatalogue: catalogue);

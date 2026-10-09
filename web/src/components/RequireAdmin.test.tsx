@@ -1,37 +1,42 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { App } from '../App';
-import { jsonResponse, makeSession, renderWithProviders } from '../test/render';
+import { definePlugin } from '../plugins/api';
+import { renderPluginApp } from '../test/pluginApp';
+const adminPage = definePlugin({
+  name: 'fixture',
+  routes: [{ path: 'admin/fixture', element: <h1>Fixture admin page</h1>, admin: true }],
+});
+import { jsonResponse, makeSession } from '../test/render';
 
 describe('admin routes', () => {
-  it('denies a USER opening /admin/feedback', () => {
+  it('denies a USER opening /admin/fixture', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => jsonResponse([])),
     );
-    renderWithProviders(<App />, { session: makeSession('USER'), route: '/admin/feedback' });
+    renderPluginApp([adminPage], { session: makeSession('USER'), route: '/admin/fixture' });
     expect(screen.getByRole('alert')).toHaveTextContent('Access denied');
-    expect(screen.queryByText('Feedback review queue')).not.toBeInTheDocument();
+    expect(screen.queryByText('Fixture admin page')).not.toBeInTheDocument();
   });
 
-  it('denies a READ_ONLY user opening /admin/feedback', () => {
+  it('denies a READ_ONLY user opening /admin/fixture', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => jsonResponse([])),
     );
-    renderWithProviders(<App />, { session: makeSession('READ_ONLY'), route: '/admin/feedback' });
+    renderPluginApp([adminPage], { session: makeSession('READ_ONLY'), route: '/admin/fixture' });
     expect(screen.getByRole('alert')).toHaveTextContent('Access denied');
   });
 
-  it('lets a TENANT_ADMIN open /admin/feedback', async () => {
+  it('lets a TENANT_ADMIN open /admin/fixture', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => jsonResponse([])),
     );
-    renderWithProviders(<App />, {
+    renderPluginApp([adminPage], {
       session: makeSession('TENANT_ADMIN'),
-      route: '/admin/feedback',
+      route: '/admin/fixture',
     });
-    expect(await screen.findByText('Feedback review queue')).toBeInTheDocument();
+    expect(await screen.findByText('Fixture admin page')).toBeInTheDocument();
   });
 });

@@ -26,7 +26,7 @@ PY
 dlls="$(docker run --rm --entrypoint ls "$PROJECT-api" /app)"
 # The MCP servers' images that exist (their services are plugins', built when those plugins are installed).
 mcp_dlls=""
-for image in mcp-retrieval mcp-code mcp-portfolio; do
+for image in mcp-retrieval mcp-code mcp-portfolio test-agent; do
   if docker image inspect "$PROJECT-$image" >/dev/null 2>&1; then
     mcp_dlls+="$(docker run --rm --entrypoint ls "$PROJECT-$image" /app | sed "s|^|$image:|")"$'\n'
   fi

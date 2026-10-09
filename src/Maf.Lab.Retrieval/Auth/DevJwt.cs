@@ -16,10 +16,15 @@ namespace Maf.Lab.Retrieval.Auth;
 /// </summary>
 public static class DevJwt
 {
-    public static IServiceCollection AddDevJwtAuthentication(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddDevJwtAuthentication(this IServiceCollection services, IConfiguration configuration, string? requiredAudience = null)
     {
         var auth = configuration.GetSection(AuthOptions.Section).Get<AuthOptions>() ?? new AuthOptions();
         services.Configure<AuthOptions>(configuration.GetSection(AuthOptions.Section));
+        if (requiredAudience is not null)
+        {
+            auth.Audience = requiredAudience;
+            services.PostConfigure<AuthOptions>(o => o.Audience = requiredAudience);
+        }
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(o =>
@@ -52,7 +57,8 @@ public static class DevJwt
     /// domain's own server (rename-firm-to-tenant).
     /// </summary>
     public static (string Token, DateTimeOffset ExpiresAt) Issue(AuthOptions auth, string userId, TenantId tenant, Role role,
-        DateTimeOffset? now = null, IEnumerable<string>? domainRoles = null, IEnumerable<string>? advisorIds = null)
+        DateTimeOffset? now = null, IEnumerable<string>? domainRoles = null, IEnumerable<string>? advisorIds = null, string? audience = null,
+        IEnumerable<string>? groups = null, string? sessionId = null)
     {
         var issuedAt = now ?? DateTimeOffset.UtcNow;
         var expires = issuedAt + auth.TokenLifetime;
@@ -61,14 +67,16 @@ public static class DevJwt
             new(PrincipalClaims.UserId, userId),
             new(PrincipalClaims.TenantId, tenant.Value),
             new(PrincipalClaims.Role, role.ToString()),
+            new("sid", sessionId ?? Guid.NewGuid().ToString("N")),
         };
         claims.AddRange((domainRoles ?? []).Select(r => new Claim(PrincipalClaims.DomainRoles, r)));
         claims.AddRange((advisorIds ?? []).Select(a => new Claim(PrincipalClaims.AdvisorIds, a)));
+        claims.AddRange((groups ?? []).Select(group => new Claim(PrincipalClaims.Groups, group)));
 
         var token = new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
         {
             Issuer = auth.Issuer,
-            Audience = auth.Audience,
+            Audience = audience ?? auth.Audience,
             Subject = new ClaimsIdentity(claims),
             IssuedAt = issuedAt.UtcDateTime,
             NotBefore = issuedAt.UtcDateTime,

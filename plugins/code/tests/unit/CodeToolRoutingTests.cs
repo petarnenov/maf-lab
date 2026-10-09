@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Decisions;
-using Maf.Lab.Api.BuiltIn;
 using Maf.Lab.Plugins.Code;
 using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Domain.Code;
@@ -31,7 +30,7 @@ public class CodeToolRoutingTests : IDisposable
     private static readonly IntentOptions Options_ = new();
 
     private static DomainVerdict Codebase(double p = 0.9) =>
-        DomainVerdict.From(new Dictionary<string, double> { [CodePlugin.DomainId] = p, [BuiltInDomains.Billing] = 0.05 }, 0.5, 0.2);
+        DomainVerdict.From(new Dictionary<string, double> { [CodePlugin.DomainId] = p, ["billing"] = 0.05 }, 0.5, 0.2);
 
     private static DecisionAnswer Need(string choice, double confidence = 0.9) => new(choice, confidence, null, null);
 
@@ -132,7 +131,7 @@ public class CodeToolRoutingTests : IDisposable
     public void Small_talk_another_primary_domain_or_no_answer_route_nothing()
     {
         const string question = "Who calls TenantScopedSearch.QueryAsync?";
-        var billing = DomainVerdict.From(new Dictionary<string, double> { [BuiltInDomains.Billing] = 0.9, [CodePlugin.DomainId] = 0.6 }, 0.5, 0.2);
+        var billing = DomainVerdict.From(new Dictionary<string, double> { ["billing"] = 0.9, [CodePlugin.DomainId] = 0.6 }, 0.5, 0.2);
 
         Assert.Equal("small talk", Route(question, Need("callers"), Intent.ChitChat).Reason);
         Assert.Equal("the codebase is not the primary domain", Route(question, Need("callers"), domains: billing).Reason);

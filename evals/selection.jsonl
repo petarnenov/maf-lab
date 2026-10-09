@@ -1,49 +1,5 @@
-{"id": "s-01", "question": "what is the procedure when a fee schedule is missing", "expectedTools": ["search_documents"], "category": "obvious-docs", "tenantId": "firm-a"}
-{"id": "s-02", "question": "How do I issue a billing credit?", "expectedTools": ["search_documents"], "category": "obvious-docs", "tenantId": "firm-a"}
-{"id": "s-03", "question": "Explain what a breakpoint schedule is.", "expectedTools": ["search_documents"], "category": "obvious-docs", "tenantId": "firm-a"}
-{"id": "s-04", "question": "What does the AUM-STALE failure code mean?", "expectedTools": ["search_documents"], "category": "obvious-docs", "tenantId": "firm-a"}
-{"id": "s-05", "question": "How are household fees allocated across accounts?", "expectedTools": ["search_documents"], "category": "obvious-docs", "tenantId": "firm-c"}
-{"id": "s-06", "question": "What are the steps to close a billing period?", "expectedTools": ["search_documents"], "category": "obvious-docs", "tenantId": "firm-a"}
-{"id": "s-10", "question": "status of run 4417", "expectedTools": ["get_billing_run_status"], "category": "obvious-data", "tenantId": "firm-a"}
-{"id": "s-11", "question": "Is run 4415 finished yet?", "expectedTools": ["get_billing_run_status"], "category": "obvious-data", "tenantId": "firm-a"}
-{"id": "s-12", "question": "Which billing runs failed?", "expectedTools": ["search_billing_runs"], "category": "obvious-data", "tenantId": "firm-a"}
-{"id": "s-13", "question": "Show me the pending runs.", "expectedTools": ["search_billing_runs"], "category": "obvious-data", "tenantId": "firm-a"}
-{"id": "s-14", "question": "List our billing runs for June 2026.", "expectedTools": ["search_billing_runs"], "category": "obvious-data", "tenantId": "firm-a"}
-{"id": "s-15", "question": "What state is run 4418 in?", "expectedTools": ["get_billing_run_status"], "category": "obvious-data", "tenantId": "firm-a"}
-{"id": "s-16", "question": "status of run 6203", "expectedTools": ["get_billing_run_status"], "category": "obvious-data", "tenantId": "firm-c"}
-{"id": "s-20", "question": "why did run 4417 fail", "expectedTools": ["get_billing_run_status", "search_documents"], "category": "boundary", "tenantId": "firm-a"}
-{"id": "s-21", "question": "Run 4417 failed — what should I do to fix it?", "expectedTools": ["get_billing_run_status", "search_documents"], "category": "boundary", "tenantId": "firm-a"}
-{"id": "s-22", "question": "Which runs failed, and what is the procedure for re-running a failed run?", "expectedTools": ["search_billing_runs", "search_documents"], "category": "boundary", "tenantId": "firm-a"}
-{"id": "s-23", "question": "Run 4418 has been running for weeks; is that normal and what do I do about a stuck run?", "expectedTools": ["get_billing_run_status", "search_documents"], "category": "boundary", "tenantId": "firm-a"}
 {"id": "s-30", "question": "thanks, that's all", "expectedTools": [], "category": "negative", "tenantId": "firm-a"}
 {"id": "s-31", "question": "hello", "expectedTools": [], "category": "negative", "tenantId": "firm-a"}
 {"id": "s-32", "question": "ok, got it", "expectedTools": [], "category": "negative", "tenantId": "firm-c"}
-{"id": "s-40", "question": "credit 200 off the fee on account A-1042 \u2014 we overcharged them in Q2", "expectedTools": ["propose_fee_adjustment"], "category": "obvious-data", "tenantId": "firm-a"}
-{"id": "s-41", "question": "reduce the fee on A-1043 by 50", "expectedTools": ["propose_fee_adjustment"], "category": "obvious-data", "tenantId": "firm-a"}
-{"id": "s-42", "question": "how do fee adjustments get approved?", "expectedTools": ["search_documents"], "category": "obvious-docs", "tenantId": "firm-a"}
-{"id": "s-43", "question": "who is allowed to adjust a fee, and what is the approval threshold?", "expectedTools": ["search_documents"], "category": "boundary", "tenantId": "firm-a"}
-{"id": "s-50", "question": "How much drift triggers a rebalance?", "expectedTools": ["search_portfolio_documents"], "category": "portfolio", "tenantId": "firm-a"}
-{"id": "s-51", "question": "What does account A-1042 hold, and is it outside its drift tolerance?", "expectedTools": ["get_household_portfolio"], "category": "portfolio", "tenantId": "firm-a"}
-{"id": "s-52", "question": "Show me the quarter-end AUM of A-1043 over the last year.", "expectedTools": ["get_aum_history"], "category": "portfolio", "tenantId": "firm-a"}
 {"id": "s-53", "question": "Why did the fee on A-1042 go up this quarter? Did its AUM cross a tier?", "expectedTools": ["get_aum_history", "search_documents", "search_portfolio_documents"], "category": "cross-domain", "tenantId": "firm-a"}
 {"id": "s-54", "question": "If we rebalance A-1044 before quarter end, does that change its fee?", "expectedTools": ["search_documents", "search_portfolio_documents"], "category": "cross-domain", "tenantId": "firm-a"}
-{"id": "s-55", "question": "Which accounts do I have access to?", "expectedTools": ["list_my_accounts"], "category": "portfolio", "tenantId": "firm-a"}
-{"id": "s-56", "question": "Покажи ми сметките, до които имам достъп", "expectedTools": ["list_my_accounts"], "category": "portfolio", "tenantId": "firm-a"}
-{"id": "s-57", "question": "What households do I manage?", "expectedTools": ["list_my_accounts"], "category": "portfolio", "tenantId": "firm-b"}
-{"id": "s-58", "question": "Кои акаунти мога да виждам?", "expectedTools": ["list_my_accounts"], "category": "portfolio", "tenantId": "firm-a"}
-{"id": "s-59", "question": "What is the model portfolio and current allocation of my account A-1043?", "expectedTools": ["get_household_portfolio"], "category": "portfolio", "tenantId": "firm-a"}
-{"id": "s-70", "question": "Where is the tenant filter applied to Qdrant queries in the code?", "expectedTools": ["search_codebase"], "category": "codebase", "tenantId": "firm-a"}
-{"id": "s-71", "question": "How does the code make a tool call idempotent?", "expectedTools": ["search_codebase"], "category": "codebase", "tenantId": "firm-a"}
-{"id": "s-72", "question": "как в кода се прави идемпотентност на тул?", "expectedTools": ["search_codebase"], "category": "codebase", "tenantId": "firm-a"}
-{"id": "s-73", "question": "покажи ми дефиницията на code mcp сървъра", "expectedTools": ["search_codebase"], "category": "codebase", "tenantId": "firm-a"}
-{"id": "s-74", "question": "Which class splits Markdown documents by headings?", "expectedTools": ["search_codebase"], "category": "codebase", "tenantId": "firm-a"}
-{"id": "s-75", "question": "Which households use fee schedule NW-INST-2026-083?", "expectedTools": ["trace_billing_relationships"], "category": "graph", "tenantId": "firm-b"}
-{"id": "s-76", "question": "Кои домакинства са на тарифа NW-INST-2026-083?", "expectedTools": ["trace_billing_relationships"], "category": "graph", "tenantId": "firm-b"}
-{"id": "s-77", "question": "Which accounts are in the same household as A-1042?", "expectedTools": ["trace_billing_relationships"], "category": "graph", "tenantId": "firm-a"}
-{"id": "s-78", "question": "Кои документи споменават домакинство HH-RIDGELINE?", "expectedTools": ["trace_billing_relationships"], "category": "graph", "tenantId": "firm-a"}
-{"id": "s-79", "question": "Who calls TenantScopedSearch.QueryAsync?", "expectedTools": ["trace_code_symbol"], "category": "graph", "tenantId": "firm-a"}
-{"id": "s-80", "question": "Кой извиква TenantScopedSearch.QueryAsync в кода?", "expectedTools": ["trace_code_symbol"], "category": "graph", "tenantId": "firm-a"}
-{"id": "s-81", "question": "What tests cover src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs?", "expectedTools": ["change_impact"], "category": "graph", "tenantId": "firm-a"}
-{"id": "s-82", "question": "Кои тестове покриват src/Maf.Lab.Retrieval/Store/TenantScopedSearch.cs?", "expectedTools": ["change_impact"], "category": "graph", "tenantId": "firm-a"}
-{"id": "s-83", "question": "How is a household's fee schedule applied when an account joins it?", "expectedTools": ["search_documents"], "category": "graph", "tenantId": "firm-b"}
-{"id": "s-84", "question": "Как се прилага тарифата на домакинство, когато към него се добави сметка?", "expectedTools": ["search_documents"], "category": "graph", "tenantId": "firm-b"}

@@ -32,6 +32,8 @@ code; it changes no behaviour, except where a line below says so.
 - The coverage test agent's admin section and its route move to the coverage page: `/api/admin/a2a/test-agent` becomes
   `/api/admin/coverage/test-agent`.
 - `a2a-inspector` gains `depends = ["a2a", "compliance"]` (§10, 5o).
+- Folder deletion deactivates dependants in the automatic installed set. An explicit selection with a missing
+  dependency still fails before starting, as the installed-per-deployment requirement specifies.
 - Removed: the a2a lines from the core-names-no-domain allow-list.
 - Behaviour: the agent card's name reads "maf-lab assistant" (was "maf-lab billing assistant"); the partner scope
   `a2a.billing.read` is unchanged (partner compatibility; recorded as debt).

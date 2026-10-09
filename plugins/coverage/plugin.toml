@@ -1,0 +1,23 @@
+schema = 1
+name = "coverage"
+kind = "app"
+scope = "installation"
+environments = ["dev", "qa"]
+description = "Repository coverage, isolated test execution and the test-generation agent, with verified candidates accepted by an administrator."
+progress = "Terminal: coverage and testgen-e2e show their measured steps; Page: coverage refresh and test runs show their state and activity"
+stopping = "Key: Esc on the page or Ctrl+C/SIGTERM in the terminal; Stop: cancel through the run/job store; Recorded in: the owning row and shared agent store; Shown: stopping until the run reads canceled"
+
+[agent]
+name = "testgen"
+path = "/api/coverage/runs/agent"
+
+[topology]
+service = "test-agent"
+health = "/health"
+card = "/.well-known/agent-card.json"
+label = "test agent"
+
+[[topology.nodes]]
+service = "coverage-runner"
+health = "/health"
+label = "coverage runner"

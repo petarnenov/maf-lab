@@ -22,14 +22,14 @@ public class ObservabilityPluginTests
     {
         using (var without = Api(installed: false))
         {
-            var response = await without.ClientFor("adam", "firm-a", Role.USER).GetAsync("/api/telemetry?window=1h", Ct);
+            var response = await without.ClientFor("operator", "firm-a", Role.PLATFORM_ADMIN).GetAsync("/api/platform/telemetry?window=1h", Ct);
             Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         }
 
         using var with = Api(installed: true);
         // No metrics store is configured here: the screen still answers, and says the numbers are unavailable.
-        var report = await with.ClientFor("adam", "firm-a", Role.USER)
-            .GetFromJsonAsync<TelemetryReport>("/api/telemetry?window=1h", Ct);
+        var report = await with.ClientFor("operator", "firm-a", Role.PLATFORM_ADMIN)
+            .GetFromJsonAsync<TelemetryReport>("/api/platform/telemetry?window=1h", Ct);
         Assert.NotNull(report);
         Assert.False(report.Available);
         Assert.Equal("http://localhost:7171/jaeger", report.TraceUrl);

@@ -40,6 +40,7 @@ public sealed class DomainCatalogue
         public void Dispose() => Ambient.Value = previous;
     }
 
+    private DomainCatalogue? _owner;
     private readonly IReadOnlyList<DomainDescriptor> _fixed;
     private readonly IReadOnlyList<IDomainBehaviour> _behaviours;
     private readonly PluginCatalogue? _plugins;
@@ -72,6 +73,17 @@ public sealed class DomainCatalogue
     /// </summary>
     public DomainCatalogue Freeze() => _plugins is null ? this : Of(All, _behaviours);
 
+    /// <summary>The caller's domains; injected host readers and static readers see the same frozen scope.</summary>
+    public DomainCatalogue For(PluginAccessSnapshot access)
+    {
+        if (_plugins is null) return Freeze();
+        var owners = _plugins.Current.Plugins.Where(p => access.IsInUse(p.Name) && p.Manifest.Domain is not null)
+            .Select(p => p.Manifest.Domain!.Id).ToHashSet(StringComparer.Ordinal);
+        return Of(ReadAll().Domains.Where(d => owners.Contains(d.Id)), _behaviours).WithOwner(this);
+    }
+
+    private DomainCatalogue WithOwner(DomainCatalogue owner) { _owner = owner; return this; }
+
     /// <summary>Every domain in use, in order.</summary>
     public IReadOnlyList<DomainDescriptor> All => Read().Domains;
 
@@ -102,7 +114,10 @@ public sealed class DomainCatalogue
     /// <summary>A domain's order: its place in traces and in the assembled prompt.</summary>
     public int Order(string domain) => Read().Ids is var ids && ids.ToList().IndexOf(domain) is var i && i >= 0 ? i : int.MaxValue;
 
-    private Snapshot Read()
+    private Snapshot Read() => Ambient.Value is { } active && ReferenceEquals(active._owner, this)
+        ? active.ReadAll() : ReadAll();
+
+    private Snapshot ReadAll()
     {
         var set = _plugins?.Current;
         lock (_gate)

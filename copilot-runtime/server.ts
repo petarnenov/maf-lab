@@ -21,11 +21,11 @@ const api = process.env.AGENTS_BASE_URL ?? 'http://lb';
 const port = Number(process.env.PORT ?? 8080);
 const basePath = '/copilotkit';
 /**
- * The agents served here: chat is built in; testgen stays built in until the coverage plugin moves; any other agent comes
+ * The agents served here: chat is built in; every other agent comes
  * from an installed plugin's manifest (`[agent] name`, `path`), read from plugins/.installed whenever it changes
  * (introduce-plugins decision 3). The runtime still decides nothing: it maps names to the paths it reads.
  */
-const builtIn: Record<string, string> = { chat: '/api/chat', testgen: '/api/coverage/runs/agent' };
+const builtIn: Record<string, string> = { chat: '/api/chat' };
 const pluginsFile = `${process.env.PLUGINS_ROOT ?? '/plugins'}/.installed`;
 let pluginAgents: Record<string, string> = {};
 let pluginsStamp = -1;

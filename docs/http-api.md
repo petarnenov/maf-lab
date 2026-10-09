@@ -3,21 +3,9 @@
 Base URL: `http://localhost:7171` (the load balancer; the MCP endpoint is `/mcp` on the same origin).
 Without the balancer (local `dotnet run`): `http://localhost:5080`. Every response carries `X-Instance`, the replica
 that served it. JSON is camelCase. DTOs live in `src/Maf.Lab.Domain`.
-Every `/api/*` route requires `Authorization: Bearer <jwt>` from the dev issuer.
+Authenticated `/api/*` routes require `Authorization: Bearer <jwt>` from the configured company issuer, or the dev issuer in dev/qa. `/api/plugins` also has its documented anonymous registration response.
 Tenant is taken from the token only — no route or body has a tenant field.
 
-## Dev issuer (development only)
-
-| Method | Path | Body | Response |
-|---|---|---|---|
-| GET | `/dev/users` | — | `[{ userId, tenantId, role, domainRoles, advisorIds, label }]` predefined personas |
-| POST | `/dev/token` | `{ userId, tenantId, role, domainRoles?, advisorIds? }` | `{ token, expiresAt }` |
-
-Core roles: `TENANT_ADMIN`, `USER`, `READ_ONLY`. Tenants: `firm-a`, `firm-b`, `firm-c`. A persona's domain claims
-(`domain_roles` such as `billing:advisor`, and `advisor_ids`) ride in its token and are read only by the billing
-server; when the request names none, the issuer adds the persona's own. For one release the issuer also accepts
-`firmId` for `tenantId` and the old role names (`FIRM_ADMIN`, `ADVISOR`, `OPS`), and the api accepts a token's
-`firm_id` claim for `tenant_id`.
 
 ## Plugins
 
@@ -26,7 +14,7 @@ What the web and make learn about the installed plugins (introduce-plugins). The
 
 | Method | Path | Body | Response |
 |---|---|---|---|
-| GET | `/api/plugins` | — | `{ plugins: [{ name, kind, scope, description, health, domain, cardTypes }], problems, domains: [{ id, scope: { en, bg } }] }`. Anonymous: only plugins whose manifest says `public = true` (none in stage or prod), no problems and no domains. Signed in: every installed plugin, any manifest problem of the last read, and every domain in use (built-in ones included, in order; empty means the assistant declines every turn). `health` is `ok` for a plugin whose code runs in the api, the probe of its topology address for a remote one (cached 15 s), else `unknown` |
+| GET | `/api/plugins` | — | `{ plugins: [{ name, kind, scope, description, health, domain, cardTypes }], problems, domains: [{ id, scope: { en, bg } }] }`. Anonymous: only plugins whose manifest says `public = true` (none in stage or prod), no problems and no domains. Signed in: every installed plugin, any manifest problem of the last read, and every domain in use (built-in ones included, in order; empty means the assistant declines every turn). `health` probes every declared service replica and topology node (cached 15 s); a failed replica is `unavailable`. Local app/provider modules with no remote target are `ok`; an undeclared remote protocol or non-HTTP infrastructure target is `unknown` |
 | GET | `/api/plugins/{name}/open-work` | — | `[{ kind, id, state }]` the plugin's open long work; TENANT_ADMIN only, otherwise `403`. Empty for a plugin with none |
 | POST | `/api/plugins/{name}/open-work/cancel` | — | `202`: every open item is marked cancelled in the store that owns it; poll the list until it is empty. TENANT_ADMIN only |
 
@@ -233,21 +221,26 @@ replay, and is no longer served on its own — see [shared-state.md](shared-stat
 `kind`: `wrong_tool` \| `wrong_document` \| `wrong_answer` \| `wrong_confirmation`. The last one is about the
 summary a person was asked to approve, so the UI offers it only on a turn that asked for one.
 
-## Admin (TENANT_ADMIN only, otherwise `403`)
+## MCP authorization metadata
 
-| Method | Path | Body | Response |
-|---|---|---|---|
-| GET | `/api/admin/feedback/queue` | — | `ReviewQueueItem[]` |
-| POST | `/api/admin/feedback/{turnId}/label` | `LabelRequest` | `204` |
+With company authentication configured, the MCP SDK serves public RFC9728 metadata anonymously:
 
-`ReviewQueueItem.toolCalls[]`: `{ toolName, argumentSummary, outcome, sourceCount, docIds, chunkIds }` —
-`chunkIds` lets a reviewer pick the relevant chunks for a retrieval label.
+| Method | Path | Response |
+|---|---|---|
+| GET | `/.well-known/oauth-protected-resource/mcp` | Billing's configured resource URL, company authorization server and header bearer method |
+| GET | `/.well-known/oauth-protected-resource/portfolio/mcp` | Portfolio's configured resource URL and the same issuer contract |
+| GET | `/.well-known/oauth-protected-resource/code/mcp` | Code's configured resource URL and the same issuer contract |
 
-`ReviewQueueItem.signals`: `negative_feedback`, `rephrased`, `no_tool_on_how_why`,
-`zero_retrieval_results`, `long_answer_without_sources`.
+The document is `{ resource, authorization_servers: [authority], bearer_methods_supported: ["header"] }` plus any
+standard optional fields emitted by the SDK. It contains no token, secret or caller identity and requires no IdP
+discovery request. A missing or invalid bearer at an MCP endpoint receives `401` with
+`WWW-Authenticate: Bearer resource_metadata="<configured absolute metadata URL>"`. The ordinary API retains its
+Bearer challenge. Dev/qa without a company authority expose no company resource metadata.
 
-`LabelRequest.dataset`: `selection` (uses `expectedTools`), `retrieval` (uses
-`relevantChunkIds`), `generation` (uses `referenceAnswer`, `expectedDocIds`).
+Public resource URLs are configured per host, independently of request headers; the configured metadata origin
+hostname and scheme must match the request. The SDK does not compare the request port; the advertised URLs always
+retain the configured port. A TLS-terminating ingress must forward the public host/scheme from an explicitly trusted
+peer network, preserving the complete well-known path. See [deployment settings](plugins.md#mcp-authorization-metadata).
 
 ## Plugin routes
 
@@ -256,6 +249,79 @@ while it is not installed: a path that is the plugin's alone answers `404`, and 
 answers `405`, with `Allow` naming the core's methods.
 
 <!-- generated:plugin-routes — edit a plugin's docs/http-api.md, then run make docs -->
+### a2a
+
+## A2A (partner systems, not users)
+
+The assistant is also an [A2A 1.0](https://a2a-protocol.org) agent. A partner is a **system**, not a person: its
+token's audience is the A2A endpoint, it carries no user identity, and what it may see comes from the server's
+`A2A:Partners` registration — never from the request. To try it by hand, the a2a-inspector plugin (dev and qa) opens on
+http://localhost:7172; the MCP endpoints can be tried the same way with the mcp-inspector plugin on http://localhost:7173
+(see README, "Developer tools").
+
+| Method | Path | Auth | Response |
+|---|---|---|---|
+| GET | `/.well-known/agent-card.json` | anonymous | the signed public agent card |
+| POST | `/a2a/token` | anonymous | `{ accessToken, tokenType, expiresIn, scope }` for `{ clientId, clientSecret, scope? }` |
+| POST | `/a2a` | partner | JSON-RPC 2.0 for every A2A method |
+| POST/GET/DELETE | `/a2a/message:send`, `/a2a/message:stream`, `/a2a/tasks…` | partner | the same methods over HTTP+JSON |
+
+Both transports carry the specification's own wire format: `message/send`, `tasks/get`,
+`tasks/pushNotificationConfig/set`, `agent/getAuthenticatedExtendedCard`, roles `user`/`agent`, states such as
+`input-required`, parts with their `kind`, and a result that *is* the task or the message. The preview SDK
+underneath speaks a different dialect; `SpecWire` translates both ways and `DECISIONS.md` lists every divergence.
+
+What a partner can do:
+
+- **Ask about a run** — `message/send` with "status of run 4417" answers with a message, from the run's own record.
+- **Ask anything else** — answered by the assistant itself, the same agent and the same MCP tools as the chat UI,
+  scoped to the partner's firm.
+- **Start a billing run** — a task, streamed over `message/stream`, ending in a `billing-run-result` artifact
+  (a data part). The run is **simulated**: it walks the real lifecycle over seeded data and bills nobody.
+- **Follow, resume, cancel** — `tasks/resubscribe` sends the whole current task first, so a dropped stream misses
+  no transition; `tasks/cancel` stops a working task; a task in `input-required` continues when the caller sends
+  the missing value under the same task id.
+- **Be notified** — `tasks/pushNotificationConfig/set` registers a webhook, which receives one POST per state
+  change carrying the task and the caller's own token in `X-A2A-Notification-Token`.
+
+A request about a firm outside the partner's entitlement is rejected with one fixed sentence and no data — not the
+firm, not the run, not whether either exists.
+
+**Verifying the card.** The card carries a JWS in `signatures[0]`: `protected` is base64url JSON
+(`{"alg":"HS256","typ":"JOSE"}`), and `signature` is base64url HMAC-SHA256 over
+`protected + "." + base64url(canonical(card))`, keyed with the issuer's signing key. `canonical` is the served
+card with its `signatures` member removed, every object's members sorted lexicographically, and no whitespace —
+`json.dumps(card, sort_keys=True, separators=(",", ":"), ensure_ascii=False)` reproduces it, so a verifier never
+has to guess this service's property order. `scripts/a2a_probe.py` does exactly that. In the lab the key is
+symmetric, so verification needs the same secret; a real deployment would sign asymmetrically and publish the
+public half (see `DECISIONS.md`).
+
+## Agent to agent (TENANT_ADMIN only, otherwise `403`)
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | `/api/admin/a2a` | — | `{ inbound, outbound, deliveries }` |
+| POST | `/api/admin/a2a/tasks/{id}/cancel` | — | `{ taskId, state }`, `404` unknown, `409` already finished |
+
+`inbound` is one row per task a partner started — partner, operation, state, when it started and last changed,
+how long it took, and whether it can still be cancelled. `outbound` is one row per consultation this system asked
+of the reviewer, with its outcome. `deliveries` is every push-webhook attempt, with its attempts and its error.
+No message content appears anywhere: the operation name, the state and the duration are what an operator needs.
+
+Both are scoped by the caller's firm, taken from the principal. An inbound task carries the firm its partner was
+entitled to act for, stamped when the task was created; a task belonging to another firm answers `404`, not
+`403`, because its existence is not the caller's business. Cancelling goes through the same `CancelTask` a
+partner's cancel does, and is itself audited as `a2a.cancel`.
+
+The three store tables (`A2ATasks`, `A2APushConfigs`, `A2APushDeliveries`) are this plugin's, with their original names
+and data. Removing the plugin is refused while a non-terminal task remains; `STOP_WORK=1` cancels through its owning
+server first. The admin screen and its routes exist only while this plugin is installed.
+
+Outbound system credentials are deployment configuration under `A2A:Clients:<agent>` (`BaseUrl`, `ClientId`,
+`ClientSecret`), beside inbound `A2A:Partners:<id>`. A missing BaseUrl uses the installed plugin's bootstrap
+`agent-card.json` JSON-RPC endpoint to find its card; the runtime still fetches the agent's authenticated card.
+`A2A:StoreKeyspace` is required for each protocol host; the reviewer retains `compliance` and the test agent `testgen`.
+
 ### code
 
 For any authenticated role.
@@ -271,6 +337,19 @@ totalMatches, truncated, refineHint? }` — snippets only, never a synthesized a
 `CodeSearch:SnippetMaxChars` (1200) comes back as the window of whole lines around the lines that match the query's
 terms, with `…` where lines were cut, and `startLine`/`endLine` are the window's; a query with no matching line gets the
 chunk's first lines.
+
+### company-login
+
+# Company sign-in configuration
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | `/api/identity/configuration` | — | Public OIDC `{ authority, clientId, responseType, scope, callbackPath, signedOutPath }`; 404 without company Authority or without the plugin |
+
+Only the public web client ID and trusted issuer settings are returned. No client secret, token or user claim is
+part of this response. The issuer URI is the API's validated company authority. `responseType` is `code`; the
+client must use PKCE S256. Browser redirect URIs come from the app origin and these fixed callback paths and must
+match the reviewed realm export's exact redirect URI list.
 
 ### compliance
 
@@ -321,10 +400,10 @@ The review is **simulated**: a threshold (`Review:RefuseAboveAmount`) and a stop
 (`Review:MinDurationMs`/`MaxDurationMs`, 20–60 s in the stack), with `Review:AskForJustificationRate` deciding how
 often it asks first. It binds nobody.
 
-**How the assistant authenticates to it.** With its own client credentials (`Compliance:ClientId` /
-`Compliance:ClientSecret`), exchanged at the reviewer's own token endpoint. A user's token is never forwarded: the
+**How the assistant authenticates to it.** With its own client credentials (`A2A:Clients:compliance:ClientId` /
+`A2A:Clients:compliance:ClientSecret`), exchanged at the reviewer's own token endpoint. A user's token is never forwarded: the
 audiences differ, so a token for `/a2a` is refused at `/compliance/a2a` and the other way round. The reviewer is
-found by fetching its card from `Compliance:BaseUrl` — the card says where it answers, and nothing else is
+found by fetching its card from `A2A:Clients:compliance:BaseUrl` — the card says where it answers, and nothing else is
 hard-coded. A consultation ends as a verdict, a question, a timeout (`Compliance:Deadline`), an unreachable agent
 or a failure, and each one is written to the audit record as `a2a.consultation` — agent, adjustment id, task id,
 outcome and duration, never the content. When the chat run that asked is stopped while a review is in flight, the review is
@@ -343,113 +422,7 @@ Reopening one by its id is the core's (`GET /api/conversations/{id}`).
 | PATCH | `/api/conversations/{id}` | `{ title }` (1–120 chars) | `204`; `400` invalid title; `404` |
 | DELETE | `/api/conversations/{id}` | — | `204` (soft delete: hidden, cannot be continued; turns stay for the review queue; recorded as `conversation.delete` in the audit); `404` |
 
-### index-admin
-
-Index administration (tenant admin, otherwise `403`) over the corpora the installed plugins declare in their
-manifests' `[corpus]` tables, for the caller's readable tenants. Only `tenants`-layout corpora are offered. `corpus`
-names one by its plugin; with it absent and exactly one offered, that one is used, with several offered it is `400`
-naming the choices, and a corpus no installed plugin offers is `404` and starts nothing.
-
-| Method | Path | Body | Response |
-|---|---|---|---|
-| GET | `/api/admin/index/corpora` | — | `[{ name, hasGraph }]`, the corpora offered, by plugin name |
-| GET | `/api/admin/index/status?corpus=` | — | `IndexStatus` for that corpus's collection: `{ modelVersions, activeDenseVector, currentJob }` |
-| GET | `/api/admin/index/drift?corpus=` | — | `DriftReport` for that corpus: the index against the source, plus `graph` (add-graph-drift) — `{ available, reason, outOfSync, outOfSyncPercent, missingFromGraph, behind, notInCorpus }`, the corpus's graph against the same source documents; `available: false` with `reason: "unreachable"` when Neo4j cannot be read, `"not-built"` when the corpus has no graph |
-| POST | `/api/admin/index/run` | `{ corpus? }` | `202 AdminJob`; a corpus whose folder is absent runs, says so and removes nothing |
-| POST | `/api/admin/index/migrate` | `{ corpus?, targetModel? }` | `202 AdminJob` |
-| GET | `/api/admin/jobs/{jobId}` | — | `AdminJob` |
-| POST | `/api/admin/jobs/{jobId}/cancel` | — | `202` with the `AdminJob`, now `canceled`, while it stops; `409` when it had already ended; `404` for a job not of the admin's tenant. Any replica takes it: the job's row is the stop, and the replica running the job watches it (stop-anything). Once the work has stopped, its `summary` says how far it got |
-
-`AdminJob.state`: `queued` \| `running` \| `succeeded` \| `failed` \| `canceled`. One `index` and one `migrate` job run
-per tenant at a time, whichever corpus; a job's progress and summary name its corpus. `run` and `migrate` accept `{}`
-or no body.
-
-### insights
-
-The Jev and intent statistics (tenant admin), read from the firm's turns' core records.
-
-| Method | Path | Body | Response |
-|---|---|---|---|
-| GET | `/api/admin/intent-stats?window=1h\|24h\|7d` | — | `IntentStatsReport` for the caller's firm (default `24h`; another window is `400`) |
-| GET | `/api/admin/jev-stats?window=1h\|24h\|7d` | — | `JevStatsReport` for the caller's firm, same windows |
-
-The two statistics reports are numbers only: no question, answer, passage or identifier of a turn, conversation or
-user leaves the server. `IntentStatsReport` = `{ window, from, to, bucketMinutes, settings, totals, pipeline,
-reasons, choices, timeline, confidence, inDomain, points, meanProbabilities, latency, models }` — how the intent classifier
-answered on the firm's turns. `JevStatsReport` = `{ window, from, to, bucketMinutes, overview, intent, guardrail,
-relevance, routing, domains?, answerCheck? }` — every Jev call site on the firm's chat turns, with `intent` equal to
-the intent-stats report for the same window. Calls on the A2A path have no turn trace and are not counted. The
-shapes are in this plugin's `server/IntentStatsContracts.cs` and `server/JevStatsContracts.cs`. `answerCheck` = `{ answers, checked, pass,
-notRelevant, notGrounded, unchecked, unavailable, relevantFloor, groundedFloor, latency, uncertain? }`: `checked` counts
-every verdict but `unchecked`, the two "not" counts are taken against the floor recorded with each check, and
-`uncertain` — optional, so an older client still reads the response — counts the checked answers in the review band,
-which raise no review signal. An answer left unchecked because its sources were over the cap sent no request.
-
-### monitor
-
-A turn's behind-the-scenes trace never travels on the run's stream (agui-protocol-only). While the monitor is
-installed, the run's owner reads it while the run is going, from any replica (the trace is kept in the shared store for
-the run's grace period), and afterwards from the kept turn. The monitor's pane polls the first while it is open and the
-run is live. See [trace-events.md](trace-events.md).
-
-| Method | Path | Body | Response |
-|---|---|---|---|
-| GET | `/api/runs/{runId}/trace?after=` | — | `{ runId, turnId, ended, events: TraceEvent[] }` — the run's trace while it is written, events after `seq` `after`; the run's owner only, otherwise `404` |
-| GET | `/api/turns/{turnId}/trace` | — | `{ turnId, conversationId, createdAt, events: TraceEvent[], aguiFrames: RunFrame[] \| null }` — the turn's owner, or a TENANT_ADMIN of the same tenant for turns in the review queue; otherwise `404`, as for a turn whose trace is no longer kept (`Tracing:RetentionDays`, 7). `aguiFrames` is the run's own events as they crossed the wire, and is `null` for a turn answered before they were kept |
-
-`RunFrame` = `{ seq, atMs, type, bytes, payload?, truncated }` — see [trace-events.md](trace-events.md). Turns recorded
-before agui-protocol-only may also carry `name` and `traceSeq` on their custom-event frames.
-
-### observability
-
-The Telemetry screen's numbers, while the observability plugin is installed (otherwise `404`). See
-[telemetry.md](telemetry.md) for where the signals go.
-
-| Method | Path | Body | Response |
-|---|---|---|---|
-| GET | `/api/telemetry?window=15m\|1h\|6h\|24h` | — | `TelemetryReport` — any signed-in user. A window not on that list is `400` |
-
-`TelemetryReport` = `{ window, generatedAt, available, reason, panels: TelemetryPanel[], traceUrl }`.
-`TelemetryPanel` = `{ id, title, unit, series: { label, value }[] }`; an empty `series` means nothing was measured
-in the window, which is not the same as zero. `available: false` with a `reason` means the metrics store could not
-be read.
-
-The queries behind the panels live in the plugin's server part, in the api. A caller chooses the period and nothing
-else, so this is not a way to run arbitrary queries against the metrics store, and the store is never reachable from a
-browser.
-
-Through the load balancer: `/jaeger` opens the trace store, and `/v1/traces` is where the browser's own spans go.
-<!-- /generated:plugin-routes -->
-
-## Topology (any authenticated role)
-
-| Method | Path | Body / query | Response |
-|---|---|---|---|
-| GET | `/api/topology` | — | `TopologyReport`: `{ generatedAt, cacheSeconds, discoveryAvailable, reportedBy, nodes, edges }` |
-| GET | `/api/topology/diagram` | — | The drawn diagram (`docs/topology.drawio`) as `application/xml` |
-
-A node is `{ id, name, health, instances, facts, reason, latencyMs }`; `health` is `Healthy`, `Degraded`,
-`Unreachable` or `NotProbed` (sent by name). `instances` are the replicas found by resolving the compose service
-name, each asked its own `/health`; `facts` are display strings (chunk count, models, tool list) and never carry a
-secret — the chat provider reports only *whether* its key is configured. The report is probed concurrently with a
-2 s budget per service and reused for `cacheSeconds`.
-
-## Agent to agent (TENANT_ADMIN only, otherwise `403`)
-
-| Method | Path | Body | Response |
-|---|---|---|---|
-| GET | `/api/admin/a2a` | — | `{ inbound, outbound, deliveries }` |
-| POST | `/api/admin/a2a/tasks/{id}/cancel` | — | `{ taskId, state }`, `404` unknown, `409` already finished |
-
-`inbound` is one row per task a partner started — partner, operation, state, when it started and last changed,
-how long it took, and whether it can still be cancelled. `outbound` is one row per consultation this system asked
-of the reviewer, with its outcome. `deliveries` is every push-webhook attempt, with its attempts and its error.
-No message content appears anywhere: the operation name, the state and the duration are what an operator needs.
-
-Both are scoped by the caller's firm, taken from the principal. An inbound task carries the firm its partner was
-entitled to act for, stamped when the task was created; a task belonging to another firm answers `404`, not
-`403`, because its existence is not the caller's business. Cancelling goes through the same `CancelTask` a
-partner's cancel does, and is itself audited as `a2a.cancel`.
+### coverage
 
 `costIsEstimate` is true when the run's model is priced at the lab's estimated rates in `TestAgent:Models`
 (`PriceIsEstimate`), or is no longer on that allowlist. `budget` is `{ maxTokens, maxCostUsd }` as chosen at start;
@@ -505,6 +478,28 @@ started — the amount the run's cost cap is checked against, not a recomputatio
 call was made or the model is priced at zero. The coverage runner's build and test time is not in it.
 | POST | `/api/coverage/reports` | multipart `commit`, `toolchain`, `report`, `root?`, `dirty?` | `200 { snapshotId, files, dropped }`; `400` for a report that is not Cobertura. Admin |
 
+### dev-login
+
+## Dev issuer (dev and qa only)
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | `/dev/users` | — | `[{ userId, tenantId, role, domainRoles, advisorIds, label }]` predefined personas |
+| POST | `/dev/token` | `{ userId, tenantId, role, domainRoles?, advisorIds?, audience?, persona? }` | `{ token, expiresAt }` |
+
+Core roles: `TENANT_ADMIN`, `USER`, `READ_ONLY`, `PLATFORM_ADMIN`. Tenants: `firm-a`, `firm-b`, `firm-c`. A persona's domain claims
+(`domain_roles` such as `billing:advisor`, and `advisor_ids`) ride in its token and are read only by the billing
+server; when the request names none, the issuer adds the persona's own. For one release the issuer also accepts
+`firmId` for `tenantId` and the old role names (`FIRM_ADMIN`, `ADVISOR`, `OPS`), and the api accepts a token's
+`firm_id` claim for `tenant_id`.
+
+
+`persona` selects a predefined user and supplies its tenant/role defaults. `operator` may choose a valid organization;
+other personas keep their own tenant and role. `audience` defaults to `api`; another installed audience requires the
+plugin to be in use for that tenant. Tokens preserve the persona's domain claims.
+
+### evals
+
 ## Evals (any authenticated role)
 
 | Method | Path | Response |
@@ -512,47 +507,163 @@ call was made or the model is priced at zero. The coverage runner's build and te
 | GET | `/api/evals/reports` | `EvalReportSummary[]`, newest first |
 | GET | `/api/evals/reports/{runId}` | `EvalReport` |
 
-## A2A (partner systems, not users)
+### feedback-review
 
-The assistant is also an [A2A 1.0](https://a2a-protocol.org) agent. A partner is a **system**, not a person: its
-token's audience is the A2A endpoint, it carries no user identity, and what it may see comes from the server's
-`A2A:Partners` registration — never from the request. To try it by hand, the a2a-inspector plugin (dev and qa) opens on
-http://localhost:7172; the MCP endpoints can be tried the same way with the mcp-inspector plugin on http://localhost:7173
-(see README, "Developer tools").
+## Feedback review (TENANT_ADMIN only, otherwise `403`)
 
-| Method | Path | Auth | Response |
+| Method | Path | Body | Response |
 |---|---|---|---|
-| GET | `/.well-known/agent-card.json` | anonymous | the signed public agent card |
-| POST | `/a2a/token` | anonymous | `{ accessToken, tokenType, expiresIn, scope }` for `{ clientId, clientSecret, scope? }` |
-| POST | `/a2a` | partner | JSON-RPC 2.0 for every A2A method |
-| POST/GET/DELETE | `/a2a/message:send`, `/a2a/message:stream`, `/a2a/tasks…` | partner | the same methods over HTTP+JSON |
+| GET | `/api/admin/feedback/queue` | — | `ReviewQueueItem[]` |
+| POST | `/api/admin/feedback/{turnId}/label` | `LabelRequest` | `204` |
 
-Both transports carry the specification's own wire format: `message/send`, `tasks/get`,
-`tasks/pushNotificationConfig/set`, `agent/getAuthenticatedExtendedCard`, roles `user`/`agent`, states such as
-`input-required`, parts with their `kind`, and a result that *is* the task or the message. The preview SDK
-underneath speaks a different dialect; `SpecWire` translates both ways and `DECISIONS.md` lists every divergence.
+`ReviewQueueItem.toolCalls[]`: `{ toolName, argumentSummary, outcome, sourceCount, docIds, chunkIds }` —
+`chunkIds` lets a reviewer pick the relevant chunks for a retrieval label.
 
-What a partner can do:
+`ReviewQueueItem.signals`: `negative_feedback`, `rephrased`, `no_tool_on_how_why`,
+`zero_retrieval_results`, `long_answer_without_sources`.
 
-- **Ask about a run** — `message/send` with "status of run 4417" answers with a message, from the run's own record.
-- **Ask anything else** — answered by the assistant itself, the same agent and the same MCP tools as the chat UI,
-  scoped to the partner's firm.
-- **Start a billing run** — a task, streamed over `message/stream`, ending in a `billing-run-result` artifact
-  (a data part). The run is **simulated**: it walks the real lifecycle over seeded data and bills nobody.
-- **Follow, resume, cancel** — `tasks/resubscribe` sends the whole current task first, so a dropped stream misses
-  no transition; `tasks/cancel` stops a working task; a task in `input-required` continues when the caller sends
-  the missing value under the same task id.
-- **Be notified** — `tasks/pushNotificationConfig/set` registers a webhook, which receives one POST per state
-  change carrying the task and the caller's own token in `X-A2A-Notification-Token`.
+`LabelRequest.dataset`: `selection` (uses `expectedTools`), `retrieval` (uses
+`relevantChunkIds`), `generation` (uses `referenceAnswer`, `expectedDocIds`).
 
-A request about a firm outside the partner's entitlement is rejected with one fixed sentence and no data — not the
-firm, not the run, not whether either exists.
+### index-admin
 
-**Verifying the card.** The card carries a JWS in `signatures[0]`: `protected` is base64url JSON
-(`{"alg":"HS256","typ":"JOSE"}`), and `signature` is base64url HMAC-SHA256 over
-`protected + "." + base64url(canonical(card))`, keyed with the issuer's signing key. `canonical` is the served
-card with its `signatures` member removed, every object's members sorted lexicographically, and no whitespace —
-`json.dumps(card, sort_keys=True, separators=(",", ":"), ensure_ascii=False)` reproduces it, so a verifier never
-has to guess this service's property order. `scripts/a2a_probe.py` does exactly that. In the lab the key is
-symmetric, so verification needs the same secret; a real deployment would sign asymmetrically and publish the
-public half (see `DECISIONS.md`).
+Index administration (`PLATFORM_ADMIN`, otherwise `403`) over the corpora the installed plugins declare in their
+manifests' `[corpus]` tables, for the caller's readable tenants. Only `tenants`-layout corpora are offered. `corpus`
+names one by its plugin; with it absent and exactly one offered, that one is used, with several offered it is `400`
+naming the choices, and a corpus no installed plugin offers is `404` and starts nothing.
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | `/api/platform/index/corpora` | — | `[{ name, hasGraph }]`, the corpora offered, by plugin name |
+| GET | `/api/platform/index/status?corpus=` | — | `IndexStatus` for that corpus's collection: `{ modelVersions, activeDenseVector, currentJob }` |
+| GET | `/api/platform/index/drift?corpus=` | — | `DriftReport` for that corpus: the index against the source, plus `graph` (add-graph-drift) — `{ available, reason, outOfSync, outOfSyncPercent, missingFromGraph, behind, notInCorpus }`, the corpus's graph against the same source documents; `available: false` with `reason: "unreachable"` when Neo4j cannot be read, `"not-built"` when the corpus has no graph |
+| POST | `/api/platform/index/run` | `{ corpus? }` | `202 AdminJob`; a corpus whose folder is absent runs, says so and removes nothing |
+| POST | `/api/platform/index/migrate` | `{ corpus?, targetModel? }` | `202 AdminJob` |
+| GET | `/api/platform/jobs/{jobId}` | — | `AdminJob` |
+| POST | `/api/platform/jobs/{jobId}/cancel` | — | `202` with the `AdminJob`, now `canceled`, while it stops; `409` when it had already ended; `404` for a job not of the admin's tenant. Any replica takes it: the job's row is the stop, and the replica running the job watches it (stop-anything). Once the work has stopped, its `summary` says how far it got |
+
+`AdminJob.state`: `queued` \| `running` \| `succeeded` \| `failed` \| `canceled`. One `index` and one `migrate` job run
+per tenant at a time, whichever corpus; a job's progress and summary name its corpus. `run` and `migrate` accept `{}`
+or no body.
+
+The screen contributes the `index-admin` section to `/platform?section=index-admin`. Its guarded standalone
+route `/admin/index` remains available when the platform dashboard shell is absent. Both require `PLATFORM_ADMIN`.
+
+### insights
+
+The Jev and intent statistics (tenant admin), read from the firm's turns' core records.
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | `/api/admin/intent-stats?window=1h\|24h\|7d` | — | `IntentStatsReport` for the caller's firm (default `24h`; another window is `400`) |
+| GET | `/api/admin/jev-stats?window=1h\|24h\|7d` | — | `JevStatsReport` for the caller's firm, same windows |
+
+The two statistics reports are numbers only: no question, answer, passage or identifier of a turn, conversation or
+user leaves the server. `IntentStatsReport` = `{ window, from, to, bucketMinutes, settings, totals, pipeline,
+reasons, choices, timeline, confidence, inDomain, points, meanProbabilities, latency, models }` — how the intent classifier
+answered on the firm's turns. `JevStatsReport` = `{ window, from, to, bucketMinutes, overview, intent, guardrail,
+relevance, routing, domains?, answerCheck? }` — every Jev call site on the firm's chat turns, with `intent` equal to
+the intent-stats report for the same window. Calls on the A2A path have no turn trace and are not counted. The
+shapes are in this plugin's `server/IntentStatsContracts.cs` and `server/JevStatsContracts.cs`. `answerCheck` = `{ answers, checked, pass,
+notRelevant, notGrounded, unchecked, unavailable, relevantFloor, groundedFloor, latency, uncertain? }`: `checked` counts
+every verdict but `unchecked`, the two "not" counts are taken against the floor recorded with each check, and
+`uncertain` — optional, so an older client still reads the response — counts the checked answers in the review band,
+which raise no review signal. An answer left unchecked because its sources were over the cap sent no request.
+
+### monitor
+
+A turn's behind-the-scenes trace never travels on the run's stream (agui-protocol-only). While the monitor is
+installed, the run's owner reads it while the run is going, from any replica (the trace is kept in the shared store for
+the run's grace period), and afterwards from the kept turn. The monitor's pane polls the first while it is open and the
+run is live. See [trace-events.md](trace-events.md).
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | `/api/runs/{runId}/trace?after=` | — | `{ runId, turnId, ended, events: TraceEvent[] }` — the run's trace while it is written, events after `seq` `after`; the run's owner only, otherwise `404` |
+| GET | `/api/turns/{turnId}/trace` | — | `{ turnId, conversationId, createdAt, events: TraceEvent[], aguiFrames: RunFrame[] \| null }` — the turn's owner, or a TENANT_ADMIN of the same tenant for turns in the review queue; otherwise `404`, as for a turn whose trace is no longer kept (`Tracing:RetentionDays`, 7). `aguiFrames` is the run's own events as they crossed the wire, and is `null` for a turn answered before they were kept |
+
+`RunFrame` = `{ seq, atMs, type, bytes, payload?, truncated }` — see [trace-events.md](trace-events.md). Turns recorded
+before agui-protocol-only may also carry `name` and `traceSeq` on their custom-event frames.
+
+### observability
+
+The Telemetry screen's numbers, while the observability plugin is installed (otherwise `404`). See
+[telemetry.md](telemetry.md) for where the signals go.
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | `/api/platform/telemetry?window=15m\|1h\|6h\|24h` | — | `TelemetryReport` — `PLATFORM_ADMIN` only, otherwise `403`. A window not on that list is `400` |
+
+`TelemetryReport` = `{ window, generatedAt, available, reason, panels: TelemetryPanel[], traceUrl }`.
+`TelemetryPanel` = `{ id, title, unit, series: { label, value }[] }`; an empty `series` means nothing was measured
+in the window, which is not the same as zero. `available: false` with a `reason` means the metrics store could not
+be read.
+
+The queries behind the panels live in the plugin's server part, in the api. A caller chooses the period and nothing
+else, so this is not a way to run arbitrary queries against the metrics store, and the store is never reachable from a
+browser.
+
+Through the load balancer: `/jaeger` opens the trace store, and `/v1/traces` is where the browser's own spans go.
+
+### topology
+
+## Topology (any authenticated role)
+
+| Method | Path | Body / query | Response |
+|---|---|---|---|
+| GET | `/api/topology` | — | `TopologyReport`: `{ generatedAt, cacheSeconds, discoveryAvailable, reportedBy, nodes }` |
+| GET | `/api/topology/diagram` | — | The drawn diagram (embedded draw.io resource) as `application/xml` |
+
+A node is `{ id, name, health, instances, facts, reason }`; `health` is `Healthy`, `Degraded`,
+`Unreachable` or `NotProbed` (sent by name). `instances` are the replicas found by resolving the compose service
+name, each asked its own `/health`; `facts` are display strings (chunk count, models, tool list) and never carry a
+secret — the chat provider reports only *whether* its key is configured. The report is probed concurrently with a
+2 s budget per service and reused for `cacheSeconds`.
+<!-- /generated:plugin-routes -->
+
+## Tenant plugin permissions
+
+The tenant comes from the authenticated principal. These core control routes remain available when the optional
+admin dashboard shells are absent. Reads expose identifiers, plugin metadata and counts, never turn content.
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | `/api/admin/plugins` | — | Allowed tenant plugins with description, health, private flag and enabled state; TENANT_ADMIN |
+| PUT | `/api/admin/plugins/{plugin}` | `{ enabled }` | Atomic audited switch; forbidden unless allowed; TENANT_ADMIN |
+| GET | `/api/platform/plugins` | — | Installed plugins and allowance states for the operator's organization; PLATFORM_ADMIN |
+| PUT | `/api/platform/plugins/{plugin}` | `{ allowed, enabled? }` | Atomic audited allowance; withdrawal also disables; PLATFORM_ADMIN |
+| GET | `/api/admin/usage` | — | Last 30 days: `{ from, turns, activeUsers, domains }`, counts only; TENANT_ADMIN |
+| GET | `/api/admin/operator-audit?before=` | — | `{ actions: [{ id, at, operatorId }], nextCursor }`, newest 50 operator entries in the token's tenant; TENANT_ADMIN |
+| GET | `/api/platform/plugin-audit?before=` | — | `{ actions, nextCursor }`, newest 50 permission changes in the operator's organization; PLATFORM_ADMIN |
+| GET | `/api/platform/content-access` | — | `{ grant, active }` for the current operator session; PLATFORM_ADMIN |
+| POST | `/api/platform/content-access` | `{ reason, durationMinutes }` | `201 { grant, active }`; duration 1–60 minutes; `400` invalid reference/duration; `409` existing grant; `503` permission publication pending |
+| POST | `/api/platform/content-access/{id}/end` | — | `200 { grant, active: false }` only after stored end acknowledgement; `404` foreign/unknown grant; `503` ending still pending |
+| GET | `/api/admin/content-access?before=` | — | `{ grants, nextCursor }`, newest 50 grants for the token's tenant; TENANT_ADMIN |
+
+Private plugins are visible only to their owning organization; installation plugins cannot be switched here (409).
+Disabling retains all data. Checkboxes require confirmation before switching off or withdrawing an allowance.
+
+A company operator requires one native string `sid` and an explicit `organization:<alias>` scope matching the
+validated organization. Bare, wildcard, foreign or multiple organization scopes and missing/ambiguous sessions
+are refused with `401`; no request parameter selects a tenant. The first authenticated operator API request for
+that issuer/session/operator/tenant is recorded as `operator.enter` before dispatch, even if the route later returns
+403. It records entry into the organization, not a content read or grant. Audit failure prevents dispatch.
+
+The session receipt and chained audit row commit in one core SQLite transaction and survive refreshes, replicas
+and restarts. No raw session ID, bearer, request URL/query or content is stored in the audit event. The tenant
+Overview lists these entries without needing Compliance installed; its reader exposes only row ID, UTC time and
+operator identity. `before` is an exclusive row-ID cursor.
+
+`grant` = `{ id, operatorId, reason, startedAt, expiresAt, endRequestedAt, endedAt }`; dates are UTC. The reason is
+a ticket/incident reference of 2–128 ASCII letters, digits or `._:/#-`, without spaces, tenant message content or
+URL credentials/query strings. Original reason/start/expiry are immutable, and an unended grant cannot be renewed.
+The grant belongs to the validated issuer/session/operator/tenant tuple; another session cannot use or end it.
+
+Operator content routes require an active own-store permission. Configuration/count routes remain available;
+existing ownership, tenant and role policies still apply after a grant. API and direct MCP content calls both check
+permission; a token claim, custom header or request parameter cannot grant access. Unknown/missing/unreachable
+permission state is refused. Tenant Overview lists the grant metadata independently of Compliance.
+
+The operator confirms the reference and duration in the platform dashboard; Esc before confirmation writes nothing.
+The global banner stays while a grant is unended, including a pending activation/end. End acknowledgement waits
+for shared permission revocation and the durable audit/row update; expiry uses the original absolute deadline.

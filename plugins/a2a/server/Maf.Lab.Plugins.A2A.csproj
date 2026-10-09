@@ -1,9 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Description>The a2a plugin's in-process part: the assistant's agent card and the A2A handler partners talk to</Description>
+    <Description>The a2a plugin's in-process part: the assistant's A2A surface, task/push stores and tables, admin screen, and open work</Description>
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Maf.Lab.Plugins.Abstractions\Maf.Lab.Plugins.Abstractions.csproj" />

@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Maf.Lab.Api.Agent;
@@ -74,6 +75,9 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
 
     /// <summary>The environment this host declares (MAF_ENV), which an installed plugin must allow.</summary>
     public string Environment { get; init; } = "dev";
+    public bool BootstrapTenantPlugins { get; init; } = true;
+    private readonly HashSet<string> _bootstrappedTenants = new(StringComparer.Ordinal);
+    private readonly object _bootstrapGate = new();
 
     public string PluginsRoot => Path.Combine(DataDir, "plugins");
 
@@ -108,7 +112,14 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
     private static IEnumerable<Maf.Lab.Plugins.Abstractions.PluginManifest> WithEngine(IEnumerable<Maf.Lab.Plugins.Abstractions.PluginManifest> plugins)
     {
         var list = plugins.ToList();
-        return list.Any(m => m.Provides == Maf.Lab.Plugins.Abstractions.ProviderKinds.DecisionEngine) ? list : [.. list, FixtureEnginePlugin.Manifest];
+        foreach (var manifest in new[] { FixtureEnginePlugin.Manifest, FixtureChatPlugin.Manifest, FixtureEmbeddingsPlugin.Manifest })
+        {
+            if (!list.Any(m => m.Provides == manifest.Provides))
+            {
+                list.Add(manifest);
+            }
+        }
+        return list;
     }
 
     /// <summary>Extra configuration for one test, applied over the standard settings.</summary>
@@ -120,6 +131,7 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
     /// <summary>The live trace of each run, as the monitor reads it while the run is going (agui-protocol-only).</summary>
     public FakeRunTraceStore RunTraces { get; } = new();
     public FakeIdempotencyStore Idempotency { get; } = new();
+    public FakeBreakGlassPermissionStore ContentPermissions { get; } = new();
     /// <summary>
     /// Whether the host's turns are observed by <see cref="TestTraceCapture"/> (the default), so a test reads a turn's
     /// trace with <see cref="TracesOf"/>. Off: the host runs as a core-only deployment, with no observer at all.
@@ -132,8 +144,14 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
         WriteInstalled(InstalledPlugins);
         // Read while the api composes its services, before configuration added below exists: host settings are visible then.
         builder.UseSetting("Plugins:Root", PluginsRoot);
+        builder.UseSetting("MAF_CHAT_MODEL", WithEngine(InstalledPlugins).First(m =>
+            m.Provides == Maf.Lab.Plugins.Abstractions.ProviderKinds.ChatModel).Name);
         builder.UseSetting("Plugins:ExtraAssemblies:0", typeof(ApiFactory).Assembly.GetName().Name);
         builder.UseSetting("MAF_ENV", Environment);
+        // Authentication chooses its handler while the application registers services, before the deferred
+        // app-configuration callback below. Expose explicit identity settings at that same composition point.
+        foreach (var key in new[] { "Auth:Authority", "Auth:Audience", "Auth:CoreRoleClientId", "Auth:WebClientId" })
+            if (ExtraSettings.TryGetValue(key, out var value)) builder.UseSetting(key, value);
         builder.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Storage:ConnectionString"] = $"Data Source={Path.Combine(DataDir, "maf-lab.db")}",
@@ -150,10 +168,13 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
             ["A2A:Partners:acme-portal:Firms:0"] = "firm-a",
             ["A2A:Partners:acme-portal:Scopes:0"] = "a2a.billing.read",
             ["A2A:SimulatedStepMs"] = SimulatedStepMs.ToString(),
+            ["A2A:StoreKeyspace"] = "assistant",
         }).AddInMemoryCollection(ExtraSettings));
         builder.ConfigureLogging(l => l.AddProvider(Logs).SetMinimumLevel(LogLevel.Debug));
         builder.ConfigureTestServices(s =>
         {
+            s.RemoveAll<Maf.Lab.Plugins.Abstractions.IPluginTokens>();
+            s.AddSingleton<Maf.Lab.Plugins.Abstractions.IPluginTokens, FixturePluginTokens>();
             s.RemoveAll<IToolSource>();
             s.AddSingleton<IToolSource>(Tools);
             s.RemoveAll<IChatClientFactory>();
@@ -172,6 +193,8 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
             s.AddSingleton<Maf.Lab.Domain.SharedState.IRunTraceStore>(RunTraces);
             s.RemoveAll<Maf.Lab.Domain.SharedState.IIdempotencyStore>();
             s.AddSingleton<Maf.Lab.Domain.SharedState.IIdempotencyStore>(Idempotency);
+            s.RemoveAll<Maf.Lab.Domain.SharedState.IBreakGlassPermissionStore>();
+            s.AddSingleton<Maf.Lab.Domain.SharedState.IBreakGlassPermissionStore>(ContentPermissions);
             if (ObserveTurns)
             {
                 s.AddSingleton<Maf.Lab.Plugins.Abstractions.ITurnObserver, TestTraceCapture>();
@@ -184,6 +207,22 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
     {
         var (token, _) = DevJwt.Issue(new AuthOptions(), user, TenantId.Firm(firm), role);
         var client = CreateClient();
+        if (BootstrapTenantPlugins)
+        {
+            lock (_bootstrapGate)
+            {
+                if (_bootstrappedTenants.Add(firm))
+                {
+                    using var db = Services.GetRequiredService<IDbContextFactory<Maf.Lab.Api.Storage.MafDbContext>>().CreateDbContext();
+                    var existing = db.PluginEntitlements.Where(row => row.TenantId == firm).Select(row => row.Plugin).ToHashSet(StringComparer.Ordinal);
+                    foreach (var manifest in Services.GetRequiredService<Maf.Lab.Api.Plugins.PluginCatalogue>().Current.Plugins.Select(p => p.Manifest)
+                        .Where(m => m.Scope == Maf.Lab.Plugins.Abstractions.PluginScopes.Tenant && (m.PrivateTo is null || m.PrivateTo == firm)))
+                        if (!existing.Contains(manifest.Name)) db.PluginEntitlements.Add(new Maf.Lab.Api.Storage.PluginEntitlementRow { TenantId = firm, Plugin = manifest.Name,
+                            Allowed = true, Enabled = true, ChangedBy = "fixture", ChangedAt = DateTime.UtcNow });
+                    db.SaveChanges();
+                }
+            }
+        }
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return client;
     }
@@ -352,5 +391,16 @@ public sealed class ApiFactory : WebApplicationFactory<Maf.Lab.Api.Program>
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
+    }
+}
+
+/// <summary>Audience tokens for fixture users; production never uses this test-owned issuer.</summary>
+internal sealed class FixturePluginTokens(Maf.Lab.Plugins.Abstractions.IPluginAccess access) : Maf.Lab.Plugins.Abstractions.IPluginTokens
+{
+    public async Task<string> ForAsync(Principal principal, string plugin, string subjectToken, CancellationToken ct)
+    {
+        var scope = Maf.Lab.Plugins.Abstractions.PluginAccessContext.For(principal) ?? await access.For(principal, ct);
+        if (!scope.IsInUse(plugin)) throw new UnauthorizedAccessException();
+        return DevJwt.Issue(new AuthOptions { Audience = plugin }, principal.UserId, principal.TenantId, principal.Role).Token;
     }
 }

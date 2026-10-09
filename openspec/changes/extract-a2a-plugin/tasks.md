@@ -18,16 +18,24 @@ batch 2.
 
 ## 2. After extract-compliance (batch 2)
 
-- [ ] 2.1 `A2A:Clients` keys and the compliance env folded into `a2a.env`; the store keyspace required.
-- [ ] 2.2 In one step: the tables (`IContributesModel`), the SQLite stores, the push dispatcher, the plugin's lb parts and
+- [x] 2.1 `A2A:Clients` keys and the compliance env folded into `a2a.env`; the store keyspace required.
+- [x] 2.2 In one step: the tables (`IContributesModel`), the SQLite stores, the push dispatcher, the plugin's lb parts and
       open work, and the whole `/api/admin/a2a` endpoint (inbound, outbound, deliveries, cancel — the optional server
       lookup and the core's partner-accessor registration go) reading the audit through `IAuditTrail`, and the A2A
       admin page into the plugin's web part.
-- [ ] 2.3 `a2a-inspector` depends on `a2a` and `compliance`; the allow-list lines removed; DECISIONS §81 part K.
-- [ ] 2.4 Open the `generalize-a2a-skills` proposal stub.
+- [x] 2.3 `a2a-inspector` depends on `a2a` and `compliance`; the allow-list lines removed; DECISIONS §81 part K.
+- [x] 2.4 Open the `generalize-a2a-skills` proposal stub.
 
 ## 3. Verify
 
-- [ ] 3.1 `make test`, `make docs-check` and `openspec validate --strict` pass with the folder present, and again with
+- [x] 3.1 `make test`, `make docs-check` and `openspec validate --strict` pass with the folder present, and again with
       it moved aside.
 - [ ] 3.2 `make ci-e2e` (every plugin) and `make ci-e2e-core` (the core alone) pass.
+
+Migration sequencing (owner, 2026-10-08): task 3.2 is final validation after **all** planned code migrations. Do not
+start indexing, reindexing, graph refresh or index-backed live evals/CI during the code moves. Task 3.1 remains the
+build, fixture-test, documentation and spec gate with the folder present and removed.
+
+Batch 2 fixture evidence (2026-10-09): solution build with warnings as errors; full .NET 1939/1939 with the folder
+present (together with coverage), 1883/1883 with it moved aside; vitest 702/702 present and 694/694 absent; web build
+and lint; docs-check (130 Python tests) and all 63 strict spec validations. Final stack/index-backed CI remains 3.2.

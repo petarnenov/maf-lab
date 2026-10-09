@@ -34,6 +34,7 @@ public static class Program
             builder.Configuration["Indexing:ContextualRetrieval"] = (ctx is "on" or "true").ToString();
         }
         builder.Services.AddMafIndexing(builder.Configuration);
+        Maf.Lab.Plugins.Abstractions.ProviderHost.AddInstalledProviders(builder.Services, builder.Configuration);
         // The progress bar owns stderr's last line and ends in the run's outcome; informational logs would break into
         // it and repeat that outcome, so the console shows warnings and errors only.
         builder.Logging.SetMinimumLevel(LogLevel.Warning);
@@ -41,6 +42,8 @@ public static class Program
         builder.Services.Configure<Microsoft.Extensions.Logging.Console.ConsoleLoggerOptions>(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
         using var host = builder.Build();
         var services = host.Services;
+        // This CLI does not start IHostedServices, so force the same provider validation before doing any work.
+        _ = services.GetRequiredService<IOptions<Maf.Lab.Plugins.Abstractions.InstalledProviders>>().Value;
         using var cts = new CancellationTokenSource();
         // Ctrl+C and SIGTERM stop the run at its next safe point (stop-anything): the item in hand is finished first.
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };

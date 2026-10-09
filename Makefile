@@ -32,17 +32,20 @@ MAF_ENV       ?= dev
 MAF_PLUGINS   ?=
 # The core's minimum providers (introduce-provider-plugins 5x): installed first whatever MAF_PLUGINS says, so `none` and
 # `make core` still have exactly one decision engine. Stage and prod name their own.
-MAF_CORE_PROVIDERS ?= jev
+MAF_CORE_PROVIDERS ?= jev ollama-cloud ollama-embeddings
+MAF_CHAT_MODEL ?= ollama-cloud
 ifeq ($(CI_MODE),1)
+# The model-free CI fixture uses only dev-login; no external company IdP is contacted.
+export AUTH_AUTHORITY :=
 # CI's plugin set, a positive list kept here only (introduce-plugins 5.1): CI_MODE means no downloads and no secrets,
 # so the developer tools stay out (a2a-inspector even builds from a git context). Each plugin extracted from the core
 # adds itself here in the same commit.
-CI_PLUGINS    ?= billing,code,compliance,portfolio,monitor,conversation-history,insights,index-admin,observability,a2a,curriculum,_example
+CI_PLUGINS    ?= billing,code,compliance,portfolio,monitor,conversation-history,insights,index-admin,observability,a2a,coverage,evals,feedback-review,topology,dev-login,tenant-admin,platform-admin,curriculum,_example
 MAF_PLUGINS   := $(CI_PLUGINS)
 endif
-export MAF_ENV MAF_PLUGINS MAF_CORE_PROVIDERS
+export MAF_ENV MAF_PLUGINS MAF_CORE_PROVIDERS MAF_CHAT_MODEL
 # The set passed explicitly: make 3.81's $(shell) does not see the variables make exports.
-PLUGINS_PY     = MAF_ENV='$(MAF_ENV)' MAF_PLUGINS='$(MAF_PLUGINS)' MAF_CORE_PROVIDERS='$(MAF_CORE_PROVIDERS)' CI_MODE='$(CI_MODE)' python3 $(ROOT)/scripts/plugins.py
+PLUGINS_PY     = MAF_ENV='$(MAF_ENV)' MAF_PLUGINS='$(MAF_PLUGINS)' MAF_CORE_PROVIDERS='$(MAF_CORE_PROVIDERS)' MAF_CHAT_MODEL='$(MAF_CHAT_MODEL)' CI_MODE='$(CI_MODE)' python3 $(ROOT)/scripts/plugins.py
 # The image variant (introduce-plugins decision 5e): full for dev, product (no dev-or-qa-only plugin code) for qa, stage
 # and prod, so stage and prod promote exactly the image qa tested. qa may run full beside it with MAF_IMAGE_VARIANT=full.
 MAF_IMAGE_VARIANT ?= $(if $(filter qa stage prod,$(MAF_ENV)),product,full)
@@ -113,13 +116,13 @@ HOST_ENV := Models__OllamaEndpoint=http://localhost:11435 Models__OllamaNumThrea
 # source, project or build file of it or of a project it references is newer than it, and touched so an up-to-date
 # build is not re-checked next time.
 INDEXER_DLL  := src/Maf.Lab.Indexing/bin/Debug/net10.0/Maf.Lab.Indexing.dll
-INDEXER_SRC  := $(shell find src/Maf.Lab.Indexing src/Maf.Lab.Retrieval src/Maf.Lab.Domain src/Maf.Lab.Hosting -type f \( -name '*.cs' -o -name '*.csproj' -o -name '*.json' \) -not -path '*/bin/*' -not -path '*/obj/*' 2>/dev/null) \
+INDEXER_SRC  := $(shell find src/Maf.Lab.Indexing src/Maf.Lab.Retrieval src/Maf.Lab.Domain src/Maf.Lab.Hosting src/Maf.Lab.Plugins.Abstractions $(wildcard plugins/*/lib) -type f \( -name '*.cs' -o -name '*.csproj' -o -name '*.json' \) -not -path '*/bin/*' -not -path '*/obj/*' 2>/dev/null) \
                 Directory.Build.props Directory.Packages.props global.json
 INDEXER      := $(DOTNET) $(INDEXER_DLL)
 
-.PHONY: all help up core plugins plugin-new plugin-new-check plugin-switch-check plugin-on plugin-off product-check down restart ps logs print-compose-file clean infra index indexer graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
-        coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-answer-check eval-code-route eval-graph-depth dev doctor banner index-if-empty \
-        specs docs docs-check lint-dotnet lint-web build-web ci ci-e2e ci-e2e-core core-turn-check setup \
+.PHONY: all help up core plugins plugin-new plugin-new-check plugin-switch-check plugin-on plugin-off product-check down restart ps logs print-compose-file clean infra index indexer graph reindex screenshots drift migrate test test-dotnet test-web lint verify \
+        dev doctor banner index-if-empty \
+        specs docs docs-check lint-dotnet lint-web build-web ci ci-e2e ci-e2e-core plugin-e2e core-turn-check setup \
         require-docker require-dotnet require-npm require-python
 
 all: require-docker up index-if-empty banner ## Start everything: build, run, wait for health, index if empty (default)
@@ -155,6 +158,8 @@ up: require-docker ## Build and start the stack (api replicas via API_REPLICAS; 
 	  && echo "✓ load balancer reloaded ($(API_REPLICAS) api replicas)"
 	@# Every replica re-reads plugins/.installed now rather than at its next 30-second check.
 	@$(COMPOSE) exec -T redis redis-cli PUBLISH plugins-changed up >/dev/null 2>&1 || true
+	@# Dev/CI fixture tenants use ordinary, organization-scoped operator writes, after every route is healthy.
+	@CI_MODE='$(CI_MODE)' python3 $(ROOT)/scripts/tenant_plugins_bootstrap.py --base-url "$(BASE_URL)"
 
 core: ## Start the core with no plugin but its minimum providers (MAF_PLUGINS=none, MAF_CORE_PROVIDERS); declines every turn (decision 5h); a plain make brings them back
 	@$(MAKE) --no-print-directory up MAF_PLUGINS=none
@@ -242,7 +247,7 @@ migrate: ## Fill a provisioned dense vector with its configured model in each pl
 # ── quality ──────────────────────────────────────────────────────────────────────────────────────────────────────
 test: test-dotnet test-web ## Run all tests (.NET unit + integration, web)
 
-test-dotnet: require-dotnet require-docker ## .NET tests (integration tests start Qdrant and Neo4j via Testcontainers)
+test-dotnet: require-dotnet require-docker ## .NET tests (integration tests start Qdrant, Neo4j and Keycloak via Testcontainers)
 	$(DOTNET) test --solution maf-lab.sln
 
 test-web: require-npm ## Web tests (Vitest)
@@ -270,7 +275,11 @@ docs-check: require-python ## Check the docs against the code (generated blocks,
 	@python3 -m unittest discover -s scripts/tests -q
 	python3 scripts/docs.py check
 
-ci: specs docs-check lint-dotnet test-dotnet lint-web test-web build-web ci-e2e ci-e2e-core ## Run locally what GitHub Actions runs on every pull request
+.PHONY: keycloak-check
+keycloak-check: require-python ## Check stage/prod external Keycloak realm bundles for supported server features (no import)
+	python3 scripts/keycloak_check.py
+
+ci: specs docs-check keycloak-check lint-dotnet test-dotnet lint-web test-web build-web ci-e2e ci-e2e-core ## Run locally what GitHub Actions runs on every pull request
 
 ci-e2e: require-docker require-dotnet ## Model-free end-to-end: stack with the Ollama stub, index, verify, A2A conformance, test generation (CI mode)
 	@# Test generation merges into main: it runs on a fresh clone of the committed HEAD, never on this checkout's main.
@@ -282,73 +291,21 @@ ci-e2e: require-docker require-dotnet ## Model-free end-to-end: stack with the O
 ci-e2e-core: require-docker ## Model-free core-only end-to-end: make core with the Ollama stub, verify, and the decline with no model, Jev or tool call (CI mode)
 	@E2E_PROJECT=maf-lab-e2e-core E2E_TARGETS="core verify core-turn-check" scripts/ci_e2e.sh $(ROOT) WAIT_TIMEOUT=$(WAIT_TIMEOUT)
 
+plugin-e2e: ## Run the installed plugins' end-to-end checks, contributed by their make fragments
+
 core-turn-check: ## On a core-only stack: a turn declines with the fixed reply, and the stub saw no model or Jev call (used by ci-e2e-core)
 	python3 scripts/core_turn_check.py $(BASE_URL)
-
-testgen-e2e: ## Model-free test generation end to end: refresh, run, verify, accept (used by ci-e2e, against its clone)
-	scripts/testgen_e2e.sh $(BASE_URL)
-
-coverage: require-docker ## Refresh the coverage snapshot at main (both toolchains, through the running stack)
-	@scripts/coverage_refresh.sh $(BASE_URL)
 
 verify: ## Verify the running stack through the load balancer (37 checks), then AG-UI conformance of every agent (8 checks)
 	scripts/verify_lb.sh $(BASE_URL)
 	@[ -d copilot-runtime/node_modules ] || (cd copilot-runtime && $(NPM) ci --no-audit --no-fund >/dev/null)
 	MODEL_FREE=$(CI_MODE) node copilot-runtime/conformance.mjs $(BASE_URL)
 
-# The eval's environment the installed plugins add to (their plugin.mk: EVAL_ENV += …), e.g. where a reviewer is.
-EVAL_ENV ?=
-
-eval: require-dotnet ## Run evals (SUITE=all|selection|retrieval|generation|injection|confirmation|intent|domain|presentation|guardrail|answer-check|code-route|graph-depth|generation-judge) against the stack's MCP servers
-	Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp $(EVAL_ENV) $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval -- --suite $(SUITE)$(if $(REPEAT), --repeat $(REPEAT))
-
-EVAL_HOST = Evals__McpEndpoint=$(BASE_URL)/mcp Evals__PortfolioMcpEndpoint=$(BASE_URL)/portfolio/mcp Evals__CodeMcpEndpoint=$(BASE_URL)/code/mcp $(EVAL_ENV) $(HOST_ENV) $(DOTNET) run --project src/Maf.Lab.Eval --
-EVAL = $(EVAL_HOST) --suite
-
-ask: require-dotnet ## Ask one question through the agent and print its trace (Q="…" TENANT=firm-a), e.g. a cross-domain one
-	$(EVAL_HOST) --ask "$(Q)" --tenant $(or $(TENANT),$(FIRM),firm-a)
-
 screenshots: require-npm ## Re-take the README screenshots from the running stack into docs/screenshots (SHOTS=chat,topology for a subset)
 	@curl -fsS -o /dev/null $(BASE_URL)/dev/users || { echo "✗ The stack is not answering on $(BASE_URL); run 'make' first."; exit 1; }
 	@test -d tools/screenshots/node_modules || (cd tools/screenshots && $(NPM) ci --no-audit --no-fund)
 	@cd tools/screenshots && npx playwright install chromium >/dev/null
 	cd tools/screenshots && BASE_URL=$(BASE_URL) SHOTS=$(SHOTS) node capture.mjs
-
-eval-accept: require-dotnet ## Run the evals and accept their metrics as the new baseline (REPEAT=N: mean of N runs; commit the result)
-	$(EVAL) $(SUITE) --accept-baseline$(if $(REPEAT), --repeat $(REPEAT))
-
-eval-selection: require-dotnet ## Eval: tool selection (recall/precision)
-	$(EVAL) selection
-
-eval-retrieval: require-dotnet ## Eval: retrieval (recall@5/@20, MRR per mode)
-	$(EVAL) retrieval
-
-eval-generation: require-dotnet ## Eval: answers graded by Jev, mean of 3 runs (REPEAT=N to change)
-	$(EVAL) generation$(if $(REPEAT), --repeat $(REPEAT))
-
-eval-injection: require-dotnet ## Eval: prompt-injection pass rate
-	$(EVAL) injection
-
-eval-confirmation: require-dotnet ## Eval: does the summary a person approves say what would happen
-	$(EVAL) confirmation
-
-eval-intent: require-dotnet ## Eval: intent classifier alone — would each question force search_documents? (needs JEV_MAF_LAB)
-	$(EVAL) intent
-
-eval-guardrail: require-dotnet ## Eval: content guard alone — are malicious prompts/tool results flagged and benign ones not? (needs JEV_MAF_LAB)
-	$(EVAL) guardrail
-
-eval-presentation: require-dotnet ## Eval: do portfolio answers build on their data cards instead of restating them?
-	$(EVAL) presentation
-
-eval-answer-check: require-dotnet ## Eval: Jev's answer check alone — are labelled unsupported answers flagged and supported ones not? (needs JEV_MAF_LAB)
-	$(EVAL) answer-check
-
-eval-code-route: require-dotnet ## Eval: Jev's code-route answer alone — would each code question start with the right graph call or the search? (needs JEV_MAF_LAB)
-	$(EVAL) code-route
-
-eval-graph-depth: require-dotnet ## Comparison: code graph traces at depth 2, 3 and 4, side by side, never gated (STRUCTURAL=1 for no model)
-	$(EVAL) graph-depth $(if $(STRUCTURAL),--structural-only)
 
 # ── local development ────────────────────────────────────────────────────────────────────────────────────────────
 dev: require-docker require-dotnet require-npm ## Run mcp/api/web locally without Docker (infra stays in compose); Ctrl-C stops

@@ -18,8 +18,7 @@ public sealed class NoDomainTests
 
     private static ApiFactory CoreOnly() => new(ApiFactory.ProceduralModel())
     {
-        // No built-in domain kept and no plugin installed: `make core`.
-        ExtraSettings = new Dictionary<string, string?> { ["Agent:BuiltInDomains"] = "" },
+        // No domain plugin installed: `make core`.
         InstalledPlugins = [],
     };
 

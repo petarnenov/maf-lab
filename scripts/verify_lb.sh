@@ -43,7 +43,7 @@ started_jobs = []
 def stop(signum, frame):
     for job_id, who in started_jobs:
         try:
-            req(f"/api/admin/jobs/{job_id}/cancel", "POST", token=who)
+            req(f"/api/platform/jobs/{job_id}/cancel", "POST", token=who)
         except Exception:
             pass
     print("\n✗ Cancelled. Anything verification started was stopped; run `make verify` again.", flush=True)
@@ -69,8 +69,6 @@ def in_use_answer():
     return _answer
 
 def plugin_in_use(name):
-    if not os.path.isfile(os.path.join(ROOT, "plugins", name, "plugin.toml")):
-        return True
     return name in {p["name"] for p in in_use_answer().get("plugins", [])}
 
 # What a chat turn does depends on whether any domain is in use (introduce-plugins 7.1): `make core` has none, and a turn
@@ -189,20 +187,20 @@ finally:
 # Over the first corpus an installed plugin declares; index-admin depends on the qdrant plugin, so a run reaches its
 # collection and succeeds.
 # No "fails without a vector store" branch: the check runs only with index-admin, which never runs without qdrant.
-alice = token("alice", "firm-a", "TENANT_ADMIN")
+alice = token("operator", "firm-a", "PLATFORM_ADMIN")
 corpora = []
 if plugin_in_use("index-admin"):
-    _, _, offered = req("/api/admin/index/corpora", token=alice)
+    _, _, offered = req("/api/platform/index/corpora", token=alice)
     corpora = [c["name"] for c in json.loads(offered or "[]")]
     check("an installed plugin declares a corpus", bool(corpora), offered)
 if corpora:
-    status, _, body = req("/api/admin/index/run", "POST", {"corpus": corpora[0]}, token=alice)
+    status, _, body = req("/api/platform/index/run", "POST", {"corpus": corpora[0]}, token=alice)
     job = json.loads(body)
     started_jobs.append((job["jobId"], alice))
-    status2, _, body2 = req("/api/admin/index/run", "POST", {"corpus": corpora[0]}, token=alice)
+    status2, _, body2 = req("/api/platform/index/run", "POST", {"corpus": corpora[0]}, token=alice)
     second = json.loads(body2)
     # A different id is only correct if the first job had already finished (dedup applies to *running* jobs).
-    _, _, first_now = req(f"/api/admin/jobs/{job['jobId']}", token=alice)
+    _, _, first_now = req(f"/api/platform/jobs/{job['jobId']}", token=alice)
     first_done = json.loads(first_now)["state"] in ("succeeded", "failed")
     check("second start while running returns the same job", status == 202 and (second["jobId"] == job["jobId"] or first_done),
           f"{job['jobId']} vs {second['jobId']} (first finished: {first_done})")
@@ -211,7 +209,7 @@ if corpora:
     # Keep polling for at least 8 reads so the "any replica can answer" check does not depend on how fast the job is.
     while (state not in ("succeeded", "failed") or polls < 8) and time.time() < deadline:
         polls += 1
-        s, h, b = req(f"/api/admin/jobs/{job['jobId']}", token=alice)
+        s, h, b = req(f"/api/platform/jobs/{job['jobId']}", token=alice)
         if s != 200:
             check("job status readable on every poll", False, f"HTTP {s} from {h.get('X-Instance')}")
             break

@@ -76,10 +76,12 @@ public sealed class A2AOptions
 
     public TimeSpan SubscribeTimeout { get; set; } = TimeSpan.FromMinutes(10);
     /// <summary>
-    /// The prefix this agent's tasks and webhooks are kept under in the shared store. The default is the reviewer's,
-    /// whose keys these were before the store was shared; every other agent sets its own.
+    /// The required prefix this agent's tasks and webhooks are kept under in the shared store; each agent names its own.
     /// </summary>
-    public string StoreKeyspace { get; set; } = "compliance";
+    public string StoreKeyspace { get; set; } = "";
+
+    /// <summary>Outbound system registrations, keyed by the agent plugin, separate from inbound partners.</summary>
+    public Dictionary<string, AgentClientRegistration> Clients { get; set; } = [];
 }
 
 /// <summary>Issues and reads partner tokens. Mirrors DevJwt, with a different audience and different claims.</summary>

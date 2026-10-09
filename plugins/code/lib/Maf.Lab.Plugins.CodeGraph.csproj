@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><Description>The code plugin's pure semantic graph builder</Description></PropertyGroup>
+  <ItemGroup><PackageReference Include="Microsoft.CodeAnalysis.CSharp" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../../../src/Maf.Lab.Plugins.Abstractions/Maf.Lab.Plugins.Abstractions.csproj" /></ItemGroup>
+  <ItemGroup><InternalsVisibleTo Include="Maf.Lab.Tests" /><InternalsVisibleTo Include="Maf.Lab.IntegrationTests" /></ItemGroup>
+</Project>

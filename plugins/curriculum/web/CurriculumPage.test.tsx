@@ -1,6 +1,7 @@
 import { screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { renderWithProviders } from '@maf/testing';
+import { renderWithProviders, PluginsContext } from '@maf/testing';
+import { definePlugin } from '@maf/plugin-api';
 import { CURRICULUM } from './curriculum';
 import { CurriculumPage } from './CurriculumPage';
 
@@ -36,5 +37,28 @@ describe('CurriculumPage', () => {
     expect(
       within(card).getByRole('link', { name: new RegExp(entry.screen!.label) }),
     ).toHaveAttribute('href', entry.screen!.to);
+  });
+  it('links an optional screen only while its route is contributed', () => {
+    const entry = CURRICULUM.flatMap((section) => section.entries).find(
+      (entry) => entry.screen?.optional,
+    )!;
+    const label = new RegExp(`See it on ${entry.screen!.label}`);
+    const { unmount } = renderWithProviders(<CurriculumPage />);
+    expect(screen.queryAllByRole('link', { name: label })).toHaveLength(0);
+    unmount();
+    const page = definePlugin({
+      name: 'fixture',
+      routes: [{ path: entry.screen!.to.slice(1), element: <p>optional page</p> }],
+    });
+    renderWithProviders(
+      <PluginsContext.Provider value={{ plugins: [page] }}>
+        <CurriculumPage />
+      </PluginsContext.Provider>,
+    );
+    expect(screen.getAllByRole('link', { name: label }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('link', { name: label })[0]).toHaveAttribute(
+      'href',
+      entry.screen!.to,
+    );
   });
 });

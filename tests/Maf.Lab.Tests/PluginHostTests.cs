@@ -25,15 +25,16 @@ public class PluginHostTests
     [Fact]
     public async Task With_no_plugin_the_api_boots_and_registers_nothing_of_one()
     {
-        // No plugin but the core's minimum providers (introduce-provider-plugins 5x): its decision engine.
+        // No plugin but the core's minimum providers (introduce-provider-plugins 5x).
         using var factory = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = [] };
         var client = factory.ClientFor("adam", "firm-a", Role.USER);
 
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/fixture/ping", Ct)).StatusCode);
         Assert.Null(factory.Services.GetService<FixtureMarker>());
         var list = await client.GetFromJsonAsync<JsonElement>("/api/plugins", Json, Ct);
-        var only = Assert.Single(list.GetProperty("plugins").EnumerateArray());
-        Assert.Equal("provider", only.GetProperty("kind").GetString());
+        var providers = list.GetProperty("plugins").EnumerateArray().ToList();
+        Assert.Equal(3, providers.Count);
+        Assert.All(providers, p => Assert.Equal("provider", p.GetProperty("kind").GetString()));
     }
 
     [Fact]
@@ -206,6 +207,24 @@ public class PluginHostTests
     }
 
     private static string Flatten(Exception e) => e.InnerException is { } inner ? e.Message + " | " + Flatten(inner) : e.Message;
+
+    [Fact]
+    public void An_agent_endpoint_comes_from_the_installed_standard_card()
+    {
+        using var factory = new ApiFactory(ApiFactory.ProceduralModel());
+        var installed = factory.Services.GetRequiredService<IInstalledPlugins>();
+        Assert.Null(installed.AgentEndpoint("weather"));
+        var path = factory.Services.GetRequiredService<PluginCatalogue>().InstalledPath;
+        File.WriteAllText(path, """
+            {"schema":1,"env":"dev","plugins":[{"manifest":{"name":"weather","kind":"app","environments":["dev"]},
+              "agentCard":{"supportedInterfaces":[{"protocolBinding":"HTTP+JSON","url":"http://lb/weather/http"},
+              {"protocolBinding":"JSONRPC","url":"http://lb/weather/a2a"}]}}]}
+            """);
+        factory.Services.GetRequiredService<PluginCatalogue>().Refresh();
+        Assert.Equal("http://lb/weather/a2a", installed.AgentEndpoint("weather"));
+        factory.SetInstalled([]);
+        Assert.Null(installed.AgentEndpoint("weather"));
+    }
 }
 
 /// <summary>The fixture's open work is static; tests that use it run one at a time.</summary>

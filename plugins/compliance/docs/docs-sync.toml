@@ -1,0 +1,5 @@
+# This plugin owns the routes served by its agent service.
+[routes.elsewhere]
+"/compliance/.well-known/agent-card.json" = "The compliance agent's MapA2ASurface, under its A2A:PathBase /compliance"
+"/compliance/a2a/token" = "The compliance agent's MapA2ASurface, under its A2A:PathBase /compliance"
+"/compliance/a2a" = "The compliance agent's MapA2A, under its A2A:PathBase /compliance"

@@ -13,7 +13,7 @@ in any service's configuration.
 
 Through the load balancer on `http://localhost:7171`:
 
-- `/telemetry` — the screen, which reads the numbers through the api
+- `/platform?section=telemetry` — the platform dashboard section for `PLATFORM_ADMIN`; `/telemetry` also opens its guarded standalone screen
 - `/jaeger` — the trace store; a turn also links straight to its own trace
 - `/v1/traces` — where the browser's own spans go
 
@@ -22,6 +22,6 @@ it to the MCP server, and the MCP server hangs its work under it rather than sta
 
 ## Reading the numbers
 
-`GET /api/telemetry?window=…` runs a fixed set of queries against Prometheus and returns their results. The
+`GET /api/platform/telemetry?window=…` runs a fixed set of queries against Prometheus and returns their results. The
 caller picks the period and nothing else, so the screen is not a way to run arbitrary queries, and Prometheus
 never has to be reachable from a browser. See [http-api.md](http-api.md).

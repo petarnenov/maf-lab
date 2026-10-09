@@ -1,10 +1,7 @@
 using System.Text.Json;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Decisions;
-using Maf.Lab.Api.BuiltIn;
 using Maf.Lab.Domain.Tenancy;
-using Maf.Lab.Eval;
-using Maf.Lab.Eval.Judging;
 using Maf.Lab.Plugins.Jev;
 using Maf.Lab.Retrieval.Configuration;
 using Maf.Lab.Retrieval.Rerank;
@@ -23,7 +20,7 @@ namespace Maf.Lab.Tests;
 /// plugin's <c>tests/unit/Golden/</c>; <c>MAF_UPDATE_GOLDEN=1</c> rewrites them, which is a change to what Jev reads and
 /// needs its evals.
 /// </summary>
-public class JevGoldenRequestTests
+public partial class JevGoldenRequestTests
 {
     private const string Procedural = "what is the procedure when a fee schedule is missing";
     private const string Answer = "Assign the missing fee schedule and re-run, per Procedure: Missing fee schedule.";
@@ -89,20 +86,6 @@ public class JevGoldenRequestTests
         ], Ct);
 
         AssertGolden("search-relevance", Assert.Single(jev.Requests).Body);
-    }
-
-    [Fact]
-    public async Task An_eval_grade_sends_the_recorded_request()
-    {
-        var jev = new FakeJev();
-        var grader = new DecisionGrader(JevSupport.Engine(jev), new JudgeOptions(), NullLogger<DecisionGrader>.Instance);
-
-        await grader.GradeAsync(new GradeInput("What do I do when a fee schedule is missing?",
-            "Assign the agreed schedule. Then re-run the run.",
-            [new ReadItem("doc:fees›Missing", "fees › Missing: Assign the agreed schedule, then re-run.", [], BuiltInDomains.Billing)],
-            ["Assign the agreed schedule.", "Re-run the run."]), Ct);
-
-        AssertGolden("eval-grade", Assert.Single(jev.Requests).Body);
     }
 
     private static ScoredChunk Chunk(int i, string text) => new(new ChunkRecord

@@ -29,6 +29,7 @@ public sealed record PluginManifest
     [JsonPropertyName("schema")] public int Schema { get; init; } = 1;
     [JsonPropertyName("name")] public string Name { get; init; } = "";
     [JsonPropertyName("kind")] public string Kind { get; init; } = "";
+    [JsonPropertyName("private_to")] public string? PrivateTo { get; init; }
     [JsonPropertyName("scope")] public string Scope { get; init; } = PluginScopes.Installation;
     [JsonPropertyName("environments")] public IReadOnlyList<string> Environments { get; init; } = [];
     [JsonPropertyName("description")] public string Description { get; init; } = "";
@@ -121,6 +122,11 @@ public sealed record TopologyTable
 {
     [JsonPropertyName("url")] public string Url { get; init; } = "";
     [JsonPropertyName("label")] public string? Label { get; init; }
+    [JsonPropertyName("id")] public string? Id { get; init; }
+    [JsonPropertyName("service")] public string? Service { get; init; }
+    [JsonPropertyName("health")] public string? Health { get; init; }
+    [JsonPropertyName("card")] public string? Card { get; init; }
+    [JsonPropertyName("nodes")] public IReadOnlyList<TopologyTable> Nodes { get; init; } = [];
 }
 
 /// <summary>

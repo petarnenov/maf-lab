@@ -10,8 +10,6 @@
   <ItemGroup>
     <PackageReference Include="Markdig" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
-    <!-- The code graph reads the repository's C# semantically (see DECISIONS.md §75) -->
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />

@@ -13,7 +13,7 @@ namespace Maf.Lab.Indexing.Graph;
 /// what an older run left. Progress is reported per written item (stage "billing" or "code"), so the bar moves while
 /// a large batch is written.
 /// </summary>
-public sealed class GraphBuildService(TenantScopedGraphMaintenance graph, IOptions<IndexingOptions> indexing, IConfiguration configuration)
+public sealed class GraphBuildService(TenantScopedGraphMaintenance graph, IOptions<IndexingOptions> indexing, IConfiguration configuration, IEnumerable<Maf.Lab.Plugins.Abstractions.IGraphBuildContribution>? contributions = null)
 {
     private const int WriteBatch = 500;
 
@@ -76,7 +76,6 @@ public sealed class GraphBuildService(TenantScopedGraphMaintenance graph, IOptio
     public GraphBuild BuildCode(IProgress<IndexProgress>? progress = null, int done = 0, int total = 0)
     {
         var root = RepositoryRoot();
-        var projects = CodeGraphBuilder.FindProjects(root, CodeFolders);
         var options = indexing.Value;
         var files = RepositoryCorpusLoader.Load(root, [.. CodeFolders.Select(f => f + "/")], [], options.RepositoryMaxFileBytes)
             .Documents
@@ -87,7 +86,9 @@ public sealed class GraphBuildService(TenantScopedGraphMaintenance graph, IOptio
         var fileProgress = progress is null
             ? null
             : new SyncProgress<string>(path => progress.Report(new IndexProgress("code: reading sources", done + ++read, total + files.Count, path)));
-        return CodeGraphBuilder.Build(projects, files, fileProgress);
+        var builder = contributions?.SingleOrDefault(c => c.Source == GraphSources.Code)
+            ?? throw new InvalidOperationException("No installed graph contribution builds this source.");
+        return builder.Build(root, files, fileProgress, CancellationToken.None);
     }
 
     /// <summary>The billing corpus: the indexer's configured corpus root, in the tenant layout.</summary>

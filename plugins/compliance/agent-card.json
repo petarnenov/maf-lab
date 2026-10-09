@@ -1,0 +1,72 @@
+{
+  "name": "maf-lab compliance reviewer",
+  "description": "Reviews a proposed fee adjustment and returns a verdict with a reason. It is a separate system with its own identity: it does not know who asked, only which system asked.",
+  "version": "1.0.0",
+  "documentationUrl": "http://localhost:7171/compliance/docs/http-api.md",
+  "supportedInterfaces": [
+    {
+      "url": "http://lb/compliance/a2a",
+      "protocolBinding": "JSONRPC",
+      "protocolVersion": "1.0"
+    },
+    {
+      "url": "http://lb/compliance/a2a",
+      "protocolBinding": "HTTP+JSON",
+      "protocolVersion": "1.0"
+    }
+  ],
+  "capabilities": {
+    "streaming": true,
+    "pushNotifications": true,
+    "extendedAgentCard": true
+  },
+  "skills": [
+    {
+      "id": "review_fee_adjustment",
+      "name": "Review a fee adjustment",
+      "description": "Use to have a proposed fee adjustment reviewed before it is applied: send the firm, the account, the amount and the reason, and receive approved or refused with a reason. The review takes tens of seconds and may ask for the advisor's justification first. Do not use it to apply an adjustment, to ask about billing runs or documentation, or as an authority on anything real \u2014 the verdict is simulated and binds nobody.",
+      "tags": [
+        "compliance",
+        "review",
+        "long-running",
+        "simulated"
+      ],
+      "examples": [
+        "Review a fee adjustment of 250.00 for account ACC-1042 at firm-a: overcharged in Q2."
+      ]
+    }
+  ],
+  "defaultInputModes": [
+    "text/plain"
+  ],
+  "defaultOutputModes": [
+    "text/plain",
+    "application/json"
+  ],
+  "securitySchemes": {
+    "oauth2": {
+      "oauth2SecurityScheme": {
+        "description": "Client credentials against the lab's issuer.",
+        "flows": {
+          "clientCredentials": {
+            "tokenUrl": "http://lb/compliance/a2a/token",
+            "scopes": {
+              "a2a.compliance.review": "Ask for a fee adjustment to be reviewed."
+            }
+          }
+        }
+      }
+    }
+  },
+  "securityRequirements": [
+    {
+      "schemes": {
+        "oauth2": {
+          "list": [
+            "a2a.compliance.review"
+          ]
+        }
+      }
+    }
+  ]
+}

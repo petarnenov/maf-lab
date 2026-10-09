@@ -1,4 +1,5 @@
 using Maf.Lab.Plugins.Abstractions;
+using Maf.Lab.Api.DataLifecycle;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 
@@ -16,18 +17,13 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
     public DbSet<FeedbackRow> Feedback => Set<FeedbackRow>();
     public DbSet<LabelRow> Labels => Set<LabelRow>();
     public DbSet<AuditRow> Audit => Set<AuditRow>();
+    public DbSet<OperatorSessionRow> OperatorSessions => Set<OperatorSessionRow>();
+    public DbSet<ContentAccessGrantRow> ContentAccessGrants => Set<ContentAccessGrantRow>();
+    internal DbSet<LifecycleJobRow> LifecycleJobs => Set<LifecycleJobRow>();
+    internal DbSet<LifecycleLegalHoldRow> LifecycleLegalHolds => Set<LifecycleLegalHoldRow>();
     public DbSet<AdminJobRow> AdminJobs => Set<AdminJobRow>();
-    public DbSet<A2ATaskRow> A2ATasks => Set<A2ATaskRow>();
-    public DbSet<A2APushConfigRow> A2APushConfigs => Set<A2APushConfigRow>();
-    public DbSet<A2APushDeliveryRow> A2APushDeliveries => Set<A2APushDeliveryRow>();
+    public DbSet<PluginEntitlementRow> PluginEntitlements => Set<PluginEntitlementRow>();
     public DbSet<PendingWriteRow> PendingWrites => Set<PendingWriteRow>();
-    public DbSet<CoverageSnapshotRow> CoverageSnapshots => Set<CoverageSnapshotRow>();
-    public DbSet<CoverageFileRow> CoverageFiles => Set<CoverageFileRow>();
-    public DbSet<CoverageThresholdRow> CoverageThresholds => Set<CoverageThresholdRow>();
-    public DbSet<TestGenRunRow> TestGenRuns => Set<TestGenRunRow>();
-    public DbSet<TestGenRunEventRow> TestGenRunEvents => Set<TestGenRunEventRow>();
-    public DbSet<TestGenRunActivityRow> TestGenRunActivity => Set<TestGenRunActivityRow>();
-    public DbSet<TestGenIssueRow> TestGenIssues => Set<TestGenIssueRow>();
 
     /// <summary>
     /// The installed in-process plugins that contribute tables (introduce-plugins decision 5): read from the application's
@@ -44,6 +40,9 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
         {
             plugin.ConfigureModel(b);
         }
+        b.Entity<PluginEntitlementRow>().HasKey(x => new { x.TenantId, x.Plugin });
+        b.Entity<PluginEntitlementRow>().ToTable("PluginEntitlements", t =>
+            t.HasCheckConstraint("CK_PluginEntitlements_EnabledRequiresAllowed", "\"Enabled\" = 0 OR \"Allowed\" = 1"));
         b.Entity<ConversationRow>().HasKey(x => x.Id);
         b.Entity<ConversationRow>().HasIndex(x => new { x.UserId, x.TenantId, x.DeletedAt, x.LastActivityAt });
         b.Entity<MessageRow>().HasIndex(x => new { x.ConversationId, x.Id });
@@ -54,36 +53,29 @@ public sealed class MafDbContext(DbContextOptions<MafDbContext> options) : DbCon
         b.Entity<FeedbackRow>().HasIndex(x => x.TurnId);
         b.Entity<LabelRow>().HasKey(x => x.Id);
         b.Entity<AuditRow>().HasIndex(x => new { x.TenantId, x.At });
+        b.Entity<OperatorSessionRow>().HasKey(x => x.SessionKey);
+        b.Entity<ContentAccessGrantRow>().HasKey(x => x.Id);
+        b.Entity<ContentAccessGrantRow>().HasIndex(x => x.SessionKey).IsUnique().HasFilter("\"EndedAt\" IS NULL");
+        b.Entity<ContentAccessGrantRow>().HasIndex(x => new { x.TenantId, x.Id });
+        b.Entity<ContentAccessGrantRow>().ToTable("ContentAccessGrants", t =>
+            t.HasCheckConstraint("CK_ContentAccessGrants_BoundedLifetime",
+                "\"ExpiresAt\" > \"StartedAt\" AND julianday(\"ExpiresAt\") - julianday(\"StartedAt\") <= 0.041666667"));
         // An investigation starts from a person, not from a firm.
         b.Entity<AuditRow>().HasIndex(x => new { x.PrincipalId, x.At });
+        b.Entity<LifecycleJobRow>().HasKey(x => x.Id);
+        b.Entity<LifecycleJobRow>().Property(x => x.State).HasConversion<string>();
+        b.Entity<LifecycleJobRow>().Property(x => x.Operation).HasConversion<string>();
+        b.Entity<LifecycleJobRow>().HasIndex(x => x.TenantId).IsUnique()
+            .HasFilter("\"State\" IN ('Queued', 'Running', 'Stopping')");
+        b.Entity<LifecycleLegalHoldRow>().HasKey(x => x.Id);
+        b.Entity<LifecycleLegalHoldRow>().HasIndex(x => new { x.TenantId, x.ReleasedAt });
         b.Entity<AdminJobRow>().HasKey(x => x.Id);
         // At most one running job per firm and kind, enforced by the database across replicas.
         b.Entity<AdminJobRow>().HasIndex(x => new { x.TenantId, x.Kind }).IsUnique().HasFilter("\"State\" = 'running'");
-        b.Entity<A2ATaskRow>().HasKey(x => x.Id);
-        b.Entity<A2ATaskRow>().HasIndex(x => new { x.ContextId, x.UpdatedAt });
-        b.Entity<A2ATaskRow>().HasIndex(x => new { x.PartnerId, x.UpdatedAt });
-        b.Entity<A2ATaskRow>().HasIndex(x => new { x.TenantId, x.UpdatedAt });
-        b.Entity<A2APushConfigRow>().HasKey(x => x.Id);
-        b.Entity<A2APushConfigRow>().HasIndex(x => x.TaskId);
-        b.Entity<A2APushDeliveryRow>().HasIndex(x => new { x.TaskId, x.At });
         b.Entity<PendingWriteRow>().HasKey(x => x.Id);
         b.Entity<PendingWriteRow>().HasIndex(x => new { x.TenantId, x.UserId, x.UpdatedAt });
         b.Entity<PendingWriteRow>().HasIndex(x => new { x.ConversationId, x.UpdatedAt });
-        b.Entity<CoverageSnapshotRow>().HasKey(x => x.Id);
-        b.Entity<CoverageSnapshotRow>().HasIndex(x => new { x.Kind, x.CreatedAt });
-        b.Entity<CoverageSnapshotRow>().HasIndex(x => x.RunId);
-        b.Entity<CoverageFileRow>().HasKey(x => new { x.SnapshotId, x.Path });
-        b.Entity<CoverageFileRow>().HasIndex(x => new { x.Path, x.SnapshotId });
-        b.Entity<CoverageThresholdRow>().HasKey(x => x.Path);
-        b.Entity<TestGenRunRow>().HasKey(x => x.Id);
-        b.Entity<TestGenRunRow>().HasIndex(x => new { x.Path, x.CreatedAt });
-        // At most one active run per file, enforced by the database across replicas.
-        b.Entity<TestGenRunRow>().HasIndex(x => x.Path).IsUnique().HasFilter($"\"State\" IN ({TestGenRunState.ActiveSql})")
-            .HasDatabaseName("IX_TestGenRuns_Path_Active");
-        b.Entity<TestGenRunEventRow>().HasIndex(x => new { x.RunId, x.Seq }).IsUnique();
-        b.Entity<TestGenIssueRow>().HasKey(x => new { x.RunId, x.TestKey });
-        b.Entity<TestGenRunActivityRow>().HasKey(x => new { x.RunId, x.Seq });
-        b.Entity<TestGenRunActivityRow>().HasIndex(x => new { x.RunId, x.LastSeq });
+
     }
 }
 
@@ -253,45 +245,6 @@ public sealed class AdminJobRow
 }
 
 /// <summary>Full behind-the-scenes trace of a turn (message content; retention: Tracing:RetentionDays).</summary>
-/// <summary>An A2A task, whole, so any replica can answer for it. The SDK's own store is per-process.</summary>
-public sealed class A2ATaskRow
-{
-    public required string Id { get; set; }
-    public required string ContextId { get; set; }
-    public string? PartnerId { get; set; }
-
-    /// <summary>The firm the partner was entitled to act for when the task was created.</summary>
-    public string? TenantId { get; set; }
-    public required string State { get; set; }
-    /// <summary>The task as the SDK serialises it, including its history and artifacts.</summary>
-    public required string Json { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-}
-
-/// <summary>A webhook a caller registered for one task. The token is the caller's own, echoed back to it.</summary>
-public sealed class A2APushConfigRow
-{
-    public required string Id { get; set; }
-    public required string TaskId { get; set; }
-    public required string Url { get; set; }
-    public string? Token { get; set; }
-    public DateTime CreatedAt { get; set; }
-}
-
-/// <summary>What happened when we tried to deliver one state change. A failure is visible, never silent.</summary>
-public sealed class A2APushDeliveryRow
-{
-    public long Id { get; set; }
-    public required string TaskId { get; set; }
-    public required string State { get; set; }
-    public required string Url { get; set; }
-    public DateTime At { get; set; }
-    public int Attempts { get; set; }
-    public bool Delivered { get; set; }
-    public string? Error { get; set; }
-}
-
 /// <summary>Keys EF's model cache by the set of plugins that contribute tables, as well as by the context type.</summary>
 public sealed class PluginModelCacheKeyFactory : IModelCacheKeyFactory
 {
@@ -311,4 +264,15 @@ public sealed class PluginDbContextFactory(IDbContextFactory<MafDbContext> inner
 
     public async Task<DbContext> CreateDbContextAsync(CancellationToken cancellationToken = default) =>
         await inner.CreateDbContextAsync(cancellationToken);
+}
+
+/// <summary>Core tenant entitlements survive disabling or uninstalling a contributor.</summary>
+public sealed class PluginEntitlementRow
+{
+    public required string TenantId { get; set; }
+    public required string Plugin { get; set; }
+    public bool Allowed { get; set; }
+    public bool Enabled { get; set; }
+    public DateTime ChangedAt { get; set; }
+    public required string ChangedBy { get; set; }
 }

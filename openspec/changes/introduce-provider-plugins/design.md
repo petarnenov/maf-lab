@@ -59,6 +59,11 @@ provider. Changing it still means a new profile and a full reindex, as today.
 **Promotion rule.** A provider or model change reaches stage or prod only after `make eval` holds the accepted baselines
 with it. The assistant's behaviour depends on the model.
 
+**Migration sequence (user decision, 2026-10-08).** Complete the entire agreed code migration first, using builds,
+contract tests and docs/spec checks during that phase. Indexing, graph refreshes and index-backed live evals are a
+final validation phase after the code migration is complete; they do not block the remaining code changes. Task 1.5
+tracks this deferred gate. The promotion rule still applies before stage/prod.
+
 
 ### 5x. The core's minimum providers (review finding 1)
 

@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><Description>Company identity sign-in configuration for the public web client</Description></PropertyGroup>
+  <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../../../src/Maf.Lab.Plugins.Abstractions/Maf.Lab.Plugins.Abstractions.csproj" /></ItemGroup>
+</Project>

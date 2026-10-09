@@ -1,0 +1,2 @@
+[routes.library]
+"/api/coverage/runs/agent" = "MapAGUIServer (the Agent Framework's AG-UI hosting) registers it at TestGenRunEndpoint.Path"

@@ -118,11 +118,13 @@ public sealed class CollectionBootstrapper(
         }
     }
 
-    /// <summary>The chunk collection's name and point count, or null when it does not exist.</summary>
-    public async Task<(string Collection, ulong Points)?> DescribeChunkCollectionAsync(CancellationToken ct) =>
-        await client.CollectionExistsAsync(_qdrant.Collection, ct)
-            ? (_qdrant.Collection, (await client.GetCollectionInfoAsync(_qdrant.Collection, ct)).PointsCount)
-            : null;
+    /// <summary>The collection's display facts, or null when it does not exist. No driver types escape.</summary>
+    public async Task<ChunkCollectionDescription?> DescribeChunkCollectionAsync(CancellationToken ct)
+    {
+        if (!await client.CollectionExistsAsync(_qdrant.Collection, ct)) return null;
+        var info = await client.GetCollectionInfoAsync(_qdrant.Collection, ct);
+        return new(_qdrant.Collection, info.PointsCount, info.Status.ToString());
+    }
 
     /// <summary>Adds any configured dense vector the collection lacks (embedding-model migration).</summary>
     public async Task AddMissingDenseVectorsAsync(CancellationToken ct)
@@ -156,3 +158,5 @@ public sealed class CollectionBootstrapper(
         return info.Config.Params.VectorsConfig.ParamsMap?.Map.Keys.ToHashSet() ?? [];
     }
 }
+
+public sealed record ChunkCollectionDescription(string Collection, ulong Points, string Status);

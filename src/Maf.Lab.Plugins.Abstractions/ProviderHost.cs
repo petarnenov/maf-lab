@@ -11,7 +11,7 @@ namespace Maf.Lab.Plugins.Abstractions;
 /// How a process takes its providers (introduce-provider-plugins 5t/5u): every host that holds provider code (the api,
 /// the MCP servers, the indexer, the test agent, the eval and the test hosts) calls <see cref="AddInstalledProviders"/>,
 /// which registers each installed <c>provider</c> plugin found next to it, and checks at start that exactly one decision
-/// engine is installed. A provider lives in every such process, so it changes only with a restart of the stack (make up),
+/// engine and the named chat provider are installed. A provider lives in every such process, so it changes only with a restart of the stack (make up),
 /// never by plugin-on/off.
 /// </summary>
 public static class ProviderHost
@@ -36,7 +36,7 @@ public static class ProviderHost
 
     /// <summary>
     /// Registers every installed provider whose code is in this process, in <c>.installed</c>'s order, and validates the
-    /// set on start: exactly one <c>decision-engine</c>. An installed provider with no code here stops the start, naming
+    /// set on start: exactly one <c>decision-engine</c> and the <c>MAF_CHAT_MODEL</c> chat provider. An installed provider with no code here stops the start, naming
     /// it, as an in-process plugin's missing server part does.
     /// </summary>
     public static IServiceCollection AddInstalledProviders(this IServiceCollection services, IConfiguration configuration,
@@ -59,7 +59,11 @@ public static class ProviderHost
             ((IContributesProvider)Activator.CreateInstance(type)!).ConfigureProvider(services, configuration);
         }
         services.AddOptions<InstalledProviders>()
-            .Configure(o => o.Provides = [.. installed.Select(m => (m.Name, m.Provides ?? ""))])
+            .Configure(o =>
+            {
+                o.Provides = [.. installed.Select(m => (m.Name, m.Provides ?? ""))];
+                o.ChatModel = configuration["MAF_CHAT_MODEL"] ?? "ollama-cloud";
+            })
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<InstalledProviders>, InstalledProvidersValidation>();
         return services;
@@ -92,19 +96,30 @@ public static class ProviderHost
 public sealed class InstalledProviders
 {
     public IReadOnlyList<(string Name, string Provides)> Provides { get; set; } = [];
+    public string ChatModel { get; set; } = "ollama-cloud";
 
-    /// <summary>Why the set is not what the core needs, or null when it is: exactly one decision engine.</summary>
+    /// <summary>Why the set lacks the core's decision engine or selected chat model, or has ambiguous embeddings.</summary>
     public string? Problem
     {
         get
         {
             var engines = Provides.Where(p => p.Provides == ProviderKinds.DecisionEngine).Select(p => p.Name).ToList();
-            return engines.Count switch
+            var engineProblem = engines.Count switch
             {
                 1 => null,
                 0 => "no decision engine is installed: install exactly one provider with provides = \"decision-engine\" (MAF_CORE_PROVIDERS)",
                 _ => $"more than one decision engine is installed ({string.Join(", ", engines)}): install exactly one",
             };
+            if (engineProblem is not null)
+            {
+                return engineProblem;
+            }
+            if (!Provides.Any(p => p.Name == ChatModel && p.Provides == ProviderKinds.ChatModel))
+            {
+                return $"chat provider '{ChatModel}' is not installed with provides = \"chat-model\" (MAF_CHAT_MODEL)";
+            }
+            var embedders = Provides.Where(p => p.Provides == ProviderKinds.Embeddings).Select(p => p.Name).ToList();
+            return embedders.Count > 1 ? $"more than one embeddings provider is installed ({string.Join(", ", embedders)}): install exactly one" : null;
         }
     }
 }

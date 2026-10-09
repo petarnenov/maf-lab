@@ -8,7 +8,7 @@ export interface CurriculumEntry {
   paths: string[];
   /** Capability directory under openspec/specs/. */
   spec: string;
-  screen?: { to: string; label: string };
+  screen?: { to: string; label: string; optional?: boolean };
 }
 
 export interface CurriculumSection {
@@ -67,9 +67,8 @@ export const CURRICULUM: CurriculumSection[] = [
         concept: 'Testing an AI service',
         summary:
           'Tools are plain methods with unit tests that need no model; the intent classifier is tested against a fake. Selection and quality are measured by eval suites with thresholds and negative examples, not by unit tests.',
-        paths: ['tests/Maf.Lab.Tests', 'src/Maf.Lab.Eval/Suites'],
+        paths: ['tests/Maf.Lab.Tests', 'src/Maf.Lab.Evaluation/Metrics.cs'],
         spec: 'eval-harness',
-        screen: { to: '/evals', label: 'Evals' },
       },
     ],
   },
@@ -84,7 +83,7 @@ export const CURRICULUM: CurriculumSection[] = [
           'Both MCP servers run the official C# SDK in its stateless mode: no session id, protocol version and capabilities travel with every request. That is what lets them sit behind the load balancer as two replicas each.',
         paths: ['src/Maf.Lab.Retrieval/Program.cs', 'src/Maf.Lab.Portfolio/Program.cs'],
         spec: 'retrieval-tool',
-        screen: { to: '/topology', label: 'Topology' },
+        screen: { to: '/topology', label: 'Topology', optional: true },
       },
       {
         concept: 'MRTR confirmation before a write',
@@ -192,18 +191,16 @@ export const CURRICULUM: CurriculumSection[] = [
         paths: [
           'src/Maf.Lab.Api/Agent/ToolDataEnvelope.cs',
           'src/Maf.Lab.Api/Agent/Guardrail.cs',
-          'src/Maf.Lab.Eval/Suites/InjectionSuite.cs',
+          'src/Maf.Lab.Api/Agent/Guardrail.cs',
         ],
         spec: 'injection-defense',
-        screen: { to: '/evals', label: 'Evals' },
       },
       {
         concept: 'Eval plan: selection, retrieval, generation',
         summary:
           'Selection measures recall, precision and negative accuracy; retrieval measures recall@k and MRR; generation is scored for faithfulness by a model judge. Each run is compared with an accepted baseline and regressions are named.',
-        paths: ['src/Maf.Lab.Eval/Suites', 'src/Maf.Lab.Eval/Reports/RegressionGate.cs'],
+        paths: ['src/Maf.Lab.Evaluation/Metrics.cs', 'src/Maf.Lab.Domain/Evals/EvalBaseline.cs'],
         spec: 'eval-harness',
-        screen: { to: '/evals', label: 'Evals' },
       },
       {
         concept: 'Learning from production',
@@ -212,10 +209,9 @@ export const CURRICULUM: CurriculumSection[] = [
         paths: [
           'src/Maf.Lab.Api/Agent/TurnSignals.cs',
           'web/src/chat/TurnFeedback.tsx',
-          'web/src/admin/LabelForm.tsx',
+          'src/Maf.Lab.Api/Feedback/CoreFeedbackReviewStore.cs',
         ],
         spec: 'web-ui',
-        screen: { to: '/admin/feedback', label: 'Feedback review' },
       },
     ],
   },
@@ -230,7 +226,6 @@ export const CURRICULUM: CurriculumSection[] = [
           'The lab publishes an Agent Card and hosts a billing agent whose tasks move from submitted through working to completed or input-required. Tasks are stored so a run continues after the stream drops, with push notifications for long tasks.',
         paths: ['src/Maf.Lab.A2A/AgentCardFactory.cs', 'src/Maf.Lab.A2A/A2AEndpoints.cs'],
         spec: 'a2a-hosting',
-        screen: { to: '/admin/a2a', label: 'Agent to agent' },
       },
       {
         concept: 'A2A client',
@@ -238,7 +233,6 @@ export const CURRICULUM: CurriculumSection[] = [
           "Before a fee adjustment, the assistant consults a separate compliance agent found by its Agent Card, over a streaming A2A message. It authenticates as itself — the user's token is not forwarded — and every way the consultation can end, including a question back or a timeout, is a typed result.",
         paths: ['src/Maf.Lab.Plugins.Abstractions/ReviewerConsultation.cs', 'src/Maf.Lab.A2A'],
         spec: 'a2a-client',
-        screen: { to: '/admin/a2a', label: 'Agent to agent' },
       },
       {
         concept: 'One assistant with a router',
@@ -280,7 +274,7 @@ export const CURRICULUM: CurriculumSection[] = [
           'nginx fronts two replicas each of the api and the MCP servers. Conversation turns, pending proposals and A2A tasks live in shared SQLite; run state and idempotency keys live in Redis, so any replica can serve the next request.',
         paths: ['compose/lb/nginx.conf', 'src/Maf.Lab.Hosting/SharedState.cs'],
         spec: 'load-balancing',
-        screen: { to: '/topology', label: 'Topology' },
+        screen: { to: '/topology', label: 'Topology', optional: true },
       },
       {
         concept: 'Observability: a span for every step',
@@ -325,9 +319,8 @@ export const CURRICULUM: CurriculumSection[] = [
         concept: 'Evals on change, not on every commit',
         summary:
           'Evals are a separate console app, run on demand or when the prompt, a tool description, the model or the tool set changes. Running make eval compares one suite with its accepted baseline.',
-        paths: ['src/Maf.Lab.Eval', 'evals/baseline.json'],
+        paths: ['src/Maf.Lab.Evaluation', 'evals/baseline.json'],
         spec: 'eval-harness',
-        screen: { to: '/evals', label: 'Evals' },
       },
     ],
   },

@@ -25,3 +25,7 @@ subject = "this lab's own source code"
 [domain.scope_summary]
 en = "questions about this lab's own code"
 bg = "с въпроси за собствения код на лабораторията"
+
+[topology]
+service = "mcp-code"
+health = "/health"

@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><Description>Optional evaluation reports and labelled dataset export</Description></PropertyGroup>
+  <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../../../src/Maf.Lab.Plugins.Abstractions/Maf.Lab.Plugins.Abstractions.csproj" /></ItemGroup>
+  <ItemGroup><InternalsVisibleTo Include="Maf.Lab.Tests" /></ItemGroup>
+</Project>

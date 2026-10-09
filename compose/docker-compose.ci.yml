@@ -33,8 +33,3 @@ services:
 
   api:
     env_file: [env/ci-models.env]
-
-  # The test agent writes its tests with the stub's scripted answer for the e2e fixture.
-  test-agent:
-    environment:
-      Models__ChatEndpoint: http://ollama:11434

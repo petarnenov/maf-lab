@@ -2,6 +2,7 @@ using Maf.Lab.Domain.Tenancy;
 using Microsoft.Agents.AI;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -35,6 +36,12 @@ public interface IContributesEndpoints
 public interface IContributesModel
 {
     void ConfigureModel(ModelBuilder model);
+}
+
+/// <summary>Idempotent data backfills for contributed tables, after the core's generic schema initialization.</summary>
+public interface IContributesDataMigration
+{
+    Task MigrateDataAsync(DbContext context, CancellationToken ct);
 }
 
 /// <summary>Behaviour of a domain that data cannot express (decision 6): the Strategy for one domain.</summary>
@@ -85,6 +92,9 @@ public interface IInstalledPlugins
     /// </summary>
     string? McpEndpoint(string plugin);
 
+    /// <summary>An installed A2A plugin's JSON-RPC endpoint from its standard Agent Card bootstrap descriptor.</summary>
+    string? AgentEndpoint(string plugin) => null;
+
     /// <summary>
     /// The corpora the installed plugins declare in their manifests (extract-index-admin-plugin), each with its root made
     /// absolute under the plugins folder; re-read as the installed set changes. None unless the implementation reads
@@ -129,7 +139,8 @@ public interface IMafEndpoints
     IEndpointRouteBuilder Routes { get; }
 
     /// <summary>An AG-UI agent for signed-in callers, with the core's official mappings; no AG-UI type in the plugin.</summary>
-    IEndpointConventionBuilder MapPluginAgent(string pattern, AIAgent agent);
+    IEndpointConventionBuilder MapPluginAgent(string pattern, AIAgent agent,
+        Func<string?, CancellationToken, Task<IResult?>>? checkThread = null);
 }
 
 /// <summary>

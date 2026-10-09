@@ -52,6 +52,11 @@ run() { # name dir command...
 
 "$DOTNET" build "$ROOT/maf-lab.sln" -v q -nologo
 # The api reads the installed plugins from the repository's plugins/ (compose mounts it at /plugins); the set is the one
+# Match compose company identity configuration; explicit ASP.NET variables retain precedence.
+export Auth__Authority="${Auth__Authority:-${AUTH_AUTHORITY:-}}"
+export Auth__CoreRoleClientId="${Auth__CoreRoleClientId:-${AUTH_CORE_ROLE_CLIENT_ID:-api}}"
+export Auth__WebClientId="${Auth__WebClientId:-${AUTH_WEB_CLIENT_ID:-web}}"
+
 # make resolves (MAF_PLUGINS, MAF_ENV), written here as `make up` writes it.
 export Plugins__Root="$ROOT/plugins"
 python3 "$ROOT/scripts/plugins.py" install --installed-only
@@ -67,12 +72,15 @@ if installed portfolio; then
   export Agent__Servers__portfolio__Endpoint=http://localhost:5091/mcp
   run portfolio "$ROOT/src/Maf.Lab.Portfolio" "$DOTNET" run --no-build
 fi
-# The codebase's server runs only while the code plugin is installed. Its server.json names the balancer, which make dev
-# bypasses, so the api is pointed at the local one by the configured override of that plugin's server.
-if installed code; then
-  export Agent__Servers__code__Endpoint=http://localhost:5092/mcp
-  run code "$ROOT/src/Maf.Lab.CodeSearch" "$DOTNET" run --no-build
-fi
+# A plugin may contribute its own host command and environment; they leave with its folder.
+for hook in "$ROOT"/plugins/*/files/dev.sh; do
+  [ -f "$hook" ] || continue
+  plugin="$(basename "$(dirname "$(dirname "$hook")")")"
+  installed "$plugin" || continue
+  environment="$(dirname "$hook")/dev.env"
+  if [ -f "$environment" ]; then set -a; source "$environment"; set +a; fi
+  run "$plugin" "$ROOT" bash "$hook"
+done
 run api "$ROOT/src/Maf.Lab.Api" "$DOTNET" run --no-build
 run web "$ROOT/web" "$NPM" run dev
 echo "dev: web http://localhost:5174 · api http://localhost:5080 · mcp http://localhost:5090/mcp · portfolio http://localhost:5091/mcp · code http://localhost:5092/mcp (Ctrl-C to stop)"

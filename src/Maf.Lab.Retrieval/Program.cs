@@ -28,11 +28,13 @@ public partial class Program
         // loses others, so it does not start at all.
         builder.AddSharedState();
         builder.RequireSharedState<Maf.Lab.Domain.SharedState.IIdempotencyStore>();
+        builder.RequireSharedState<Maf.Lab.Domain.SharedState.IBreakGlassPermissionStore>();
 
         builder.Services.AddMafRetrievalCore(builder.Configuration);
         // The installed providers: the decision engine the relevance judge asks.
         Maf.Lab.Plugins.Abstractions.ProviderHost.AddInstalledProviders(builder.Services, builder.Configuration);
-        builder.Services.AddDevJwtAuthentication(builder.Configuration);
+        builder.Services.AddLabAuthentication(builder.Configuration, "billing");
+        builder.Services.AddLabMcpAuthentication(builder.Configuration);
         // The graph store: billing relationships. The driver connects on first use, so the server starts without it and
         // the graph tool answers "temporarily unavailable" until it is back.
         builder.Services.AddGraphStore(builder.Configuration);
@@ -47,12 +49,14 @@ public partial class Program
         builder.Services
             .AddMcpServer(o => o.ServerInfo = new() { Name = "maf-lab-retrieval", Version = "1.0.0" })
             .WithHttpTransport(o => o.Stateless = true)
+            .WithOperatorContentAccess()
             .WithTools<SearchDocumentsTool>()
             .WithTools<BillingTools>()
             .WithTools<FeeAdjustmentTools>()
             .WithTools<BillingGraphTools>();
 
         var app = builder.Build();
+        app.UseLabMcpForwarding();
         app.UseInstanceHeader();
         app.UseAuthentication();
         app.UseAuthorization();

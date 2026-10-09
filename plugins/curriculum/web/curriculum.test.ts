@@ -33,7 +33,7 @@ describe('curriculum content', () => {
     }
     const spec = resolve(repo, 'openspec/specs', entry.spec);
     expect(existsSync(spec) && statSync(spec).isDirectory(), `spec ${entry.spec}`).toBe(true);
-    if (entry.screen) {
+    if (entry.screen && !entry.screen.optional) {
       const route = entry.screen.to.split('#')[0].replace(/\/$/, '');
       expect(routes.has(route), `route ${route}`).toBe(true);
     }

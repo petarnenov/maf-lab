@@ -1,0 +1,8 @@
+schema = 1
+name = "tenant-admin"
+kind = "app"
+scope = "tenant"
+environments = ["dev", "qa", "stage", "prod"]
+description = "Tenant plugin switches and administration sections contributed by plugins in use."
+progress = "Page: plugin reads show Loading and checkbox writes show Saving"
+stopping = "Key: Esc or Cancel in the withdrawal dialog, Ctrl+C or SIGTERM in the terminal; Stop: close before writing, or finish the current atomic HTTP call before exit 130; Recorded in: unchanged checkboxes on cancel and atomic entitlement rows on commit; Shown: the dialog closes on cancel, Saving during writes, and completed organizations with rerun make up on terminal interruption"

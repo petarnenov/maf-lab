@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Text.Json;
 using Maf.Lab.Plugins.A2A;
 using Maf.Lab.Plugins.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Maf.Lab.Tests;
 
@@ -14,6 +16,14 @@ public static class A2APluginSupport
 
     /// <summary>The a2a plugin and the stand-in domains the shared fakes speak.</summary>
     public static IReadOnlyList<PluginManifest> Installed => [Manifest, .. StandInDomains.Installed];
+
+    public static void BootstrapPartners(ApiFactory api)
+    {
+        if (!api.BootstrapTenantPlugins) return;
+        foreach (var tenant in api.Services.GetRequiredService<IOptions<Maf.Lab.A2A.A2AOptions>>().Value.Partners.Values
+            .SelectMany(partner => partner.Firms).Distinct(StringComparer.Ordinal))
+            api.ClientFor("fixture", tenant, Maf.Lab.Domain.Tenancy.Role.USER).Dispose();
+    }
 
     private static PluginManifest Load()
     {

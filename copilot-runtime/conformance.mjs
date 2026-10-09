@@ -47,15 +47,10 @@ const inUseAnswer = await (await fetch(`${base}/api/plugins`, { headers: adam })
 const domainInUse = (inUseAnswer.domains ?? []).length > 0;
 // A plugin's agent is checked only while the plugin is in use (introduce-plugins task 2.4): still core (no plugins/<name>/
 // folder yet), or listed by /api/plugins.
-const inUse = async (name) => {
-  const { existsSync } = await import('node:fs');
-  if (!existsSync(new URL(`../plugins/${name}/plugin.toml`, import.meta.url))) return true;
-  return (inUseAnswer.plugins ?? []).some((p) => p.name === name);
-};
+const inUse = async (name) => (inUseAnswer.plugins ?? []).some((p) => p.name === name);
 const monitorInUse = await inUse('monitor');
 const routes = {
   chat: { direct: `${base}/api/chat`, runtime: `${base}/copilotkit/agent/chat/run` },
-  testgen: { direct: `${base}/api/coverage/runs/agent`, runtime: `${base}/copilotkit/agent/testgen/run` },
 };
 
 /** One run with a bare client; the events in the order they came. */
@@ -159,17 +154,17 @@ for (const via of ['direct', 'runtime']) {
   });
 }
 
-const coverageInUse = await inUse('coverage');
-const runs = coverageInUse ? await (await fetch(`${base}/api/coverage/runs`, { headers: adam })).json().catch(() => []) : [];
-const followed = Array.isArray(runs) ? runs.find((r) => !r.active) : undefined;
-for (const via of ['direct', 'runtime']) {
-  check(`testgen (${via}): a finished run replays as one well-formed run`, async () => {
-    if (!coverageInUse) return 'skipped: the coverage plugin is not in use';
-    if (!followed) return 'skipped: no finished test run on this stack';
-    const { events } = await run(routes.testgen[via], { threadId: `testgen:${followed.id}:conformance` });
-    wellFormed(events);
-    if (!events.some((e) => e.type === 'STATE_SNAPSHOT')) throw new Error('no state');
-  });
+// A plugin's own protocol checks leave with its folder; only installed plugins register them.
+const { readdirSync, existsSync } = await import('node:fs');
+const pluginRoot = new URL('../plugins/', import.meta.url);
+if (existsSync(pluginRoot)) {
+  for (const entry of readdirSync(pluginRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !await inUse(entry.name)) continue;
+    const source = new URL(`${entry.name}/tests/conformance.mjs`, pluginRoot);
+    if (!existsSync(source)) continue;
+    const { registerChecks } = await import(source.href);
+    await registerChecks({ check, run, wellFormed, base, headers: adam });
+  }
 }
 
 const width = 24;

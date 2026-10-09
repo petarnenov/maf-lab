@@ -1,0 +1,38 @@
+.banner {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 16px;
+  margin-bottom: 16px;
+  background: var(--surface-2);
+  overflow-wrap: anywhere;
+}
+
+.banner p {
+  margin: 4px 0;
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fields input {
+  font: inherit;
+  padding: 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.fields input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

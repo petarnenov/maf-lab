@@ -1,0 +1,15 @@
+{"id": "d-portfolio-01", "question": "How much drift triggers a rebalance?", "expected": "portfolio", "language": "en", "split": "design"}
+{"id": "d-portfolio-02", "question": "What does account A-1042 hold right now?", "expected": "portfolio", "language": "en", "split": "design"}
+{"id": "d-portfolio-03", "question": "Is A-1044 outside its drift tolerance?", "expected": "portfolio", "language": "en", "split": "holdout"}
+{"id": "d-portfolio-04", "question": "What are the target weights of the ACME-BALANCED-60-40 model?", "expected": "portfolio", "language": "en", "split": "design"}
+{"id": "d-portfolio-05", "question": "How is time-weighted return different from money-weighted return?", "expected": "portfolio", "language": "en", "split": "design"}
+{"id": "d-portfolio-06", "question": "Are held-away assets rebalanced with the rest of the household?", "expected": "portfolio", "language": "en", "split": "holdout"}
+{"id": "d-portfolio-07", "question": "Какво е отклонението на портфейла на A-1042 от модела?", "expected": "portfolio", "language": "bg", "split": "design"}
+{"id": "d-portfolio-08", "question": "Кога се ребалансира портфейл, който е извън толеранса?", "expected": "portfolio", "language": "bg", "split": "design"}
+{"id": "d-portfolio-09", "question": "Kakvi sa celevite tegla na modelniya portfeyl?", "expected": "portfolio", "language": "bg-latn", "split": "holdout"}
+{"id": "d-portfolio-10", "question": "Kak se izchislyava dohodnostta na portfeyla?", "expected": "portfolio", "language": "bg-latn", "split": "design"}
+{"id": "d-portfolio-11", "question": "How do I move an account to a different model portfolio?", "expected": "portfolio", "language": "en", "split": "design"}
+{"id": "d-portfolio-12", "question": "Show the quarter-end market values of C-77 this year.", "expected": "portfolio", "language": "en", "split": "holdout"}
+{"id": "d-portfolio-13", "question": "What is the drift of Northwind Pension Fund's long-duration bonds against its model?", "expected": "portfolio", "language": "en", "split": "holdout"}
+{"id": "d-portfolio-14", "question": "How is a money-weighted return calculated for a household?", "expected": "portfolio", "language": "en", "split": "holdout"}
+{"id": "d-portfolio-15", "question": "Какви са целевите тегла на модела ACME-GROWTH-80-20?", "expected": "portfolio", "language": "bg", "split": "holdout"}

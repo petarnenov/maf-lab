@@ -87,6 +87,63 @@ public sealed class FakeIdempotencyStore(TimeProvider? time = null) : IIdempoten
     }
 }
 
+/// <summary>Deterministic permission store with the same expiry and delayed-publication fence as Redis.</summary>
+public sealed class FakeBreakGlassPermissionStore(TimeProvider? time = null) : IBreakGlassPermissionStore
+{
+    private readonly TimeProvider _time = time ?? TimeProvider.System;
+    private readonly object _gate = new();
+    private readonly Dictionary<string, ContentPermission> _active = new(StringComparer.Ordinal);
+    private readonly Dictionary<(string Session, string Grant), DateTimeOffset> _ended = [];
+
+    public Task<bool> ActivateAsync(ContentPermission permission, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        ArgumentNullException.ThrowIfNull(permission);
+        ArgumentException.ThrowIfNullOrWhiteSpace(permission.SessionKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(permission.GrantId);
+        lock (_gate)
+        {
+            var now = _time.GetUtcNow();
+            var grantKey = (permission.SessionKey, permission.GrantId);
+            if (permission.ExpiresAt <= now || (_ended.TryGetValue(grantKey, out var endedUntil) && endedUntil > now))
+                return Task.FromResult(false);
+            if (_active.TryGetValue(permission.SessionKey, out var active) && active.ExpiresAt > now)
+                return Task.FromResult(active == permission);
+            _active[permission.SessionKey] = permission;
+            return Task.FromResult(true);
+        }
+    }
+
+    public Task RevokeAsync(string sessionKey, string grantId, DateTimeOffset expiresAt, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(grantId);
+        lock (_gate)
+        {
+            var minimum = _time.GetUtcNow().AddSeconds(60);
+            var until = expiresAt.AddSeconds(60);
+            if (until < minimum) until = minimum;
+            var key = (sessionKey, grantId);
+            if (!_ended.TryGetValue(key, out var existing) || until > existing) _ended[key] = until;
+            if (_active.TryGetValue(sessionKey, out var active) && active.GrantId == grantId) _active.Remove(sessionKey);
+        }
+        return Task.CompletedTask;
+    }
+
+    public Task<ContentPermission?> ReadAsync(string sessionKey, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionKey);
+        lock (_gate)
+        {
+            if (_active.TryGetValue(sessionKey, out var active) && active.ExpiresAt > _time.GetUtcNow())
+                return Task.FromResult<ContentPermission?>(active);
+            return Task.FromResult<ContentPermission?>(null);
+        }
+    }
+}
+
 /// <summary>
 /// Puts the in-memory stores into a test host. A service refuses to start without a store; what a test that is
 /// not about the store needs is simply that one is there.
@@ -102,6 +159,8 @@ public static class SharedStoreTestHost
             services.AddSingleton<IRunTraceStore>(new FakeRunTraceStore());
             services.RemoveAll<IIdempotencyStore>();
             services.AddSingleton<IIdempotencyStore>(new FakeIdempotencyStore());
+            services.RemoveAll<IBreakGlassPermissionStore>();
+            services.AddSingleton<IBreakGlassPermissionStore>(sp => new FakeBreakGlassPermissionStore(sp.GetService<TimeProvider>()));
         });
 }
 

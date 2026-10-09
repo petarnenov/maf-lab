@@ -4,7 +4,6 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using A2A;
-using Maf.Lab.Api.A2A;
 using Maf.Lab.Plugins.A2A;
 using Maf.Lab.Api.Storage;
 using Microsoft.EntityFrameworkCore;
@@ -22,6 +21,7 @@ public class A2AProtocolTests
 
     private static async Task<HttpClient> PartnerClientAsync(ApiFactory api)
     {
+        A2APluginSupport.BootstrapPartners(api);
         var client = api.CreateClient();
         var response = await client.PostAsJsonAsync("/a2a/token", new A2AEndpoints.TokenRequest("acme-portal", "s3cret"), Ct);
         var token = (await response.Content.ReadFromJsonAsync<A2AEndpoints.TokenResponse>(Ct))!.AccessToken;
@@ -176,6 +176,12 @@ public class A2AProtocolTests
             ContextId = "ctx",
             Status = new global::A2A.TaskStatus { State = TaskState.Working },
         }, Ct);
+        await using (var ownership = ChatApiTests.Db(api))
+        {
+            await ownership.Set<A2ATaskRow>().Where(task => task.Id == "task-push")
+                .ExecuteUpdateAsync(update => update.SetProperty(task => task.PartnerId, "acme-portal")
+                    .SetProperty(task => task.TenantId, "firm-a"), Ct);
+        }
 
         var created = Result(await RpcAsync(client, "tasks/pushNotificationConfig/set", new
         {
@@ -196,7 +202,7 @@ public class A2AProtocolTests
         string configId;
         await using (var db = ChatApiTests.Db(api))
         {
-            var row = Assert.Single(await db.A2APushConfigs.Where(c => c.TaskId == "task-push").ToListAsync(Ct));
+            var row = Assert.Single(await db.Set<A2APushConfigRow>().Where(c => c.TaskId == "task-push").ToListAsync(Ct));
             Assert.Equal("shhh", row.Token);
             configId = row.Id;
         }
@@ -214,7 +220,7 @@ public class A2AProtocolTests
         Assert.Equal(JsonValueKind.Object, nothing.ValueKind);
 
         await using var after = ChatApiTests.Db(api);
-        Assert.Empty(await after.A2APushConfigs.Where(c => c.TaskId == "task-push").ToListAsync(Ct));
+        Assert.Empty(await after.Set<A2APushConfigRow>().Where(c => c.TaskId == "task-push").ToListAsync(Ct));
     }
 
     [Fact]

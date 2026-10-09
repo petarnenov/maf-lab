@@ -14,7 +14,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
     o.TokenValidationParameters = new TokenValidationParameters
     {
         ValidIssuer = auth["Issuer"] ?? "maf-lab-dev-issuer",
-        ValidAudience = auth["Audience"] ?? "maf-lab",
+        ValidAudience = "_example",
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(auth["SigningKey"]
             ?? throw new InvalidOperationException("Auth:SigningKey is required."))),
         ClockSkew = TimeSpan.FromSeconds(30),

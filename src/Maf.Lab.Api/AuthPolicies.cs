@@ -6,6 +6,9 @@ public static class AuthPolicies
 {
     public const string TenantAdmin = PolicyNames.TenantAdmin;
 
-    public static void Add(Microsoft.AspNetCore.Authorization.AuthorizationOptions options) =>
+    public static void Add(Microsoft.AspNetCore.Authorization.AuthorizationOptions options)
+    {
         options.AddPolicy(TenantAdmin, p => p.RequireAssertion(ctx => PrincipalClaims.TryCreate(ctx.User, out var principal) && principal.IsTenantAdmin));
+        options.AddPolicy(PolicyNames.PlatformAdmin, p => p.RequireAssertion(ctx => PrincipalClaims.TryCreate(ctx.User, out var principal) && principal.IsPlatformAdmin));
+    }
 }

@@ -12,6 +12,8 @@ public static class AuditKinds
     public const string Tool = "tool";
     public const string ConversationDelete = "conversation.delete";
     public const string ComplianceExport = "compliance.export";
+    /// <summary>The first authenticated API request of an operator session for a tenant; not a content grant.</summary>
+    public const string OperatorEnter = "operator.enter";
     /// <summary>A request that arrived from another agent over A2A.</summary>
     public const string A2ARequest = "a2a.request";
     /// <summary>A request this system sent to another agent over A2A.</summary>

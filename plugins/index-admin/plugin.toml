@@ -4,6 +4,6 @@ kind = "app"
 scope = "installation"
 environments = ["dev", "qa", "stage", "prod"]
 depends = ["qdrant"]
-description = "The index administration screen and its routes: a tenant admin indexes, checks the drift of and migrates the corpora the installed plugins declare, as admin jobs in the core's job store. Brings the indexing pipeline into the api."
+description = "The index administration screen and its routes: a platform operator indexes, checks the drift of and migrates the corpora the installed plugins declare, as admin jobs in the core's job store. Brings the indexing pipeline into the api."
 progress = "Page: an index or migrate job shows its progress on the index admin screen, naming its corpus; the drift card shows its loading state"
 stopping = "Key: Esc on the index admin screen, make plugin-off NAME=index-admin for open jobs; Stop: the job's cancel route moves its row in the admin job store to canceled and the replica running it watches that row; Recorded in: the job's state in the shared store; Shown: Stopping… until the job reports canceled, then canceled with how far it got"

@@ -10,6 +10,9 @@ import { TelemetryPage } from './TelemetryPage';
 export default definePlugin({
   name: 'observability',
   activate: () => startBrowserTracing(),
-  routes: [{ path: 'telemetry', element: createElement(TelemetryPage) }],
-  nav: [{ label: 'Telemetry', to: '/telemetry' }],
+  routes: [{ path: 'telemetry', element: createElement(TelemetryPage), platformAdmin: true }],
+  nav: [{ label: 'Telemetry', to: '/telemetry', platformAdminOnly: true }],
+  platformAdminSections: [
+    { id: 'telemetry', label: 'Telemetry', render: () => createElement(TelemetryPage) },
+  ],
 });

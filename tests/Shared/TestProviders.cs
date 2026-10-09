@@ -16,7 +16,8 @@ public static class TestProviders
         {
             schema = 1,
             env = "dev",
-            plugins = new[] { new { manifest = FixtureEnginePlugin.Manifest, serverJson = (object?)null, hasServer = false } },
+            plugins = new[] { FixtureEnginePlugin.Manifest, FixtureChatPlugin.Manifest, FixtureEmbeddingsPlugin.Manifest }
+                .Select(m => new { manifest = m, serverJson = (object?)null, hasServer = false }),
         };
         File.WriteAllText(Path.Combine(root, ".installed"),
             System.Text.Json.JsonSerializer.Serialize(document, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));
@@ -26,12 +27,14 @@ public static class TestProviders
     /// <summary>Installs the fixture engine in the program <paramref name="builder"/> hosts.</summary>
     public static IWebHostBuilder UseFixtureEngine(this IWebHostBuilder builder) => builder
         .UseSetting("Plugins:Root", Root.Value)
+        .UseSetting("MAF_CHAT_MODEL", FixtureChatPlugin.PluginName)
         .UseSetting("Plugins:ExtraAssemblies:0", typeof(TestProviders).Assembly.GetName().Name);
 
     /// <summary>The same, for a program a test builds itself: the settings to put in its configuration.</summary>
     public static IReadOnlyDictionary<string, string?> FixtureEngineSettings => new Dictionary<string, string?>
     {
         ["Plugins:Root"] = Root.Value,
+        ["MAF_CHAT_MODEL"] = FixtureChatPlugin.PluginName,
         ["Plugins:ExtraAssemblies:0"] = typeof(TestProviders).Assembly.GetName().Name,
     };
 }

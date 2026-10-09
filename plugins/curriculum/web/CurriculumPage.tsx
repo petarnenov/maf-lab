@@ -1,5 +1,5 @@
 import { Fragment } from 'react';
-import { PageLink } from '@maf/plugin-api';
+import { PageLink, contributions, usePlugins } from '@maf/plugin-api';
 import page from '@maf/shared/Page.module.css';
 import { CURRICULUM, NOT_COVERED, type CurriculumEntry } from './curriculum';
 import styles from './Curriculum.module.css';
@@ -8,6 +8,9 @@ const GAPS_ID = 'not-covered';
 
 // Static reference content: no api call and no session, so it reads before a persona is picked.
 export function CurriculumPage() {
+  const optionalPages = new Set(
+    contributions(usePlugins(), 'routes').map(({ item }) => `/${item.path}`),
+  );
   return (
     <section className={page.page}>
       <h1 className={page.heading}>Curriculum</h1>
@@ -43,7 +46,7 @@ export function CurriculumPage() {
           <p className={styles.sectionNote}>{section.note}</p>
           <div className={styles.grid}>
             {section.entries.map((entry) => (
-              <Entry key={entry.concept} entry={entry} />
+              <Entry key={entry.concept} entry={entry} optionalPages={optionalPages} />
             ))}
           </div>
         </section>
@@ -66,7 +69,13 @@ export function CurriculumPage() {
   );
 }
 
-function Entry({ entry }: { entry: CurriculumEntry }) {
+function Entry({
+  entry,
+  optionalPages,
+}: {
+  entry: CurriculumEntry;
+  optionalPages: ReadonlySet<string>;
+}) {
   return (
     <article className={styles.entry}>
       <h3 className={styles.concept}>{entry.concept}</h3>
@@ -82,7 +91,10 @@ function Entry({ entry }: { entry: CurriculumEntry }) {
         <span className={page.tag} title="OpenSpec capability">
           spec: {entry.spec}
         </span>
-        {entry.screen && <PageLink to={entry.screen.to}>See it on {entry.screen.label} →</PageLink>}
+        {entry.screen &&
+          (!entry.screen.optional || optionalPages.has(entry.screen.to.split('#')[0])) && (
+            <PageLink to={entry.screen.to}>See it on {entry.screen.label} →</PageLink>
+          )}
       </div>
     </article>
   );

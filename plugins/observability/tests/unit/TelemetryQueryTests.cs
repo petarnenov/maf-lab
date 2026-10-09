@@ -54,13 +54,13 @@ public class TelemetryQueryTests
     public async Task A_window_the_server_does_not_know_is_refused_rather_than_passed_on()
     {
         using var api = ObservabilityPluginSupport.Api();
-        var adam = api.ClientFor("adam", "firm-a", Role.USER);
+        var operatorClient = api.ClientFor("operator", "firm-a", Role.PLATFORM_ADMIN);
 
-        var refused = await adam.GetAsync("/api/telemetry?window=1h)%20or%20drop", Ct);
+        var refused = await operatorClient.GetAsync("/api/platform/telemetry?window=1h)%20or%20drop", Ct);
         Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
 
         // And a known one is served, even with no metrics store behind it.
-        var ok = await adam.GetAsync("/api/telemetry?window=15m", Ct);
+        var ok = await operatorClient.GetAsync("/api/platform/telemetry?window=15m", Ct);
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
         var report = await ok.Content.ReadFromJsonAsync<TelemetryReport>(Json, Ct);
         Assert.False(report!.Available);
@@ -93,7 +93,18 @@ public class TelemetryQueryTests
     {
         using var api = ObservabilityPluginSupport.Api();
         var anonymous = api.CreateClient();
-        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/telemetry", Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/platform/telemetry", Ct)).StatusCode);
+    }
+
+    [Theory]
+    [InlineData(Role.USER)]
+    [InlineData(Role.READ_ONLY)]
+    [InlineData(Role.TENANT_ADMIN)]
+    public async Task Only_platform_operators_read_installation_telemetry(Role role)
+    {
+        using var api = ObservabilityPluginSupport.Api();
+        var response = await api.ClientFor("user", "firm-a", role).GetAsync("/api/platform/telemetry", Ct);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
     private sealed class StubFactory(Func<HttpRequestMessage, HttpResponseMessage> respond) : IHttpClientFactory

@@ -19,6 +19,17 @@ public sealed class ToolAudit(IDbContextFactory<MafDbContext> db, ILogger<ToolAu
     /// <summary>Appends the action and returns the digest it was chained with.</summary>
     public async Task<string> RecordAsync(AuditEntry entry, CancellationToken ct)
     {
+        await using var context = await db.CreateDbContextAsync(ct);
+        await using var transaction = await context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+        var hash = await RecordInTransactionAsync(context, entry, ct);
+        await transaction.CommitAsync(ct);
+        return hash;
+    }
+
+    /// <summary>The caller owns the SQLite write transaction, including the state change being audited.</summary>
+    internal async Task<string> RecordInTransactionAsync(MafDbContext context, AuditEntry entry, CancellationToken ct)
+    {
+        if (context.Database.CurrentTransaction is null) throw new InvalidOperationException("An audit append requires a write transaction.");
         logger.LogInformation("audit kind={Kind} principal={PrincipalId} tenant={TenantId} action={Action} args={Args} outcome={Outcome} ms={DurationMs}",
             entry.Kind, entry.Principal.UserId, entry.Principal.TenantId.Value, entry.ToolName, entry.Arguments, entry.Outcome, entry.DurationMs);
 
@@ -36,11 +47,6 @@ public sealed class ToolAudit(IDbContextFactory<MafDbContext> db, ILogger<ToolAu
             DurationMs = entry.DurationMs,
         };
 
-        await using var context = await db.CreateDbContextAsync(ct);
-        // The head must be read and the row written under one write lock: two replicas appending at the same moment
-        // must not link to the same predecessor. SQLite allows one writer at a time, so an immediate transaction is
-        // enough — and the chain follows row ids, never clocks.
-        await using var transaction = await context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
         var previous = await context.Audit.AsNoTracking()
             .Where(a => a.Hash != null)
             .OrderByDescending(a => a.Id)
@@ -50,7 +56,6 @@ public sealed class ToolAudit(IDbContextFactory<MafDbContext> db, ILogger<ToolAu
         row.Hash = AuditChain.Hash(row, previous);
         context.Audit.Add(row);
         await context.SaveChangesAsync(ct);
-        await transaction.CommitAsync(ct);
         return row.Hash;
     }
 

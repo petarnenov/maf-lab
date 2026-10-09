@@ -20,6 +20,7 @@ public sealed class CompliancePlugin : IMafPlugin, IContributesServices, IContri
     public void ConfigureServices(IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<ComplianceOptions>(configuration.GetSection(ComplianceOptions.Section));
+        services.Configure<Maf.Lab.A2A.A2AOptions>(configuration.GetSection(Maf.Lab.A2A.A2AOptions.Section));
         services.AddHttpClient(ComplianceConsultant.HttpClientName);
         // Scoped: its record is a step of the request's write, filed under the request's principal.
         services.AddScoped<ComplianceConsultant>();

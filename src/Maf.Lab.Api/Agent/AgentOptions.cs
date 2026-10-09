@@ -29,6 +29,7 @@ public sealed class AgentOptions
     /// <summary>A plugin's server with what the configuration sets over it.</summary>
     private static McpServerOptions Over(McpServerOptions plugin, McpServerOptions configured) => new()
     {
+        Plugin = plugin.Plugin,
         Domain = string.IsNullOrWhiteSpace(configured.Domain) ? plugin.Domain : configured.Domain,
         Endpoint = string.IsNullOrWhiteSpace(configured.Endpoint) ? plugin.Endpoint : configured.Endpoint,
         Tools = configured.Tools.Count > 0 ? configured.Tools : plugin.Tools,
@@ -44,6 +45,7 @@ public sealed class AgentOptions
 /// <summary>One domain's MCP server.</summary>
 public sealed class McpServerOptions
 {
+    public string Plugin { get; set; } = "";
     public string Domain { get; set; } = "";
     public string Endpoint { get; set; } = "";
     /// <summary>The server's tools the agent is offered; empty offers every tool it lists (add-codebase-domain).</summary>

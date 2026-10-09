@@ -79,9 +79,9 @@ public class ComplianceConsultantTests
     {
         var settings = new Dictionary<string, string?>
         {
-            ["Compliance:BaseUrl"] = reviewerUrl ?? "",
-            ["Compliance:ClientId"] = "maf-lab-assistant",
-            ["Compliance:ClientSecret"] = "assistant-secret",
+            ["A2A:Clients:compliance:BaseUrl"] = reviewerUrl ?? "",
+            ["A2A:Clients:compliance:ClientId"] = "maf-lab-assistant",
+            ["A2A:Clients:compliance:ClientSecret"] = "assistant-secret",
             ["Compliance:Deadline"] = "00:00:10",
         };
         extra?.Invoke(settings);
@@ -139,6 +139,28 @@ public class ComplianceConsultantTests
     }
 
     [Fact]
+    public async Task With_no_configured_url_the_installed_bootstrap_card_finds_the_agent()
+    {
+        var (agent, url) = await ReviewerAsync(pathBase: "/reviewer");
+        await using var _ = agent;
+        using var api = ApiFor(null);
+        var consultant = Consultant(api);
+        var catalogue = api.Services.GetRequiredService<Maf.Lab.Api.Plugins.PluginCatalogue>();
+        var document = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(catalogue.InstalledPath))!;
+        var entry = document["plugins"]!.AsArray().Single(p => p!["manifest"]!["name"]!.GetValue<string>() == "compliance")!;
+        entry["agentCard"] = new System.Text.Json.Nodes.JsonObject
+        {
+            ["supportedInterfaces"] = new System.Text.Json.Nodes.JsonArray(new System.Text.Json.Nodes.JsonObject
+            {
+                ["protocolBinding"] = "JSONRPC", ["url"] = url + "/a2a",
+            }),
+        };
+        File.WriteAllText(catalogue.InstalledPath, document.ToJsonString());
+        catalogue.Refresh();
+        Assert.IsType<ConsultationResult.Verdict>(await consultant.ReviewAsync(Adjustment, Ct));
+    }
+
+    [Fact]
     public async Task A_refusal_is_a_verdict_too()
     {
         var (agent, url) = await ReviewerAsync(refuseAbove: 10m);
@@ -187,7 +209,7 @@ public class ComplianceConsultantTests
     {
         var (agent, url) = await ReviewerAsync(reviewMs: 5_000);
         await using var _ = agent;
-        using var api = ApiFor(url, s => s["Compliance:Deadline"] = "00:00:00.300");
+        using var api = ApiFor(url, s => s["Compliance:Deadline"] = "00:00:02");
 
         var result = await Consultant(api).ReviewAsync(Adjustment, Ct);
 
@@ -268,9 +290,9 @@ public class ComplianceConsultantTests
             InstalledPlugins = CompliancePluginSupport.Installed,
             ExtraSettings = new Dictionary<string, string?>
             {
-                ["Compliance:BaseUrl"] = url,
-                ["Compliance:ClientId"] = "maf-lab-assistant",
-                ["Compliance:ClientSecret"] = "assistant-secret",
+                ["A2A:Clients:compliance:BaseUrl"] = url,
+                ["A2A:Clients:compliance:ClientId"] = "maf-lab-assistant",
+                ["A2A:Clients:compliance:ClientSecret"] = "assistant-secret",
                 ["Compliance:Deadline"] = "00:00:10",
             },
             ConfigureTestServices = services =>
@@ -315,7 +337,7 @@ public class ComplianceConsultantTests
     {
         var (agent, url) = await ReviewerAsync();
         await using var _ = agent;
-        using var api = ApiFor(url, s => s["Compliance:ClientSecret"] = "");
+        using var api = ApiFor(url, s => s["A2A:Clients:compliance:ClientSecret"] = "");
 
         var result = await Consultant(api).ReviewAsync(Adjustment, Ct);
 

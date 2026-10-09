@@ -41,3 +41,7 @@ bg = "с портфейлите (позиции, моделни портфейл
 path = "files/corpus"
 collection = "maf_portfolio_chunks"
 meta_collection = "maf_portfolio_meta"
+
+[topology]
+service = "mcp-portfolio"
+health = "/health"

@@ -39,6 +39,15 @@ public static class PartnerAuthentication
         services.TryAddSingleton<IPartnerAccessor, HttpPartnerAccessor>();
         return services;
     }
+    /// <summary>Protocol hosts require a distinct store keyspace; authentication-only clients do not own a store.</summary>
+    public static IServiceCollection RequireA2AStoreKeyspace(this IServiceCollection services)
+    {
+        services.AddOptions<A2AOptions>()
+            .Validate(o => !string.IsNullOrWhiteSpace(o.StoreKeyspace), "A2A:StoreKeyspace is required: each agent must name its own store keyspace")
+            .ValidateOnStart();
+        return services;
+    }
+
 }
 
 /// <summary>The partner behind the current request.</summary>

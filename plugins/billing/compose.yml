@@ -20,6 +20,12 @@ services:
     environment:
       # The installed providers (the decision engine the relevance judge asks), read from plugins/.installed.
       Plugins__Root: /plugins
+      MAF_ENV: ${MAF_ENV:-dev}
+      Auth__Authority: ${AUTH_AUTHORITY:-}
+      Auth__CoreRoleClientId: ${AUTH_CORE_ROLE_CLIENT_ID:-api}
+      Auth__ResourceUri: ${BILLING_MCP_RESOURCE_URI:-}
+      Auth__TrustedProxyNetworks__0: ${MCP_TRUSTED_PROXY_NETWORK:-}
+      Auth__Audience: billing
       Urls: http://+:8080
       # Only this server writes, so only this server is told where the ledger lives.
       Billing__AdjustmentsConnectionString: Data Source=/app-data/maf-lab-adjustments.db

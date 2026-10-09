@@ -17,7 +17,7 @@ public static class ChatEndpoints
         {
             var p = principals.Current;
             return Results.Ok(new { p.UserId, TenantId = p.TenantId.Value, Role = p.Role.ToString() });
-        });
+        }).WithMetadata(Maf.Lab.Domain.Tenancy.OperatorConfigurationAccess.Instance);
 
         api.MapPost("/conversations", async (IPrincipalAccessor principals, ConversationService conversations, CancellationToken ct) =>
             Results.Created((string?)null, new ConversationCreated(await conversations.CreateAsync(principals.Current, ct))));

@@ -20,7 +20,7 @@ public sealed record IndexRunRequest(string? Corpus);
 public sealed record MigrateRequest(string? Corpus, string? TargetModel);
 
 /// <summary>
-/// Index administration for a TENANT_ADMIN, scoped to the admin's tenant plus the shared corpus, over one of the corpora
+/// Index administration for a PLATFORM_ADMIN, scoped to the admin's tenant plus the shared corpus, over one of the corpora
 /// the installed plugins declare (design D5, D9).
 /// </summary>
 public static class IndexAdminEndpoints
@@ -33,7 +33,21 @@ public static class IndexAdminEndpoints
 
     public static void Map(IEndpointRouteBuilder app)
     {
-        var admin = app.MapGroup("/api/admin").RequireAuthorization(PolicyNames.TenantAdmin);
+        var admin = app.MapGroup("/api/platform").RequireAuthorization(PolicyNames.PlatformAdmin);
+        // Only these maintenance/configuration responses are content-free. Drift exposes document identities/paths.
+        var configuration = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "/index/corpora", "/index/status", "/index/run", "/index/migrate", "/jobs/{jobId}", "/jobs/{jobId}/cancel",
+        };
+        ((Microsoft.AspNetCore.Builder.IEndpointConventionBuilder)admin).Add(endpoint =>
+        {
+            if (endpoint is Microsoft.AspNetCore.Routing.RouteEndpointBuilder route
+                && route.RoutePattern.RawText is { } path)
+            {
+                var relative = path.StartsWith("/api/platform", StringComparison.Ordinal) ? path["/api/platform".Length..] : path;
+                if (configuration.Contains(relative)) endpoint.Metadata.Add(OperatorConfigurationAccess.Instance);
+            }
+        });
 
         admin.MapGet("/index/corpora", (OfferedCorpora corpora) =>
             Results.Ok(corpora.All().Select(c => new CorpusView(c.Plugin, !string.IsNullOrEmpty(c.Graph))).ToList()));
@@ -91,7 +105,7 @@ public static class IndexAdminEndpoints
                 return $"{corpus.Plugin}: indexed {summary.DocumentsIndexed}, unchanged {summary.DocumentsUnchanged}, " +
                        $"chunks written {summary.ChunksWritten}, deleted {summary.ChunksDeleted}, rejected {summary.Rejected.Count}";
             }, requestCt);
-            return Results.Accepted($"/api/admin/jobs/{job.JobId}", job);
+            return Results.Accepted($"/api/platform/jobs/{job.JobId}", job);
         });
 
         admin.MapPost("/index/migrate", async (HttpContext http, IPrincipalAccessor principals, OfferedCorpora corpora, CorpusIndexing indexing,
@@ -120,7 +134,7 @@ public static class IndexAdminEndpoints
                 });
                 return $"{corpus.Plugin}: migrated {summary.Migrated} chunk(s) to {summary.TargetModelVersion}; {summary.AlreadyCurrent} already current";
             }, requestCt);
-            return Results.Accepted($"/api/admin/jobs/{job.JobId}", job);
+            return Results.Accepted($"/api/platform/jobs/{job.JobId}", job);
         });
 
         admin.MapGet("/jobs/{jobId}", async (string jobId, IAdminJobs jobs, CancellationToken ct) =>

@@ -177,9 +177,9 @@ def answer_for(messages: list[dict]) -> str:
 # that covers every line of it, then says it is done — enough for the model-free e2e to run a whole test-generation
 # run: A2A, the attempt loop, the runner, verification, the candidate branch and the merge.
 TESTGEN_MARKER = "You write automated tests"
-E2E_TARGET = "src/Maf.Lab.Api/Coverage/Fixtures/E2eTarget.cs"
+E2E_TARGET = "src/Maf.Lab.TestGen/Fixtures/E2eTarget.cs"
 E2E_TEST_PATH = "tests/Maf.Lab.Tests/E2eTargetTests.cs"
-E2E_TEST = """using Maf.Lab.Api.Coverage.Fixtures;
+E2E_TEST = """using Maf.Lab.TestGen.Fixtures;
 
 namespace Maf.Lab.Tests;
 

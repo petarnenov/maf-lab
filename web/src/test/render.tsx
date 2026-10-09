@@ -7,6 +7,7 @@ import type { Role } from '../api/types';
 import { AgentsProvider } from '../agents/AgentsProvider';
 import { AuthProvider } from '../auth/AuthProvider';
 import type { Session } from '../auth/session';
+export { agentFetch } from './agentFetch';
 
 export function makeSession(role: Role = 'USER', tenantId = 'firm-a'): Session {
   return {
@@ -140,3 +141,6 @@ export const run = {
   card: (messageId: string, activityType: string, content: unknown) =>
     sse(EventType.ACTIVITY_SNAPSHOT, { messageId, activityType, content }),
 };
+
+/** The core's admin boundary, for a plugin's route authorization tests. */
+export { RequireAdmin } from '../components/RequireAdmin';

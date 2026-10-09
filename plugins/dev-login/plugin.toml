@@ -1,0 +1,9 @@
+schema = 1
+name = "dev-login"
+kind = "app"
+scope = "installation"
+environments = ["dev", "qa"]
+public = true
+description = "Development personas and audience-bound tokens; absent from stage and production."
+progress = "Page: persona selection shows its busy state; Terminal: dev-token is one short HTTP request"
+stopping = "None — requests honor cancellation and no token issuance outlives its request"

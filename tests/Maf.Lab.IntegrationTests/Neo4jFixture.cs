@@ -34,7 +34,7 @@ public sealed class Neo4jFixture : IAsyncLifetime
     };
 
     /// <summary>The graph store and the graph build, wired to the container.</summary>
-    public ServiceProvider Services(Action<Dictionary<string, string?>>? configure = null)
+    public ServiceProvider Services(Action<Dictionary<string, string?>>? configure = null, Action<IServiceCollection>? contributions = null)
     {
         var values = Config();
         configure?.Invoke(values);
@@ -44,6 +44,7 @@ public sealed class Neo4jFixture : IAsyncLifetime
         services.Configure<IndexingOptions>(configuration.GetSection(IndexingOptions.Section));
         services.AddGraphStore(configuration);
         services.AddSingleton<Indexing.Graph.GraphBuildService>();
+        contributions?.Invoke(services);
         return services.BuildServiceProvider();
     }
 

@@ -19,17 +19,17 @@ public sealed class IndexAdminPluginTests
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     [Theory]
-    [InlineData("GET", "/api/admin/index/corpora")]
-    [InlineData("GET", "/api/admin/index/status")]
-    [InlineData("GET", "/api/admin/index/drift")]
-    [InlineData("POST", "/api/admin/index/run")]
-    [InlineData("POST", "/api/admin/index/migrate")]
-    [InlineData("GET", "/api/admin/jobs/j_any")]
-    [InlineData("POST", "/api/admin/jobs/j_any/cancel")]
+    [InlineData("GET", "/api/platform/index/corpora")]
+    [InlineData("GET", "/api/platform/index/status")]
+    [InlineData("GET", "/api/platform/index/drift")]
+    [InlineData("POST", "/api/platform/index/run")]
+    [InlineData("POST", "/api/platform/index/migrate")]
+    [InlineData("GET", "/api/platform/jobs/j_any")]
+    [InlineData("POST", "/api/platform/jobs/j_any/cancel")]
     public async Task Without_the_plugin_no_route_is_served(string method, string path)
     {
         using var api = new ApiFactory(ApiFactory.ProceduralModel()) { InstalledPlugins = [IndexAdminPluginSupport.CorpusPlugin("alpha"), .. StandInDomains.Installed] };
-        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.PLATFORM_ADMIN);
 
         var response = await admin.SendAsync(new HttpRequestMessage(new HttpMethod(method), path), Ct);
 
@@ -46,8 +46,8 @@ public sealed class IndexAdminPluginTests
             IndexAdminPluginSupport.CorpusPlugin("source", CorpusLayoutNames.Repository),
         ]);
 
-        var corpora = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN)
-            .GetFromJsonAsync<List<CorpusView>>("/api/admin/index/corpora", Json, Ct);
+        var corpora = await api.ClientFor("alice", "firm-a", Role.PLATFORM_ADMIN)
+            .GetFromJsonAsync<List<CorpusView>>("/api/platform/index/corpora", Json, Ct);
 
         Assert.Equal([new CorpusView("alpha", true), new CorpusView("beta", false)], corpora);
     }
@@ -61,12 +61,12 @@ public sealed class IndexAdminPluginTests
             IndexAdminPluginSupport.CorpusPlugin("alpha"),
             IndexAdminPluginSupport.CorpusPlugin("source", CorpusLayoutNames.Repository),
         ]);
-        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.PLATFORM_ADMIN);
 
-        Assert.Equal(HttpStatusCode.NotFound, (await admin.PostAsJsonAsync("/api/admin/index/run", new { corpus }, Ct)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await admin.PostAsJsonAsync("/api/admin/index/migrate", new { corpus }, Ct)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await admin.GetAsync($"/api/admin/index/drift?corpus={corpus}", Ct)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await admin.GetAsync($"/api/admin/index/status?corpus={corpus}", Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await admin.PostAsJsonAsync("/api/platform/index/run", new { corpus }, Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await admin.PostAsJsonAsync("/api/platform/index/migrate", new { corpus }, Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await admin.GetAsync($"/api/platform/index/drift?corpus={corpus}", Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await admin.GetAsync($"/api/platform/index/status?corpus={corpus}", Ct)).StatusCode);
         await using var scope = api.Services.CreateAsyncScope();
         Assert.Empty(await scope.ServiceProvider.GetRequiredService<IAdminJobs>().OpenAsync(IndexAdminPlugin.Kinds, Ct));
     }
@@ -76,7 +76,7 @@ public sealed class IndexAdminPluginTests
     {
         using var api = IndexAdminPluginSupport.Api([IndexAdminPluginSupport.CorpusPlugin("alpha"), IndexAdminPluginSupport.CorpusPlugin("beta")]);
 
-        var response = await api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN).PostAsync("/api/admin/index/run", null, Ct);
+        var response = await api.ClientFor("alice", "firm-a", Role.PLATFORM_ADMIN).PostAsync("/api/platform/index/run", null, Ct);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var problem = await response.Content.ReadFromJsonAsync<JsonElement>(Json, Ct);
@@ -87,9 +87,9 @@ public sealed class IndexAdminPluginTests
     public async Task With_one_corpus_a_run_that_names_none_runs_it()
     {
         using var api = IndexAdminPluginSupport.Api([IndexAdminPluginSupport.CorpusPlugin("alpha")]);
-        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.PLATFORM_ADMIN);
 
-        var response = await admin.PostAsync("/api/admin/index/run", null, Ct);
+        var response = await admin.PostAsync("/api/platform/index/run", null, Ct);
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         var job = await response.Content.ReadFromJsonAsync<AdminJob>(Json, Ct);
@@ -104,9 +104,9 @@ public sealed class IndexAdminPluginTests
         // Its folder is not there: the run stops before any store (unreachable here, so touching one would fail the job).
         using var api = IndexAdminPluginSupport.Api([IndexAdminPluginSupport.CorpusPlugin("alpha"), IndexAdminPluginSupport.CorpusPlugin("beta")]);
         IndexAdminPluginSupport.WriteDocument(api, "beta");
-        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.PLATFORM_ADMIN);
 
-        var response = await admin.PostAsJsonAsync("/api/admin/index/run", new { corpus = "alpha" }, Ct);
+        var response = await admin.PostAsJsonAsync("/api/platform/index/run", new { corpus = "alpha" }, Ct);
 
         var finished = await AdminIndexApiTests.WaitAsync(admin, (await response.Content.ReadFromJsonAsync<AdminJob>(Json, Ct))!.JobId);
         Assert.Equal(AdminJobStates.Succeeded, finished.State);
@@ -119,9 +119,9 @@ public sealed class IndexAdminPluginTests
         // beta has a document, so its run reaches its store (unreachable here) and fails there; alpha's folder is absent.
         using var api = IndexAdminPluginSupport.Api([IndexAdminPluginSupport.CorpusPlugin("alpha"), IndexAdminPluginSupport.CorpusPlugin("beta")]);
         IndexAdminPluginSupport.WriteDocument(api, "beta");
-        var admin = api.ClientFor("alice", "firm-a", Role.TENANT_ADMIN);
+        var admin = api.ClientFor("alice", "firm-a", Role.PLATFORM_ADMIN);
 
-        var response = await admin.PostAsJsonAsync("/api/admin/index/run", new { corpus = "beta" }, Ct);
+        var response = await admin.PostAsJsonAsync("/api/platform/index/run", new { corpus = "beta" }, Ct);
 
         var finished = await AdminIndexApiTests.WaitAsync(admin, (await response.Content.ReadFromJsonAsync<AdminJob>(Json, Ct))!.JobId);
         Assert.Equal(AdminJobStates.Failed, finished.State);

@@ -3,11 +3,18 @@ import { definePlugin } from '@maf/plugin-api';
 import { IndexAdminPage } from './IndexAdminPage';
 
 /**
- * The index admin's web part (extract-index-admin-plugin): the index administration screen, behind the core's admin
- * guard, and its link in the main navigation.
+ * The index administration screen, contributed to the platform dashboard and available through its own guarded route
+ * when the dashboard shell is absent.
  */
 export default definePlugin({
   name: 'index-admin',
-  routes: [{ path: 'admin/index', element: createElement(IndexAdminPage), admin: true }],
-  nav: [{ to: '/admin/index', label: 'Index admin' }],
+  routes: [{ path: 'admin/index', element: createElement(IndexAdminPage), platformAdmin: true }],
+  nav: [{ to: '/admin/index', label: 'Index admin', platformAdminOnly: true }],
+  platformAdminSections: [
+    {
+      id: 'index-admin',
+      label: 'Index administration',
+      render: () => createElement(IndexAdminPage),
+    },
+  ],
 });

@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><Description>Shared evaluation dataset formats, validation, text normalization and pure metrics</Description></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../Maf.Lab.Domain/Maf.Lab.Domain.csproj" /><ProjectReference Include="../Maf.Lab.Retrieval/Maf.Lab.Retrieval.csproj" /></ItemGroup>
+</Project>

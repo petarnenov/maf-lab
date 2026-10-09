@@ -2,7 +2,6 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Decisions;
-using Maf.Lab.Api.BuiltIn;
 using Maf.Lab.Plugins.Portfolio;
 using Maf.Lab.Domain.Chat;
 using Maf.Lab.Domain.Configuration;
@@ -317,7 +316,7 @@ public class PortfolioDomainTests : IDisposable
 
     private static async Task<McpClient> ClientAsync(WebApplicationFactory<Maf.Lab.Portfolio.Program> factory, string firm)
     {
-        var (token, _) = DevJwt.Issue(new AuthOptions(), "u-" + firm, TenantId.Firm(firm), Role.USER);
+        var (token, _) = DevJwt.Issue(new AuthOptions { Audience = "portfolio" }, "u-" + firm, TenantId.Firm(firm), Role.USER);
         var http = factory.CreateDefaultClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         var transport = new HttpClientTransport(new HttpClientTransportOptions
@@ -485,40 +484,6 @@ public class PortfolioDomainTests : IDisposable
         await ApiFactory.ChatAsync(api.ClientFor("adam", "firm-a", Role.USER), "why did run 4417 and run 4418 fail");
 
         Assert.Equal(["search_documents"], api.Tools.Invocations);
-    }
-
-    // ---- labels land in their own domain's dataset ----
-
-    private static Maf.Lab.Api.Storage.TurnRow Turn(params ToolCallRecord[] calls) => new()
-    {
-        Id = "t1", ConversationId = "c1", UserId = "adam", TenantId = "firm-a", Question = "q",
-        ToolCallsJson = JsonSerializer.Serialize(calls, Json),
-    };
-
-    private static ToolCallRecord Search(string tool, params string[] docIds) => new(tool, "", "ok", docIds.Length, docIds, [], "x", "done");
-
-    [Fact]
-    public void A_retrieval_label_records_the_domain_whose_search_found_its_chunks()
-    {
-        var turn = Turn(Search("search_documents", "shared/docs/tiered-fee-calculation.md"),
-            Search(PortfolioTools.Search, "shared/docs/portfolio-quarter-end-valuation.md"));
-        LabelRequest Label(params string[] chunks) => new(Maf.Lab.Domain.Feedback.EvalDataset.Retrieval, null, chunks, null, null);
-
-        var portfolio = Label("shared/docs/portfolio-quarter-end-valuation.md#quarter-end-valuation-handoff-to-billing");
-        var billing = Label("shared/docs/tiered-fee-calculation.md#x");
-        var both = Label("shared/docs/tiered-fee-calculation.md#x", "shared/docs/portfolio-quarter-end-valuation.md#y");
-
-        Assert.Equal("portfolio", Maf.Lab.Api.Endpoints.FeedbackEndpoints.RetrievalDomain(turn, portfolio));
-        Assert.Equal("billing", Maf.Lab.Api.Endpoints.FeedbackEndpoints.RetrievalDomain(turn, billing));
-        Assert.Null(Maf.Lab.Api.Endpoints.FeedbackEndpoints.RetrievalDomain(turn, both));
-
-        var (row, _) = Maf.Lab.Api.Endpoints.FeedbackEndpoints.BuildRow(turn, portfolio, "portfolio");
-        Assert.Equal("portfolio", row!["domain"]!.GetValue<string>());
-        var (billingRow, _) = Maf.Lab.Api.Endpoints.FeedbackEndpoints.BuildRow(turn, billing, "billing");
-        Assert.Null(billingRow!["domain"]);
-        var (none, error) = Maf.Lab.Api.Endpoints.FeedbackEndpoints.BuildRow(turn, both, null);
-        Assert.Null(none);
-        Assert.Contains("both domains", error);
     }
 
     // ---- the trace of a crossing -----------------------------------------------------------------------------------------

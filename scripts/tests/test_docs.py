@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
 import shutil
 import sys
 import tempfile
 import textwrap
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -221,6 +223,8 @@ class Fixture:
             "src/Maf.Lab.Retrieval/Maf.Lab.Retrieval.csproj": "<Project><PropertyGroup><Description>MCP server\n"
                                                               "  over Qdrant</Description></PropertyGroup></Project>\n",
             "src/Maf.Lab.Retrieval/Configuration/Options.cs": OPTIONS,
+            "src/Maf.Lab.Plugins.Abstractions/ModelOptions.cs": OPTIONS,
+            "src/Maf.Lab.Plugins.Abstractions/Maf.Lab.Plugins.Abstractions.csproj": '<Project><PropertyGroup><Description>Plugin contracts</Description></PropertyGroup></Project>',
             "plugins/decider/plugin.toml": DECIDER_MANIFEST,
             "plugins/decider/lib/DeciderOptions.cs": DECIDER,
             "tools/screens/capture.mjs": "// capture\n",
@@ -418,6 +422,15 @@ class RouteTests(DocsTestCase):
         self.fx.edit("docs/docs-sync.toml", '"GET /health" = "infrastructure"',
                      '"GET /health" = "infrastructure"\n"GET /gone" = "old"')
         self.assertCheckFails("[routes.undocumented] names `GET /gone`, which is not registered")
+
+    def test_plugin_sdk_exemptions_follow_the_folder(self):
+        self.fx.write("plugins/weather/docs/http-api.md", "| POST | `/weather/rpc` | — |\n")
+        self.fx.write("plugins/weather/docs/docs-sync.toml", '[routes.library]\n"/weather/rpc" = "SDK binding"\n')
+        self.generated()
+        self.assertCheckPasses()
+        shutil.rmtree(self.fx.root / "plugins/weather")
+        self.generated()
+        self.assertCheckPasses()
 
     def test_exemption_without_reason_fails(self):
         self.fx.edit("docs/docs-sync.toml", '"GET /health" = "infrastructure"', '"GET /health" = ""')
@@ -830,7 +843,14 @@ class PluginTests(DocsTestCase):
 
     def test_an_unknown_key_and_a_missing_dependency_fail(self):
         self.fx.write("plugins/weather/plugin.toml", GOOD_MANIFEST + 'depends = ["sun"]\ncolour = "blue"\n')
-        self.assertCheckFails("unknown key `colour`", "depends on `sun`")
+        with patch.dict(os.environ, {"MAF_PLUGINS": "weather"}):
+            self.assertCheckFails("unknown key `colour`", "depends on `sun`")
+
+    def test_a_removed_dependency_does_not_break_automatic_set_documentation(self):
+        self.fx.write("plugins/weather/plugin.toml", GOOD_MANIFEST + 'depends = ["sun"]\n')
+        self.generated()
+        with patch.dict(os.environ, {"MAF_PLUGINS": ""}):
+            self.assertCheckPasses()
 
     def test_a_plugins_make_targets_and_routes_reach_the_tables(self):
         self.fx.write("plugins/weather/plugin.toml", GOOD_MANIFEST)

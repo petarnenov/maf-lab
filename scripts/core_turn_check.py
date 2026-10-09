@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -124,6 +125,10 @@ def main() -> int:
     others = [p.get("name") for p in in_use.get("plugins", []) if p.get("kind") != "provider"]
     check("no plugin but the core's providers is in use", others == [], json.dumps([p.get("name") for p in in_use.get("plugins", [])]))
     check("no domain is in use", in_use.get("domains") == [], json.dumps(in_use.get("domains")))
+    expected = sorted(n for n in re.split(r"[\s,]+", os.environ.get("MAF_CORE_PROVIDERS", "")) if n)
+    if expected:
+        providers = sorted(p.get("name") for p in in_use.get("plugins", []) if p.get("kind") == "provider")
+        check("exactly the core's named providers are installed", providers == expected, json.dumps(providers))
     if failures:
         return 1
 

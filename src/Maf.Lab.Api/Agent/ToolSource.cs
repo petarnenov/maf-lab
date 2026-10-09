@@ -1,3 +1,4 @@
+using Maf.Lab.Plugins.Abstractions;
 using ModelContextProtocol.Client;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
@@ -65,27 +66,28 @@ public sealed record ToolOrigin(string Domain, string Server);
 
 /// <summary>
 /// Consumes every domain's MCP server through the MCP client integration, every server alike (task 4.6). The user's
-/// bearer token is forwarded to each, so every server derives the tenant itself; the agent host never passes a tenant. A
+/// token is exchanged for each plugin's audience, so every server derives the tenant itself; the agent host never passes a tenant. A
 /// server that fails leaves its domain's tools out of the turn, which runs with what it has; only when every server the
 /// turn needs fails does the turn fail. A server whose domain is not in use is not contacted, and a tool whose descriptor
 /// requires a plugin that is not in use (fee adjustment without a compliance reviewer, task 4.4) is not offered.
 /// </summary>
 public sealed class McpToolSource(IOptions<AgentOptions> options, ILoggerFactory loggers, IHttpClientFactory http,
     Plugins.PluginCatalogue? plugins = null, DomainCatalogue? domainCatalogue = null,
-    Tracing.TurnObservers? observers = null) : IToolSource
+    Tracing.TurnObservers? observers = null, IPluginTokens? tokens = null) : IToolSource
 {
     /// <summary>
     /// Whether the plugin a tool requires is in use: installed, as the catalogue says (extract-compliance-plugin). A
     /// fee adjustment needs the compliance plugin, not a configured address.
     /// </summary>
-    internal static bool InUse(string name, Plugins.PluginCatalogue? plugins) => plugins?.Current.Contains(name) == true;
+    internal static bool InUse(string name, Plugins.PluginCatalogue? plugins) =>
+        PluginAccessContext.Current?.IsInUse(name) ?? plugins?.Current.Plugins.Any(p => p.Name == name && p.Manifest.Scope == PluginScopes.Installation) == true;
 
     private readonly ILogger _logger = loggers.CreateLogger<McpToolSource>();
 
     public async Task<ToolSet> GetToolsAsync(string bearerToken, ConfirmationSink? confirmations, CancellationToken ct,
         IReadOnlySet<string>? domains = null)
     {
-        var catalogue = domainCatalogue ?? DomainCatalogue.Empty;
+        var catalogue = (domainCatalogue ?? DomainCatalogue.Empty).Freeze();
         var servers = options.Value.AllServers(plugins?.McpServers())
             .Where(s => catalogue.Get(s.Domain) is not null && (domains is null || domains.Contains(s.Domain)))
             .OrderBy(s => catalogue.Order(s.Domain))
@@ -121,7 +123,7 @@ public sealed class McpToolSource(IOptions<AgentOptions> options, ILoggerFactory
                 unavailable.Add(server.Domain);
                 continue;
             }
-            var serverName = c.Client.ServerInfo?.Name is { Length: > 0 } n ? n : server.Domain;
+            var serverName = ServerName(c.Client, server.Domain);
             foreach (var tool in c.Tools)
             {
                 var descriptor = catalogue.Get(server.Domain);
@@ -184,14 +186,26 @@ public sealed class McpToolSource(IOptions<AgentOptions> options, ILoggerFactory
             origins, unavailable);
     }
 
+    private static string ServerName(McpClient client, string fallback)
+    {
+        // Stateless discovery can omit optional identity metadata; the SDK getter then throws.
+        try { return client.ServerInfo?.Name is { Length: > 0 } name ? name : fallback; }
+        catch (InvalidOperationException) { return fallback; }
+    }
+
     private async Task<(McpClient Client, IList<McpClientTool> Tools)> ConnectAsync(
         McpServerOptions server, string bearerToken, ConfirmationSink? confirmations, CancellationToken ct)
     {
+        var caller = PluginAccessContext.Principal ?? throw new UnauthorizedAccessException("No validated caller scope for MCP.");
+        var owner = !string.IsNullOrWhiteSpace(server.Plugin) ? server.Plugin
+            : plugins?.Current.Plugins.FirstOrDefault(p => p.Manifest.Domain?.Id == server.Domain)?.Name;
+        if (owner is null || tokens is null) throw new UnauthorizedAccessException("MCP requires an installed plugin token provider.");
+        var pluginToken = await tokens.ForAsync(caller, owner, bearerToken, ct);
         var transport = new HttpClientTransport(new HttpClientTransportOptions
         {
             Endpoint = new Uri(server.Endpoint),
             TransportMode = HttpTransportMode.StreamableHttp,
-            AdditionalHeaders = new Dictionary<string, string> { ["Authorization"] = $"Bearer {bearerToken}" },
+            AdditionalHeaders = new Dictionary<string, string> { ["Authorization"] = $"Bearer {pluginToken}" },
             Name = $"maf-lab-{server.Domain}",
         }, http.CreateClient("mcp"), loggers, ownsHttpClient: true);
         var clientOptions = new McpClientOptions

@@ -3,7 +3,7 @@ The Telemetry screen's numbers, while the observability plugin is installed (oth
 
 | Method | Path | Body | Response |
 |---|---|---|---|
-| GET | `/api/telemetry?window=15m\|1h\|6h\|24h` | — | `TelemetryReport` — any signed-in user. A window not on that list is `400` |
+| GET | `/api/platform/telemetry?window=15m\|1h\|6h\|24h` | — | `TelemetryReport` — `PLATFORM_ADMIN` only, otherwise `403`. A window not on that list is `400` |
 
 `TelemetryReport` = `{ window, generatedAt, available, reason, panels: TelemetryPanel[], traceUrl }`.
 `TelemetryPanel` = `{ id, title, unit, series: { label, value }[] }`; an empty `series` means nothing was measured

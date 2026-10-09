@@ -3,22 +3,14 @@ using System.Text.RegularExpressions;
 namespace Maf.Lab.Tests;
 
 /// <summary>
-/// The core names no domain (introduce-plugins 5g, task 4.6): outside <c>src/Maf.Lab.Api/BuiltIn/</c>, the transitional
-/// home of the shipped domains, no api source file names billing, portfolio or codebase — except the consumers whose
-/// contract a follow-up plugin moves, each listed here and marked in its own file. The retrieval library is held to the
-/// same rule more strictly (extract-billing): any name containing a domain's, so a new billing type in the library fails
-/// too; its allow-list is the billing host and the billing graph, which stay there until extract-evals-plugin. Portfolio's
-/// server project is held to the same rule (extract-portfolio): all of it is portfolio's host, which stays until
-/// extract-evals-plugin as billing's does. The scan reads source text, not IL: the ids are constants, which the compiler
-/// inlines.
+/// Source-level guards against domain names in the assistant core, with no transitional folder exemption.
+/// Shared domain hosts retain explicit file fences until their own implementation moves; a stale fence fails.
 /// </summary>
 public sealed class CoreNamesNoDomainTests
 {
     /// <summary>The files that still name a domain, each with the follow-up that removes it (introduce-plugins 8.1).</summary>
     private static readonly IReadOnlyDictionary<string, string> AllowList = new Dictionary<string, string>
     {
-        ["Endpoints/FeedbackEndpoints.cs"] = "feedback-review",
-        ["Topology/TopologyProbe.cs"] = "topology",
     };
 
     /// <summary>
@@ -38,7 +30,6 @@ public sealed class CoreNamesNoDomainTests
         ["Tools/BillingGraphTools.cs"] = RetrievalFollowUp,
         ["Tools/FeeAdjustmentTools.cs"] = RetrievalFollowUp,
         ["Tools/SearchDocumentsTool.cs"] = RetrievalFollowUp,
-        ["Graph/GraphSchema.cs"] = RetrievalFollowUp,
         ["Graph/GraphQueries.cs"] = RetrievalFollowUp,
         ["Graph/GraphTemplates.cs"] = RetrievalFollowUp,
     };
@@ -73,7 +64,7 @@ public sealed class CoreNamesNoDomainTests
 
     internal static IReadOnlyList<string> Violations(IReadOnlyDictionary<string, string> files) =>
     [
-        .. files.Where(f => !f.Key.StartsWith("BuiltIn/", StringComparison.Ordinal) && !AllowList.ContainsKey(f.Key))
+        .. files.Where(f => !AllowList.ContainsKey(f.Key))
             .SelectMany(f => NamesADomain.Matches(StripComments(f.Value)).Select(m => $"{f.Key}: {m.Value}")),
     ];
 
@@ -100,23 +91,16 @@ public sealed class CoreNamesNoDomainTests
             .ToDictionary(p => Path.GetRelativePath(root, p).Replace('\\', '/'), File.ReadAllText);
 
     [Fact]
-    public void No_core_file_outside_BuiltIn_names_a_domain()
+    public void No_core_source_file_names_a_domain()
     {
         Assert.Empty(Violations(ApiSources()));
     }
 
     [Fact]
-    public void Each_allowed_file_still_names_a_domain_and_says_which_follow_up_removes_it()
+    public void The_core_has_no_transitional_domain_files_or_allow_list_entries()
     {
-        var sources = ApiSources();
-        foreach (var (file, plugin) in AllowList)
-        {
-            Assert.True(sources.ContainsKey(file), $"{file} is allow-listed but does not exist");
-            // A stale entry fails: a file that no longer names a domain leaves the list.
-            Assert.Matches(NamesADomain, StripComments(sources[file]));
-            Assert.Contains($"// names a domain until the {plugin} follow-up moves it (introduce-plugins 8.1)", sources[file]);
-        }
-        Assert.DoesNotContain("Program.cs", AllowList.Keys);
+        Assert.Empty(AllowList);
+        Assert.DoesNotContain(ApiSources().Keys, file => file.StartsWith("BuiltIn/", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -179,7 +163,7 @@ public sealed class CoreNamesNoDomainTests
             ["BuiltIn/Domain.cs"] = "class S { string D = \"codebase\"; }",
         };
 
-        Assert.Equal(["Agent/Planted.cs: \"billing\"", "Agent/Constant.cs: BuiltInDomains.Portfolio"], Violations(planted));
+        Assert.Equal(["Agent/Planted.cs: \"billing\"", "Agent/Constant.cs: BuiltInDomains.Portfolio", "BuiltIn/Domain.cs: \"codebase\""], Violations(planted));
     }
 }
 

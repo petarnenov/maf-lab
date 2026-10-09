@@ -30,6 +30,7 @@ public partial class Program
             builder.Configuration.GetSection(Maf.Lab.Domain.Configuration.AuthOptions.Section));
         builder.Services.Configure<ReviewOptions>(builder.Configuration.GetSection(ReviewOptions.Section));
         builder.Services.AddA2APartnerAuthentication(builder.Configuration);
+        builder.Services.RequireA2AStoreKeyspace();
         builder.Services.AddAuthorizationBuilder();
         builder.Services.AddHttpContextAccessor();
         builder.Services.AddSingleton(TimeProvider.System);

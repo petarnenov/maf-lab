@@ -455,6 +455,11 @@ referenced web projects' config files never collide.
 - **`NodeHealth` is serialized by name.** The default enum-as-number would have reached the web app as `0`, which its
   types do not accept; a test now asserts `"health":"Healthy"` on the wire.
 
+- **Extraction addendum (2026-10-09).** The optional topology plugin embeds its draw.io source; it is no longer a
+  mounted core document. The diagram is the single source of connections: the parallel static report edge list is
+  removed, avoiding two editable representations that could disagree. Optional vertices are declared by the installed
+  plugins, with the full-installation vertex drift guard retained. Details: §81 part M.
+
 ## 20. Multilingual retrieval (add-multilingual-retrieval, 2026-09-20)
 
 - **Measured before deciding.** Against the running stack, a Bulgarian question and its English twin shared *zero*
@@ -3560,6 +3565,35 @@ No package version moves in this change.
     fail the curriculum test once the folder is deleted.
   - CI installs it (`CI_PLUGINS`), so `ci-e2e` keeps the collector and `ci-e2e-core` runs without it. It has no
     `compose.ci.yml`: CI's override does not touch these services.
+- **Part K (extract-a2a, batch 2).**
+  - The protocol plugin now owns its SQLite task, push-config and delivery rows, EF mappings, stores, push dispatcher,
+    admin API and web screen, nginx routes and open-work contributor. `IContributesModel` preserves the three existing
+    table names and indexes; `IDbContextFactory<DbContext>` is the shared persistence port. The core registers no
+    partner accessor or protocol store. Rejected: core-owned tables/stores with optional server lookup (partial removal),
+    and an admin facade retaining these reads in the core.
+  - The entire admin screen (inbound tasks, outbound consultations, deliveries, cancel) reads the audit through
+    `IAuditTrail`, paged and tenant-scoped by its core adapter, and writes cancellations through `IWriteAudit`.
+    The agent fallback is `unknown`, not a domain name. Its route and navigation are contributions in `web/index.ts`.
+  - Outbound registrations use `A2A:Clients:<agent>` (`BaseUrl`, `ClientId`, `ClientSecret`). The old compliance env
+    file is folded into `a2a.env`; review timing remains the compliance plugin's option. A plugin may supply an
+    official bootstrap `agent-card.json`, carried in `.installed`; `IInstalledPlugins.AgentEndpoint` selects its
+    JSON-RPC interface. The compliance client uses this only to locate runtime discovery when BaseUrl is absent;
+    runtime authentication and live card fetching remain unchanged. Secrets stay deployment configuration.
+    Rejected: treating an AG-UI `[agent]` registration as an A2A endpoint, and embedding deployment secrets in a card.
+  - Protocol hosts require an explicit `A2A:StoreKeyspace`; authentication-only clients do not own a store and do not
+    validate it. The reviewer's explicit value remains `compliance`, preserving its existing Redis keys; the assistant
+    uses `assistant` and the test agent `testgen`. This supersedes the shared library's historical compliance default.
+  - SDK route exemptions live in the owning plugin's `docs/docs-sync.toml`, discovered by a generic glob. Removing
+    its folder removes its SDK exemptions and transcluded API rows. The inspector depends on both protocol hosts.
+    Removing a dependency excludes its transitive dependants from the automatic installed set; explicit selection
+    still refuses a missing dependency before startup. Documentation checks use the same distinction. This keeps
+    folder removal usable even with a dependent developer tool bundled beside the feature.
+    The curriculum keeps its A2A lessons and shared-library paths, without links to an optional plugin screen, as with
+    the earlier observability extraction.
+  - `generalize-a2a-skills` is a proposal stub, without implementation tasks. Billing-specific skills and the
+    `a2a.billing.read` compatibility scope remain guarded debt until that follow-up is designed.
+  - Per the owner's migration order, index-backed end-to-end CI is deferred until all planned code moves finish;
+    builds, fixture tests, documentation and strict spec checks run during migration, including folder removal checks.
 - **Part L (extract-index-admin).**
   - The index admin's screen, its six `/api/admin` routes and the api's reference to `Maf.Lab.Indexing` are the
     index-admin plugin's. `Maf.Lab.Indexing` becomes a shared library a plugin may reference, beside Domain and
@@ -3599,8 +3633,7 @@ No package version moves in this change.
     plugin is in use, over the first corpus offered. CI installs the plugin. `Progress` joins `@maf/shared`, and
     `AdminJob` is exported from `@maf/plugin-api` as the job seam's type. The curriculum's two index entries no longer
     link the screen.
-- **Part M (extract-topology, in progress).** The letter is the next free one when the move lands. Batch 1, the core's
-  preparation, landed alone.
+- **Part M (extract-topology).** Batch 1, the core's preparation, landed alone.
   - The shared state's health is an ASP.NET Core health check (`SharedStateHealth : IHealthCheck`, named and tagged
     `shared-state`, with the answering replica's name in `Data["instance"]`). `/health` on every service is
     `MapHealthChecks` with a response writer in the shape the balancer and the topology always read
@@ -3613,6 +3646,28 @@ No package version moves in this change.
     `plugins/.installed` carries it, a default interface method like `Corpora()` so a stand-in's port compiles. The
     probe reads the `[topology]` tables and the installed checks through it. Rejected: a narrower `TopologyNodes()`, a
     topology-shaped hole in a generic port.
+  - The optional installation-scoped dev/qa plugin now owns the probe, DTOs, web page and drawing, embedded as a
+    .NET resource. The API registers no graph driver for a screen that is absent; the plugin registers `AddGraphStore`.
+    Only lb, web, api, shared state, local Ollama and the paid chat provider are core nodes. Optional services come from
+    installed `[topology]` data (`service`, `health`, `card`, existing `url`/`label`); `id` preserves drawn vertex identities,
+    and standard TOML `[[topology.nodes]]` entries preserve multi-service apps such as the runner and telemetry stack.
+    Rejected: a second plugin solely to describe an existing app's additional service, or a hard-coded node list in the
+    probe. These are operator-reviewed manifest data, not a new network protocol. No Docker socket is used.
+  - Domain tools are read with the official MCP client, one tools/list per installed server, forwarding the current
+    bearer token and sharing the node's two-second budget with its HTTP/card checks. Reports are cached per token,
+    so one principal's offered tools cannot be reused for another. The framework health check supplies the reporter's
+    instance identity; all probes, including shared state, run concurrently and honor request cancellation.
+  - Vector display facts come from `CollectionBootstrapper.DescribeChunkCollectionAsync`, now including string status;
+    no driver DTO escapes. Graph authentication is reported as credentials refused, every other graph failure as
+    its type name only. The drawing is the sole edge source; the report has no edge list. The vertex drift test compares
+    the drawing against the full fixture installation's reported vertices, rather than deriving both from the drawing.
+  - `useApiText` is the core authenticated text-read hook, with the JSON client's errors and AbortSignal handling.
+    The old standalone apiText helper is removed. D8 preserves the two existing curriculum links through PageLink
+    only while the matching route is contributed; this narrow exception to part N adds no lesson contributions.
+    The screenshot runner skips pages redirected because their contributor is absent.
+    Each cache consumer registers its own MemoryCache; removing the screen does not remove another plugin's cache.
+    The diagram path override and API docs volume mount are removed. The former BuiltIn compatibility constants and
+    API scanner exemption are gone; the source guard now covers every core file. No model request or threshold changes.
 
 - **Part N (extract-curriculum).**
   - The curriculum map is the `curriculum` plugin (app, installation, dev and qa), the first with a web part only: no
@@ -3638,6 +3693,68 @@ No package version moves in this change.
     `<a href>` in its place turns it red. Rejected: a plain `<a href>` (a full reload of the app, a behaviour change),
     and letting plugins import react-router (reverses part C).
   - The core's tests no longer use `/curriculum` as their neutral page: the layout test renders at `/chat`.
+
+- **Part O (extract-coverage).**
+  - Coverage and test generation are one installation-scoped app, allowed in dev and qa. The API-facing code, seven
+    tables and their mappings, historical attempt/duration backfills, routes, run agent, follower, repository writes,
+    model availability and pricing defaults, web page, DTOs, tests and make commands live together. Explicit table and
+    index names preserve rows and the unique active-run constraint. The core keeps the generic schema pass; the new
+    `IContributesDataMigration` runs only a model contributor's own idempotent data updates afterward.
+  - `Maf.Lab.TestGen` becomes a shared contract/parser library. The plugin references it and the established shared
+    libraries, never the API. `IInstallationJobs` and `ISystemAudit` preserve the repository's `_repository` job key and
+    shared system audit identity, separate from request-scoped tenant ports. `AdminJobFailure` is a shared domain
+    contract. Rejected: exposing the API's runner/audit classes or passing a tenant through a plugin.
+  - The official AG-UI mapping remains in the core. `IAgentRunInput` reads a run's thread and `AgentContents` expresses
+    state/steps as Agent Framework content; no plugin constructs protocol events. `MapPluginAgent` accepts a thread
+    guard returning the plugin's existing not-found result before streaming. The runtime gains testgen only through
+    the plugin's manifest; conformance checks are discovered generically from installed plugins' test modules.
+  - The remote hosts are in `service/test-agent` and `service/runner`, with recursive test-only service discovery and
+    the existing `service` extern alias. Their namespaces, audiences, Redis keyspace, telemetry identities and wire
+    contracts remain; their internal project/assembly names change so historical source examples do not become
+    references to an optional plugin project. The runner retains its internal network, unprivileged user and absence
+    of model credentials. It restores the plugin projects/packages into its offline image cache.
+  - The model allowlist/defaults are an embedded JSON resource of the plugin, overlaid with deployment configuration.
+    Deployment addresses, credentials and repository root are in the always-read env file. The API, balancer and
+    runtime receive no plugin compose overrides; the core balancer no longer waits on these optional services.
+    The arithmetic CI fixture moves to the shared test-generation library, preserving the source-target allowlist.
+  - Web routing uses the core's page/query and agent-access ports; a route/navigation test supplies explicit plugin
+    contributions to the real application. Feature docs leave with the folder. The remaining topology depiction is
+    owned by the already-planned topology extraction, after coverage and evals.
+  - Index-backed stack CI remains final validation after all planned code moves, per the owner's migration order.
+
+- **Part P (extract-evals).**
+  - Evaluation reports, optional labelled dataset export, console runners and the A2A client probe are the evals
+    plugin (installation scope, dev/qa). Its API assembly depends only on the plugin contracts and shared domain
+    types; its neutral tool projects live under service/ and are referenced by test globs only. The trace/ask command
+    moves with the harness it uses. The core keeps SQLite labels and a Null Object append port when no exporter runs.
+  - Common dataset formats, pure metrics, answer normalization/sentence segmentation and regression comparison are
+    the shared Evaluation library. Their original namespaces and algorithms remain. Corpus tests can use these
+    contracts without the optional runner. Domain JSONL rows move byte for byte into owning folders; IDs are retained,
+    common/feedback rows remain in the deployment root, and only the installed catalogue adds owned files. Duplicate
+    IDs across inputs are rejected. Historical source labels are updated when their referenced file moves.
+  - The code host is in its domain's service folder and reached by the evaluator through the operator-reviewed MCP
+    endpoint, with configuration overrides. A host-side gateway override maps the internal lb address to the published
+    origin without hard-coding the tool path. Graph-depth comparisons use the official MCP depth argument and a
+    harness decorator that retains the pinned description/schema; no variant starts another code server.
+  - Graph write records/identity rules are shared domain contracts. The code graph builder is a pure contribution
+    library; the indexer discovers installed graph contributions generically and owns persistence/progress. Existing
+    graph/route test fixtures contribute their builder explicitly. Shared MCP result framing replaces the old friend
+    access to a domain tool's private helpers. No new wire protocol is introduced.
+  - The completed-report acceptance path validates run IDs, passed variants/thresholds and comparison eligibility
+    before reading/updating the baseline. It initializes no model host or index store. `REPORT` omitted keeps the
+    existing run-and-accept command. Fixtures use temporary reports/baselines; migration runs no live suites.
+  - The final feedback/topology moves remove the fenced BuiltIn compatibility class and the scanner exemption. Model request fields/questions/criteria, tuned thresholds and jev-1.13.0 are unchanged.
+  - Index-backed full-stack validation remains deferred until all planned code moves finish, per the owner's order.
+
+- **Part Q (extract-feedback-review).** The review queue, label construction, administrator routes and web page
+  move to the tenant-scoped app plugin. The core owns turn/feedback/label state and exposes `IFeedbackReviewStore`,
+  deriving every access from the validated principal. Chunk resolution stays on the existing tenant-scoped store;
+  the plugin receives purpose-built review data. No EF entities cross this port. `IAppendEvalDataset` remains optional:
+  SQLite labels save without an exporter. The plugin-api exposes installed contribution readers and their error
+  boundary so the review page can host panels from other installed plugins, including the monitor's trace.
+  The HTTP and label JSON shapes, stable ids, ordering, limits and domain attribution remain unchanged. Workflow
+  tests live with the page; exporter/importer tests consume the shared row format independently. Full stack CI and
+  index-backed evals remain the final gate after all planned code moves, per the owner.
 
 ## 82. The stop-anything tests run on a fake clock (deterministic-stop-anything-tests, 2026-10-06)
 
@@ -3814,3 +3931,235 @@ No package version moves in this change.
   plugin, to ask the same kind of question about a core file (`McpToolSource`'s per-server failure handling). The
   accepted generation baseline is stale for those two rows until its next run (a paid run needs the user's approval).
   `code-route` row `cr-impact-latn-02` names the classifier's new path.
+
+### Part 2: chat and embeddings providers (tasks 1.2–1.4, 2026-10-08)
+
+- **Ports and adapters over Microsoft.Extensions.AI.** `IChatModelProvider` is a named factory over the existing
+  `IChatClientFactory`; `IEmbeddingsProvider` creates an `IEmbeddingGenerator<string, Embedding<float>>` for a
+  profile and purpose. These are composition ports, not a new model protocol. The core's `ModelProviders` selects
+  the named chat provider and caches embedding generators per vector and role. `DenseEncoder` applies only profile
+  prefixes and consumes MEAI; all SDK calls live in the provider plugins. Rejected: checking concrete SDK types in
+  the core (the old native Ollama branch); a single vendor port combining decisions, chat and embeddings.
+- **The bundled adapters** are `ollama-cloud` and `ollama-embeddings`, both `provider` plugins with `lib/` projects.
+  Their SDK package versions are unchanged. Chat retains credentials from the environment, its shared HTTP client,
+  thinking and model overrides. Embeddings retain their query/batch endpoints, timeout, prefixes and document
+  truncation refusal. The adapter carries each instance's `num_thread` on every request; unset uses the dev
+  defaults 4/12. It maps an overlong document to the same `InputTooLongException` and carries cancellation into the
+  native request. This is the MEAI Adapter pattern because OllamaSharp's embedding MEAI path ignores these options.
+- **Deployment selection.** `MAF_CHAT_MODEL` names an installed chat provider, default `ollama-cloud`;
+  `CHAT_MODEL` still names the model within it. make and every provider host reject a missing/wrong-kind selected
+  chat provider as well as zero or several decision engines. Several chat providers may be installed. Embeddings
+  have no selector in this change, so at most one is installed; make rejects a corpus without one.
+  `MAF_CORE_PROVIDERS` now defaults to `jev ollama-cloud ollama-embeddings`; `make core` installs these and no domain.
+- **Hosts.** Indexer and test-agent register installed providers too. The CLI and eval explicitly read validated
+  provider options before doing work, since they do not start hosted services. The test-agent image now loads the
+  same provider build glob and product arguments and mounts the installed set; product inspection covers it too.
+- **Shared configuration compatibility.** `ModelOptions`, profile, purpose and factory/encoder contracts move to
+  the abstractions assembly, retaining their namespaces and `Models:` keys. The provider plugins retain the old
+  `Models:Provider=openai` transport branch until dedicated OpenAI/Azure providers replace it, so existing
+  deployments do not lose that path. Rejected: removing the branch while extracting the adapters. Provider
+  contract tests live with their adapters; core hosts install fixture chat/embedding providers so deleting a bundled
+  provider leaves core tests independent of it. The deployment's vendor configuration keys are named compatibility
+  debt, like the `Jev:` keys in part 1.
+- **Promotion remains gated** by accepted eval baselines. Local contract/CI results and paid eval results are recorded
+  in this change's tasks; no baseline is accepted by this extraction.
+- **Migration order (user decision, 2026-10-08).** Finish the agreed code migration before indexing, graph refreshes
+  or index-backed live evals. Builds, contracts and docs/spec checks validate the code phase; task 1.5 records the
+  deferred final validation, which does not block the remaining code migrations. The started billing index run was
+  cancelled at a safe point after 591/624 documents; its completed writes are kept, and the following index/graph
+  steps did not start. The five index-independent suites have passing baseline comparisons (guardrail and
+  generation-judge passed on the recorded recheck); the remaining seven suites are deferred. The stage/prod
+  promotion gate and accepted baselines stay in force.
+
+## 88. Tenant plugin permissions (enable-plugins-per-tenant, in progress, 2026-10-09)
+
+- One core row per principal tenant and installed tenant-scoped plugin keeps allowance and enablement. No tenant
+  comes from a request parameter. An operator changes allowance; a tenant administrator changes enablement only
+  when allowed. Withdrawal writes both flags together; installation scope and another tenant's private plugin cannot
+  be switched. `private_to` is reviewed manifest data. Default entitlement is denied; uninstalling does not delete rows.
+- State changes and the existing audit chain append commit in one SQLite serializable write transaction. Repeated
+  identical writes are no-ops. Rejected: separate state/audit commits, which could leave an unaudited permission.
+- Cache-aside reads use a fixed 30-second monotonic TTL plus Redis pub/sub invalidation. A local generation counter
+  prevents an in-flight old read from repopulating the cache after invalidation. Frozen sets preserve already-created
+  snapshots. Publication occurs after commit; a Redis delivery failure leaves the authoritative write intact and
+  stale readers are TTL bounded. Unit fixtures advance the platform fake clock; replica fixtures use real Redis.
+- The `IPluginAccess.For(principal)` port is the common decision source. Its foundations are implemented; wiring the
+  request/turn catalogue, plugin routes and remote audience tokens remains in this change's tasks. No permissive
+  fallback is added to the entitlement service. Task checkboxes remain open until their complete behavior is verified.
+- The change requires the platform operator role and policy. They are distinct from tenant administrators and do
+  not grant ordinary tenant-content access. OIDC/token exchange and dashboard integration remain to implement.
+- Owner instruction for this goal (2026-10-09): do not run evals, indexing, graph refresh or stack commands that index.
+  Verify with builds, non-eval fixtures, and docs/spec checks. No package version changed for these foundations.
+
+### Per-request and turn scope (task 1.1 complete; task 1.2 in progress)
+
+- Authentication precedes entitlement resolution. Each user request receives a frozen plugin-access scope and the
+  corresponding frozen domain catalogue. Injected host catalogue readers and static readers share that scope.
+  Chat turns retain it, including decisions, tools and prompts. Non-chat assistant/tool entry points resolve the
+  explicit validated principal's snapshot too. Missing allowance rows remain denied.
+- Core plugin-route filters and `/api/plugins` use this scope. Open-work endpoints also check the requesting
+  tenant's access. Anonymous registration still lists only public descriptors. Protocol-specific A2A discovery and
+  multi-firm partner access remain to integrate before task 1.2 is checked off; the current default gate denies a
+  tenant route without a validated user entitlement rather than widening access.
+- Existing chat fixtures seed their own installed tenant plugin rows, idempotently, without adding production
+  defaults. Permission scenarios opt out and prove actual two-tenant isolation, routing question filtering, frozen
+  turns, and prompt assembly. No live eval or index command is run.
+
+### Audience-bound MCP calls (task 2.1 in progress)
+
+- `IPluginTokens` is the shared protocol-client port. The API implementation sends the RFC 8693 form to the trusted
+  configured token endpoint, authenticating its confidential requester with HTTP Basic and requesting exactly the
+  installed plugin's client id as audience. Permission is checked before every cache lookup; an already-frozen turn
+  retains its snapshot. Missing exchange configuration fails closed and never forwards the API bearer.
+- The exchange response must be a Bearer access token. It is validated with the API's issuer keys, a single exact
+  target audience, current lifetime, matching caller/tenant/role and preserved domain claims. Cache keys include user,
+  tenant, plugin and a hash of the subject credentials; expiry is bounded by both JWTs and the response deadline.
+  Failed exchanges and invalid signatures/audiences/claims are never cached. Token strings and IdP error bodies are
+  not logged. Expired credential material is cleared on access; per-key gates collapse concurrent exchanges.
+- MCP transport and topology tools/list use the port. In-repo MCP hosts pin their own audience independently of a
+  shared platform audience setting. Test-owned issuers supply scoped credentials only in fixtures. Runtime dev-login,
+  Keycloak realm exports and the full direct-call scenarios remain to finish before task 2.1 is marked complete.
+- Standards reference: https://www.keycloak.org/securing-apps/token-exchange (standard V2, requester client scopes and
+  audience filtering). The supported Keycloak 26.8 fixture/realm configuration remains task 2.2. No package changed.
+
+### Development audience issuer (task 2.3 in progress)
+
+- Dev identity endpoints/personas and the selector now live in the public installation-scoped dev/qa plugin. The
+  shell owns only a generic authControls slot and SessionUser shape. Removing the plugin removes its routes, UI,
+  CLI and tests; stage/prod composition rejects its manifest. Session migration tests remain core.
+- API credentials use audience `api`; MCP credentials use each installed plugin's name. An endpoint request for a
+  plugin checks actual tenant access. The dev operator can select an organization while retaining its own identity;
+  other predefined personas cannot change tenant or role. A runtime dev token provider validates the API credential
+  before reissuing its identity/domain claims for one audience. This provider is absent from production.
+- `dev-token` prints only its token to stdout for terminal API commands. MCP Inspector requests one token per server
+  audience. The optional evaluator's harness is updated to request audience tokens and read the caller's plugin set
+  over dev-login/API endpoints; it is compiled but no eval command is run under the owner's prohibition.
+- Remaining task 2.3 evidence includes a complete harness/inspector fixture and optional-folder checks. Bootstrap and
+  operator dashboards remain later tasks. No model, index, or live eval work is executed.
+
+### Administration shells and fixture bootstrap
+
+- The core permission controls use the authenticated principal and the same entitlement port from both dashboards
+  and terminal writes. The routes stay present when dashboard plugins are absent; putting allowance writes inside
+  the optional shell would prevent terminal bootstrap on a fresh installation. Private plugins remain bound to one
+  organization, and installation plugins are read-only. Tenant usage is aggregated without content; the platform
+  permission audit is scoped to the operator token's organization.
+- The web's `tenantAdminSections` and `platformAdminSections` registries are the extension points. Shells never
+  name contributors. Tenant review stays behind TenantAdmin; index administration and telemetry use PlatformAdmin
+  and `/api/platform/…`. A saved section URL cannot restore a disabled contribution. Role guards protect direct
+  page access as well as navigation. Unchecking opens a confirmation; Esc/Cancel leave both state and store intact.
+- Dev/CI bootstrap issues operator API credentials for each fixture organization after health/lb reload and calls
+  the same atomic audited control route, rather than writing the database or allowing all plugins implicitly. It
+  skips private plugins of another organization and shared corpus rows, and repeated calls are idempotent. An
+  interrupt completes the active HTTP call then exits 130 between writes; after three seconds terminal work shows
+  determinate progress. Without dev-login, terminal allowances use the supplied organization-scoped bearer.
+- The real IdP organization selection/token exchange realm and its container verification remain in tasks 2.2 and
+  adopt-company-idp. No live eval, indexing, graph refresh or index-running stack command is used for this goal.
+
+### Partner protocol snapshots and saved-task ownership
+
+- `IPluginRouteAccess` adapts an authenticated protocol identity at the core route boundary. A2A snapshots each
+  registered partner organization's plugin access, exposes tenant-specific skills only from those readers, and
+  retains the same scope while a deferred SSE result executes. Ordinary admin routes still use the user snapshot.
+- Persisted task and push-config operations require the authenticated partner and an enabled A2A/billing tenant.
+  Task ownership is selected before Submitted and retained through the SDK's asynchronous event consumer; it does
+  not come from caller metadata. Continuations and cancellations read that stored owner. Background work retains
+  its frozen request snapshot, while the next request takes newly revoked permissions. Request audit attribution
+  matches the actual reader used by the model or successful run lookup.
+- The token-exchange HTTP transport disables automatic redirects. A redirect response is refused, so an RFC 8693
+  subject token cannot be forwarded to the redirect's origin before response validation. The transport-registration
+  regression asserts the actual named client's primary handler, alongside redirect-response refusal tests.
+
+## 89. Company identity and shared remote health foundations (adopt-company-idp, in progress, 2026-10-09)
+
+- The agreed Keycloak pin is 26.8.0 (official release 2026-10-01); the external native realm/server profiles and
+  isolated Testcontainer fixture live in `compose/keycloak`. No IdP service is added to the application compose
+  stack. Standard OIDC discovery/JWKS uses the existing ASP.NET JWT bearer handler, pinned HTTPS
+  issuer, resource audience, asymmetric algorithm and lifetime. Stage/prod reject a missing authority rather than
+  falling back to HMAC. API and all production MCP compose roots receive the same environment/authority settings;
+  CI remains the separate dev issuer fixture. Loopback HTTP is dev/qa fixture-only.
+- The validated Keycloak organization claim must have exactly one alias matching the stored tenant namespace.
+  Tenant/role aliases in legacy claims cannot override it. Recognized realm or configured core-client roles must
+  resolve to one distinct core role; ambiguous role assignments are refused instead of silently choosing elevated
+  privileges. `platform_operator` maps to PLATFORM_ADMIN. The standard `groups` claim contains provisioner-managed
+  immutable group IDs; native organization group paths are metadata and cannot grant document access. The native
+  realm templates map protected, admin-only `group_ids` attributes into that claim. The external provisioner must
+  maintain those IDs when group memberships change: the native group mapper emits names/paths, not immutable IDs.
+  GroupIds equality/hash compare membership, so request/turn scopes and dev token identity comparisons remain
+  stable after re-parsing. ID/delegation tokens are refused.
+- RFC 8693 validates the subject before any cache lookup or outbound exchange, and validates response identity,
+  organization, role, groups and domain claims. Raw realm/client role representation may change through exchange,
+  but the normalized principal cannot. Exchange requests select `organization:<validated tenant>`; bare organization
+  scope is replaced and wildcard/foreign-organization scopes are refused before cache/outbound access. This keeps
+  the selected tenant when Keycloak creates a fresh exchange authentication session for a multi-organization user.
+  Preview delegation/act is not substituted for the agreed operator grant.
+- The `company-login` installation plugin exposes only the public authority, web client ID, code flow/scope and
+  fixed callback paths at `/api/identity/configuration`; it is inactive without a company authority. Configure
+  `AUTH_WEB_CLIENT_ID` (default `web`) to match the external public client's ID. No client secret is exposed.
+- `make keycloak-check` validates the native stage/prod realm and server profile pair offline, with the pinned
+  feature catalog derived from Keycloak 26.8.0 `Profile.java`. Native feature flags belong to the server build,
+  not the realm JSON. Pass the same `KC_FEATURES`, `KC_FEATURES_DISABLED`, `KC_FEATURE_*` or CLI list overrides
+  to the gate and the external server build. Preview/experimental/legacy feature versions are refused by name;
+  CI and `make ci` run the check. This does not attest an already-built or deployed IdP server. The realm check
+  inspects effective default/optional scopes and client-local mappers, PKCE, audience isolation, core-role scopes
+  and protected privilege attributes. No import or external IdP request occurs.
+- Shared DNS resolution lives in Domain/Hosting; the optional topology plugin and the core health reader depend on
+  that seam. Declared service/node replicas share one bounded health-read budget; unknown infrastructure is not
+  assigned an invented HTTP port. TLS SNI/Host remain the declared authority while ConnectCallback selects each
+  replica IP. Closed HTTP/1.1 connections prevent a pooled first-replica connection from masking a failing replica.
+  No credentials/cookies, redirects or caller-cancellation cache entries are used.
+- Resource hosts register the existing MCP SDK authentication handler for RFC9728 metadata. Bearer authentication
+  remains the verifier; only their default challenge changes to the MCP scheme. API challenges stay unchanged.
+  Each host requires its own canonical public `Auth:ResourceUri`; both the metadata resource and absolute challenge
+  URI are pinned to configuration, never inferred from a caller Host. Metadata is anonymous and needs no JWKS call.
+  The external HTTPS ingress is an explicit deployment boundary: only configured peer CIDRs may forward one
+  symmetric host/proto pair, constrained to the canonical hostname. Empty networks accept no forwarding and no
+  default loopback trust; `/0` is refused. Metadata keeps the full well-known path through each plugin's balancer
+  location. The default HTTP lab balancer does not attest public TLS: an external TLS deployment must preserve
+  its public scheme through the final private ingress.
+- Operator API entry uses the native `sid`, scoped to configured issuer, actor and the token's organization. Company
+  operators require exactly `organization:<validated alias>` and native string session/scope payload fields;
+  claim-array flattening cannot turn a malformed session into a valid one. Ordinary company users retain their
+  existing claim requirements. Dev HMAC issuance adds an opaque session ID and may explicitly retain it for a
+  simulated refresh; no token hash or `jti` stands in for a missing session.
+- A core `OperatorSessions` receipt stores a SHA256 of the JSON identity tuple, with no raw session credential.
+  A SQLite serializable transaction acquires the writer before checking the receipt, then commits it together
+  with the existing chained `operator.enter` audit append. Failure/cancellation rolls both back; no process cache
+  substitutes for durable replica dedup. Recording precedes dispatch/entitlements and may cover a later denied
+  route: it records an authenticated entry into the organization, not a content read. Storage failure prevents
+  dispatch. This operates without either dashboard or Compliance plugin installed. Tenant-admin Overview reads a
+  dedicated core, tenant-filtered metadata endpoint; its user sees only operator identity, time and row ID.
+- Break-glass grants are core SQLite metadata and chained audit, published to the shared permission store only after
+  commit. They belong to the validated issuer/session/operator/tenant tuple, never to an IdP grant claim or a custom
+  protocol header. A bounded ticket/incident reference is required, and original start/reason/expiry are immutable;
+  at most one unended grant exists per session key. The deadline is at most one hour and publication retries do not
+  restart it. Expiry/revocation remains subject to existing tenant/ownership/role rules, without granting TENANT_ADMIN.
+- API routes deny operator content by default, with server metadata for configuration/count exceptions. Installation
+  and entitlement filters keep their precedence. Official MCP request filters independently guard content calls;
+  discovery/OAuth schemas remain available. Token exchange preserves the native operator session in both company
+  and dev issuance. Portfolio/code now read the shared permission port through their existing shared-state settings.
+- Ending first records endRequestedAt and its audit, then revokes permission with a per-grant tombstone before the
+  SQLite endedAt/audit acknowledgement. Late activation cannot restore that grant; an old revocation cannot delete
+  a newer grant. Reconciliation finishes expiry/pending end without extending the original deadline. The platform
+  banner follows stored endedAt; Esc cancels an unconfirmed dialog without a write. Tenant Overview lists identity,
+  reference and times independently of Compliance. No raw session or bearer appears in the grant DTO or audit.
+- The permission plane requires one standalone Redis primary, AOF on, appendfsync=always and no suppression during
+  rewrite. Synchronous AOF changes the shared store's write-I/O tradeoff, but an every-second flush could resurrect
+  an already acknowledged revoked grant after a crash. Fresh server identity/persistence/topology checks surround
+  every permission operation and the Lua code checks its executing run_id; ambiguity/rewrite/failure denies access
+  without acknowledgement. Cluster/Sentinel/replica failover is unsupported here. INFO and read-only CONFIG GET
+  inspect three non-secret persistence settings, with ACLs scoped accordingly. A naive keyless WAITAOF was rejected:
+  its durability claim is connection-scoped and cannot be assumed across multiplexer reconnects or another shard.
+- PKCE browser sign-in and real Keycloak Testcontainer execution
+  remain in their original tasks. The native fixture covers identity-first code/PKCE login,
+  selected organization, stable group IDs, production token exchange and requester-audience refusal; it is compiled
+  but unverified until Docker is available. The existing unbounded exchange-entry cache is a reviewed minor follow-up; this
+  slice does not refactor its concurrency model. No eval, index or graph refresh runs for this goal.
+- References: [Keycloak 26.8 release](https://www.keycloak.org/2026/10/keycloak-2680-released),
+  [Organizations](https://www.keycloak.org/docs/26.8.0/server_admin/#_organizations),
+  [standard token exchange](https://www.keycloak.org/securing-apps/token-exchange),
+  [pinned feature catalog](https://github.com/keycloak/keycloak/blob/26.8.0/common/src/main/java/org/keycloak/common/Profile.java),
+  [pinned MCP authentication handler](https://github.com/modelcontextprotocol/csharp-sdk/blob/6fa3825973949a9c4f0cd8af344e15a8db09dc35/src/ModelContextProtocol.AspNetCore/Authentication/McpAuthenticationHandler.cs),
+  [ASP.NET forwarding](https://learn.microsoft.com/en-us/aspnet/core/host-and-deploy/proxy-load-balancer?view=aspnetcore-10.0).
+  Redis permission durability follows [AOF persistence](https://redis.io/docs/latest/operate/oss_and_stack/management/persistence/)
+  and [WAITAOF connection semantics](https://redis.io/docs/latest/commands/waitaof/).

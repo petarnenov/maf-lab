@@ -62,12 +62,12 @@ else
   warn jev-key "JEV_MAF_LAB" "missing — intent classification uses TypeSafe Jev and needs it (without it nothing is forced to search); export it in your shell"
 fi
 
-# The repository the Coverage screen reads and the test agent writes tests for, at the path compose mounts it.
+# The repository optional development tools read and write, at the path compose mounts it.
 repo="${MAF_LAB_REPO:-$(pwd)}"
 if git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   ok repo "MAF_LAB_REPO" "$repo is a git repository"
 else
-  bad repo "MAF_LAB_REPO" "$repo is not a git repository — the Coverage screen and the test agent need one (make sets it)"
+  bad repo "MAF_LAB_REPO" "$repo is not a git repository — development tools need one (make sets it)"
 fi
 
 if [ -n "${GITHUB_ISSUES_TOKEN:-}" ]; then

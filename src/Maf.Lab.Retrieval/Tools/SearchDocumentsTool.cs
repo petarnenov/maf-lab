@@ -97,9 +97,7 @@ public sealed class SearchDocumentsTool(DocumentSearchService search, IPrincipal
     public const string RelevanceKey = "maf-lab/relevance";
 
     /// <summary>True when the caller asked for diagnostics via request _meta {"maf-lab/trace": true}.</summary>
-    internal static bool TraceRequested(RequestContext<CallToolRequestParams>? context) =>
-        context?.Params?.Meta is { } meta && meta.TryGetPropertyValue(TraceFlag, out var flag) && flag is not null
-        && flag.GetValueKind() == System.Text.Json.JsonValueKind.True;
+    internal static bool TraceRequested(RequestContext<CallToolRequestParams>? context) => ToolResults.TraceRequested(context);
 
     /// <summary>
     /// The same result as <see cref="Structured{T}"/>, from JSON already serialized — so an answer replayed under
@@ -115,15 +113,8 @@ public sealed class SearchDocumentsTool(DocumentSearchService search, IPrincipal
         };
     }
 
-    internal static CallToolResult Structured<T>(T value)
-    {
-        var element = JsonSerializer.SerializeToElement(value, McpJson.Options);
-        return new CallToolResult
-        {
-            StructuredContent = element,
-            Content = [new TextContentBlock { Text = element.GetRawText() }],
-        };
-    }
+    internal static CallToolResult Structured<T>(T value) => ToolResults.Structured(value);
+
 }
 
 internal static class McpJson

@@ -1,3 +1,4 @@
+using Maf.Lab.Plugins.Abstractions;
 using Maf.Lab.Domain.Tenancy;
 using Maf.Lab.Retrieval.Auth;
 using Maf.Lab.Domain.Configuration;
@@ -28,11 +29,16 @@ public sealed class AssistantAnswer(
     SystemPrompt prompt,
     Guardrail guardrail,
     IOptions<AuthOptions> auth,
-    ILoggerFactory loggers) : Maf.Lab.Plugins.Abstractions.IAssistantAnswer
+    ILoggerFactory loggers, DomainCatalogue domains, IPluginAccess access) : Maf.Lab.Plugins.Abstractions.IAssistantAnswer
 {
     /// <summary>The assistant's answer for the principal; the relaying protocol frames it.</summary>
     public async Task<string> AnswerAsync(Principal principal, string question, CancellationToken ct)
     {
+        var snapshot = PluginAccessContext.For(principal) ?? await access.For(principal, ct);
+        using var permissionScope = PluginAccessContext.Use(principal, snapshot);
+        var allowedDomains = domains.For(snapshot);
+        using var domainScope = DomainCatalogue.Use(allowedDomains);
+        if (allowedDomains.All.Count == 0) return NoDomain.Reply(question);
         // A partner is screened like a user: a question that tries to steer the assistant gets the fixed refusal and
         // never reaches the model. Unscreened (Jev down) fails open, as a user's prompt does.
         var screen = await guardrail.ScreenPromptAsync(question, ct);

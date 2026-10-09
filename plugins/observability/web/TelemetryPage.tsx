@@ -24,7 +24,8 @@ export function TelemetryPage() {
 
   const report = useQuery({
     queryKey: ['telemetry', window, userKey],
-    queryFn: ({ signal }) => api<TelemetryReport>(`/api/telemetry?window=${window}`, { signal }),
+    queryFn: ({ signal }) =>
+      api<TelemetryReport>(`/api/platform/telemetry?window=${window}`, { signal }),
     enabled: signedIn,
     refetchInterval: 15_000,
   });

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>The ollama-cloud provider: Ollama Cloud chat models through IChatClient, with the existing model, thinking options, credentials and cancellation.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="OllamaSharp" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
+    <ProjectReference Include="../../../src/Maf.Lab.Plugins.Abstractions/Maf.Lab.Plugins.Abstractions.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Maf.Lab.Tests" />
+    <InternalsVisibleTo Include="Maf.Lab.IntegrationTests" />
+  </ItemGroup>
+</Project>

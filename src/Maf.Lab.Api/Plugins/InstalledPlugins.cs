@@ -23,6 +23,16 @@ public sealed class InstalledPlugins(PluginCatalogue catalogue, IOptions<AgentOp
 
     public IReadOnlyList<PluginManifest> Installed() => [.. catalogue.Current.Plugins.Select(p => p.Manifest)];
 
+    public string? AgentEndpoint(string plugin)
+    {
+        var card = catalogue.Current.Plugins.SingleOrDefault(p => p.Name == plugin)?.AgentCard;
+        if (card?["supportedInterfaces"] is not System.Text.Json.Nodes.JsonArray interfaces)
+        {
+            return null;
+        }
+        return interfaces.FirstOrDefault(i => i?["protocolBinding"]?.GetValue<string>() == "JSONRPC")?["url"]?.GetValue<string>();
+    }
+
     public IReadOnlyList<PluginCorpus> Corpora()
     {
         var root = Path.GetFullPath(options.Value.Root);

@@ -35,22 +35,27 @@ public partial class Program
         configure?.Invoke(builder);
 
         builder.AddLabTelemetry("maf-lab-mcp-portfolio");
+        builder.AddSharedState();
+        builder.RequireSharedState<Maf.Lab.Domain.SharedState.IBreakGlassPermissionStore>();
 
         // The retrieval core, pointed by portfolio.json at this domain's collection and vocabulary.
         builder.Services.AddMafRetrievalCore(builder.Configuration);
         // The installed providers: the decision engine the relevance judge asks.
         Maf.Lab.Plugins.Abstractions.ProviderHost.AddInstalledProviders(builder.Services, builder.Configuration);
-        builder.Services.AddDevJwtAuthentication(builder.Configuration);
+        builder.Services.AddLabAuthentication(builder.Configuration, "portfolio");
+        builder.Services.AddLabMcpAuthentication(builder.Configuration);
         builder.Services.AddSingleton<PortfolioStore>();
         builder.Services.AddHostedService<BootstrapService>();
         builder.Services
             .AddMcpServer(o => o.ServerInfo = new() { Name = ServerName, Version = "1.0.0" })
             .WithHttpTransport(o => o.Stateless = true)
+            .WithOperatorContentAccess()
             .WithTools<PortfolioSearchTool>()
             .WithTools<HouseholdTools>();
 
         builder.Services.AddInstanceHealth();
         var app = builder.Build();
+        app.UseLabMcpForwarding();
         app.UseInstanceHeader();
         app.UseAuthentication();
         app.UseAuthorization();

@@ -21,6 +21,13 @@ public static class AssistantAgentCard
     public static AgentCardDescriptor Installed(IInstalledPlugins plugins) =>
         plugins.IsInstalled("billing") ? Descriptor : Descriptor with { PublicSkills = [], PrivateSkills = [] };
 
+    internal static AgentCardDescriptor ForReaders(IInstalledPlugins plugins, IReadOnlyList<PartnerReader> readers) =>
+        HasBilling(plugins, readers) ? Descriptor : Descriptor with { PublicSkills = [], PrivateSkills = [] };
+
+    internal static bool HasBilling(IInstalledPlugins plugins, IReadOnlyList<PartnerReader> readers) =>
+        plugins.Installed().Any(plugin => (plugin.Domain?.Id == "billing" || plugin.Name == "billing")
+            && readers.Any(reader => reader.Access.IsInUse(plugin.Name)));
+
     public static AgentCardDescriptor Descriptor { get; } = new(
         Name: "maf-lab assistant",
         Description:

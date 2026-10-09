@@ -1,6 +1,6 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { jsonResponse, renderWithProviders } from '@maf/testing';
+import { jsonResponse, makeSession, renderPluginApp, renderWithProviders } from '@maf/testing';
 import observability from './index';
 
 describe('the observability plugin', () => {
@@ -18,11 +18,14 @@ describe('the observability plugin', () => {
         }),
       ),
     );
-    expect(observability.nav).toEqual([{ label: 'Telemetry', to: '/telemetry' }]);
+    expect(observability.nav).toEqual([
+      { label: 'Telemetry', to: '/telemetry', platformAdminOnly: true },
+    ]);
     const [route] = observability.routes ?? [];
 
     expect(route.path).toBe('telemetry');
-    renderWithProviders(<>{route.element}</>);
+    expect(route.platformAdmin).toBe(true);
+    renderWithProviders(<>{route.element}</>, { session: makeSession('PLATFORM_ADMIN') });
 
     expect(await screen.findByRole('heading', { name: 'Telemetry' })).toBeInTheDocument();
   });
@@ -31,4 +34,25 @@ describe('the observability plugin', () => {
     // A test is not a built app and names none: activating starts nothing, so there is nothing to stop.
     expect(observability.activate?.()).toBeUndefined();
   });
+
+  it('contributes its screen to the platform dashboard', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ available: false, panels: [] })),
+    );
+    const [section] = observability.platformAdminSections ?? [];
+    expect(section.id).toBe('telemetry');
+    renderWithProviders(<>{section.render()}</>, { session: makeSession('PLATFORM_ADMIN') });
+    expect(await screen.findByRole('heading', { name: 'Telemetry' })).toBeInTheDocument();
+  });
+
+  it.each(['USER', 'TENANT_ADMIN'] as const)(
+    'guards its standalone screen from %s',
+    async (role) => {
+      renderPluginApp([observability], { route: '/telemetry', session: makeSession(role) });
+      expect(screen.getByRole('alert')).toHaveTextContent('PLATFORM_ADMIN');
+      expect(screen.queryByRole('link', { name: 'Telemetry' })).toBeNull();
+      expect(screen.queryByRole('heading', { name: 'Telemetry' })).toBeNull();
+    },
+  );
 });

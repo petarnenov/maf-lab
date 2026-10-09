@@ -1,0 +1,563 @@
+{
+  "keycloak_version": "26.8.0",
+  "source": "https://github.com/keycloak/keycloak/blob/26.8.0/common/src/main/java/org/keycloak/common/Profile.java",
+  "rule": "DEFAULT and DISABLED_BY_DEFAULT are supported; Type DEPRECATED, PREVIEW and EXPERIMENTAL are rejected. Marker-only deprecations retain their supported Type classification.",
+  "features": {
+    "account": {
+      "default": "v3",
+      "preferred": "v3",
+      "versions": {
+        "v3": "supported"
+      },
+      "dependencies": {
+        "v3": [
+          "account-api:v1"
+        ]
+      }
+    },
+    "account-api": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "admin": {
+      "default": "v2",
+      "preferred": "v2",
+      "versions": {
+        "v2": "supported"
+      },
+      "dependencies": {
+        "v2": [
+          "admin-api:v1"
+        ]
+      }
+    },
+    "admin-api": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "admin-fine-grained-authz": {
+      "default": "v2",
+      "preferred": "v2",
+      "versions": {
+        "v2": "supported",
+        "v1": "deprecated"
+      },
+      "dependencies": {
+        "v2": [
+          "authorization:v1"
+        ]
+      }
+    },
+    "authorization": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "authzen": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "experimental"
+      }
+    },
+    "ciba": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "cimd": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "experimental"
+      }
+    },
+    "client-admin-api": {
+      "default": "disabled",
+      "preferred": "v2",
+      "versions": {
+        "v2": "preview"
+      }
+    },
+    "client-auth-abca": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "experimental"
+      }
+    },
+    "client-auth-federated": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "client-policies": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "client-secret-rotation": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "client-types": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "experimental"
+      }
+    },
+    "clusterless": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "experimental"
+      }
+    },
+    "db-tidb": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "experimental"
+      }
+    },
+    "declarative-ui": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "experimental"
+      }
+    },
+    "device-flow": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "docker": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "dpop": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "fips": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "hostname": {
+      "default": "v2",
+      "preferred": "v2",
+      "versions": {
+        "v2": "supported"
+      },
+      "essential": true
+    },
+    "http-client": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported",
+        "v2": "experimental"
+      }
+    },
+    "http-optimized-serializers": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "preview"
+      }
+    },
+    "identity-assertion-jwt": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "experimental"
+      }
+    },
+    "identity-brokering-api": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v2": "supported",
+        "v1": "supported"
+      }
+    },
+    "impersonation": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "instagram-broker": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "deprecated"
+      }
+    },
+    "ipa-tuura-federation": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "experimental"
+      }
+    },
+    "jwt-authorization-grant": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "kerberos": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "kubernetes-service-accounts": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "ldap-metrics": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "experimental"
+      }
+    },
+    "log-mdc": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "login": {
+      "default": "v2",
+      "preferred": "v2",
+      "versions": {
+        "v2": "supported",
+        "v1": "deprecated"
+      }
+    },
+    "login-failures": {
+      "default": "v2",
+      "preferred": "v2",
+      "versions": {
+        "v2": "supported",
+        "v1": "deprecated"
+      }
+    },
+    "logout-all-sessions": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "deprecated"
+      }
+    },
+    "multi-site": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "deprecated"
+      }
+    },
+    "oid4vc-mdoc": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "experimental"
+      }
+    },
+    "oid4vc-vci": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "preview"
+      }
+    },
+    "oid4vc-vci-preauth-code": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "experimental"
+      }
+    },
+    "oid4vc-vci-rest-credential-offer": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "experimental"
+      }
+    },
+    "oid4vc-vp": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "experimental"
+      }
+    },
+    "openapi": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "experimental"
+      }
+    },
+    "opentelemetry": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "opentelemetry-logs": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "preview"
+      }
+    },
+    "opentelemetry-metrics": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "experimental"
+      }
+    },
+    "organization": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "par": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "parameterized-scopes": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "preview"
+      }
+    },
+    "passkeys": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      },
+      "dependencies": {
+        "v1": [
+          "web-authn:v1"
+        ]
+      }
+    },
+    "passkeys-conditional-ui-authenticator": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "deprecated"
+      }
+    },
+    "persistent-user-sessions": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "quick-theme": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "experimental"
+      }
+    },
+    "recovery-codes": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "resource-indicators": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "experimental"
+      }
+    },
+    "rolling-updates": {
+      "default": "v2",
+      "preferred": "v2",
+      "versions": {
+        "v2": "supported",
+        "v1": "deprecated"
+      },
+      "essential": true
+    },
+    "scim-api": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "scripts": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "preview"
+      }
+    },
+    "spiffe": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "preview"
+      }
+    },
+    "ssf": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "experimental"
+      }
+    },
+    "stateless": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      },
+      "dependencies": {
+        "v1": [
+          "login-failures:v2"
+        ]
+      }
+    },
+    "step-up-authentication": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "step-up-authentication-saml": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      },
+      "dependencies": {
+        "v1": [
+          "step-up-authentication:v1"
+        ]
+      }
+    },
+    "token-exchange": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "preview"
+      }
+    },
+    "token-exchange-delegation": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "preview"
+      }
+    },
+    "token-exchange-standard": {
+      "default": "v2",
+      "preferred": "v2",
+      "versions": {
+        "v2": "supported"
+      }
+    },
+    "transient-users": {
+      "default": "disabled",
+      "preferred": "v1",
+      "versions": {
+        "v1": "experimental"
+      }
+    },
+    "twitter-broker": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "update-email": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "user-event-metrics": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "web-authn": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    },
+    "workflows": {
+      "default": "v1",
+      "preferred": "v1",
+      "versions": {
+        "v1": "supported"
+      }
+    }
+  }
+}

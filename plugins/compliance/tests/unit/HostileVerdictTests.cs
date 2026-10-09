@@ -41,9 +41,9 @@ public class HostileVerdictTests
             InstalledPlugins = CompliancePluginSupport.Installed,
             ExtraSettings = new Dictionary<string, string?>
             {
-                ["Compliance:BaseUrl"] = url,
-                ["Compliance:ClientId"] = "maf-lab-assistant",
-                ["Compliance:ClientSecret"] = "assistant-secret",
+                ["A2A:Clients:compliance:BaseUrl"] = url,
+                ["A2A:Clients:compliance:ClientId"] = "maf-lab-assistant",
+                ["A2A:Clients:compliance:ClientSecret"] = "assistant-secret",
                 ["Compliance:Deadline"] = "00:00:10",
             },
         };

@@ -9,4 +9,5 @@ public enum Role
     TENANT_ADMIN,
     USER,
     READ_ONLY,
+    PLATFORM_ADMIN,
 }

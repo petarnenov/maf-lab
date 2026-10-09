@@ -17,6 +17,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Maf.Lab.Plugins.Abstractions;
 
 namespace Maf.Lab.IntegrationTests;
 
@@ -27,6 +28,7 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
     [Fact]
     public async Task Agent_tool_source_lists_the_three_tools_and_invokes_search_as_the_user()
     {
+        using var permissions = CallerScope("billing", "compliance");
         var values = corpus.Config();
         await using var server = new WebApplicationFactory<Maf.Lab.Retrieval.Program>().WithWebHostBuilder(b =>
         {
@@ -42,7 +44,7 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
         // The compliance plugin is in use, so the fee adjustment that needs a reviewer is offered (its tool_requires).
         var source = new McpToolSource(Options.Create(new AgentOptions { Servers = { ["billing"] = new McpServerOptions { Domain = "billing", Endpoint = new Uri(server.Server.BaseAddress, "/mcp").ToString() } } }),
             NullLoggerFactory.Instance, new ServerHttpClientFactory(server), plugins: InstalledSet.Of("billing", "compliance"),
-            domainCatalogue: CorpusIndexFixture.Domains);
+            domainCatalogue: CorpusIndexFixture.Domains, tokens: new FixtureAudienceTokens());
         var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.USER);
 
         await using var tools = await source.GetToolsAsync(token, null, TestContext.Current.CancellationToken);
@@ -61,7 +63,8 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
         // Without the compliance plugin the adjustment's review could never pass, so the tool is not offered at all.
         var unreviewed = new McpToolSource(Options.Create(new AgentOptions { Servers = { ["billing"] = new McpServerOptions { Domain = "billing", Endpoint = new Uri(server.Server.BaseAddress, "/mcp").ToString() } } }),
             NullLoggerFactory.Instance, new ServerHttpClientFactory(server), plugins: InstalledSet.Of("billing"),
-            domainCatalogue: CorpusIndexFixture.Domains);
+            domainCatalogue: CorpusIndexFixture.Domains, tokens: new FixtureAudienceTokens());
+        using var withoutReviewPermission = CallerScope("billing");
         await using var withoutReviewer = await unreviewed.GetToolsAsync(token, null, TestContext.Current.CancellationToken);
         Assert.DoesNotContain("propose_fee_adjustment", withoutReviewer.Names);
         Assert.Contains("search_documents", withoutReviewer.Names);
@@ -70,6 +73,7 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
     [Fact]
     public async Task A_real_search_writes_the_spans_no_library_writes_for_it()
     {
+        using var permissions = CallerScope("billing");
         // The listener hears every test running in this process, so the call carries a trace of its own and only the
         // spans in that trace are this search's.
         var spans = new ConcurrentQueue<Activity>();
@@ -95,8 +99,9 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
             });
         });
         var sending = new SendingHandler($"00-{traceId.ToHexString()}-{ActivitySpanId.CreateRandom().ToHexString()}-01");
-        var source = new McpToolSource(Options.Create(new AgentOptions { Servers = { ["billing"] = new McpServerOptions { Domain = "billing", Endpoint = new Uri(server.Server.BaseAddress, "/mcp").ToString() } } }),
-            NullLoggerFactory.Instance, new ServerHttpClientFactory(server, sending), domainCatalogue: CorpusIndexFixture.Domains);
+        var source = new McpToolSource(Options.Create(new AgentOptions { Servers = { ["billing"] = new McpServerOptions { Plugin = "billing", Domain = "billing", Endpoint = new Uri(server.Server.BaseAddress, "/mcp").ToString() } } }),
+            NullLoggerFactory.Instance, new ServerHttpClientFactory(server, sending), domainCatalogue: CorpusIndexFixture.Domains,
+            tokens: new FixtureAudienceTokens());
         var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.USER);
         await using var tools = await source.GetToolsAsync(token, null, TestContext.Current.CancellationToken);
         var search = (AIFunction)tools.Tools.Single(t => t.Name == "search_documents");
@@ -117,6 +122,7 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
     [Fact]
     public async Task The_mcp_server_continues_the_trace_the_api_sent_rather_than_starting_its_own()
     {
+        using var permissions = CallerScope("billing");
         // Injection is the HTTP stack's job and a test server has no HTTP stack; what this system decides is the
         // other half — that the server reads the incoming context and hangs its work under it. A trace id nothing
         // in this process knows proves it came off the header and not from an ambient activity.
@@ -143,8 +149,9 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
             });
         });
         var sending = new SendingHandler($"00-{traceId.ToHexString()}-{ActivitySpanId.CreateRandom().ToHexString()}-01");
-        var source = new McpToolSource(Options.Create(new AgentOptions { Servers = { ["billing"] = new McpServerOptions { Domain = "billing", Endpoint = new Uri(server.Server.BaseAddress, "/mcp").ToString() } } }),
-            NullLoggerFactory.Instance, new ServerHttpClientFactory(server, sending), domainCatalogue: CorpusIndexFixture.Domains);
+        var source = new McpToolSource(Options.Create(new AgentOptions { Servers = { ["billing"] = new McpServerOptions { Plugin = "billing", Domain = "billing", Endpoint = new Uri(server.Server.BaseAddress, "/mcp").ToString() } } }),
+            NullLoggerFactory.Instance, new ServerHttpClientFactory(server, sending), domainCatalogue: CorpusIndexFixture.Domains,
+            tokens: new FixtureAudienceTokens());
         var (token, _) = DevJwt.Issue(new AuthOptions(), "chris", TenantId.Firm("firm-c"), Role.USER);
 
         await using var tools = await source.GetToolsAsync(token, null, TestContext.Current.CancellationToken);
@@ -163,6 +170,20 @@ public sealed class AgentMcpIntegrationTests(CorpusIndexFixture corpus)
     {
         public HttpClient CreateClient(string name) =>
             handler is null ? server.CreateDefaultClient() : server.CreateDefaultClient(handler);
+    }
+
+    private static IDisposable CallerScope(params string[] plugins) => PluginAccessContext.Use(
+        new Principal("chris", TenantId.Firm("firm-c"), Role.USER), new PluginAccessSnapshot(plugins));
+
+    private sealed class FixtureAudienceTokens : IPluginTokens
+    {
+        public Task<string> ForAsync(Principal principal, string plugin, string subjectToken, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (plugin != "billing" || PluginAccessContext.For(principal)?.IsInUse(plugin) != true)
+                throw new UnauthorizedAccessException();
+            return Task.FromResult(DevJwt.Issue(new AuthOptions { Audience = plugin }, principal.UserId, principal.TenantId, principal.Role).Token);
+        }
     }
 
     /// <summary>Puts a trace on the wire the way a real HTTP stack would, which a test server does not do.</summary>

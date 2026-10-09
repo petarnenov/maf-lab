@@ -67,12 +67,16 @@ public static class SharedState
         // AbortOnConnectFail is left off so a store that comes back is reconnected to without a restart.
         var options = ConfigurationOptions.Parse(address);
         options.AbortOnConnectFail = false;
+        // Permission revocation inspects the server's durable AOF policy with the read-only CONFIG GET RPC.
+        // Production Redis ACLs should allow CONFIG GET without allowing configuration mutation.
+        options.AllowAdmin = true;
         options.ClientName = InstanceIdentity.Name;
 
         builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(options));
         builder.Services.AddSingleton<IRunStateStore, Stores.RedisRunStateStore>();
         builder.Services.AddSingleton<IRunTraceStore, Stores.RedisRunTraceStore>();
         builder.Services.AddSingleton<IIdempotencyStore, Stores.RedisIdempotencyStore>();
+        builder.Services.AddSingleton<IBreakGlassPermissionStore, Stores.RedisBreakGlassPermissionStore>();
         builder.Services.AddHostedService<Stores.RunOwnerHeartbeat>();
         return builder;
     }

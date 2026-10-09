@@ -1,0 +1,8 @@
+# SDK routes owned by this plugin; removed from docs checks with its folder.
+[routes.library]
+"/.well-known/agent-card.json" = "MapA2ASurface (the shared protocol library) maps the plugin's discovery endpoint"
+"/a2a/token" = "MapA2ASurface maps the plugin's partner token endpoint"
+"/a2a" = "MapA2A (A2A SDK) registers the JSON-RPC endpoint at AgentCardFactory.A2APath"
+"/a2a/message:send" = "MapA2A registers the HTTP+JSON binding beside the JSON-RPC endpoint"
+"/a2a/message:stream" = "MapA2A registers the HTTP+JSON binding beside the JSON-RPC endpoint"
+"/a2a/tasks…" = "MapA2A registers the HTTP+JSON task paths beside the JSON-RPC endpoint"

@@ -53,7 +53,7 @@ None. `plugins` (from `introduce-plugins`) is unchanged: "in use" gains a per-te
   - cache-aside with TTL plus pub/sub invalidation;
   - feature toggles as permission toggles (Fowler).
 - Own: the allowance and enablement rows and their routes. They are per-tenant entitlement data with no standard
-  format. DECISIONS §84 (new, written when this change is applied).
+  format. DECISIONS §88 (new, written when this change is applied).
 
 ## Progress
 
@@ -74,4 +74,4 @@ None. `plugins` (from `introduce-plugins`) is unchanged: "in use" gains a per-te
 - `docs/http-api.md`: `/api/admin/plugins` and `/api/platform/plugins`.
 - README: the tenant and platform dashboards.
 - `docs/plugins.md`: scope `tenant` and what "in use" means.
-- DECISIONS §84 (new): the per-tenant store, the TTL, and token exchange instead of bearer forwarding.
+- DECISIONS §88 (new): the per-tenant store, the TTL, and token exchange instead of bearer forwarding.

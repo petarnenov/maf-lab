@@ -1,27 +1,3 @@
-{"id": "d-billing-01", "question": "What is the procedure when a fee schedule is missing?", "expected": "billing", "language": "en", "split": "design"}
-{"id": "d-billing-02", "question": "How do I issue a billing credit?", "expected": "billing", "language": "en", "split": "design"}
-{"id": "d-billing-03", "question": "Why did run 4417 fail?", "expected": "billing", "language": "en", "split": "holdout"}
-{"id": "d-billing-04", "question": "Which billing runs failed in June 2026?", "expected": "billing", "language": "en", "split": "design"}
-{"id": "d-billing-05", "question": "Who can approve a fee adjustment above the threshold?", "expected": "billing", "language": "en", "split": "design"}
-{"id": "d-billing-06", "question": "How is a partial quarter prorated on the invoice?", "expected": "billing", "language": "en", "split": "holdout"}
-{"id": "d-billing-07", "question": "Каква е процедурата, когато липсва тарифа за такси?", "expected": "billing", "language": "bg", "split": "design"}
-{"id": "d-billing-08", "question": "Как се издава кредит по фактура?", "expected": "billing", "language": "bg", "split": "design"}
-{"id": "d-billing-09", "question": "Zashto se provali run 4417?", "expected": "billing", "language": "bg-latn", "split": "holdout"}
-{"id": "d-billing-10", "question": "Kak se odobryava korekciya na taksata?", "expected": "billing", "language": "bg-latn", "split": "design"}
-{"id": "d-billing-11", "question": "Credit 200 off the fee on A-1043, we overcharged them.", "expected": "billing", "language": "en", "split": "design"}
-{"id": "d-billing-12", "question": "What does the AUM-STALE failure code mean?", "expected": "billing", "language": "en", "split": "holdout"}
-{"id": "d-portfolio-01", "question": "How much drift triggers a rebalance?", "expected": "portfolio", "language": "en", "split": "design"}
-{"id": "d-portfolio-02", "question": "What does account A-1042 hold right now?", "expected": "portfolio", "language": "en", "split": "design"}
-{"id": "d-portfolio-03", "question": "Is A-1044 outside its drift tolerance?", "expected": "portfolio", "language": "en", "split": "holdout"}
-{"id": "d-portfolio-04", "question": "What are the target weights of the ACME-BALANCED-60-40 model?", "expected": "portfolio", "language": "en", "split": "design"}
-{"id": "d-portfolio-05", "question": "How is time-weighted return different from money-weighted return?", "expected": "portfolio", "language": "en", "split": "design"}
-{"id": "d-portfolio-06", "question": "Are held-away assets rebalanced with the rest of the household?", "expected": "portfolio", "language": "en", "split": "holdout"}
-{"id": "d-portfolio-07", "question": "Какво е отклонението на портфейла на A-1042 от модела?", "expected": "portfolio", "language": "bg", "split": "design"}
-{"id": "d-portfolio-08", "question": "Кога се ребалансира портфейл, който е извън толеранса?", "expected": "portfolio", "language": "bg", "split": "design"}
-{"id": "d-portfolio-09", "question": "Kakvi sa celevite tegla na modelniya portfeyl?", "expected": "portfolio", "language": "bg-latn", "split": "holdout"}
-{"id": "d-portfolio-10", "question": "Kak se izchislyava dohodnostta na portfeyla?", "expected": "portfolio", "language": "bg-latn", "split": "design"}
-{"id": "d-portfolio-11", "question": "How do I move an account to a different model portfolio?", "expected": "portfolio", "language": "en", "split": "design"}
-{"id": "d-portfolio-12", "question": "Show the quarter-end market values of C-77 this year.", "expected": "portfolio", "language": "en", "split": "holdout"}
 {"id": "d-both-01", "question": "Why did the fee on A-1042 go up this quarter — did its AUM cross a tier?", "expected": "both", "language": "en", "split": "design"}
 {"id": "d-both-02", "question": "A-1042's quarterly invoice is higher than last quarter; was it the market or a change in the fee schedule?", "expected": "both", "language": "en", "split": "design"}
 {"id": "d-both-03", "question": "If we rebalance A-1044 before quarter end, does that change its fee?", "expected": "both", "language": "en", "split": "holdout"}
@@ -50,30 +26,8 @@
 {"id": "d-both-18", "question": "Would moving A-1043 to the growth model change what we bill them?", "expected": "both", "language": "en", "split": "holdout"}
 {"id": "d-both-19", "question": "Защо таксата на Calder Retirement Plan намаля, след като AUM-ът падна?", "expected": "both", "language": "bg", "split": "holdout"}
 {"id": "d-both-20", "question": "Vliyae li parite v sweep smetkata na tier-a na taksata?", "expected": "both", "language": "bg-latn", "split": "holdout"}
-{"id": "d-billing-13", "question": "Which billing runs are still pending for September 2026?", "expected": "billing", "language": "en", "split": "holdout"}
-{"id": "d-billing-14", "question": "Who can approve a billing credit above the limit?", "expected": "billing", "language": "en", "split": "holdout"}
-{"id": "d-billing-15", "question": "Какво означава кодът за грешка FS-REQUIRED?", "expected": "billing", "language": "bg", "split": "holdout"}
-{"id": "d-portfolio-13", "question": "What is the drift of Northwind Pension Fund's long-duration bonds against its model?", "expected": "portfolio", "language": "en", "split": "holdout"}
-{"id": "d-portfolio-14", "question": "How is a money-weighted return calculated for a household?", "expected": "portfolio", "language": "en", "split": "holdout"}
-{"id": "d-portfolio-15", "question": "Какви са целевите тегла на модела ACME-GROWTH-80-20?", "expected": "portfolio", "language": "bg", "split": "holdout"}
 {"id": "d-none-09", "question": "How do I reset my laptop's Wi-Fi settings?", "expected": "none", "language": "en", "split": "holdout"}
 {"id": "d-none-10", "question": "Какво е времето в София утре?", "expected": "none", "language": "bg", "split": "holdout"}
-{"id": "d-billing-16", "question": "How are household fees allocated across accounts?", "expected": "billing", "language": "en", "split": "design"}
-{"id": "d-billing-17", "question": "how do fee adjustments get approved?", "expected": "billing", "language": "en", "split": "design"}
-{"id": "d-billing-18", "question": "who is allowed to adjust a fee, and what is the approval threshold?", "expected": "billing", "language": "en", "split": "design"}
-{"id": "d-billing-19", "question": "Why did the fee on our invoice include a minimum-fee line?", "expected": "billing", "language": "en", "split": "design"}
-{"id": "d-codebase-01", "question": "Where is the tenant filter applied to Qdrant queries in the code?", "expected": "codebase", "language": "en", "split": "design"}
-{"id": "d-codebase-02", "question": "How does the indexer keep chunks under the embedding model's context window?", "expected": "codebase", "language": "en", "split": "design"}
-{"id": "d-codebase-03", "question": "Which class implements the search_codebase MCP tool?", "expected": "codebase", "language": "en", "split": "holdout"}
-{"id": "d-codebase-04", "question": "How does the code make a tool call idempotent?", "expected": "codebase", "language": "en", "split": "design"}
-{"id": "d-codebase-05", "question": "Where is the Jev circuit breaker implemented?", "expected": "codebase", "language": "en", "split": "holdout"}
-{"id": "d-codebase-06", "question": "как в кода се прави идемпотентност на тул?", "expected": "codebase", "language": "bg", "split": "design"}
-{"id": "d-codebase-07", "question": "покажи ми дефиницията на code mcp сървъра", "expected": "codebase", "language": "bg", "split": "design"}
-{"id": "d-codebase-08", "question": "Кой клас разделя Markdown документите по заглавия?", "expected": "codebase", "language": "bg", "split": "holdout"}
-{"id": "d-codebase-09", "question": "Къде в кода се изгражда системният промпт на агента?", "expected": "codebase", "language": "bg", "split": "holdout"}
-{"id": "d-codebase-10", "question": "kade v koda se proveryava JWT tokena na MCP servera?", "expected": "codebase", "language": "bg-latn", "split": "design"}
-{"id": "d-codebase-11", "question": "koi make target indeksira koda?", "expected": "codebase", "language": "bg-latn", "split": "holdout"}
-{"id": "d-codebase-12", "question": "Which spec describes the Code snippets tab of the chat?", "expected": "codebase", "language": "en", "split": "design"}
 {"id": "d-codebase-13", "question": "How does the code compute a tiered fee across AUM bands?", "expected": "billing+codebase", "language": "en", "split": "holdout"}
 {"id": "d-offcode-01", "question": "How do I reverse a linked list in Python?", "expected": "none", "language": "en", "split": "design"}
 {"id": "d-offcode-02", "question": "What is the difference between an abstract class and an interface in Java?", "expected": "none", "language": "en", "split": "design"}

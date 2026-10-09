@@ -22,6 +22,8 @@ public sealed class ComplianceConsultant(
     IHttpClientFactory http,
     IWriteAudit audit,
     IOptions<ComplianceOptions> options,
+    IOptions<Maf.Lab.A2A.A2AOptions> agents,
+    IInstalledPlugins installed,
     TimeProvider time,
     ILogger<ComplianceConsultant> logger) : IReviewerConsultation
 {
@@ -39,6 +41,13 @@ public sealed class ComplianceConsultant(
 
     /// <summary>How long a cancel may take: the run it belongs to has already stopped and is waiting to end.</summary>
     internal static readonly TimeSpan CancelWithin = TimeSpan.FromSeconds(5);
+
+    private Maf.Lab.A2A.AgentClientRegistration Registration =>
+        agents.Value.Clients.GetValueOrDefault(CompliancePlugin.PluginName) ?? new();
+
+    private string BaseUrl => !string.IsNullOrWhiteSpace(Registration.BaseUrl) ? Registration.BaseUrl
+        : installed.AgentEndpoint(CompliancePlugin.PluginName) is { Length: > 0 } endpoint
+            ? new Uri(new Uri(endpoint), ".").AbsoluteUri.TrimEnd('/') : "";
 
     private readonly SemaphoreSlim discovery = new(1, 1);
     private IA2AClient? client;
@@ -62,11 +71,11 @@ public sealed class ComplianceConsultant(
 
     private async Task<ConsultationResult> RunAsync(ReviewRequest adjustment, string? taskId, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(options.Value.BaseUrl))
+        if (string.IsNullOrWhiteSpace(BaseUrl))
         {
             return new ConsultationResult.Unreachable("No compliance agent is configured.");
         }
-        if (string.IsNullOrWhiteSpace(options.Value.ClientSecret))
+        if (string.IsNullOrWhiteSpace(Registration.ClientSecret))
         {
             // Anonymously is not an option: a sub-agent is talked to as this system or not at all.
             return new ConsultationResult.Unreachable("No credentials for the compliance agent.");
@@ -168,7 +177,7 @@ public sealed class ComplianceConsultant(
                 return client;
             }
 
-            var baseUrl = options.Value.BaseUrl.TrimEnd('/');
+            var baseUrl = BaseUrl.TrimEnd('/');
             var token = await TokenAsync(baseUrl, ct);
             var authenticated = http.CreateClient(HttpClientName);
             authenticated.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -210,7 +219,7 @@ public sealed class ComplianceConsultant(
     {
         var anonymous = http.CreateClient(HttpClientName);
         var response = await anonymous.PostAsJsonAsync($"{baseUrl}/a2a/token",
-            new TokenRequest(options.Value.ClientId, options.Value.ClientSecret), ct);
+            new TokenRequest(Registration.ClientId, Registration.ClientSecret), ct);
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<TokenResponse>(ct))!.AccessToken;
     }

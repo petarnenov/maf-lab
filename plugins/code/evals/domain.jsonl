@@ -1,0 +1,12 @@
+{"id": "d-codebase-01", "question": "Where is the tenant filter applied to Qdrant queries in the code?", "expected": "codebase", "language": "en", "split": "design"}
+{"id": "d-codebase-02", "question": "How does the indexer keep chunks under the embedding model's context window?", "expected": "codebase", "language": "en", "split": "design"}
+{"id": "d-codebase-03", "question": "Which class implements the search_codebase MCP tool?", "expected": "codebase", "language": "en", "split": "holdout"}
+{"id": "d-codebase-04", "question": "How does the code make a tool call idempotent?", "expected": "codebase", "language": "en", "split": "design"}
+{"id": "d-codebase-05", "question": "Where is the Jev circuit breaker implemented?", "expected": "codebase", "language": "en", "split": "holdout"}
+{"id": "d-codebase-06", "question": "как в кода се прави идемпотентност на тул?", "expected": "codebase", "language": "bg", "split": "design"}
+{"id": "d-codebase-07", "question": "покажи ми дефиницията на code mcp сървъра", "expected": "codebase", "language": "bg", "split": "design"}
+{"id": "d-codebase-08", "question": "Кой клас разделя Markdown документите по заглавия?", "expected": "codebase", "language": "bg", "split": "holdout"}
+{"id": "d-codebase-09", "question": "Къде в кода се изгражда системният промпт на агента?", "expected": "codebase", "language": "bg", "split": "holdout"}
+{"id": "d-codebase-10", "question": "kade v koda se proveryava JWT tokena na MCP servera?", "expected": "codebase", "language": "bg-latn", "split": "design"}
+{"id": "d-codebase-11", "question": "koi make target indeksira koda?", "expected": "codebase", "language": "bg-latn", "split": "holdout"}
+{"id": "d-codebase-12", "question": "Which spec describes the Code snippets tab of the chat?", "expected": "codebase", "language": "en", "split": "design"}

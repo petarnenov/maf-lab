@@ -32,12 +32,13 @@ class PluginsTestCase(unittest.TestCase):
         self.root.mkdir()
         self.lb.mkdir()
         (self.lb / "api.upstream.conf").write_text("upstream api_pool { server api:8080; }\n")
-        self.env = {k: os.environ.get(k) for k in ("MAF_PLUGINS_ROOT", "MAF_LB_ROOT", "MAF_PLUGINS", "MAF_ENV", "MAF_CORE_PROVIDERS")}
+        self.env = {k: os.environ.get(k) for k in ("MAF_PLUGINS_ROOT", "MAF_LB_ROOT", "MAF_PLUGINS", "MAF_ENV", "MAF_CORE_PROVIDERS", "MAF_CHAT_MODEL")}
         os.environ["MAF_PLUGINS_ROOT"] = str(self.root)
         os.environ["MAF_LB_ROOT"] = str(self.lb)
         os.environ.pop("MAF_PLUGINS", None)
         os.environ.pop("MAF_ENV", None)
         os.environ.pop("MAF_CORE_PROVIDERS", None)
+        os.environ.pop("MAF_CHAT_MODEL", None)
         self.addCleanup(self.restore)
 
     def restore(self):
@@ -83,6 +84,15 @@ class ResolveTests(PluginsTestCase):
         with self.assertRaisesRegex(plugins.PluginError, r"plugin 'gone' does not exist \(needed by top\)"):
             self.resolved(MAF_PLUGINS="top")
 
+    def test_folder_removal_excludes_transitive_dependants_from_the_automatic_set(self):
+        self.add("base")
+        self.add("top", manifest("top", depends=["base"]))
+        self.add("inspector", manifest("inspector", depends=["top"]))
+        self.add("other")
+        self.assertEqual(["base", "top", "inspector", "other"], self.resolved())
+        shutil.rmtree(self.root / "base")
+        self.assertEqual(["other"], self.resolved())
+
     def test_a_cycle_is_named(self):
         self.add("a", manifest("a", depends=["b"]))
         self.add("b", manifest("b", depends=["a"]))
@@ -101,6 +111,14 @@ class ResolveTests(PluginsTestCase):
 
 
 class ManifestTests(PluginsTestCase):
+    def test_private_plugins_are_tenant_scoped_and_name_a_real_tenant(self):
+        self.add("private-notes", manifest("private-notes", extra='private_to = "firm-a"\n').replace('scope = "installation"', 'scope = "tenant"'))
+        self.assertEqual([], plugins.discover()["private-notes"].problems)
+        self.add("bad-scope", manifest("bad-scope", extra='private_to = "firm-a"\n'))
+        self.assertIn("/private_to: a private plugin must have tenant scope", plugins.discover()["bad-scope"].problems)
+        self.add("bad-owner", manifest("bad-owner", extra='private_to = "shared"\n').replace('scope = "installation"', 'scope = "tenant"'))
+        self.assertTrue(any(p.startswith("/private_to") for p in plugins.discover()["bad-owner"].problems))
+
     def test_the_schema_and_the_forms_are_checked(self):
         self.add("x", manifest("x").replace('progress = "None — a fixture"', 'progress = "soon"') + 'colour = "blue"\n')
         problems = plugins.discover()["x"].problems
@@ -187,6 +205,13 @@ class InstallTests(PluginsTestCase):
         self.assertFalse((self.lb / "conf.d/server/50-weather.conf").exists())
         self.assertTrue((self.lb / "conf.d/http/00-api.conf").is_file())
 
+    def test_install_carries_a_standard_bootstrap_agent_card(self):
+        card = {"name": "weather", "supportedInterfaces": [{"protocolBinding": "JSONRPC", "url": "http://lb/weather/a2a"}]}
+        self.add("weather", **{"agent-card.json": json.dumps(card)})
+        plugins.install()
+        document = json.loads((self.root / ".installed").read_text())
+        self.assertEqual(card, document["plugins"][0]["agentCard"])
+
     def test_services_are_read_from_the_plugins_compose_file(self):
         folder = self.add("weather", **{"compose.yml": "services:\n  weather:\n    image: x\n  weather-db:\n    image: y\nvolumes:\n  data:\n"})
         self.assertEqual(["weather", "weather-db"], plugins.services(plugins.Plugin("weather", folder, {})))
@@ -238,7 +263,21 @@ class ProviderTests(PluginsTestCase):
 
     def test_exactly_one_passes(self):
         self.engine("decider")
-        self.assertEqual(0, self.check(MAF_PLUGINS="none", MAF_CORE_PROVIDERS="decider").returncode)
+        self.add("chat", manifest("chat", kind="provider", extra='provides = "chat-model"\n'))
+        self.assertEqual(0, self.check(MAF_PLUGINS="none", MAF_CORE_PROVIDERS="decider chat", MAF_CHAT_MODEL="chat").returncode)
+
+    def test_missing_selected_chat_provider_fails(self):
+        self.engine("decider")
+        self.add("chat", manifest("chat", kind="provider", extra='provides = "chat-model"\n'))
+        out = self.check(MAF_PLUGINS="none", MAF_CORE_PROVIDERS="decider chat", MAF_CHAT_MODEL="other")
+        self.assertEqual(2, out.returncode)
+        self.assertIn("chat provider 'other' is not installed", out.stderr)
+
+    def test_selected_name_must_provide_a_chat_model(self):
+        self.engine("decider")
+        out = self.check(MAF_PLUGINS="none", MAF_CORE_PROVIDERS="decider", MAF_CHAT_MODEL="decider")
+        self.assertEqual(2, out.returncode)
+        self.assertIn('provides = "chat-model"', out.stderr)
 
 
 @unittest.skipUnless(shutil.which("docker"), "docker is not installed")
@@ -283,13 +322,18 @@ class ComposeTests(PluginsTestCase):
                 if name in seen:
                     continue
                 seen.append(name)
-                manifest = tomllib.loads((ROOT / "plugins" / name / "plugin.toml").read_text(encoding="utf-8"))
+                manifest_path = ROOT / "plugins" / name / "plugin.toml"
+                if not manifest_path.exists():
+                    return []  # Folder removal deactivates this dependent in the automatic set.
+                manifest = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
                 todo.extend(manifest.get("depends", []))
             return [ROOT / "plugins" / n / "compose.yml" for n in seen if (ROOT / "plugins" / n / "compose.yml").exists()]
 
         shared = ("api", "lb", "copilot-runtime")
         none = {name: service for name, service in self.core_services().items() if name in shared}
-        for files in [with_depends(f) for f in real] + [real]:
+        groups = [g for f in real if (g := with_depends(f))]
+        together = sorted({f for group in groups for f in group})
+        for files in groups + [together]:
             rendered = {name: service for name, service in self.core_services(*files, strict=True).items() if name in shared}
             self.assertEqual(none, rendered, [f.parent.name for f in files])
 

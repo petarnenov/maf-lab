@@ -58,7 +58,7 @@ principals, groups and an operator role.
   - MCP authorization with the MCP servers as resource servers, serving protected resource metadata (RFC 9728).
   - Access patterns: least privilege; break-glass access with audit.
 - Own: the break-glass grant record (reason, expiry, audit) in our store. Keycloak's delegation with an `act` claim is
-  still preview (design 5s), so no supported standard fits. DECISIONS §83 (new, written when this change is applied).
+  still preview (design 5s), so no supported standard fits. DECISIONS §89 (new, written when this change is applied).
 
 ## Progress
 
@@ -78,7 +78,7 @@ principals, groups and an operator role.
 
 - `CLAUDE.md`: the principal comes from the company IdP. `dev-login` is dev and qa only. The Keycloak image is pinned.
 - DECISIONS.md:
-  - §83: Keycloak 26.8.0 pinned (a new image, which moves a package version);
+  - §89: Keycloak 26.8.0 pinned (a new image, which moves a package version);
   - the supported-features rule;
   - break-glass in our store instead of a preview `act` claim.
 - `docs/http-api.md`: the operator and break-glass routes. README: sign-in.

@@ -1,9 +1,9 @@
+extern alias service;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Maf.Lab.Api.Agent;
 using Maf.Lab.Api.Agent.Decisions;
 using Maf.Lab.Api.Agent.Tracing;
-using Maf.Lab.Api.BuiltIn;
 using Maf.Lab.Plugins.Code;
 using Maf.Lab.Domain.Code;
 using Maf.Lab.Domain.Feedback;
@@ -274,7 +274,7 @@ public class CodeAnswerChecksTests : IDisposable
         ReadItem.FromSearchItem(JsonSerializer.SerializeToElement(new { path, startLine = start, endLine = end, symbol, snippet }), CodePlugin.DomainId);
 
     private static ReadItem Doc(string docId, string section, string snippet) =>
-        ReadItem.FromSearchItem(JsonSerializer.SerializeToElement(new { docId, sectionPath = section, snippet }), BuiltInDomains.Billing);
+        ReadItem.FromSearchItem(JsonSerializer.SerializeToElement(new { docId, sectionPath = section, snippet }), "billing");
 
     [Fact]
     public void The_same_place_three_times_is_sent_once_and_the_repeats_are_counted()
@@ -316,7 +316,7 @@ public class CodeAnswerChecksTests : IDisposable
         Assert.Equal([cited], selection.Previous);
         Assert.Equal(["src/Maf.Lab.Api/Agent/Guardrail.cs", "Guardrail.cs"], cited.CitationNames);
         Assert.Equal(CodePlugin.DomainId, cited.Domain);
-        Assert.Equal(BuiltInDomains.Billing, uncited.Domain);
+        Assert.Equal("billing", uncited.Domain);
     }
 
     [Fact]

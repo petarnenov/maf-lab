@@ -11,6 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Maf.Lab.Plugins.Abstractions\Maf.Lab.Plugins.Abstractions.csproj" />
     <ProjectReference Include="..\..\..\src\Maf.Lab.Domain\Maf.Lab.Domain.csproj" />
+    <ProjectReference Include="../../../src/Maf.Lab.A2A/Maf.Lab.A2A.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Maf.Lab.Tests" />

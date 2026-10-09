@@ -11,17 +11,21 @@
 
 ## 1. Move `topology` into `plugins/topology/` (after coverage and evals land)
 
-- [ ] 1.1 Create `plugins/topology/` with the screen, the probe and its DTOs, the diagram as an embedded resource, and
+- [x] 1.1 Create `plugins/topology/` with the screen, the probe and its DTOs, the diagram as an embedded resource, and
       `AddGraphStore`; the probe keeps lb, web, api, redis, ollama and chat-provider, and every other node comes from a
       plugin's `[topology]` table (`service`, `health`, `card`); domain servers and their tools through MCP `tools/list`.
-- [ ] 1.2 Drop `report.Edges` (the diagram is the single source); `DescribeChunkCollectionAsync` gains the status; the
+- [x] 1.2 Drop `report.Edges` (the diagram is the single source); `DescribeChunkCollectionAsync` gains the status; the
       graph store's non-authentication failures report the type name only.
-- [ ] 1.3 Web: `useApiText` in `@maf/plugin-api`, `apiText` deleted; the curriculum links; the screenshot tool.
-- [ ] 1.4 Remove the topology allow-list line, `Topology__DiagramPath` and the `/docs` mount; update the docs and
+- [x] 1.3 Web: `useApiText` in `@maf/plugin-api`, `apiText` deleted; the curriculum links; the screenshot tool.
+- [x] 1.4 Remove the topology allow-list line, `Topology__DiagramPath` and the `/docs` mount; update the docs and
       DECISIONS (19's addendum, part M).
 
 ## 2. Verify
 
-- [ ] 2.1 `make test`, `make docs-check` and `openspec validate --strict` pass with the folder present, and again with
+- [x] 2.1 `make test`, `make docs-check` and `openspec validate --strict` pass with the folder present, and again with
       it moved aside.
 - [ ] 2.2 `make ci-e2e` (every plugin) and `make ci-e2e-core` (the core alone) pass.
+
+Migration sequencing (owner, 2026-10-08): task 2.2 follows all planned code migrations; no intermediate indexing or live evals.
+
+Local verification (2026-10-09): warnings-as-errors build; 1959/1959 .NET and 703/703 web with the plugin; 1925/1925 .NET and the full web suite with the folder moved aside; docs-check (130 Python tests) and all 63 strict OpenSpec items in both configurations. No live indexing or eval suites ran.

@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Maf.Lab.Api.Plugins;
 using Maf.Lab.Plugins.Abstractions;
 
@@ -11,20 +10,17 @@ namespace Maf.Lab.Api.Endpoints;
 /// </summary>
 public static class PluginEndpoints
 {
-    private static readonly ConcurrentDictionary<string, (DateTimeOffset At, string Health)> HealthCache = new(StringComparer.Ordinal);
-    private static readonly TimeSpan HealthTtl = TimeSpan.FromSeconds(15);
-
     public static IEndpointRouteBuilder MapPlugins(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/plugins", async (HttpContext http, PluginCatalogue catalogue, Agent.DomainCatalogue domains, IHttpClientFactory clients,
+        app.MapGet("/api/plugins", async (HttpContext http, PluginCatalogue catalogue, Agent.DomainCatalogue domains, PluginHealth health,
             CancellationToken ct) =>
         {
             var signedIn = http.User.Identity?.IsAuthenticated == true;
             var set = catalogue.Current;
-            var visible = set.Plugins.Where(p => signedIn || p.Manifest.Public).ToList();
+            var visible = set.Plugins.Where(p => signedIn ? PluginAccessContext.Current?.IsInUse(p.Name) == true : p.Manifest.Public).ToList();
             var items = await Task.WhenAll(visible.Select(async p => new PluginInfo(
                 p.Name, p.Manifest.Kind, p.Manifest.Scope, p.Manifest.Description,
-                await HealthAsync(p, clients, ct),
+                await health.GetAsync(p, ct),
                 p.Manifest.Domain?.Id,
                 p.Manifest.Domain?.CardTypes.Values.Distinct().ToList() ?? [])));
             // The domains in use, built-in ones included, so the chat page can say up front when there are none (5h).
@@ -33,8 +29,9 @@ public static class PluginEndpoints
         }).AllowAnonymous();
 
         var admin = app.MapGroup("/api/plugins/{name}/open-work").RequireAuthorization(AuthPolicies.TenantAdmin);
-        admin.MapGet("", async (string name, IEnumerable<NamedOpenWork> work, CancellationToken ct) =>
+        admin.MapGet("", async Task<IResult> (string name, IEnumerable<NamedOpenWork> work, CancellationToken ct) =>
         {
+            if (PluginAccessContext.Current?.IsInUse(name) != true) return Results.NotFound();
             var items = new List<OpenWorkItem>();
             foreach (var w in work.Where(w => w.Plugin == name))
             {
@@ -42,8 +39,9 @@ public static class PluginEndpoints
             }
             return Results.Ok(items);
         });
-        admin.MapPost("/cancel", async (string name, IEnumerable<NamedOpenWork> work, CancellationToken ct) =>
+        admin.MapPost("/cancel", async Task<IResult> (string name, IEnumerable<NamedOpenWork> work, CancellationToken ct) =>
         {
+            if (PluginAccessContext.Current?.IsInUse(name) != true) return Results.NotFound();
             foreach (var w in work.Where(w => w.Plugin == name))
             {
                 await w.Work.CancelAllAsync(ct);
@@ -53,39 +51,7 @@ public static class PluginEndpoints
         return app;
     }
 
-    /// <summary>
-    /// "ok" for a plugin whose code runs in this process; for a remote one, a short probe of its topology address, kept
-    /// for 15 seconds; "unknown" when it names none.
-    /// </summary>
-    private static async Task<string> HealthAsync(InstalledPlugin plugin, IHttpClientFactory clients, CancellationToken ct)
-    {
-        if (plugin.HasServer)
-        {
-            return "ok";
-        }
-        if (plugin.Manifest.Topology?.Url is not { Length: > 0 } url)
-        {
-            return "unknown";
-        }
-        if (HealthCache.TryGetValue(plugin.Name, out var cached) && DateTimeOffset.UtcNow - cached.At < HealthTtl)
-        {
-            return cached.Health;
-        }
-        string health;
-        try
-        {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeout.CancelAfter(TimeSpan.FromSeconds(2));
-            using var response = await clients.CreateClient("plugins").GetAsync(url, timeout.Token);
-            health = response.IsSuccessStatusCode ? "ok" : "unavailable";
-        }
-        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
-        {
-            health = "unavailable";
-        }
-        HealthCache[plugin.Name] = (DateTimeOffset.UtcNow, health);
-        return health;
-    }
+
 }
 
 public sealed record PluginInfo(string Name, string Kind, string Scope, string Description, string Health, string? Domain,
