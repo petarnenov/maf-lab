@@ -104,3 +104,18 @@ writer quiescence, complete participant resolution and inventory, export staging
 policies/scheduling, authorized routes, and progress/stop/resume UI and terminal integration. Crash recovery still
 must establish that the previous writer stopped. The core timer's hold/admission bypass described at the preceding
 checkpoint is now closed. The full OpenSpec objective is paused, not completed.
+
+## Resume checkpoint
+
+Resume phrase: **Продължи OpenSpec**.
+
+The implementation is paused after commit `40208dc` on `introduce-provider-plugins`. Continue the existing
+OpenSpec implementation from task `data-lifecycle` 1.2. Durable lifecycle jobs and atomic legal-hold admission
+are implemented and verified; the final targeted gate passed 58/58 cases. The next work is writer admission and
+quiescence, complete participant resolution, export bundles, per-tenant scheduling and authorized job/UI integration.
+There are 36 unchecked tasks across the active, non-archived OpenSpec changes; do not treat this checkpoint as
+completion of task 1.2 or of the whole migration.
+
+Keep indexing, reindexing, graph refresh and live evals deferred until the entire agreed code migration is complete.
+Use builds, model-free contract tests and docs/spec checks meanwhile. After each completed task, retain a compact
+handoff for that task while preserving the full objective and remaining task list.
