@@ -117,7 +117,7 @@ INDEXER_SRC  := $(shell find src/Maf.Lab.Indexing src/Maf.Lab.Retrieval src/Maf.
                 Directory.Build.props Directory.Packages.props global.json
 INDEXER      := $(DOTNET) $(INDEXER_DLL)
 
-.PHONY: all help up core plugins plugin-new plugin-new-check plugin-switch-check plugin-on plugin-off product-check down restart ps logs print-compose-file clean infra index indexer graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
+.PHONY: all help up core chat plugins plugin-new plugin-new-check plugin-switch-check plugin-on plugin-off product-check down restart ps logs print-compose-file clean infra index indexer graph reindex ask screenshots drift migrate test test-dotnet test-web lint verify \
         coverage testgen-e2e eval eval-accept eval-selection eval-retrieval eval-generation eval-injection eval-presentation eval-answer-check eval-code-route eval-graph-depth dev doctor banner index-if-empty \
         specs docs docs-check lint-dotnet lint-web build-web ci ci-e2e ci-e2e-core core-turn-check setup \
         require-docker require-dotnet require-npm require-python
@@ -158,6 +158,9 @@ up: require-docker ## Build and start the stack (api replicas via API_REPLICAS; 
 
 core: ## Start the core with no plugin but its minimum providers (MAF_PLUGINS=none, MAF_CORE_PROVIDERS); declines every turn (decision 5h); a plain make brings them back
 	@$(MAKE) --no-print-directory up MAF_PLUGINS=none
+
+chat: ## Start chat with the domain plugins only (billing, code, portfolio + their stores and the jev provider), no dev/QA tooling
+	@$(MAKE) --no-print-directory up MAF_PLUGINS=billing,code,portfolio
 
 product-check: require-docker ## Build the product image variant (api, web) and check it holds no dev-or-qa-only plugin code
 	@MAF_IMAGE_VARIANT=product $(COMPOSE) build api web
